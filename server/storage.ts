@@ -1,5 +1,6 @@
-import { type User, type InsertUser, type LoanApplication, type InsertLoanApplication } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { users, loanApplications, type User, type InsertUser, type LoanApplication, type InsertLoanApplication } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, desc } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -13,99 +14,99 @@ export interface IStorage {
   getAllLoanApplications(): Promise<LoanApplication[]>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private loanApplications: Map<string, LoanApplication>;
-
-  constructor() {
-    this.users = new Map();
-    this.loanApplications = new Map();
-  }
-
+export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
     return user;
   }
 
   async getLoanApplication(id: string): Promise<LoanApplication | undefined> {
-    return this.loanApplications.get(id);
+    const [application] = await db
+      .select()
+      .from(loanApplications)
+      .where(eq(loanApplications.id, id));
+    return application || undefined;
   }
 
   async getLoanApplicationByEmail(email: string): Promise<LoanApplication | undefined> {
-    return Array.from(this.loanApplications.values()).find(
-      (app) => app.email === email && !app.isCompleted,
-    );
+    const [application] = await db
+      .select()
+      .from(loanApplications)
+      .where(
+        and(
+          eq(loanApplications.email, email),
+          eq(loanApplications.isCompleted, false)
+        )
+      )
+      .orderBy(desc(loanApplications.createdAt))
+      .limit(1);
+    return application || undefined;
   }
 
   async createLoanApplication(insertApplication: Partial<InsertLoanApplication>): Promise<LoanApplication> {
-    const id = randomUUID();
-    const now = new Date();
-    const application: LoanApplication = {
-      id,
-      email: insertApplication.email || "",
-      fullName: insertApplication.fullName || null,
-      phone: insertApplication.phone || null,
-      businessName: insertApplication.businessName || null,
-      businessType: insertApplication.businessType || null,
-      industry: insertApplication.industry || null,
-      ein: insertApplication.ein || null,
-      timeInBusiness: insertApplication.timeInBusiness || null,
-      monthlyRevenue: insertApplication.monthlyRevenue || null,
-      averageMonthlyRevenue: insertApplication.averageMonthlyRevenue || null,
-      creditScore: insertApplication.creditScore || null,
-      requestedAmount: insertApplication.requestedAmount || null,
-      useOfFunds: insertApplication.useOfFunds || null,
-      hasOutstandingLoans: insertApplication.hasOutstandingLoans || null,
-      outstandingLoansAmount: insertApplication.outstandingLoansAmount || null,
-      bankName: insertApplication.bankName || null,
-      businessAddress: insertApplication.businessAddress || null,
-      city: insertApplication.city || null,
-      state: insertApplication.state || null,
-      zipCode: insertApplication.zipCode || null,
-      ownership: insertApplication.ownership || null,
-      currentStep: insertApplication.currentStep || 1,
-      isCompleted: insertApplication.isCompleted || false,
-      ghlContactId: insertApplication.ghlContactId || null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.loanApplications.set(id, application);
+    const [application] = await db
+      .insert(loanApplications)
+      .values({
+        email: insertApplication.email || "",
+        fullName: insertApplication.fullName,
+        phone: insertApplication.phone,
+        businessName: insertApplication.businessName,
+        businessType: insertApplication.businessType,
+        industry: insertApplication.industry,
+        ein: insertApplication.ein,
+        timeInBusiness: insertApplication.timeInBusiness,
+        monthlyRevenue: insertApplication.monthlyRevenue,
+        averageMonthlyRevenue: insertApplication.averageMonthlyRevenue,
+        creditScore: insertApplication.creditScore,
+        requestedAmount: insertApplication.requestedAmount,
+        useOfFunds: insertApplication.useOfFunds,
+        hasOutstandingLoans: insertApplication.hasOutstandingLoans,
+        outstandingLoansAmount: insertApplication.outstandingLoansAmount,
+        bankName: insertApplication.bankName,
+        businessAddress: insertApplication.businessAddress,
+        city: insertApplication.city,
+        state: insertApplication.state,
+        zipCode: insertApplication.zipCode,
+        ownership: insertApplication.ownership,
+        currentStep: insertApplication.currentStep || 1,
+        isCompleted: insertApplication.isCompleted || false,
+        ghlContactId: insertApplication.ghlContactId,
+      })
+      .returning();
     return application;
   }
 
   async updateLoanApplication(id: string, updates: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined> {
-    const existing = this.loanApplications.get(id);
-    if (!existing) {
-      return undefined;
-    }
-
-    const updated: LoanApplication = {
-      ...existing,
-      ...updates,
-      id: existing.id,
-      createdAt: existing.createdAt,
-      updatedAt: new Date(),
-    };
-
-    this.loanApplications.set(id, updated);
-    return updated;
+    const [updated] = await db
+      .update(loanApplications)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(loanApplications.id, id))
+      .returning();
+    return updated || undefined;
   }
 
   async getAllLoanApplications(): Promise<LoanApplication[]> {
-    return Array.from(this.loanApplications.values());
+    return await db
+      .select()
+      .from(loanApplications)
+      .orderBy(desc(loanApplications.createdAt));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

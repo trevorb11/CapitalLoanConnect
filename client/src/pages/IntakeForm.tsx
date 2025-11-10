@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -37,6 +37,13 @@ export default function IntakeForm() {
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>("idle");
   const [lastSaved, setLastSaved] = useState<Date | undefined>();
+  
+  // Use ref to always have current applicationId in mutation closure
+  const applicationIdRef = useRef<string | null>(null);
+  applicationIdRef.current = applicationId;
+  
+  // Track if we're creating the initial application to prevent race conditions
+  const creatingApplicationRef = useRef(false);
 
   // Forms for each step
   const form1 = useForm<Step1Data>({
@@ -105,36 +112,50 @@ export default function IntakeForm() {
 
   // Auto-save mutation
   const autoSaveMutation = useMutation({
-    mutationFn: async (data: Partial<LoanApplication>) => {
+    mutationFn: async (data: Partial<LoanApplication> & { currentStep?: number }) => {
+      // Get current applicationId from ref to avoid stale closure
+      const currentAppId = applicationIdRef.current;
+      
       // Always include email from form1 for initial creation
       const email = form1.getValues("email");
       const payload = { ...data };
       
-      if (!applicationId && email) {
+      if (!currentAppId && email) {
         payload.email = email;
       }
 
-      if (applicationId) {
-        return await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
+      if (currentAppId) {
+        return await apiRequest("PATCH", `/api/applications/${currentAppId}`, payload);
       } else {
-        const response = await apiRequest("POST", "/api/applications", {
-          ...payload,
-          currentStep,
-        });
-        return response;
+        // If we're already creating an application, skip to prevent race conditions
+        if (creatingApplicationRef.current) {
+          return null;
+        }
+        
+        creatingApplicationRef.current = true;
+        try {
+          const response = await apiRequest("POST", "/api/applications", payload);
+          return response;
+        } finally {
+          creatingApplicationRef.current = false;
+        }
       }
     },
     onMutate: () => {
       setAutoSaveStatus("saving");
     },
     onSuccess: (data: any) => {
-      if (data.id && !applicationId) {
+      if (!data) return; // Skip if creation was already in progress
+      
+      const appId = applicationIdRef.current ?? data.id;
+      if (!applicationIdRef.current && data.id) {
+        applicationIdRef.current = data.id;
         setApplicationId(data.id);
         localStorage.setItem("applicationId", data.id);
       }
       setAutoSaveStatus("saved");
       setLastSaved(new Date());
-      queryClient.invalidateQueries({ queryKey: ["/api/applications", applicationId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/applications", appId] });
     },
     onError: () => {
       setAutoSaveStatus("error");
@@ -197,15 +218,48 @@ export default function IntakeForm() {
 
   // Auto-save on form changes
   useEffect(() => {
-    const subscription = getCurrentForm().watch((data) => {
-      const timeoutId = setTimeout(() => {
-        if (Object.keys(data).length > 0) {
-          autoSaveMutation.mutate(data as any);
+    let debounceTimer: NodeJS.Timeout | null = null;
+    const currentForm = getCurrentForm();
+    const currentStepValue = currentStep;
+    
+    const subscription = currentForm.watch(() => {
+      // Clear previous timer
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      
+      // Set new timer
+      debounceTimer = setTimeout(() => {
+        // Don't auto-save if a mutation is already in progress
+        if (autoSaveMutation.isPending) {
+          return;
+        }
+        
+        // Get all values from the captured form
+        const formData = currentForm.getValues();
+        
+        // For step 1, only auto-save if email is valid
+        if (currentStepValue === 1) {
+          const emailValue = formData.email;
+          if (!emailValue || !emailValue.includes('@') || emailValue.length < 5) {
+            return; // Skip auto-save for invalid/incomplete emails
+          }
+        }
+        
+        if (Object.keys(formData).length > 0) {
+          // CRITICAL: Always include currentStep in auto-save payload
+          autoSaveMutation.mutate({
+            ...formData,
+            currentStep: currentStepValue,
+          } as any);
         }
       }, 1000);
-      return () => clearTimeout(timeoutId);
     });
+    
     return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
       if (subscription && typeof subscription === 'object' && 'unsubscribe' in subscription) {
         subscription.unsubscribe();
       }

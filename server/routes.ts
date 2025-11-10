@@ -35,7 +35,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user already has an incomplete application
       const existingApp = await storage.getLoanApplicationByEmail(applicationData.email);
       if (existingApp && !existingApp.isCompleted) {
-        return res.json(existingApp);
+        // Update existing application with new data instead of just returning old data
+        const updatedApp = await storage.updateLoanApplication(existingApp.id, applicationData);
+        
+        // Sync to GoHighLevel
+        try {
+          if (updatedApp && updatedApp.ghlContactId) {
+            await ghlService.updateContact(updatedApp.ghlContactId, applicationData);
+          } else if (updatedApp) {
+            const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
+            const finalApp = await storage.updateLoanApplication(existingApp.id, { ghlContactId });
+            return res.json(finalApp || updatedApp);
+          }
+        } catch (ghlError) {
+          console.error("GHL sync error:", ghlError);
+        }
+        
+        return res.json(updatedApp || existingApp);
       }
 
       // Create new application
