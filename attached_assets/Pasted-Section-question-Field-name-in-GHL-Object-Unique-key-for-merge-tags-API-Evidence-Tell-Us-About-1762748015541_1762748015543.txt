@@ -1,0 +1,53 @@
+Section / question	Field name in GHL	Object	Unique key (for merge tags / API)	Evidence
+Tell Us About Your Business	Business Name	Contact	contact.company_name	GHL lists “Business Name” with unique key {{ contact.company_name }}
+app.gohighlevel.com
+.
+	Legal Business Name (if needed)	Contact	contact.legal_business_name	There is also “Legal Business Name” with key {{ contact.legal_business_name }}
+app.gohighlevel.com
+.
+	Business Type	–	–	No pre‑built field found; create a custom field to capture LLC/corp/sole‑prop, etc.
+	Industry	Contact	contact.industry	The field “Industry” appears with unique key {{ contact.industry }} in the Business Details folder
+app.gohighlevel.com
+.
+	EIN (Employer Identification Number)	Contact	contact.ein	The custom field “EIN” has key {{ contact.ein }}
+app.gohighlevel.com
+.
+	Years in Business	Contact	contact.years_in_business	One field is “Years In Business” with key {{ contact.years_in_business }}
+app.gohighlevel.com
+.
+	Time In Business (Years)	Contact	contact.time_in_business_years	Another time‑based field “Time In Business (Years)” has key {{ contact.time_in_business_years }}
+app.gohighlevel.com
+.
+	Ownership Percentage	–	–	No field found; you will need to create a custom field for ownership %.
+Section / question	Field name in GHL	Object	Unique key	Evidence
+Financial Information	Current Monthly Revenue	Contact	contact.monthly_revenue or contact.monthly_revenue_usd	GHL lists “Monthly Revenue” ({{ contact.monthly_revenue }}) and a custom “Monthly Revenue (USD)” ({{ contact.monthly_revenue_usd }})
+app.gohighlevel.com
+. Use whichever best matches your currency.
+	Average Monthly Revenue	–	–	No field named “Average Monthly Revenue”; you might use “Monthly Revenue (Approx.)” ({{ contact.monthly_revenue_approx }})
+app.gohighlevel.com
+ or create a new field.
+	Personal Credit Score	–	–	Only an opportunity‑level field {{ opportunity.credit_score }} exists
+app.gohighlevel.com
+; to capture personal credit score for contacts you need a new custom field.
+	Outstanding business loans or cash advances? (Yes/No)	–	–	No existing field; create a new yes/no custom field.
+Section / question	Field name in GHL	Object	Unique key	Evidence
+Funding Request	Desired / Requested Loan Amount	Contact	One of: contact.requested_loan_amount, contact.loan_amount_requested, contact.amount_requested, or contact.desired_loan_amount	The custom fields list includes “Amount Requested*” ({{ contact.amount_requested }}), “Requested Loan Amount” ({{ contact.requested_loan_amount }}), “Loan Amount Requested” ({{ contact.loan_amount_requested }}) and “Desired Loan Amount” ({{ contact.desired_loan_amount }})
+app.gohighlevel.com
+. Use whichever naming convention matches your form.
+	Purpose of Funds / Loan Purpose	Contact	contact.purpose_of_funds, contact.purpose_of_loan, or contact.loan_purpose	There are three similar fields: “Purpose Of Funds” ({{ contact.purpose_of_funds }}), “Purpose Of Loan” ({{ contact.purpose_of_loan }}), and “Loan Purpose” ({{ contact.loan_purpose }})
+app.gohighlevel.com
+.
+	Primary Business Bank	–	–	No custom field found; create a new text field (e.g., primary_business_bank).
+Section / question	Field name in GHL	Object	Unique key	Evidence
+Business Address	Street Address	Contact	contact.address1	“Street Address” appears as a contact field with unique key {{ contact.address1 }}
+app.gohighlevel.com
+.
+	City	Contact	contact.city	The field “City” (Contact) has key {{ contact.city }}
+app.gohighlevel.com
+.
+	State	Contact	contact.state	“State” (Contact) is keyed as {{ contact.state }}
+app.gohighlevel.com
+.
+	Postal Code / ZIP Code	Contact	contact.postal_code	“Postal Code” (Contact) has key {{ contact.postal_code }}
+app.gohighlevel.com
+.

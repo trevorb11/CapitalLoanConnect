@@ -10,7 +10,13 @@ interface GHLContact {
   lastName?: string;
   email: string;
   phone?: string;
-  customFields?: Record<string, string>;
+  companyName?: string;
+  industry?: string;
+  address1?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  customField?: Record<string, any>;
   tags?: string[];
 }
 
@@ -58,6 +64,127 @@ export class GoHighLevelService {
     return response.json();
   }
 
+  private buildContactData(application: Partial<LoanApplication>): Partial<GHLContact> {
+    const contactData: Partial<GHLContact> = {
+      locationId: this.locationId!,
+    };
+
+    // Standard contact fields
+    if (application.fullName) {
+      const nameParts = application.fullName.trim().split(" ");
+      contactData.firstName = nameParts[0] || "";
+      contactData.lastName = nameParts.slice(1).join(" ") || "";
+    }
+
+    if (application.email) {
+      contactData.email = application.email;
+    }
+
+    if (application.phone) {
+      contactData.phone = application.phone;
+    }
+
+    // Business information - top-level contact fields
+    if (application.businessName) {
+      contactData.companyName = application.businessName;
+    }
+
+    if (application.industry) {
+      contactData.industry = application.industry;
+    }
+
+    // Address - top-level contact fields
+    if (application.businessAddress) {
+      contactData.address1 = application.businessAddress;
+    }
+
+    if (application.city) {
+      contactData.city = application.city;
+    }
+
+    if (application.state) {
+      contactData.state = application.state;
+    }
+
+    if (application.zipCode) {
+      contactData.postalCode = application.zipCode;
+    }
+
+    // Custom fields - mapped to GHL custom field keys
+    const customField: Record<string, any> = {};
+
+    // Business details custom fields
+    if (application.ein) {
+      customField.ein = application.ein;
+    }
+
+    if (application.timeInBusiness) {
+      customField.time_in_business_years = application.timeInBusiness;
+    }
+
+    if (application.businessType) {
+      customField.business_type = application.businessType;
+    }
+
+    if (application.ownership) {
+      customField.ownership_percentage = application.ownership;
+    }
+
+    // Financial information custom fields
+    if (application.monthlyRevenue !== undefined && application.monthlyRevenue !== null) {
+      customField.monthly_revenue_usd = application.monthlyRevenue.toString();
+    }
+
+    if (application.averageMonthlyRevenue !== undefined && application.averageMonthlyRevenue !== null) {
+      customField.monthly_revenue_approx = application.averageMonthlyRevenue.toString();
+    }
+
+    if (application.creditScore) {
+      customField.personal_credit_score = application.creditScore;
+    }
+
+    if (application.hasOutstandingLoans !== undefined) {
+      customField.has_outstanding_loans = application.hasOutstandingLoans ? "Yes" : "No";
+    }
+
+    if (application.outstandingLoansAmount !== undefined && application.outstandingLoansAmount !== null) {
+      customField.outstanding_loans_amount = application.outstandingLoansAmount.toString();
+    }
+
+    // Funding request custom fields
+    if (application.requestedAmount !== undefined && application.requestedAmount !== null) {
+      customField.amount_requested = application.requestedAmount.toString();
+    }
+
+    if (application.useOfFunds) {
+      customField.purpose_of_funds = application.useOfFunds;
+    }
+
+    // Application tracking custom fields
+    if (application.currentStep) {
+      customField.application_current_step = application.currentStep.toString();
+    }
+
+    if (application.isCompleted !== undefined) {
+      customField.application_status = application.isCompleted ? "Completed" : "In Progress";
+    }
+
+    if (Object.keys(customField).length > 0) {
+      contactData.customField = customField;
+    }
+
+    // Tags
+    const tags = ["MCA Application"];
+    if (application.isCompleted) {
+      tags.push("Application Complete");
+    } else {
+      tags.push("Application In Progress");
+    }
+    contactData.tags = tags;
+
+    return contactData;
+  }
+
   async createOrUpdateContact(application: LoanApplication): Promise<string> {
     if (!this.isEnabled) {
       console.log("GoHighLevel sync skipped: service not enabled");
@@ -65,41 +192,7 @@ export class GoHighLevelService {
     }
 
     try {
-      // Split full name into first and last name
-      const nameParts = (application.fullName || "").trim().split(" ");
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.slice(1).join(" ") || "";
-
-      const contactData: GHLContact = {
-        locationId: this.locationId!,
-        firstName,
-        lastName,
-        email: application.email,
-        phone: application.phone || undefined,
-        customFields: {
-          business_name: application.businessName || "",
-          business_type: application.businessType || "",
-          industry: application.industry || "",
-          ein: application.ein || "",
-          time_in_business: application.timeInBusiness || "",
-          ownership: application.ownership || "",
-          monthly_revenue: application.monthlyRevenue?.toString() || "",
-          average_monthly_revenue: application.averageMonthlyRevenue?.toString() || "",
-          credit_score: application.creditScore || "",
-          requested_amount: application.requestedAmount?.toString() || "",
-          use_of_funds: application.useOfFunds || "",
-          has_outstanding_loans: application.hasOutstandingLoans ? "Yes" : "No",
-          outstanding_loans_amount: application.outstandingLoansAmount?.toString() || "",
-          bank_name: application.bankName || "",
-          business_address: application.businessAddress || "",
-          city: application.city || "",
-          state: application.state || "",
-          zip_code: application.zipCode || "",
-          application_status: application.isCompleted ? "Completed" : "In Progress",
-          current_step: application.currentStep?.toString() || "1",
-        },
-        tags: ["MCA Application", application.isCompleted ? "Application Complete" : "Application In Progress"],
-      };
+      const contactData = this.buildContactData(application);
 
       // If we already have a contact ID, update it
       if (application.ghlContactId) {
@@ -123,55 +216,7 @@ export class GoHighLevelService {
     }
 
     try {
-      const nameParts = (application.fullName || "").trim().split(" ");
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.slice(1).join(" ") || "";
-
-      const updateData: Partial<GHLContact> = {
-        locationId: this.locationId!,
-      };
-
-      if (application.fullName) {
-        updateData.firstName = firstName;
-        updateData.lastName = lastName;
-      }
-
-      if (application.email) {
-        updateData.email = application.email;
-      }
-
-      if (application.phone) {
-        updateData.phone = application.phone;
-      }
-
-      // Build custom fields from application data
-      const customFields: Record<string, string> = {};
-      
-      if (application.businessName) customFields.business_name = application.businessName;
-      if (application.businessType) customFields.business_type = application.businessType;
-      if (application.industry) customFields.industry = application.industry;
-      if (application.ein) customFields.ein = application.ein;
-      if (application.timeInBusiness) customFields.time_in_business = application.timeInBusiness;
-      if (application.ownership) customFields.ownership = application.ownership;
-      if (application.monthlyRevenue) customFields.monthly_revenue = application.monthlyRevenue.toString();
-      if (application.averageMonthlyRevenue) customFields.average_monthly_revenue = application.averageMonthlyRevenue.toString();
-      if (application.creditScore) customFields.credit_score = application.creditScore;
-      if (application.requestedAmount) customFields.requested_amount = application.requestedAmount.toString();
-      if (application.useOfFunds) customFields.use_of_funds = application.useOfFunds;
-      if (application.hasOutstandingLoans !== undefined) customFields.has_outstanding_loans = application.hasOutstandingLoans ? "Yes" : "No";
-      if (application.outstandingLoansAmount) customFields.outstanding_loans_amount = application.outstandingLoansAmount.toString();
-      if (application.bankName) customFields.bank_name = application.bankName;
-      if (application.businessAddress) customFields.business_address = application.businessAddress;
-      if (application.city) customFields.city = application.city;
-      if (application.state) customFields.state = application.state;
-      if (application.zipCode) customFields.zip_code = application.zipCode;
-      if (application.isCompleted !== undefined) customFields.application_status = application.isCompleted ? "Completed" : "In Progress";
-      if (application.currentStep) customFields.current_step = application.currentStep.toString();
-
-      if (Object.keys(customFields).length > 0) {
-        updateData.customFields = customFields;
-      }
-
+      const updateData = this.buildContactData(application);
       await this.makeRequest(`/contacts/${contactId}`, "PUT", updateData);
     } catch (error) {
       console.error("Error updating GoHighLevel contact:", error);

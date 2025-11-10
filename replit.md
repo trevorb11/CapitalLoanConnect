@@ -81,6 +81,31 @@ Preferred communication style: Simple, everyday language.
 - Syncs loan application data to CRM contacts with custom fields
 - Stores GHL contact ID in loan application record for future reference
 
+**GoHighLevel Field Mappings**:
+
+*Standard Contact Fields* (built-in to GHL):
+- `businessName` → `contact.company_name`
+- `industry` → `contact.industry`
+- `businessAddress` → `contact.address1`
+- `city` → `contact.city`
+- `state` → `contact.state`
+- `zipCode` → `contact.postal_code`
+
+*Custom Fields* (require setup in GHL):
+- `ein` → `contact.ein`
+- `timeInBusiness` → `contact.time_in_business_years`
+- `businessType` → `contact.business_type`
+- `ownership` → `contact.ownership_percentage`
+- `monthlyRevenue` → `contact.monthly_revenue_usd`
+- `averageMonthlyRevenue` → `contact.monthly_revenue_approx`
+- `creditScore` → `contact.personal_credit_score`
+- `hasOutstandingLoans` → `contact.has_outstanding_loans`
+- `outstandingLoansAmount` → `contact.outstanding_loans_amount`
+- `requestedAmount` → `contact.amount_requested`
+- `useOfFunds` → `contact.purpose_of_funds`
+- `currentStep` → `contact.application_current_step`
+- `isCompleted` → `contact.application_status`
+
 ### Database
 
 **Neon Database**: Configured for serverless PostgreSQL via `@neondatabase/serverless` driver. Connection string expected in `DATABASE_URL` environment variable.
