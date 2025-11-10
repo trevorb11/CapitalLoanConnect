@@ -2,7 +2,7 @@ import type { LoanApplication } from "@shared/schema";
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
-const GHL_API_BASE = "https://rest.gohighlevel.com/v1";
+const GHL_API_BASE = "https://services.leadconnectorhq.com";
 
 interface GHLContact {
   locationId: string;
@@ -16,8 +16,9 @@ interface GHLContact {
   city?: string;
   state?: string;
   postalCode?: string;
-  customField?: Record<string, any>;
+  customField?: Record<string, any>; // For v1 API compatibility
   tags?: string[];
+  source?: string;
 }
 
 export class GoHighLevelService {
@@ -51,13 +52,14 @@ export class GoHighLevelService {
       headers: {
         "Authorization": `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
+        "Version": "2021-07-28", // Required for Private Integration Tokens
       },
       body: body ? JSON.stringify(body) : undefined,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`GHL API Error: ${response.status} - ${errorText}`);
+      console.error(`GHL API Error (${method} ${url}): ${response.status} - ${errorText}`);
       throw new Error(`GHL API request failed: ${response.status}`);
     }
 
@@ -110,68 +112,16 @@ export class GoHighLevelService {
       contactData.postalCode = application.zipCode;
     }
 
-    // Custom fields - mapped to GHL custom field keys
-    const customField: Record<string, any> = {};
+    // Note: Custom fields are NOT included in initial sync
+    // To use custom fields, you need to:
+    // 1. Create custom fields in your GHL account
+    // 2. Get the custom field IDs
+    // 3. Map them using the customFields array format (not supported yet)
+    // 
+    // Standard fields above (companyName, industry, address, etc.) will sync automatically
 
-    // Business details custom fields
-    if (application.ein) {
-      customField.ein = application.ein;
-    }
-
-    if (application.timeInBusiness) {
-      customField.time_in_business_years = application.timeInBusiness;
-    }
-
-    if (application.businessType) {
-      customField.business_type = application.businessType;
-    }
-
-    if (application.ownership) {
-      customField.ownership_percentage = application.ownership;
-    }
-
-    // Financial information custom fields
-    if (application.monthlyRevenue !== undefined && application.monthlyRevenue !== null) {
-      customField.monthly_revenue_usd = application.monthlyRevenue.toString();
-    }
-
-    if (application.averageMonthlyRevenue !== undefined && application.averageMonthlyRevenue !== null) {
-      customField.monthly_revenue_approx = application.averageMonthlyRevenue.toString();
-    }
-
-    if (application.creditScore) {
-      customField.personal_credit_score = application.creditScore;
-    }
-
-    if (application.hasOutstandingLoans !== undefined) {
-      customField.has_outstanding_loans = application.hasOutstandingLoans ? "Yes" : "No";
-    }
-
-    if (application.outstandingLoansAmount !== undefined && application.outstandingLoansAmount !== null) {
-      customField.outstanding_loans_amount = application.outstandingLoansAmount.toString();
-    }
-
-    // Funding request custom fields
-    if (application.requestedAmount !== undefined && application.requestedAmount !== null) {
-      customField.amount_requested = application.requestedAmount.toString();
-    }
-
-    if (application.useOfFunds) {
-      customField.purpose_of_funds = application.useOfFunds;
-    }
-
-    // Application tracking custom fields
-    if (application.currentStep) {
-      customField.application_current_step = application.currentStep.toString();
-    }
-
-    if (application.isCompleted !== undefined) {
-      customField.application_status = application.isCompleted ? "Completed" : "In Progress";
-    }
-
-    if (Object.keys(customField).length > 0) {
-      contactData.customField = customField;
-    }
+    // Source tracking
+    contactData.source = "MCA Application Form";
 
     // Tags
     const tags = ["MCA Application"];
