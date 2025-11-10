@@ -205,7 +205,11 @@ export default function IntakeForm() {
       }, 1000);
       return () => clearTimeout(timeoutId);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      if (subscription && typeof subscription === 'object' && 'unsubscribe' in subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, [currentStep, applicationId]);
 
   const handleNext = async () => {

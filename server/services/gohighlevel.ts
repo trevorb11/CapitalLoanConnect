@@ -71,7 +71,7 @@ export class GoHighLevelService {
       const lastName = nameParts.slice(1).join(" ") || "";
 
       const contactData: GHLContact = {
-        locationId: this.locationId,
+        locationId: this.locationId!,
         firstName,
         lastName,
         email: application.email,
@@ -128,7 +128,7 @@ export class GoHighLevelService {
       const lastName = nameParts.slice(1).join(" ") || "";
 
       const updateData: Partial<GHLContact> = {
-        locationId: this.locationId,
+        locationId: this.locationId!,
       };
 
       if (application.fullName) {
