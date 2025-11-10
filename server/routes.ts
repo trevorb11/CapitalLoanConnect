@@ -4,6 +4,40 @@ import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { z } from "zod";
 
+// Helper function to sanitize application data for database storage
+function sanitizeApplicationData(data: any): any {
+  const sanitized = { ...data };
+  
+  // Convert string numeric fields to proper numbers or null
+  const numericFields = [
+    'monthlyRevenue',
+    'averageMonthlyRevenue',
+    'requestedAmount',
+    'outstandingLoansAmount'
+  ];
+  
+  numericFields.forEach(field => {
+    if (sanitized[field] === '' || sanitized[field] === undefined || sanitized[field] === null) {
+      sanitized[field] = null;
+    } else if (typeof sanitized[field] === 'string') {
+      const num = parseFloat(sanitized[field]);
+      sanitized[field] = isNaN(num) ? null : num;
+    }
+  });
+  
+  // Handle currentStep specifically as an integer
+  if (sanitized.currentStep !== undefined) {
+    if (sanitized.currentStep === '' || sanitized.currentStep === null) {
+      sanitized.currentStep = null;
+    } else if (typeof sanitized.currentStep === 'string') {
+      const num = parseInt(sanitized.currentStep, 10);
+      sanitized.currentStep = isNaN(num) ? null : num;
+    }
+  }
+  
+  return sanitized;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Get loan application by ID
   app.get("/api/applications/:id", async (req, res) => {
@@ -25,7 +59,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new loan application
   app.post("/api/applications", async (req, res) => {
     try {
-      const applicationData = req.body;
+      const applicationData = sanitizeApplicationData(req.body);
       
       // Validate required email field
       if (!applicationData.email) {
@@ -78,7 +112,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/applications/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const updates = req.body;
+      const updates = sanitizeApplicationData(req.body);
 
       const updatedApp = await storage.updateLoanApplication(id, updates);
       
