@@ -66,10 +66,14 @@ export class GoHighLevelService {
     return response.json();
   }
 
-  private buildContactData(application: Partial<LoanApplication>): Partial<GHLContact> {
-    const contactData: Partial<GHLContact> = {
-      locationId: this.locationId!,
-    };
+  private buildContactData(application: Partial<LoanApplication>, includeLocationId: boolean = true): Partial<GHLContact> {
+    const contactData: Partial<GHLContact> = {};
+    
+    // Only include locationId for POST requests (creating contacts)
+    // Do NOT include for PUT requests (updating contacts) - API will return 422
+    if (includeLocationId) {
+      contactData.locationId = this.locationId!;
+    }
 
     // Standard contact fields
     if (application.fullName) {
@@ -144,14 +148,16 @@ export class GoHighLevelService {
     try {
       const contactData = this.buildContactData(application);
 
-      // If we already have a contact ID, update it
+      // If we already have a contact ID, update it (do NOT include locationId)
       if (application.ghlContactId) {
-        await this.makeRequest(`/contacts/${application.ghlContactId}`, "PUT", contactData);
+        const updateData = this.buildContactData(application, false); // false = exclude locationId
+        await this.makeRequest(`/contacts/${application.ghlContactId}`, "PUT", updateData);
         return application.ghlContactId;
       }
 
-      // Otherwise, create a new contact
-      const response = await this.makeRequest("/contacts", "POST", contactData);
+      // Otherwise, create a new contact (DO include locationId)
+      const createData = this.buildContactData(application, true); // true = include locationId
+      const response = await this.makeRequest("/contacts", "POST", createData);
       return response.contact?.id || response.id;
     } catch (error) {
       console.error("Error syncing to GoHighLevel:", error);
@@ -166,7 +172,7 @@ export class GoHighLevelService {
     }
 
     try {
-      const updateData = this.buildContactData(application);
+      const updateData = this.buildContactData(application, false); // false = exclude locationId for PUT
       await this.makeRequest(`/contacts/${contactId}`, "PUT", updateData);
     } catch (error) {
       console.error("Error updating GoHighLevel contact:", error);

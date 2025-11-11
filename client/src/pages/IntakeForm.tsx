@@ -120,34 +120,47 @@ export default function IntakeForm() {
   const normalizeFormData = (data: any, step: number) => {
     const normalized = { ...data };
     
+    console.log('[NORMALIZE] Step:', step, 'Original data:', data);
+    
     // Parse phone number (Step 1)
     if (step === 1 && normalized.phone) {
       normalized.phone = parsePhoneNumber(normalized.phone);
+      console.log('[NORMALIZE] Phone:', data.phone, '→', normalized.phone);
     }
     
     // Parse EIN (Step 2)
     if (step === 2 && normalized.ein) {
       normalized.ein = parseEIN(normalized.ein);
+      console.log('[NORMALIZE] EIN:', data.ein, '→', normalized.ein);
     }
     
-    // Parse currency fields (Step 3)
+    // Parse currency fields (Step 3) - convert to actual numbers
     if (step === 3) {
       if (normalized.monthlyRevenue) {
-        normalized.monthlyRevenue = parseCurrency(normalized.monthlyRevenue);
+        const parsed = parseCurrency(normalized.monthlyRevenue);
+        normalized.monthlyRevenue = parsed && parsed.length > 0 ? Number(parsed) : undefined;
+        console.log('[NORMALIZE] monthlyRevenue:', data.monthlyRevenue, '→', normalized.monthlyRevenue);
       }
       if (normalized.averageMonthlyRevenue) {
-        normalized.averageMonthlyRevenue = parseCurrency(normalized.averageMonthlyRevenue);
+        const parsed = parseCurrency(normalized.averageMonthlyRevenue);
+        normalized.averageMonthlyRevenue = parsed && parsed.length > 0 ? Number(parsed) : undefined;
+        console.log('[NORMALIZE] averageMonthlyRevenue:', data.averageMonthlyRevenue, '→', normalized.averageMonthlyRevenue);
       }
       if (normalized.outstandingLoansAmount) {
-        normalized.outstandingLoansAmount = parseCurrency(normalized.outstandingLoansAmount);
+        const parsed = parseCurrency(normalized.outstandingLoansAmount);
+        normalized.outstandingLoansAmount = parsed && parsed.length > 0 ? Number(parsed) : undefined;
+        console.log('[NORMALIZE] outstandingLoansAmount:', data.outstandingLoansAmount, '→', normalized.outstandingLoansAmount);
       }
     }
     
-    // Parse currency field (Step 4)
+    // Parse currency field (Step 4) - convert to actual number
     if (step === 4 && normalized.requestedAmount) {
-      normalized.requestedAmount = parseCurrency(normalized.requestedAmount);
+      const parsed = parseCurrency(normalized.requestedAmount);
+      normalized.requestedAmount = parsed && parsed.length > 0 ? Number(parsed) : undefined;
+      console.log('[NORMALIZE] requestedAmount:', data.requestedAmount, '→', normalized.requestedAmount);
     }
     
+    console.log('[NORMALIZE] Final normalized data:', normalized);
     return normalized;
   };
 
@@ -219,14 +232,13 @@ export default function IntakeForm() {
 
   // Populate forms with existing data
   useEffect(() => {
+    let timer: NodeJS.Timeout | undefined;
+    
     if (existingApplication) {
       // Show welcome back message for returning users
       if (!existingApplication.isCompleted) {
         setShowWelcomeBack(true);
-        const timer = setTimeout(() => setShowWelcomeBack(false), 8000); // Hide after 8 seconds
-        
-        // Cleanup timeout on unmount
-        return () => clearTimeout(timer);
+        timer = setTimeout(() => setShowWelcomeBack(false), 8000); // Hide after 8 seconds
       }
       
       form1.reset({
@@ -267,6 +279,11 @@ export default function IntakeForm() {
         setCurrentStep(existingApplication.currentStep);
       }
     }
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [existingApplication]);
 
   // Auto-save on form changes

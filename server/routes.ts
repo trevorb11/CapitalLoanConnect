@@ -8,6 +8,8 @@ import { z } from "zod";
 function sanitizeApplicationData(data: any): any {
   const sanitized = { ...data };
   
+  console.log('[SANITIZE] Input data:', JSON.stringify(data, null, 2));
+  
   // Convert string numeric fields to proper numbers or null
   const numericFields = [
     'monthlyRevenue',
@@ -17,11 +19,17 @@ function sanitizeApplicationData(data: any): any {
   ];
   
   numericFields.forEach(field => {
+    console.log(`[SANITIZE] Processing ${field}:`, sanitized[field], `(type: ${typeof sanitized[field]})`);
+    
     if (sanitized[field] === '' || sanitized[field] === undefined || sanitized[field] === null) {
       sanitized[field] = null;
+      console.log(`[SANITIZE] ${field} → NULL (empty/undefined)`);
     } else if (typeof sanitized[field] === 'string') {
-      const num = parseFloat(sanitized[field]);
-      sanitized[field] = isNaN(num) ? null : num;
+      // Strip non-digit characters (like $ and ,) before parsing
+      const digitsOnly = sanitized[field].replace(/\D/g, '');
+      const num = parseFloat(digitsOnly);
+      sanitized[field] = (digitsOnly && !isNaN(num)) ? num : null;
+      console.log(`[SANITIZE] ${field}: "${sanitized[field]}" → digitsOnly: "${digitsOnly}" → num: ${num} → final: ${sanitized[field]}`);
     }
   });
   
