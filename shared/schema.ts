@@ -26,6 +26,12 @@ export const loanApplications = pgTable("loan_applications", {
   state: text("state"),
   zipCode: text("zip_code"),
   ownership: text("ownership"),
+  
+  // Broker-useful fields
+  fundingUrgency: text("funding_urgency"), // How soon they need funding
+  referralSource: text("referral_source"), // How they heard about us
+  bestTimeToContact: text("best_time_to_contact"), // Preferred contact time
+  
   currentStep: integer("current_step").default(1),
   isCompleted: boolean("is_completed").default(false),
   ghlContactId: text("ghl_contact_id"),
@@ -69,6 +75,9 @@ export const step3Schema = z.object({
 export const step4Schema = z.object({
   requestedAmount: z.string().min(1, "Please enter the amount you need"),
   useOfFunds: z.string().min(10, "Please describe how you'll use the funds"),
+  fundingUrgency: z.string().min(1, "Please select when you need funding"),
+  referralSource: z.string().optional(),
+  bestTimeToContact: z.string().optional(),
   bankName: z.string().optional(),
 });
 

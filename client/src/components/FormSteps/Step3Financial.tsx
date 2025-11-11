@@ -18,6 +18,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { type Step3Data } from "@shared/schema";
+import { formatCurrency } from "@/lib/formatters";
 
 interface Step3FinancialProps {
   form: UseFormReturn<Step3Data>;
@@ -66,6 +67,10 @@ export function Step3Financial({ form }: Step3FinancialProps) {
                     placeholder="25,000"
                     className="h-12 text-base pl-8"
                     data-testid="input-monthlyrevenue"
+                    onChange={(e) => {
+                      const formatted = formatCurrency(e.target.value);
+                      field.onChange(formatted);
+                    }}
                   />
                 </div>
               </FormControl>
@@ -96,6 +101,10 @@ export function Step3Financial({ form }: Step3FinancialProps) {
                     placeholder="30,000"
                     className="h-12 text-base pl-8"
                     data-testid="input-averagemonthlyrevenue"
+                    onChange={(e) => {
+                      const formatted = formatCurrency(e.target.value);
+                      field.onChange(formatted);
+                    }}
                   />
                 </div>
               </FormControl>
@@ -186,6 +195,10 @@ export function Step3Financial({ form }: Step3FinancialProps) {
                       placeholder="10,000"
                       className="h-12 text-base pl-8"
                       data-testid="input-outstandingloansamount"
+                      onChange={(e) => {
+                        const formatted = formatCurrency(e.target.value);
+                        field.onChange(formatted);
+                      }}
                     />
                   </div>
                 </FormControl>

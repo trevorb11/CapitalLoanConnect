@@ -8,12 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ProgressIndicator } from "@/components/ProgressIndicator";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Step1Contact } from "@/components/FormSteps/Step1Contact";
 import { Step2Business } from "@/components/FormSteps/Step2Business";
 import { Step3Financial } from "@/components/FormSteps/Step3Financial";
 import { Step4Funding } from "@/components/FormSteps/Step4Funding";
 import { Step5Address } from "@/components/FormSteps/Step5Address";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Check } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   step1Schema,
@@ -28,6 +29,7 @@ import {
   type Step5Data,
   type LoanApplication,
 } from "@shared/schema";
+import { parseCurrency, parsePhoneNumber, parseEIN } from "@/lib/formatters";
 
 type AutoSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -37,6 +39,7 @@ export default function IntakeForm() {
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>("idle");
   const [lastSaved, setLastSaved] = useState<Date | undefined>();
+  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
   
   // Use ref to always have current applicationId in mutation closure
   const applicationIdRef = useRef<string | null>(null);
@@ -79,6 +82,9 @@ export default function IntakeForm() {
     defaultValues: {
       requestedAmount: "",
       useOfFunds: "",
+      fundingUrgency: "",
+      referralSource: "",
+      bestTimeToContact: "",
       bankName: "",
     },
   });
@@ -108,6 +114,41 @@ export default function IntakeForm() {
       default:
         return form1;
     }
+  };
+
+  // Normalize formatted form data for backend persistence
+  const normalizeFormData = (data: any, step: number) => {
+    const normalized = { ...data };
+    
+    // Parse phone number (Step 1)
+    if (step === 1 && normalized.phone) {
+      normalized.phone = parsePhoneNumber(normalized.phone);
+    }
+    
+    // Parse EIN (Step 2)
+    if (step === 2 && normalized.ein) {
+      normalized.ein = parseEIN(normalized.ein);
+    }
+    
+    // Parse currency fields (Step 3)
+    if (step === 3) {
+      if (normalized.monthlyRevenue) {
+        normalized.monthlyRevenue = parseCurrency(normalized.monthlyRevenue);
+      }
+      if (normalized.averageMonthlyRevenue) {
+        normalized.averageMonthlyRevenue = parseCurrency(normalized.averageMonthlyRevenue);
+      }
+      if (normalized.outstandingLoansAmount) {
+        normalized.outstandingLoansAmount = parseCurrency(normalized.outstandingLoansAmount);
+      }
+    }
+    
+    // Parse currency field (Step 4)
+    if (step === 4 && normalized.requestedAmount) {
+      normalized.requestedAmount = parseCurrency(normalized.requestedAmount);
+    }
+    
+    return normalized;
   };
 
   // Auto-save mutation
@@ -179,6 +220,15 @@ export default function IntakeForm() {
   // Populate forms with existing data
   useEffect(() => {
     if (existingApplication) {
+      // Show welcome back message for returning users
+      if (!existingApplication.isCompleted) {
+        setShowWelcomeBack(true);
+        const timer = setTimeout(() => setShowWelcomeBack(false), 8000); // Hide after 8 seconds
+        
+        // Cleanup timeout on unmount
+        return () => clearTimeout(timer);
+      }
+      
       form1.reset({
         email: existingApplication.email || "",
         fullName: existingApplication.fullName || "",
@@ -202,6 +252,9 @@ export default function IntakeForm() {
       form4.reset({
         requestedAmount: existingApplication.requestedAmount?.toString() || "",
         useOfFunds: existingApplication.useOfFunds || "",
+        fundingUrgency: existingApplication.fundingUrgency || "",
+        referralSource: existingApplication.referralSource || "",
+        bestTimeToContact: existingApplication.bestTimeToContact || "",
         bankName: existingApplication.bankName || "",
       });
       form5.reset({
@@ -240,16 +293,19 @@ export default function IntakeForm() {
         
         // For step 1, only auto-save if email is valid
         if (currentStepValue === 1) {
-          const emailValue = formData.email;
+          const emailValue = (formData as any).email;
           if (!emailValue || !emailValue.includes('@') || emailValue.length < 5) {
             return; // Skip auto-save for invalid/incomplete emails
           }
         }
         
         if (Object.keys(formData).length > 0) {
+          // Normalize formatted fields before sending to backend
+          const normalizedData = normalizeFormData(formData, currentStepValue);
+          
           // CRITICAL: Always include currentStep in auto-save payload
           autoSaveMutation.mutate({
-            ...formData,
+            ...normalizedData,
             currentStep: currentStepValue,
           } as any);
         }
@@ -266,14 +322,46 @@ export default function IntakeForm() {
     };
   }, [currentStep, applicationId]);
 
+  // Keyboard shortcut for Continue/Submit
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Don't hijack Enter when:
+      // - User is in a textarea
+      // - A dropdown/select is open (check for aria-expanded)
+      // - Currently saving
+      // - Target is a button (button's own handler will fire)
+      if (
+        event.key === "Enter" && 
+        !autoSaveMutation.isPending &&
+        target.tagName !== 'TEXTAREA' &&
+        target.tagName !== 'BUTTON' &&
+        !document.querySelector('[aria-expanded="true"]')
+      ) {
+        event.preventDefault();
+        if (currentStep < 5) {
+          handleNext();
+        } else {
+          handleSubmit();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentStep, autoSaveMutation.isPending]);
+
   const handleNext = async () => {
     const form = getCurrentForm();
     const isValid = await form.trigger();
 
     if (isValid) {
       const formData = form.getValues();
+      const normalizedData = normalizeFormData(formData, currentStep);
+      
       await autoSaveMutation.mutateAsync({
-        ...formData,
+        ...normalizedData,
         currentStep: currentStep + 1,
       });
       setCurrentStep((prev) => prev + 1);
@@ -292,8 +380,10 @@ export default function IntakeForm() {
 
     if (isValid) {
       const formData = form.getValues();
+      const normalizedData = normalizeFormData(formData, currentStep);
+      
       await autoSaveMutation.mutateAsync({
-        ...formData,
+        ...normalizedData,
         isCompleted: true,
         currentStep: 5,
       });
@@ -336,7 +426,34 @@ export default function IntakeForm() {
           </div>
 
           <ProgressIndicator currentStep={currentStep} totalSteps={5} />
+          
+          {/* Progress Percentage */}
+          <div className="text-center mt-4">
+            <p className="text-sm text-muted-foreground">
+              {Math.round((currentStep / 5) * 100)}% Complete
+              {currentStep < 5 && (
+                <span className="ml-2">
+                  • About {6 - currentStep} {6 - currentStep === 1 ? 'minute' : 'minutes'} remaining
+                </span>
+              )}
+            </p>
+          </div>
         </div>
+
+        {/* Welcome Back Alert */}
+        {showWelcomeBack && (
+          <Alert className="mb-6 bg-primary/5 border-primary/20" data-testid="alert-welcomeback">
+            <AlertDescription className="flex items-center gap-2">
+              <div className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary flex-shrink-0">
+                <Check className="w-3 h-3" />
+              </div>
+              <span className="text-sm">
+                <strong>Welcome back!</strong> Continue where you left off on Step {currentStep} of 5.
+                Your progress is automatically saved.
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Form Card */}
         <Card className="p-6 sm:p-8 mb-6">
@@ -368,6 +485,7 @@ export default function IntakeForm() {
               disabled={autoSaveMutation.isPending}
               className="h-12 px-8"
               data-testid="button-continue"
+              title="Press Enter to continue"
             >
               {autoSaveMutation.isPending ? (
                 <>

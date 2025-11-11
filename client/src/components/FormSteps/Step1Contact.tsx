@@ -5,9 +5,11 @@ import {
   FormLabel,
   FormControl,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { type Step1Data } from "@shared/schema";
+import { formatPhoneNumber } from "@/lib/formatters";
 
 interface Step1ContactProps {
   form: UseFormReturn<Step1Data>;
@@ -78,6 +80,10 @@ export function Step1Contact({ form }: Step1ContactProps) {
                   placeholder="(555) 123-4567"
                   className="h-12 text-base"
                   data-testid="input-phone"
+                  onChange={(e) => {
+                    const formatted = formatPhoneNumber(e.target.value);
+                    field.onChange(formatted);
+                  }}
                 />
               </FormControl>
               <FormMessage />

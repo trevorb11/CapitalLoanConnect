@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { type Step2Data } from "@shared/schema";
+import { formatEIN } from "@/lib/formatters";
 
 interface Step2BusinessProps {
   form: UseFormReturn<Step2Data>;
@@ -157,6 +158,10 @@ export function Step2Business({ form }: Step2BusinessProps) {
                   placeholder="12-3456789"
                   className="h-12 text-base"
                   data-testid="input-ein"
+                  onChange={(e) => {
+                    const formatted = formatEIN(e.target.value);
+                    field.onChange(formatted);
+                  }}
                 />
               </FormControl>
               <FormMessage />

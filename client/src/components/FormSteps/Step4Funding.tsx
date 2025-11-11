@@ -9,7 +9,15 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { type Step4Data } from "@shared/schema";
+import { formatCurrency } from "@/lib/formatters";
 
 interface Step4FundingProps {
   form: UseFormReturn<Step4Data>;
@@ -47,6 +55,10 @@ export function Step4Funding({ form }: Step4FundingProps) {
                     placeholder="50,000"
                     className="h-12 text-base pl-8"
                     data-testid="input-requestedamount"
+                    onChange={(e) => {
+                      const formatted = formatCurrency(e.target.value);
+                      field.onChange(formatted);
+                    }}
                   />
                 </div>
               </FormControl>
@@ -77,6 +89,89 @@ export function Step4Funding({ form }: Step4FundingProps) {
               <FormDescription className="text-xs">
                 Please provide specific details about your funding needs
               </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="fundingUrgency"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium">
+                When do you need the funding?
+              </FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger className="h-12 text-base" data-testid="select-fundingurgency">
+                    <SelectValue placeholder="Select timeframe" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="Immediately">Immediately (within 1 week)</SelectItem>
+                  <SelectItem value="1-2 weeks">1-2 weeks</SelectItem>
+                  <SelectItem value="2-4 weeks">2-4 weeks</SelectItem>
+                  <SelectItem value="1-2 months">1-2 months</SelectItem>
+                  <SelectItem value="Just exploring">Just exploring options</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="referralSource"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium">
+                How did you hear about us?{" "}
+                <span className="text-muted-foreground font-normal">Optional</span>
+              </FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger className="h-12 text-base" data-testid="select-referralsource">
+                    <SelectValue placeholder="Select an option" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="Google search">Google search</SelectItem>
+                  <SelectItem value="Social media">Social media</SelectItem>
+                  <SelectItem value="Referral from friend/colleague">Referral from friend/colleague</SelectItem>
+                  <SelectItem value="Online advertisement">Online advertisement</SelectItem>
+                  <SelectItem value="Existing customer">Existing customer</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="bestTimeToContact"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium">
+                Best time to contact you{" "}
+                <span className="text-muted-foreground font-normal">Optional</span>
+              </FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger className="h-12 text-base" data-testid="select-besttimetocontact">
+                    <SelectValue placeholder="Select preferred time" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="Morning (8AM-12PM)">Morning (8AM-12PM)</SelectItem>
+                  <SelectItem value="Afternoon (12PM-5PM)">Afternoon (12PM-5PM)</SelectItem>
+                  <SelectItem value="Evening (5PM-8PM)">Evening (5PM-8PM)</SelectItem>
+                  <SelectItem value="Anytime">Anytime</SelectItem>
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
