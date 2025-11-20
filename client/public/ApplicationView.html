@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loan Application - Today Capital Group</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica', sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            width: 100%;
+            max-width: 900px;
+            padding: 40px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 8px;
+        }
+        .header {
+            background: linear-gradient(135deg, #192F56 0%, #2a4a7f 100%);
+            color: white;
+            padding: 30px;
+            margin: -40px -40px 30px -40px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { 
+            margin: 0; 
+            font-size: 28px; 
+            font-weight: 700;
+        }
+        .header p { 
+            margin: 5px 0 0 0; 
+            font-size: 14px; 
+            opacity: 0.9; 
+        }
+        .header-right {
+            text-align: right;
+        }
+        .header-right .label {
+            font-size: 11px;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .header-right .date {
+            font-weight: 700;
+            font-size: 16px;
+            margin-top: 4px;
+        }
+        
+        .section-title {
+            border-bottom: 3px solid #F97316;
+            color: #192F56;
+            font-size: 20px;
+            font-weight: 700;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .field {
+            margin-bottom: 12px;
+        }
+        .label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .value {
+            font-size: 15px;
+            color: #111827;
+            border: 1px solid #e5e7eb;
+            padding: 12px;
+            background: #f9fafb;
+            min-height: 20px;
+            border-radius: 4px;
+        }
+        .value:empty::before {
+            content: '—';
+            color: #9ca3af;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #F97316 0%, #ea580c 100%);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 6px;
+            display: block;
+            margin: 40px auto 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(249, 115, 22, 0.3);
+        }
+        .btn:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(249, 115, 22, 0.4);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            .container {
+                padding: 20px;
+            }
+            .header {
+                flex-direction: column;
+                text-align: center;
+                margin: -20px -20px 20px -20px;
+                padding: 20px;
+            }
+            .header-right {
+                text-align: center;
+                margin-top: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="appContent">
+    <div class="header">
+        <div>
+            <h1>TODAY CAPITAL GROUP</h1>
+            <p>MCA Loan Application</p>
+        </div>
+        <div class="header-right">
+            <div class="label">Date Submitted</div>
+            <div class="date" id="submissionDate">—</div>
+        </div>
+    </div>
+
+    <div class="section-title">Business Information</div>
+    <div class="grid">
+        <div class="field">
+            <div class="label">Legal Business Name</div>
+            <div class="value" id="legal_business_name"></div>
+        </div>
+        <div class="field">
+            <div class="label">Doing Business As (DBA)</div>
+            <div class="value" id="doing_business_as"></div>
+        </div>
+        <div class="field">
+            <div class="label">Company Website</div>
+            <div class="value" id="company_website"></div>
+        </div>
+        <div class="field">
+            <div class="label">Business Start Date</div>
+            <div class="value" id="business_start_date"></div>
+        </div>
+        <div class="field">
+            <div class="label">Tax ID / EIN</div>
+            <div class="value" id="ein"></div>
+        </div>
+        <div class="field">
+            <div class="label">Business Email</div>
+            <div class="value" id="business_email"></div>
+        </div>
+        <div class="field">
+            <div class="label">State of Incorporation</div>
+            <div class="value" id="state_of_incorporation"></div>
+        </div>
+        <div class="field">
+            <div class="label">Process Credit Cards?</div>
+            <div class="value" id="do_you_process_credit_cards"></div>
+        </div>
+        <div class="field">
+            <div class="label">Industry</div>
+            <div class="value" id="industry"></div>
+        </div>
+        <div class="field">
+            <div class="label">Business Address</div>
+            <div class="value" id="business_address"></div>
+        </div>
+        <div class="field">
+            <div class="label">City</div>
+            <div class="value" id="city"></div>
+        </div>
+        <div class="field">
+            <div class="label">State</div>
+            <div class="value" id="state"></div>
+        </div>
+        <div class="field">
+            <div class="label">ZIP Code</div>
+            <div class="value" id="zip_code"></div>
+        </div>
+        <div class="field">
+            <div class="label">Requested Financing Amount</div>
+            <div class="value" id="requested_amount"></div>
+        </div>
+        <div class="field">
+            <div class="label">Current MCA Balance</div>
+            <div class="value" id="mca_balance_amount"></div>
+        </div>
+        <div class="field">
+            <div class="label">MCA Bank Name</div>
+            <div class="value" id="mca_balance_bank_name"></div>
+        </div>
+    </div>
+
+    <div class="section-title">Owner Information</div>
+    <div class="grid">
+        <div class="field">
+            <div class="label">Full Name</div>
+            <div class="value" id="full_name"></div>
+        </div>
+        <div class="field">
+            <div class="label">Email</div>
+            <div class="value" id="email"></div>
+        </div>
+        <div class="field">
+            <div class="label">Phone</div>
+            <div class="value" id="phone"></div>
+        </div>
+        <div class="field">
+            <div class="label">Social Security Number</div>
+            <div class="value" id="social_security_number"></div>
+        </div>
+        <div class="field">
+            <div class="label">Date of Birth</div>
+            <div class="value" id="date_of_birth"></div>
+        </div>
+        <div class="field">
+            <div class="label">FICO Score</div>
+            <div class="value" id="fico_score"></div>
+        </div>
+        <div class="field">
+            <div class="label">Ownership %</div>
+            <div class="value" id="ownership"></div>
+        </div>
+        <div class="field">
+            <div class="label">Home Address Line 1</div>
+            <div class="value" id="owner_address1"></div>
+        </div>
+        <div class="field">
+            <div class="label">Home Address Line 2</div>
+            <div class="value" id="owner_address2"></div>
+        </div>
+        <div class="field">
+            <div class="label">City</div>
+            <div class="value" id="owner_city"></div>
+        </div>
+        <div class="field">
+            <div class="label">State</div>
+            <div class="value" id="owner_state"></div>
+        </div>
+        <div class="field">
+            <div class="label">ZIP Code</div>
+            <div class="value" id="owner_zip"></div>
+        </div>
+    </div>
+
+    <button class="btn" onclick="downloadPDF()">Download PDF Application</button>
+</div>
+
+<script>
+    // Get application ID from URL path
+    const pathParts = window.location.pathname.split('/');
+    const applicationId = pathParts[pathParts.length - 1];
+
+    // Fetch application data
+    async function loadApplicationData() {
+        try {
+            const response = await fetch(`/api/applications/${applicationId}/view`);
+            if (!response.ok) throw new Error('Failed to load application');
+            
+            const data = await response.json();
+            
+            // Populate all fields
+            document.getElementById('legal_business_name').textContent = data.legalBusinessName || data.businessName || '';
+            document.getElementById('doing_business_as').textContent = data.doingBusinessAs || '';
+            document.getElementById('company_website').textContent = data.companyWebsite || '';
+            document.getElementById('business_start_date').textContent = data.businessStartDate || '';
+            document.getElementById('ein').textContent = data.ein || '';
+            document.getElementById('business_email').textContent = data.businessEmail || data.email || '';
+            document.getElementById('state_of_incorporation').textContent = data.stateOfIncorporation || '';
+            document.getElementById('do_you_process_credit_cards').textContent = data.doYouProcessCreditCards || '';
+            document.getElementById('industry').textContent = data.industry || '';
+            document.getElementById('business_address').textContent = data.businessAddress || '';
+            document.getElementById('city').textContent = data.city || '';
+            document.getElementById('state').textContent = data.state || '';
+            document.getElementById('zip_code').textContent = data.zipCode || '';
+            document.getElementById('requested_amount').textContent = data.requestedAmount ? `$${parseFloat(data.requestedAmount).toLocaleString()}` : '';
+            document.getElementById('mca_balance_amount').textContent = data.mcaBalanceAmount ? `$${parseFloat(data.mcaBalanceAmount).toLocaleString()}` : '';
+            document.getElementById('mca_balance_bank_name').textContent = data.mcaBalanceBankName || '';
+            
+            // Owner info
+            document.getElementById('full_name').textContent = data.fullName || '';
+            document.getElementById('email').textContent = data.email || '';
+            document.getElementById('phone').textContent = data.phone || '';
+            document.getElementById('social_security_number').textContent = data.socialSecurityNumber || '';
+            document.getElementById('date_of_birth').textContent = data.dateOfBirth || '';
+            document.getElementById('fico_score').textContent = data.ficoScoreExact || data.creditScore || '';
+            document.getElementById('ownership').textContent = data.ownership || '';
+            document.getElementById('owner_address1').textContent = data.ownerAddress1 || '';
+            document.getElementById('owner_address2').textContent = data.ownerAddress2 || '';
+            document.getElementById('owner_city').textContent = data.ownerCity || '';
+            document.getElementById('owner_state').textContent = data.ownerState || '';
+            document.getElementById('owner_zip').textContent = data.ownerZip || '';
+            
+            // Set submission date
+            if (data.updatedAt) {
+                const date = new Date(data.updatedAt);
+                document.getElementById('submissionDate').textContent = date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            }
+        } catch (error) {
+            console.error('Error loading application:', error);
+            alert('Failed to load application data');
+        }
+    }
+
+    // Download PDF function
+    function downloadPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        // Colors
+        const darkBlue = [25, 47, 86];
+        const orange = [249, 115, 22];
+        
+        // Header
+        doc.setFillColor(...darkBlue);
+        doc.rect(0, 0, 210, 40, 'F');
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(20);
+        doc.setFont('helvetica', 'bold');
+        doc.text('TODAY CAPITAL GROUP', 20, 20);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'normal');
+        doc.text('MCA Loan Application', 20, 28);
+        
+        // Date
+        const dateText = document.getElementById('submissionDate').textContent;
+        doc.setFontSize(10);
+        doc.text(`Date: ${dateText}`, 150, 20);
+        
+        let yPos = 50;
+        
+        // Helper functions
+        const addSectionHeader = (title) => {
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...darkBlue);
+            doc.text(title, 20, yPos);
+            doc.setDrawColor(...orange);
+            doc.setLineWidth(0.5);
+            doc.line(20, yPos + 2, 60, yPos + 2);
+            yPos += 10;
+        };
+        
+        const addField = (label, value, x, width) => {
+            if (yPos > 270) {
+                doc.addPage();
+                yPos = 20;
+            }
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(100, 100, 100);
+            doc.text(label, x, yPos);
+            
+            doc.setDrawColor(200, 200, 200);
+            doc.setFillColor(250, 250, 250);
+            doc.rect(x, yPos + 2, width, 8, 'FD');
+            
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(0, 0, 0);
+            const text = String(value || '—').substring(0, 40);
+            doc.text(text, x + 2, yPos + 7);
+        };
+        
+        // Business Information
+        addSectionHeader('Business Information');
+        addField('Legal Name:', document.getElementById('legal_business_name').textContent, 20, 85);
+        addField('DBA:', document.getElementById('doing_business_as').textContent, 110, 85);
+        yPos += 13;
+        addField('Website:', document.getElementById('company_website').textContent, 20, 85);
+        addField('Start Date:', document.getElementById('business_start_date').textContent, 110, 85);
+        yPos += 13;
+        addField('EIN:', document.getElementById('ein').textContent, 20, 85);
+        addField('Industry:', document.getElementById('industry').textContent, 110, 85);
+        yPos += 13;
+        addField('Address:', document.getElementById('business_address').textContent, 20, 85);
+        addField('City:', document.getElementById('city').textContent, 110, 85);
+        yPos += 13;
+        addField('State:', document.getElementById('state').textContent, 20, 40);
+        addField('ZIP:', document.getElementById('zip_code').textContent, 65, 40);
+        addField('State of Inc:', document.getElementById('state_of_incorporation').textContent, 110, 85);
+        yPos += 13;
+        addField('Requested Amount:', document.getElementById('requested_amount').textContent, 20, 85);
+        addField('MCA Balance:', document.getElementById('mca_balance_amount').textContent, 110, 85);
+        yPos += 13;
+        addField('Credit Cards:', document.getElementById('do_you_process_credit_cards').textContent, 20, 85);
+        addField('MCA Bank:', document.getElementById('mca_balance_bank_name').textContent, 110, 85);
+        yPos += 20;
+        
+        // Owner Information
+        addSectionHeader('Owner Information');
+        addField('Full Name:', document.getElementById('full_name').textContent, 20, 85);
+        addField('Email:', document.getElementById('email').textContent, 110, 85);
+        yPos += 13;
+        addField('Phone:', document.getElementById('phone').textContent, 20, 85);
+        addField('SSN:', document.getElementById('social_security_number').textContent, 110, 85);
+        yPos += 13;
+        addField('Date of Birth:', document.getElementById('date_of_birth').textContent, 20, 85);
+        addField('FICO Score:', document.getElementById('fico_score').textContent, 110, 85);
+        yPos += 13;
+        addField('Ownership %:', document.getElementById('ownership').textContent, 20, 85);
+        yPos += 13;
+        addField('Home Address:', document.getElementById('owner_address1').textContent, 20, 175);
+        yPos += 13;
+        addField('Address Line 2:', document.getElementById('owner_address2').textContent, 20, 175);
+        yPos += 13;
+        addField('City:', document.getElementById('owner_city').textContent, 20, 85);
+        addField('State:', document.getElementById('owner_state').textContent, 110, 40);
+        addField('ZIP:', document.getElementById('owner_zip').textContent, 155, 40);
+        
+        // Save PDF
+        const businessName = document.getElementById('legal_business_name').textContent || 'Application';
+        const fileName = `Application_${businessName.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+        doc.save(fileName);
+    }
+
+    // Load data on page load
+    loadApplicationData();
+</script>
+
+</body>
+</html>

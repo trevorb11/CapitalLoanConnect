@@ -404,7 +404,7 @@ export default function IntakeForm() {
         isCompleted: true,
         currentStep: 5,
       });
-      navigate("/success");
+      navigate("/application");
     }
   };
 

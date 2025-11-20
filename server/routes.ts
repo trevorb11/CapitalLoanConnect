@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import path from "path";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { z } from "zod";
@@ -15,7 +16,8 @@ function sanitizeApplicationData(data: any): any {
     'monthlyRevenue',
     'averageMonthlyRevenue',
     'requestedAmount',
-    'outstandingLoansAmount'
+    'outstandingLoansAmount',
+    'mcaBalanceAmount' // Add new field
   ];
   
   numericFields.forEach(field => {
@@ -122,6 +124,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const updates = sanitizeApplicationData(req.body);
 
+      // If full application is being completed, generate agent view URL
+      if (updates.isFullApplicationCompleted && !updates.agentViewUrl) {
+        const baseUrl = process.env.REPL_SLUG 
+          ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+          : `http://localhost:${process.env.PORT || 5000}`;
+        updates.agentViewUrl = `${baseUrl}/agent/application/${id}`;
+      }
+
       const updatedApp = await storage.updateLoanApplication(id, updates);
       
       if (!updatedApp) {
@@ -131,7 +141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Sync to GoHighLevel
       try {
         if (updatedApp.ghlContactId) {
-          await ghlService.updateContact(updatedApp.ghlContactId, updates);
+          await ghlService.updateContact(updatedApp.ghlContactId, updatedApp);
         } else {
           const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
           const finalApp = await storage.updateLoanApplication(id, { ghlContactId });
@@ -156,6 +166,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching applications:", error);
       res.status(500).json({ error: "Failed to fetch applications" });
+    }
+  });
+
+  // Agent view endpoints
+  // Serve the HTML page for agent view
+  app.get("/agent/application/:id", async (req, res) => {
+    try {
+      const htmlPath = path.join(process.cwd(), "client", "public", "ApplicationView.html");
+      res.sendFile(htmlPath);
+    } catch (error) {
+      console.error("Error serving agent view:", error);
+      res.status(500).send("Failed to load application view");
+    }
+  });
+
+  // API endpoint to fetch application data for agent view (no auth required)
+  app.get("/api/applications/:id/view", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const application = await storage.getLoanApplication(id);
+      
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+      
+      // Return application data (agent view is secure by obscurity via UUID)
+      res.json(application);
+    } catch (error) {
+      console.error("Error fetching application for view:", error);
+      res.status(500).json({ error: "Failed to fetch application" });
     }
   });
 

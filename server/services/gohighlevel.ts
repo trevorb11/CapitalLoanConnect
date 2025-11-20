@@ -4,6 +4,11 @@ const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 
+interface GHLCustomField {
+  key: string;
+  value: string;
+}
+
 interface GHLContact {
   locationId: string;
   firstName?: string;
@@ -16,7 +21,7 @@ interface GHLContact {
   city?: string;
   state?: string;
   postalCode?: string;
-  customField?: Record<string, any>; // For v1 API compatibility
+  customFields?: GHLCustomField[]; // V2 API format
   tags?: string[];
   source?: string;
 }
@@ -91,8 +96,8 @@ export class GoHighLevelService {
     }
 
     // Business information - top-level contact fields
-    if (application.businessName) {
-      contactData.companyName = application.businessName;
+    if (application.businessName || application.legalBusinessName) {
+      contactData.companyName = application.legalBusinessName || application.businessName || "";
     }
 
     if (application.industry) {
@@ -116,21 +121,124 @@ export class GoHighLevelService {
       contactData.postalCode = application.zipCode;
     }
 
-    // Note: Custom fields are NOT included in initial sync
-    // To use custom fields, you need to:
-    // 1. Create custom fields in your GHL account
-    // 2. Get the custom field IDs
-    // 3. Map them using the customFields array format (not supported yet)
-    // 
-    // Standard fields above (companyName, industry, address, etc.) will sync automatically
+    // Custom fields for detailed application data
+    const customFields: GHLCustomField[] = [];
+
+    // Map application data to custom fields
+    // NOTE: You must create these custom fields in your GoHighLevel account
+    // with the exact keys specified below for them to sync properly
+    
+    if (application.ein) {
+      customFields.push({ key: "ein", value: application.ein });
+    }
+
+    if (application.timeInBusiness) {
+      customFields.push({ key: "time_in_business_years", value: application.timeInBusiness });
+    }
+
+    if (application.businessType) {
+      customFields.push({ key: "business_type", value: application.businessType });
+    }
+
+    if (application.ownership) {
+      customFields.push({ key: "ownership_percentage", value: application.ownership });
+    }
+
+    if (application.monthlyRevenue) {
+      customFields.push({ key: "monthly_revenue_usd", value: application.monthlyRevenue.toString() });
+    }
+
+    if (application.averageMonthlyRevenue) {
+      customFields.push({ key: "monthly_revenue_approx", value: application.averageMonthlyRevenue.toString() });
+    }
+
+    if (application.creditScore) {
+      customFields.push({ key: "personal_credit_score", value: application.creditScore });
+    }
+
+    if (application.hasOutstandingLoans !== undefined) {
+      customFields.push({ key: "has_outstanding_loans", value: application.hasOutstandingLoans ? "Yes" : "No" });
+    }
+
+    if (application.outstandingLoansAmount) {
+      customFields.push({ key: "outstanding_loans_amount", value: application.outstandingLoansAmount.toString() });
+    }
+
+    if (application.requestedAmount) {
+      customFields.push({ key: "amount_requested", value: application.requestedAmount.toString() });
+    }
+
+    if (application.useOfFunds) {
+      customFields.push({ key: "purpose_of_funds", value: application.useOfFunds });
+    }
+
+    if (application.fundingUrgency) {
+      customFields.push({ key: "funding_urgency", value: application.fundingUrgency });
+    }
+
+    if (application.referralSource) {
+      customFields.push({ key: "referral_source", value: application.referralSource });
+    }
+
+    if (application.currentStep) {
+      customFields.push({ key: "application_current_step", value: application.currentStep.toString() });
+    }
+
+    if (application.isFullApplicationCompleted !== undefined) {
+      customFields.push({ key: "application_status", value: application.isFullApplicationCompleted ? "Full Application Complete" : "Intake Complete" });
+    }
+
+    // CRITICAL: Include agent view URL for broker access
+    if (application.agentViewUrl) {
+      customFields.push({ key: "application_view_link", value: application.agentViewUrl });
+    }
+
+    // Full application fields
+    if (application.socialSecurityNumber) {
+      customFields.push({ key: "ssn", value: application.socialSecurityNumber });
+    }
+
+    if (application.dateOfBirth) {
+      customFields.push({ key: "date_of_birth", value: application.dateOfBirth });
+    }
+
+    if (application.ficoScoreExact) {
+      customFields.push({ key: "fico_score_exact", value: application.ficoScoreExact });
+    }
+
+    if (application.doingBusinessAs) {
+      customFields.push({ key: "dba", value: application.doingBusinessAs });
+    }
+
+    if (application.stateOfIncorporation) {
+      customFields.push({ key: "state_of_incorporation", value: application.stateOfIncorporation });
+    }
+
+    if (application.doYouProcessCreditCards) {
+      customFields.push({ key: "processes_credit_cards", value: application.doYouProcessCreditCards });
+    }
+
+    if (application.mcaBalanceAmount) {
+      customFields.push({ key: "current_mca_balance", value: application.mcaBalanceAmount.toString() });
+    }
+
+    if (application.mcaBalanceBankName) {
+      customFields.push({ key: "mca_bank_name", value: application.mcaBalanceBankName });
+    }
+
+    if (customFields.length > 0) {
+      contactData.customFields = customFields;
+    }
 
     // Source tracking
     contactData.source = "MCA Application Form";
 
     // Tags
     const tags = ["MCA Application"];
-    if (application.isCompleted) {
-      tags.push("Application Complete");
+    if (application.isFullApplicationCompleted) {
+      tags.push("Full Application Complete");
+    } else if (application.isCompleted) {
+      tags.push("Intake Complete");
     } else {
       tags.push("Application In Progress");
     }
