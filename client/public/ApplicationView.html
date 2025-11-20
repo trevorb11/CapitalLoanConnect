@@ -410,10 +410,13 @@
         
         // Load and add logo (using local PNG file)
         const logoImg = new Image();
-        logoImg.src = '/assets/tcg-logo.png';
+        let pdfGenerated = false;
         
-        // Wait for logo to load, then generate PDF
-        logoImg.onload = function() {
+        // Helper function to generate PDF with logo
+        const generateWithLogo = function() {
+            if (pdfGenerated) return;
+            pdfGenerated = true;
+            
             try {
                 // Add logo to PDF (PNG format works reliably with jsPDF)
                 doc.addImage(logoImg, 'PNG', 20, 10, 50, 20);
@@ -433,24 +436,15 @@
             } catch (error) {
                 // If logo fails, fallback to text
                 console.error('Failed to add logo:', error);
-                doc.setTextColor(...darkNavy);
-                doc.setFontSize(18);
-                doc.setFont('helvetica', 'bold');
-                doc.text('TODAY CAPITAL GROUP', 20, 20);
-                doc.setFontSize(12);
-                doc.setFont('helvetica', 'normal');
-                doc.text('BUSINESS INFORMATION', 20, 28);
-                
-                const dateText = document.getElementById('submissionDate').textContent;
-                doc.setFontSize(10);
-                doc.text(`Date: ${dateText}`, 150, 20);
-                
-                continuePDFGeneration(doc, darkNavy, teal);
+                generateWithoutLogo();
             }
         };
         
-        // If logo fails to load, fallback to text
-        logoImg.onerror = function() {
+        // Helper function to generate PDF without logo (fallback)
+        const generateWithoutLogo = function() {
+            if (pdfGenerated) return;
+            pdfGenerated = true;
+            
             doc.setTextColor(...darkNavy);
             doc.setFontSize(18);
             doc.setFont('helvetica', 'bold');
@@ -466,11 +460,21 @@
             continuePDFGeneration(doc, darkNavy, teal);
         };
         
-        // Timeout fallback in case image doesn't load within 2 seconds
+        // Set up handlers BEFORE setting src to avoid race condition
+        logoImg.onload = generateWithLogo;
+        logoImg.onerror = generateWithoutLogo;
+        
+        // Set the source
+        logoImg.src = '/assets/tcg-logo.png';
+        
+        // Handle case where image is already cached and complete
+        if (logoImg.complete) {
+            generateWithLogo();
+        }
+        
+        // Timeout fallback to ensure PDF is always generated
         setTimeout(() => {
-            if (!logoImg.complete) {
-                logoImg.onerror();
-            }
+            generateWithoutLogo();
         }, 2000);
     }
     

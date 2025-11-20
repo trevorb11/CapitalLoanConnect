@@ -61,7 +61,7 @@ This is a multi-step loan application intake form for Today Capital Group's Merc
   - Maintains professional, clean appearance matching web view
 
 ### Signature Pad Implementation (November 20, 2025)
-- **Canvas-Based Signature**: Added HTML5 canvas signature pad to FullApplication Step 2
+- **Canvas-Based Signature**: Added HTML5 canvas signature pad to both IntakeForm (/) and FullApplication (/application)
   - Mouse and touch drawing support for cross-device compatibility
   - Clear button allows users to redo their signature
   - Visual feedback with red border when signature is missing
@@ -74,9 +74,19 @@ This is a multi-step loan application intake form for Today Capital Group's Merc
   - Uses `hasHydratedSignature` ref flag to track initial load state
 - **Agent View Display**: Signature displayed in agent view and included in PDF exports
   - Shows signature image with fallback placeholder for missing signatures
-  - PDF export includes signature section with error handling
+  - PDF export includes signature section with Fundora Funding disclosure text
 - **Mobile Optimization**: Touch events use preventDefault to prevent page scrolling during signing
 - **GoHighLevel Fix**: Moved `industry` field from standard contact field to custom field to resolve API 422 errors
+
+### PDF Logo Fix (November 20, 2025)
+- **Issue**: PDF downloads were showing "TODAY CAPITAL GROUP" text instead of the logo
+- **Root Cause**: jsPDF cannot render external SVG files without additional plugin; cross-origin issues with CDN URL
+- **Solution**: Replaced external SVG URL with local PNG logo file
+  - Logo stored at: `client/public/assets/tcg-logo.png`
+  - PDF generation loads local PNG using `/assets/tcg-logo.png` path
+  - Uses `doc.addImage(logoImg, 'PNG', ...)` which works reliably with jsPDF
+  - Includes fallback to text if logo fails to load
+- **Disclosure Text**: Added Fundora Funding disclosure text above signature in PDF exports
 
 ## User Preferences
 
