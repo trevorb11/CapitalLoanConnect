@@ -13,10 +13,10 @@ import { AGENTS, getAgentByInitials } from "@shared/agents";
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={IntakeForm} />
-      <Route path="/application">
+      <Route path="/">
         {() => <FullApplication />}
       </Route>
+      <Route path="/intake" component={IntakeForm} />
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
       
