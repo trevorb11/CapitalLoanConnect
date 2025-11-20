@@ -280,6 +280,13 @@
         </div>
     </div>
 
+    <!-- Signature Section -->
+    <div class="section-title">Applicant Signature</div>
+    <div class="field">
+        <img id="signature_image" style="max-width: 100%; border: 1px solid #e5e7eb; background: #f9fafb; padding: 12px; border-radius: 4px; display: none;" alt="Applicant Signature">
+        <div id="signature_placeholder" class="value" style="text-align: center; color: #9ca3af;">No signature provided</div>
+    </div>
+
     <button class="btn" onclick="downloadPDF()">Download PDF Application</button>
 </div>
 
@@ -371,6 +378,15 @@
                     month: 'short',
                     day: 'numeric'
                 });
+            }
+
+            // Display signature if available
+            if (data.applicantSignature) {
+                const signatureImg = document.getElementById('signature_image');
+                const signaturePlaceholder = document.getElementById('signature_placeholder');
+                signatureImg.src = data.applicantSignature;
+                signatureImg.style.display = 'block';
+                signaturePlaceholder.style.display = 'none';
             }
         } catch (error) {
             console.error('Error loading application:', error);
@@ -485,6 +501,22 @@
         addField('City:', document.getElementById('owner_city').textContent, 20, 85);
         addField('State:', document.getElementById('owner_state').textContent, 110, 40);
         addField('ZIP:', document.getElementById('owner_zip').textContent, 155, 40);
+        yPos += 20;
+        
+        // Signature Section
+        const signatureImg = document.getElementById('signature_image');
+        if (signatureImg && signatureImg.src && signatureImg.style.display !== 'none' && signatureImg.complete) {
+            try {
+                if (yPos > 220) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+                addSectionHeader('Applicant Signature');
+                doc.addImage(signatureImg.src, 'PNG', 20, yPos, 100, 30);
+            } catch (error) {
+                console.error('Failed to add signature to PDF:', error);
+            }
+        }
         
         // Save PDF
         const businessName = document.getElementById('legal_business_name').textContent || 'Application';

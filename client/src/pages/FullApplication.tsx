@@ -17,9 +17,11 @@ export default function FullApplication() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [signature, setSignature] = useState<string>("");
+  const [persistedSignature, setPersistedSignature] = useState<string>("");
   const [showSignatureError, setShowSignatureError] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const hasHydratedSignature = useRef(false);
 
   // Check for Application ID
   useEffect(() => {
@@ -67,6 +69,27 @@ export default function FullApplication() {
         date_of_birth: existingData.dateOfBirth || "",
         ownership_percentage: existingData.ownership || "",
       });
+
+      // Rehydrate signature if it exists (only once on initial load)
+      if (existingData.applicantSignature && !hasHydratedSignature.current) {
+        hasHydratedSignature.current = true;
+        setPersistedSignature(existingData.applicantSignature);
+        setSignature(existingData.applicantSignature);
+        
+        // Draw signature on canvas
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const img = new Image();
+            img.onload = () => {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            };
+            img.src = existingData.applicantSignature;
+          }
+        }
+      }
     }
   }, [existingData]);
 
@@ -76,6 +99,11 @@ export default function FullApplication() {
 
   // Signature pad functions
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    // Prevent default touch behavior to avoid scrolling
+    if ('touches' in e) {
+      e.preventDefault();
+    }
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -93,6 +121,11 @@ export default function FullApplication() {
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
+    
+    // Prevent default touch behavior to avoid scrolling
+    if ('touches' in e) {
+      e.preventDefault();
+    }
     
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -112,7 +145,12 @@ export default function FullApplication() {
     ctx.stroke();
   };
 
-  const stopDrawing = () => {
+  const stopDrawing = (e?: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    // Prevent default touch behavior to avoid scrolling
+    if (e && 'touches' in e) {
+      e.preventDefault();
+    }
+    
     setIsDrawing(false);
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -131,6 +169,7 @@ export default function FullApplication() {
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setSignature("");
+    setPersistedSignature("");
     setShowSignatureError(false);
   };
 
@@ -166,7 +205,9 @@ export default function FullApplication() {
       return;
     }
 
-    if (!signature) {
+    // Check for either current signature or persisted signature
+    const finalSignature = signature || persistedSignature;
+    if (!finalSignature) {
       setShowSignatureError(true);
       toast({ title: "Signature Required", description: "Please sign the application before submitting.", variant: "destructive" });
       return;
@@ -201,7 +242,7 @@ export default function FullApplication() {
         ownerCsz: formData.owner_csz,
         dateOfBirth: formData.date_of_birth,
         ownership: formData.ownership_percentage,
-        applicantSignature: signature,
+        applicantSignature: signature || persistedSignature,
         isFullApplicationCompleted: true,
       });
 

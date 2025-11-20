@@ -100,10 +100,6 @@ export class GoHighLevelService {
       contactData.companyName = application.legalBusinessName || application.businessName || "";
     }
 
-    if (application.industry) {
-      contactData.industry = application.industry;
-    }
-
     // Address - top-level contact fields
     if (application.businessAddress) {
       contactData.address1 = application.businessAddress;
@@ -127,6 +123,10 @@ export class GoHighLevelService {
     // Map application data to custom fields
     // NOTE: You must create these custom fields in your GoHighLevel account
     // with the exact keys specified below for them to sync properly
+    
+    if (application.industry) {
+      customFields.push({ key: "industry", value: application.industry });
+    }
     
     if (application.ein) {
       customFields.push({ key: "ein", value: application.ein });
