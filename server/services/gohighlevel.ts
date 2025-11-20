@@ -137,6 +137,7 @@ export class GoHighLevelService {
     // 1. Business Information
     pushField("contact.doing_business_as", application.doingBusinessAs);
     pushField("contact.company_email", application.companyEmail || application.businessEmail);
+    pushField("contact.primary_business_bank", application.bankName);
     pushField("contact.website", application.companyWebsite);
     pushField("contact.business_start_date", application.businessStartDate);
     pushField("contact.ein", application.ein);
