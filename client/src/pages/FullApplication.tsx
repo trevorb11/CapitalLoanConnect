@@ -5,9 +5,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { type LoanApplication } from "@shared/schema";
 
-const GHL_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/b21b2392-b82b-49c9-a697-fa2d0c8bddd5';
-const BACKUP_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbynygRwYHpg4joyMLY-IC_B_7cqrNlNl92HjHduc5OvUtrUgig7_aHG69CdSTKZ562w/exec';
-
 export default function FullApplication() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -107,57 +104,7 @@ export default function FullApplication() {
     setIsSubmitting(true);
 
     try {
-      // Parse name for GHL
-      const nameParts = formData.full_name.trim().split(' ');
-      const firstName = nameParts[0];
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-
-      // Calculate years in business
-      const getYearsFromDate = (dateString: string) => {
-        if (!dateString) return "";
-        const start = new Date(dateString);
-        const now = new Date();
-        const diff = now.getTime() - start.getTime();
-        const ageDate = new Date(diff);
-        return Math.abs(ageDate.getUTCFullYear() - 1970) + " years";
-      };
-
-      // Prepare final payload
-      const webhookPayload = {
-        ...formData,
-        first_name: firstName,
-        last_name: lastName,
-        submission_date: new Date().toISOString(),
-        source: "Full Application Form",
-        page_url: window.location.href,
-        company_name: formData.legal_business_name,
-        years_in_business: getYearsFromDate(formData.business_start_date),
-      };
-
-      // Send to GHL webhook and backup
-      const webhookRequests = [];
-      if (GHL_WEBHOOK_URL) {
-        webhookRequests.push(
-          fetch(GHL_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(webhookPayload),
-          })
-        );
-      }
-      if (BACKUP_WEBHOOK_URL) {
-        webhookRequests.push(
-          fetch(BACKUP_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(webhookPayload),
-          })
-        );
-      }
-
-      await Promise.allSettled(webhookRequests);
-
-      // Update database
+      // Update database (backend will handle GHL webhooks)
       await apiRequest("PATCH", `/api/applications/${applicationId}`, {
         legalBusinessName: formData.legal_business_name,
         doingBusinessAs: formData.doing_business_as,

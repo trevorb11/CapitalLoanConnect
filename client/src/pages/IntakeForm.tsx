@@ -30,11 +30,13 @@ import {
   type LoanApplication,
 } from "@shared/schema";
 import { parseCurrency, parsePhoneNumber, parseEIN } from "@/lib/formatters";
+import { useToast } from "@/hooks/use-toast";
 
 type AutoSaveStatus = "idle" | "saving" | "saved" | "error";
 
 export default function IntakeForm() {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>("idle");
@@ -399,12 +401,25 @@ export default function IntakeForm() {
       const formData = form.getValues();
       const normalizedData = normalizeFormData(formData, currentStep);
       
-      await autoSaveMutation.mutateAsync({
-        ...normalizedData,
-        isCompleted: true,
-        currentStep: 5,
-      });
-      navigate("/application");
+      try {
+        await autoSaveMutation.mutateAsync({
+          ...normalizedData,
+          isCompleted: true,
+          currentStep: 5,
+        });
+        
+        // Small delay to ensure save completes
+        setTimeout(() => {
+          navigate("/application");
+        }, 100);
+      } catch (error) {
+        console.error("Submit error:", error);
+        toast({
+          title: "Error",
+          description: "Failed to submit application. Please try again.",
+          variant: "destructive",
+        });
+      }
     }
   };
 

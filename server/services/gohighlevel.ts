@@ -287,6 +287,95 @@ export class GoHighLevelService {
       throw error;
     }
   }
+
+  async sendWebhook(application: Partial<LoanApplication>): Promise<void> {
+    // Webhook URLs (from user-provided HTML form)
+    const GHL_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/b21b2392-b82b-49c9-a697-fa2d0c8bddd5';
+    const BACKUP_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbynygRwYHpg4joyMLY-IC_B_7cqrNlNl92HjHduc5OvUtrUgig7_aHG69CdSTKZ562w/exec';
+    
+    // Parse name for first/last
+    const nameParts = (application.fullName || '').trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // Calculate years in business
+    const getYearsFromDate = (dateString?: string) => {
+      if (!dateString) return "";
+      const start = new Date(dateString);
+      const now = new Date();
+      const diff = now.getTime() - start.getTime();
+      const ageDate = new Date(diff);
+      return Math.abs(ageDate.getUTCFullYear() - 1970) + " years";
+    };
+
+    // Prepare webhook payload
+    const webhookPayload = {
+      // Use snake_case fields to match HTML form
+      legal_business_name: application.legalBusinessName || application.businessName,
+      doing_business_as: application.doingBusinessAs || application.businessName,
+      company_website: application.companyWebsite,
+      business_start_date: application.businessStartDate,
+      ein: application.ein,
+      company_email: application.companyEmail || application.businessEmail || application.email,
+      state_of_incorporation: application.stateOfIncorporation,
+      do_you_process_credit_cards: application.doYouProcessCreditCards,
+      industry: application.industry,
+      business_street_address: application.businessStreetAddress || application.businessAddress,
+      business_csz: application.businessCsz,
+      requested_loan_amount: application.requestedAmount,
+      mca_balance_amount: application.mcaBalanceAmount,
+      mca_balance_bank_name: application.mcaBalanceBankName,
+      full_name: application.fullName,
+      email: application.email,
+      social_security_: application.socialSecurityNumber,
+      phone: application.phone,
+      personal_credit_score_range: application.personalCreditScoreRange || application.ficoScoreExact || application.creditScore,
+      address1: application.ownerAddress1,
+      address2: application.ownerAddress2,
+      owner_csz: application.ownerCsz,
+      date_of_birth: application.dateOfBirth,
+      ownership_percentage: application.ownership,
+      // Calculated fields
+      first_name: firstName,
+      last_name: lastName,
+      submission_date: new Date().toISOString(),
+      source: "Full Application Form",
+      company_name: application.legalBusinessName || application.businessName,
+      years_in_business: getYearsFromDate(application.businessStartDate || undefined),
+    };
+
+    // Send to both webhooks (non-blocking)
+    const webhookRequests = [];
+    
+    try {
+      if (GHL_WEBHOOK_URL) {
+        webhookRequests.push(
+          fetch(GHL_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          }).catch(err => console.error('GHL webhook error:', err))
+        );
+      }
+      
+      if (BACKUP_WEBHOOK_URL) {
+        webhookRequests.push(
+          fetch(BACKUP_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          }).catch(err => console.error('Backup webhook error:', err))
+        );
+      }
+
+      // Wait for webhooks (but don't fail if they error)
+      await Promise.allSettled(webhookRequests);
+      console.log('Webhooks sent successfully');
+    } catch (error) {
+      console.error('Error sending webhooks:', error);
+      // Don't throw - webhooks are nice-to-have, not critical
+    }
+  }
 }
 
 export const ghlService = new GoHighLevelService();

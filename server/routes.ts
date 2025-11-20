@@ -145,7 +145,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
           const finalApp = await storage.updateLoanApplication(id, { ghlContactId });
+          
+          // Send webhook if full application completed (fire-and-forget, non-blocking)
+          if (updatedApp.isFullApplicationCompleted) {
+            ghlService.sendWebhook(finalApp || updatedApp).catch(err => 
+              console.error("Webhook error (non-blocking):", err)
+            );
+          }
+          
           return res.json(finalApp || updatedApp);
+        }
+        
+        // Send webhook if full application completed (fire-and-forget, non-blocking)
+        if (updatedApp.isFullApplicationCompleted) {
+          ghlService.sendWebhook(updatedApp).catch(err => 
+            console.error("Webhook error (non-blocking):", err)
+          );
         }
       } catch (ghlError) {
         console.error("GHL sync error, but application updated:", ghlError);
