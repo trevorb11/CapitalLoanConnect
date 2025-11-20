@@ -1,577 +1,414 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, forwardRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { z } from "zod";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { Form } from "@/components/ui/form";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ProgressIndicator } from "@/components/ProgressIndicator";
-import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Step1Contact } from "@/components/FormSteps/Step1Contact";
-import { Step2Business } from "@/components/FormSteps/Step2Business";
-import { Step3Financial } from "@/components/FormSteps/Step3Financial";
-import { Step4Funding } from "@/components/FormSteps/Step4Funding";
-import { Step5Address } from "@/components/FormSteps/Step5Address";
-import { ChevronLeft, ChevronRight, Loader2, Check } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import {
-  step1Schema,
-  step2Schema,
-  step3Schema,
-  step4Schema,
-  step5Schema,
-  type Step1Data,
-  type Step2Data,
-  type Step3Data,
-  type Step4Data,
-  type Step5Data,
-  type LoanApplication,
-} from "@shared/schema";
-import { parseCurrency, parsePhoneNumber, parseEIN } from "@/lib/formatters";
-import { useToast } from "@/hooks/use-toast";
+import { Check } from "lucide-react";
 
-type AutoSaveStatus = "idle" | "saving" | "saved" | "error";
+// Validation schemas for each step
+const step1Schema = z.object({
+  email: z.string().email("Invalid email"),
+  fullName: z.string().min(1, "Required"),
+  phone: z.string().min(1, "Required"),
+  legalBusinessName: z.string().min(1, "Required"),
+  doingBusinessAs: z.string().min(1, "Required"),
+  companyWebsite: z.string().optional(),
+  businessStartDate: z.string().min(1, "Required"),
+  ein: z.string().min(1, "Required"),
+  companyEmail: z.string().email("Invalid email"),
+  stateOfIncorporation: z.string().length(2, "Enter 2-letter state code"),
+  doYouProcessCreditCards: z.enum(["Yes", "No"]),
+  industry: z.string().min(1, "Required"),
+  businessStreetAddress: z.string().min(1, "Required"),
+  businessCsz: z.string().min(1, "Required"),
+  requestedAmount: z.string().min(1, "Required"),
+  mcaBalanceAmount: z.string().optional(),
+  mcaBalanceBankName: z.string().optional(),
+});
+
+const step2Schema = z.object({
+  ownerSsn: z.string().min(1, "Required"),
+  personalCreditScoreRange: z.string().optional(),
+  address1: z.string().min(1, "Required"),
+  address2: z.string().optional(),
+  ownerCsz: z.string().min(1, "Required"),
+  ownerDob: z.string().min(1, "Required"),
+  ownerPercentage: z.string().min(1, "Required"),
+  consent: z.boolean().refine((val) => val === true, "You must accept the terms"),
+});
+
+type Step1Data = z.infer<typeof step1Schema>;
+type Step2Data = z.infer<typeof step2Schema>;
 
 export default function IntakeForm() {
   const [, navigate] = useLocation();
-  const { toast } = useToast();
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const [applicationId, setApplicationId] = useState<string | null>(null);
-  const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>("idle");
-  const [lastSaved, setLastSaved] = useState<Date | undefined>();
-  const [showWelcomeBack, setShowWelcomeBack] = useState(false);
-  
-  // Use ref to always have current applicationId in mutation closure
-  const applicationIdRef = useRef<string | null>(null);
-  applicationIdRef.current = applicationId;
-  
-  // Track if we're creating the initial application to prevent race conditions
-  const creatingApplicationRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showConsentError, setShowConsentError] = useState(false);
 
-  // Forms for each step
+  // Step 1 form
   const form1 = useForm<Step1Data>({
     resolver: zodResolver(step1Schema),
-    defaultValues: { email: "", fullName: "", phone: "" },
+    defaultValues: {
+      email: "",
+      fullName: "",
+      phone: "",
+      legalBusinessName: "",
+      doingBusinessAs: "",
+      companyWebsite: "",
+      businessStartDate: "",
+      ein: "",
+      companyEmail: "",
+      stateOfIncorporation: "",
+      doYouProcessCreditCards: "Yes",
+      industry: "",
+      businessStreetAddress: "",
+      businessCsz: "",
+      requestedAmount: "",
+      mcaBalanceAmount: "",
+      mcaBalanceBankName: "",
+    },
   });
 
+  // Step 2 form
   const form2 = useForm<Step2Data>({
     resolver: zodResolver(step2Schema),
     defaultValues: {
-      businessName: "",
-      businessType: "",
-      industry: "",
-      ein: "",
-      timeInBusiness: "",
-      ownership: "",
+      ownerSsn: "",
+      personalCreditScoreRange: "",
+      address1: "",
+      address2: "",
+      ownerCsz: "",
+      ownerDob: "",
+      ownerPercentage: "",
+      consent: false,
     },
   });
 
-  const form3 = useForm<Step3Data>({
-    resolver: zodResolver(step3Schema),
-    defaultValues: {
-      monthlyRevenue: "",
-      averageMonthlyRevenue: "",
-      creditScore: "",
-      hasOutstandingLoans: false,
-      outstandingLoansAmount: "",
+  // Create application mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: Step1Data) => {
+      const response = await apiRequest("POST", "/api/applications", {
+        email: data.email,
+        fullName: data.fullName,
+        phone: data.phone,
+        legalBusinessName: data.legalBusinessName,
+        doingBusinessAs: data.doingBusinessAs,
+        companyWebsite: data.companyWebsite,
+        businessStartDate: data.businessStartDate,
+        ein: data.ein,
+        companyEmail: data.companyEmail,
+        stateOfIncorporation: data.stateOfIncorporation,
+        doYouProcessCreditCards: data.doYouProcessCreditCards,
+        industry: data.industry,
+        businessStreetAddress: data.businessStreetAddress,
+        businessCsz: data.businessCsz,
+        requestedAmount: data.requestedAmount.replace(/\D/g, ""),
+        mcaBalanceAmount: data.mcaBalanceAmount?.replace(/\D/g, "") || "",
+        mcaBalanceBankName: data.mcaBalanceBankName || "",
+        currentStep: 1,
+      }) as Response;
+      return response.json();
     },
   });
 
-  const form4 = useForm<Step4Data>({
-    resolver: zodResolver(step4Schema),
-    defaultValues: {
-      requestedAmount: "",
-      useOfFunds: "",
-      fundingUrgency: "",
-      referralSource: "",
-      bestTimeToContact: "",
-      bankName: "",
+  // Update application mutation
+  const updateMutation = useMutation({
+    mutationFn: async (data: Step2Data) => {
+      if (!applicationId) throw new Error("No application ID");
+      const response = await apiRequest("PATCH", `/api/applications/${applicationId}`, {
+        socialSecurityNumber: data.ownerSsn,
+        personalCreditScoreRange: data.personalCreditScoreRange,
+        ownerAddress1: data.address1,
+        ownerAddress2: data.address2,
+        ownerCsz: data.ownerCsz,
+        dateOfBirth: data.ownerDob,
+        ownerPercentage: data.ownerPercentage,
+        isCompleted: true,
+        currentStep: 2,
+      }) as Response;
+      return response.json();
     },
   });
 
-  const form5 = useForm<Step5Data>({
-    resolver: zodResolver(step5Schema),
-    defaultValues: {
-      businessAddress: "",
-      city: "",
-      state: "",
-      zipCode: "",
-    },
-  });
-
-  const getCurrentForm = () => {
-    switch (currentStep) {
-      case 1:
-        return form1;
-      case 2:
-        return form2;
-      case 3:
-        return form3;
-      case 4:
-        return form4;
-      case 5:
-        return form5;
-      default:
-        return form1;
+  const handleStep1Submit = async (data: Step1Data) => {
+    try {
+      const result: any = await createMutation.mutateAsync(data);
+      setApplicationId(result.id);
+      localStorage.setItem("applicationId", result.id);
+      setCurrentStep(2);
+      window.scrollTo(0, 0);
+    } catch (error) {
+      console.error("Error saving Step 1:", error);
     }
   };
 
-  // Normalize formatted form data for backend persistence
-  const normalizeFormData = (data: any, step: number) => {
-    const normalized = { ...data };
+  const handleStep2Submit = async (data: Step2Data) => {
+    setShowConsentError(false);
     
-    console.log('[NORMALIZE] Step:', step, 'Original data:', data);
-    
-    // Parse phone number (Step 1)
-    if (step === 1 && normalized.phone) {
-      normalized.phone = parsePhoneNumber(normalized.phone);
-      console.log('[NORMALIZE] Phone:', data.phone, '→', normalized.phone);
+    if (!data.consent) {
+      setShowConsentError(true);
+      return;
     }
-    
-    // Parse EIN (Step 2)
-    if (step === 2 && normalized.ein) {
-      normalized.ein = parseEIN(normalized.ein);
-      console.log('[NORMALIZE] EIN:', data.ein, '→', normalized.ein);
-    }
-    
-    // Parse currency fields (Step 3) - convert to actual numbers
-    if (step === 3) {
-      if (normalized.monthlyRevenue) {
-        const parsed = parseCurrency(normalized.monthlyRevenue);
-        normalized.monthlyRevenue = parsed && parsed.length > 0 ? Number(parsed) : undefined;
-        console.log('[NORMALIZE] monthlyRevenue:', data.monthlyRevenue, '→', normalized.monthlyRevenue);
-      }
-      if (normalized.averageMonthlyRevenue) {
-        const parsed = parseCurrency(normalized.averageMonthlyRevenue);
-        normalized.averageMonthlyRevenue = parsed && parsed.length > 0 ? Number(parsed) : undefined;
-        console.log('[NORMALIZE] averageMonthlyRevenue:', data.averageMonthlyRevenue, '→', normalized.averageMonthlyRevenue);
-      }
-      if (normalized.outstandingLoansAmount) {
-        const parsed = parseCurrency(normalized.outstandingLoansAmount);
-        normalized.outstandingLoansAmount = parsed && parsed.length > 0 ? Number(parsed) : undefined;
-        console.log('[NORMALIZE] outstandingLoansAmount:', data.outstandingLoansAmount, '→', normalized.outstandingLoansAmount);
-      }
-    }
-    
-    // Parse currency field (Step 4) - convert to actual number
-    if (step === 4 && normalized.requestedAmount) {
-      const parsed = parseCurrency(normalized.requestedAmount);
-      normalized.requestedAmount = parsed && parsed.length > 0 ? Number(parsed) : undefined;
-      console.log('[NORMALIZE] requestedAmount:', data.requestedAmount, '→', normalized.requestedAmount);
-    }
-    
-    console.log('[NORMALIZE] Final normalized data:', normalized);
-    return normalized;
-  };
 
-  // Auto-save mutation
-  const autoSaveMutation = useMutation({
-    mutationFn: async (data: Partial<LoanApplication> & { currentStep?: number }) => {
-      // Get current applicationId from ref to avoid stale closure
-      const currentAppId = applicationIdRef.current;
-      
-      // Always include email from form1 for initial creation
-      const email = form1.getValues("email");
-      const payload = { ...data };
-      
-      if (!currentAppId && email) {
-        payload.email = email;
-      }
-
-      if (currentAppId) {
-        return await apiRequest("PATCH", `/api/applications/${currentAppId}`, payload);
-      } else {
-        // If we're already creating an application, skip to prevent race conditions
-        if (creatingApplicationRef.current) {
-          return null;
-        }
-        
-        creatingApplicationRef.current = true;
-        try {
-          const response = await apiRequest("POST", "/api/applications", payload);
-          return response;
-        } finally {
-          creatingApplicationRef.current = false;
-        }
-      }
-    },
-    onMutate: () => {
-      setAutoSaveStatus("saving");
-    },
-    onSuccess: (data: any) => {
-      if (!data) return; // Skip if creation was already in progress
-      
-      const appId = applicationIdRef.current ?? data.id;
-      if (!applicationIdRef.current && data.id) {
-        applicationIdRef.current = data.id;
-        setApplicationId(data.id);
-        localStorage.setItem("applicationId", data.id);
-      }
-      setAutoSaveStatus("saved");
-      setLastSaved(new Date());
-      queryClient.invalidateQueries({ queryKey: ["/api/applications", appId] });
-    },
-    onError: () => {
-      setAutoSaveStatus("error");
-    },
-  });
-
-  // Load existing application on mount
-  useEffect(() => {
-    const savedId = localStorage.getItem("applicationId");
-    if (savedId) {
-      setApplicationId(savedId);
-    }
-  }, []);
-
-  // Fetch existing application data
-  const { data: existingApplication } = useQuery<LoanApplication>({
-    queryKey: ["/api/applications", applicationId],
-    enabled: !!applicationId,
-  });
-
-  // Populate forms with existing data
-  useEffect(() => {
-    let timer: NodeJS.Timeout | undefined;
-    
-    if (existingApplication) {
-      // Show welcome back message for returning users
-      if (!existingApplication.isCompleted) {
-        setShowWelcomeBack(true);
-        timer = setTimeout(() => setShowWelcomeBack(false), 8000); // Hide after 8 seconds
-      }
-      
-      form1.reset({
-        email: existingApplication.email || "",
-        fullName: existingApplication.fullName || "",
-        phone: existingApplication.phone || "",
-      });
-      form2.reset({
-        businessName: existingApplication.businessName || "",
-        businessType: existingApplication.businessType || "",
-        industry: existingApplication.industry || "",
-        ein: existingApplication.ein || "",
-        timeInBusiness: existingApplication.timeInBusiness || "",
-        ownership: existingApplication.ownership || "",
-      });
-      form3.reset({
-        monthlyRevenue: existingApplication.monthlyRevenue?.toString() || "",
-        averageMonthlyRevenue: existingApplication.averageMonthlyRevenue?.toString() || "",
-        creditScore: existingApplication.creditScore || "",
-        hasOutstandingLoans: existingApplication.hasOutstandingLoans || false,
-        outstandingLoansAmount: existingApplication.outstandingLoansAmount?.toString() || "",
-      });
-      form4.reset({
-        requestedAmount: existingApplication.requestedAmount?.toString() || "",
-        useOfFunds: existingApplication.useOfFunds || "",
-        fundingUrgency: existingApplication.fundingUrgency || "",
-        referralSource: existingApplication.referralSource || "",
-        bestTimeToContact: existingApplication.bestTimeToContact || "",
-        bankName: existingApplication.bankName || "",
-      });
-      form5.reset({
-        businessAddress: existingApplication.businessAddress || "",
-        city: existingApplication.city || "",
-        state: existingApplication.state || "",
-        zipCode: existingApplication.zipCode || "",
-      });
-      if (existingApplication.currentStep) {
-        setCurrentStep(existingApplication.currentStep);
-      }
-    }
-    
-    // Cleanup timeout on unmount
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [existingApplication]);
-
-  // Auto-save on form changes
-  useEffect(() => {
-    let debounceTimer: NodeJS.Timeout | null = null;
-    const currentForm = getCurrentForm();
-    const currentStepValue = currentStep;
-    
-    const subscription = currentForm.watch(() => {
-      // Clear previous timer
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-      
-      // Set new timer
-      debounceTimer = setTimeout(() => {
-        // Don't auto-save if a mutation is already in progress
-        if (autoSaveMutation.isPending) {
-          return;
-        }
-        
-        // Get all values from the captured form
-        const formData = currentForm.getValues();
-        
-        // For step 1, only auto-save if email is valid
-        if (currentStepValue === 1) {
-          const emailValue = (formData as any).email;
-          if (!emailValue || !emailValue.includes('@') || emailValue.length < 5) {
-            return; // Skip auto-save for invalid/incomplete emails
-          }
-        }
-        
-        if (Object.keys(formData).length > 0) {
-          // Normalize formatted fields before sending to backend
-          const normalizedData = normalizeFormData(formData, currentStepValue);
-          
-          // CRITICAL: Always include currentStep in auto-save payload
-          autoSaveMutation.mutate({
-            ...normalizedData,
-            currentStep: currentStepValue,
-          } as any);
-        }
-      }, 1000);
-    });
-    
-    return () => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-      if (subscription && typeof subscription === 'object' && 'unsubscribe' in subscription) {
-        subscription.unsubscribe();
-      }
-    };
-  }, [currentStep, applicationId]);
-
-  // Keyboard shortcut for Continue/Submit
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      
-      // Don't hijack Enter when:
-      // - User is in a textarea
-      // - A dropdown/select is open (check for aria-expanded)
-      // - Currently saving
-      // - Target is a button (button's own handler will fire)
-      if (
-        event.key === "Enter" && 
-        !autoSaveMutation.isPending &&
-        target.tagName !== 'TEXTAREA' &&
-        target.tagName !== 'BUTTON' &&
-        !document.querySelector('[aria-expanded="true"]')
-      ) {
-        event.preventDefault();
-        if (currentStep < 5) {
-          handleNext();
-        } else {
-          handleSubmit();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentStep, autoSaveMutation.isPending]);
-
-  const handleNext = async () => {
-    const form = getCurrentForm();
-    const isValid = await form.trigger();
-
-    if (isValid) {
-      const formData = form.getValues();
-      const normalizedData = normalizeFormData(formData, currentStep);
-      
-      await autoSaveMutation.mutateAsync({
-        ...normalizedData,
-        currentStep: currentStep + 1,
-      });
-      setCurrentStep((prev) => prev + 1);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+    setIsSubmitting(true);
+    try {
+      await updateMutation.mutateAsync(data);
+      setShowSuccess(true);
+      window.scrollTo(0, 0);
+    } catch (error) {
+      console.error("Error submitting application:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleBack = () => {
-    setCurrentStep((prev) => prev - 1);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  const progressWidth = currentStep === 1 ? "50%" : "100%";
 
-  const handleSubmit = async () => {
-    const form = getCurrentForm();
-    const isValid = await form.trigger();
-
-    if (isValid) {
-      const formData = form.getValues();
-      const normalizedData = normalizeFormData(formData, currentStep);
-      
-      try {
-        await autoSaveMutation.mutateAsync({
-          ...normalizedData,
-          isCompleted: true,
-          currentStep: 5,
-        });
-        
-        // Small delay to ensure save completes
-        setTimeout(() => {
-          navigate("/application");
-        }, 100);
-      } catch (error) {
-        console.error("Submit error:", error);
-        toast({
-          title: "Error",
-          description: "Failed to submit application. Please try again.",
-          variant: "destructive",
-        });
-      }
-    }
-  };
-
-  const renderStep = () => {
-    switch (currentStep) {
-      case 1:
-        return <Step1Contact form={form1} />;
-      case 2:
-        return <Step2Business form={form2} />;
-      case 3:
-        return <Step3Financial form={form3} />;
-      case 4:
-        return <Step4Funding form={form4} />;
-      case 5:
-        return <Step5Address form={form5} />;
-      default:
-        return null;
-    }
-  };
+  if (showSuccess) {
+    return (
+      <div className="min-h-screen bg-[#f0f2f5] p-4 md:p-8">
+        <div
+          className="w-full max-w-[900px] mx-auto rounded-[15px] p-6 md:p-12 text-white text-center"
+          style={{
+            background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)",
+            boxShadow: "0 12px 30px rgba(25, 47, 86, 0.3), 0 4px 15px rgba(0, 0, 0, 0.2)",
+            minHeight: "600px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <div className="w-20 h-20 mx-auto mb-8 rounded-full flex items-center justify-center border-3"
+            style={{ background: "rgba(34, 197, 94, 0.2)", borderColor: "#22c55e", borderWidth: "3px" }}>
+            <Check className="w-10 h-10" style={{ color: "#22c55e", strokeWidth: 3 }} />
+          </div>
+          <h3 className="text-4xl md:text-5xl font-semibold mb-4" style={{ color: "#22c55e" }}>
+            Application Received
+          </h3>
+          <p className="text-lg md:text-xl mb-4" style={{ color: "rgba(255,255,255,0.9)", lineHeight: 1.6 }}>
+            Your full funding application has been submitted successfully.
+          </p>
+          <p className="text-base md:text-lg mb-10" style={{ color: "rgba(255,255,255,0.8)", lineHeight: 1.5 }}>
+            Our underwriting team is reviewing your details. You will receive an update via email within 24-48 hours.
+          </p>
+          <button
+            onClick={() => navigate("/")}
+            className="bg-white text-[#192F56] px-8 py-4 rounded-lg font-semibold text-lg transition-all hover:bg-[#f8f9fa] hover:-translate-y-0.5"
+            style={{ maxWidth: "300px", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}
+            data-testid="button-return-home"
+          >
+            Return to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-4 py-8 sm:py-12">
-        {/* Header */}
-        <div className="mb-8 sm:mb-12">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
-                Today Capital Group
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                MCA Loan Application
-              </p>
-            </div>
-            <AutoSaveIndicator status={autoSaveStatus} lastSaved={lastSaved} />
-          </div>
-
-          <ProgressIndicator currentStep={currentStep} totalSteps={5} />
-          
-          {/* Progress Percentage */}
-          <div className="text-center mt-4">
-            <p className="text-sm text-muted-foreground">
-              {Math.round((currentStep / 5) * 100)}% Complete
-              {currentStep < 5 && (
-                <span className="ml-2">
-                  • About {6 - currentStep} {6 - currentStep === 1 ? 'minute' : 'minutes'} remaining
-                </span>
-              )}
-            </p>
-          </div>
+    <div className="min-h-screen bg-[#f0f2f5] p-4 md:p-8">
+      <div
+        className="w-full max-w-[900px] mx-auto rounded-[15px] p-6 md:p-12 text-white relative overflow-hidden"
+        style={{
+          background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)",
+          boxShadow: "0 12px 30px rgba(25, 47, 86, 0.3), 0 4px 15px rgba(0, 0, 0, 0.2)",
+          minHeight: "600px",
+        }}
+      >
+        {/* Progress Bar */}
+        <div className="w-full h-1 rounded-full mb-10" style={{ background: "rgba(255,255,255,0.2)" }}>
+          <div
+            className="h-full bg-white rounded-full transition-all duration-500"
+            style={{ width: progressWidth }}
+          />
         </div>
 
-        {/* Welcome Back Alert */}
-        {showWelcomeBack && (
-          <Alert className="mb-6 bg-primary/5 border-primary/20" data-testid="alert-welcomeback">
-            <AlertDescription className="flex items-center gap-2">
-              <div className="flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary flex-shrink-0">
-                <Check className="w-3 h-3" />
+        {/* Step 1: Business Information */}
+        {currentStep === 1 && (
+          <div className="opacity-100 transition-opacity duration-500" data-testid="step-1">
+            <h2 className="text-3xl md:text-4xl font-semibold text-center mb-2">Business Information</h2>
+            <p className="text-center mb-10" style={{ color: "rgba(255,255,255,0.7)" }}>
+              Please provide details about your business entity.
+            </p>
+
+            <form onSubmit={form1.handleSubmit(handleStep1Submit)}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <InputField label="Your Full Name" {...form1.register("fullName")} required data-testid="input-full-name-step1" />
+                <InputField label="Your Email" type="email" {...form1.register("email")} required data-testid="input-email-step1" />
+                <InputField label="Your Phone" type="tel" {...form1.register("phone")} required data-testid="input-phone-step1" />
+                <InputField label="Legal Company Name" {...form1.register("legalBusinessName")} required data-testid="input-legal-business-name" />
+                <InputField label="Doing Business As (DBA)" {...form1.register("doingBusinessAs")} required data-testid="input-dba" />
+                <InputField label="Company Website" {...form1.register("companyWebsite")} data-testid="input-company-website" />
+                <InputField label="Business Start Date" type="date" {...form1.register("businessStartDate")} required data-testid="input-business-start-date" />
+                <InputField label="Tax ID or EIN" {...form1.register("ein")} placeholder="XX-XXXXXXX" required data-testid="input-ein" />
+                <InputField label="Company Email" type="email" {...form1.register("companyEmail")} required data-testid="input-company-email" />
+                <InputField label="State of Incorporation" {...form1.register("stateOfIncorporation")} maxLength={2} placeholder="e.g. CA" required data-testid="input-state-incorporation" />
+                <SelectField label="Do You Process Credit Cards?" {...form1.register("doYouProcessCreditCards")} required data-testid="select-credit-cards">
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </SelectField>
+                <InputField label="Industry Type" {...form1.register("industry")} required data-testid="input-industry" />
+                <InputField label="Business Street Address" {...form1.register("businessStreetAddress")} required data-testid="input-business-street-address" />
+                <InputField label="City, State, Zip" {...form1.register("businessCsz")} placeholder="City, ST 12345" required data-testid="input-business-csz" />
+                <InputField label="Financing Amount ($)" type="number" {...form1.register("requestedAmount")} required data-testid="input-requested-amount" />
+                <InputField label="MCA Balance Amount ($)" type="number" {...form1.register("mcaBalanceAmount")} placeholder="0 if none" data-testid="input-mca-balance-amount" />
+                <InputField label="MCA Balances Bank Name" {...form1.register("mcaBalanceBankName")} placeholder="N/A if none" data-testid="input-mca-bank-name" />
               </div>
-              <span className="text-sm">
-                <strong>Welcome back!</strong> Continue where you left off on Step {currentStep} of 5.
-                Your progress is automatically saved.
-              </span>
-            </AlertDescription>
-          </Alert>
+              <button
+                type="submit"
+                className="w-full bg-white text-[#192F56] py-4 rounded-lg font-semibold text-lg transition-all hover:bg-[#f8f9fa] hover:-translate-y-0.5 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
+                style={{ boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}
+                disabled={createMutation.isPending}
+                data-testid="button-next-step"
+              >
+                {createMutation.isPending ? "Saving..." : "Next: Owner Information"}
+              </button>
+            </form>
+          </div>
         )}
 
-        {/* Form Card */}
-        <Card className="p-6 sm:p-8 mb-6">
-          <Form {...getCurrentForm()}>
-            <form onSubmit={(e) => e.preventDefault()}>
-              {renderStep()}
+        {/* Step 2: Owner Information */}
+        {currentStep === 2 && (
+          <div className="opacity-100 transition-opacity duration-500" data-testid="step-2">
+            <h2 className="text-3xl md:text-4xl font-semibold text-center mb-2">Owner Information</h2>
+            <p className="text-center mb-10" style={{ color: "rgba(255,255,255,0.7)" }}>
+              Details for the primary business owner (51%+)
+            </p>
+
+            <form onSubmit={form2.handleSubmit(handleStep2Submit)}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <InputField label="Social Security Number" {...form2.register("ownerSsn")} placeholder="XXX-XX-XXXX" required data-testid="input-ssn" />
+                <InputField label="FICO Score (Estimate)" type="number" {...form2.register("personalCreditScoreRange")} placeholder="e.g. 700" data-testid="input-fico-score" />
+                <InputField label="Home Address Line 1" {...form2.register("address1")} required data-testid="input-address-1" />
+                <InputField label="Address Line 2" {...form2.register("address2")} data-testid="input-address-2" />
+                <InputField label="City, State, Zip (Owner)" {...form2.register("ownerCsz")} placeholder="City, ST 12345" required data-testid="input-owner-csz" />
+                <InputField label="Date of Birth" type="date" {...form2.register("ownerDob")} required data-testid="input-dob" />
+                <InputField label="Ownership %" type="number" {...form2.register("ownerPercentage")} placeholder="100" required data-testid="input-ownership-percentage" />
+              </div>
+
+              {/* Consent Checkbox */}
+              <div className="my-8">
+                <div className="flex items-start gap-3 text-left">
+                  <input
+                    type="checkbox"
+                    id="consent"
+                    {...form2.register("consent")}
+                    className="w-4 h-4 mt-1 cursor-pointer flex-shrink-0"
+                    style={{ accentColor: "white" }}
+                    data-testid="checkbox-consent"
+                  />
+                  <label htmlFor="consent" className="cursor-pointer text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
+                    By submitting this application, I certify that all information provided is accurate and complete. I authorize Today Capital Group and its partners to obtain credit reports and other information to process my application. I agree to the{" "}
+                    <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "rgba(255,255,255,0.8)" }}>
+                      Terms of Service
+                    </a>{" "}
+                    and{" "}
+                    <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "rgba(255,255,255,0.8)" }}>
+                      Privacy Policy
+                    </a>.
+                  </label>
+                </div>
+                {showConsentError && (
+                  <div className="mt-2 p-2 rounded" style={{ background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)" }} data-testid="error-consent">
+                    <p className="text-sm m-0" style={{ color: "#ef4444" }}>Please accept the terms to continue</p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-white text-[#192F56] py-4 rounded-lg font-semibold text-lg transition-all hover:bg-[#f8f9fa] hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed"
+                style={{ boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}
+                disabled={isSubmitting}
+                data-testid="button-submit-application"
+              >
+                {isSubmitting ? "Submitting application securely..." : "Submit Full Application"}
+              </button>
+
+              {updateMutation.isError && (
+                <div className="mt-4 p-4 rounded-lg text-center" style={{ background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)" }} data-testid="error-message">
+                  <p className="m-0" style={{ color: "#ef4444" }}>There was an error submitting your application. Please try again.</p>
+                </div>
+              )}
             </form>
-          </Form>
-        </Card>
-
-        {/* Navigation */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch sm:items-center">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleBack}
-            disabled={currentStep === 1}
-            className="h-12 px-6"
-            data-testid="button-back"
-          >
-            <ChevronLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-
-          {currentStep < 5 ? (
-            <Button
-              type="button"
-              onClick={handleNext}
-              disabled={autoSaveMutation.isPending}
-              className="h-12 px-8"
-              data-testid="button-continue"
-              title="Press Enter to continue"
-            >
-              {autoSaveMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  Continue
-                  <ChevronRight className="w-4 h-4 ml-2" />
-                </>
-              )}
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              onClick={handleSubmit}
-              disabled={autoSaveMutation.isPending}
-              className="h-12 px-8"
-              data-testid="button-submit"
-            >
-              {autoSaveMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                "Submit Application"
-              )}
-            </Button>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="mt-12 pt-8 border-t border-border text-center">
-          <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-muted-foreground mb-4">
-            <div className="flex items-center gap-1">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-              </svg>
-              <span>SSL Encrypted</span>
-            </div>
-            <span className="text-border">•</span>
-            <span>Trusted by 10,000+ businesses</span>
-            <span className="text-border">•</span>
-            <span>24-48 hour approvals</span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            By submitting this application, you agree to our{" "}
-            <button className="underline hover-elevate">Privacy Policy</button> and{" "}
-            <button className="underline hover-elevate">Terms of Service</button>
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );
 }
+
+// Helper component for input fields
+const InputField = forwardRef<HTMLInputElement, any>(({ label, required, ...props }, ref) => {
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.9)" }}>
+        {label}
+      </label>
+      <input
+        {...props}
+        ref={ref}
+        required={required}
+        className="w-full px-4 py-3 rounded-lg text-base font-inherit transition-all focus:outline-none"
+        style={{
+          border: "2px solid rgba(255,255,255,0.2)",
+          background: "rgba(255,255,255,0.1)",
+          color: "white",
+        }}
+        onFocus={(e) => {
+          e.target.style.borderColor = "white";
+          e.target.style.background = "rgba(255,255,255,0.15)";
+        }}
+        onBlur={(e) => {
+          e.target.style.borderColor = "rgba(255,255,255,0.2)";
+          e.target.style.background = "rgba(255,255,255,0.1)";
+        }}
+      />
+    </div>
+  );
+});
+InputField.displayName = "InputField";
+
+// Helper component for select fields
+const SelectField = forwardRef<HTMLSelectElement, any>(({ label, required, children, ...props }, ref) => {
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.9)" }}>
+        {label}
+      </label>
+      <select
+        {...props}
+        ref={ref}
+        required={required}
+        className="w-full px-4 py-3 rounded-lg text-base font-inherit transition-all focus:outline-none appearance-none bg-no-repeat bg-right pr-10"
+        style={{
+          border: "2px solid rgba(255,255,255,0.2)",
+          background: "rgba(255,255,255,0.1) url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E\")",
+          backgroundPosition: "right 1rem center",
+          backgroundSize: "1em",
+          color: "white",
+        }}
+        onFocus={(e) => {
+          e.target.style.borderColor = "white";
+          e.target.style.background = "rgba(255,255,255,0.15) url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E\")";
+          e.target.style.backgroundPosition = "right 1rem center";
+          e.target.style.backgroundSize = "1em";
+        }}
+        onBlur={(e) => {
+          e.target.style.borderColor = "rgba(255,255,255,0.2)";
+          e.target.style.background = "rgba(255,255,255,0.1) url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E\")";
+          e.target.style.backgroundPosition = "right 1rem center";
+          e.target.style.backgroundSize = "1em";
+        }}
+      >
+        {children}
+      </select>
+    </div>
+  );
+});
+SelectField.displayName = "SelectField";

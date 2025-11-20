@@ -46,6 +46,7 @@ export const loanApplications = pgTable("loan_applications", {
   socialSecurityNumber: text("social_security_number"),
   ficoScoreExact: text("fico_score_exact"),
   dateOfBirth: text("date_of_birth"),
+  ownerPercentage: text("owner_percentage"),
   ownerAddress1: text("owner_address_1"),
   ownerAddress2: text("owner_address_2"),
   ownerCity: text("owner_city"),
