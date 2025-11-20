@@ -409,12 +409,11 @@ export default function FullApplication(props?: FullApplicationProps) {
             >
               View Application
             </a>
-            <button
+            <a
+              href="https://www.todaycapitalgroup.com"
+              target="_blank"
+              rel="noopener noreferrer"
               data-testid="button-return-home"
-              onClick={() => {
-                localStorage.removeItem("applicationId");
-                navigate("/");
-              }}
               style={{
                 width: '270px',
                 background: 'white',
@@ -426,10 +425,15 @@ export default function FullApplication(props?: FullApplicationProps) {
                 fontSize: '1.1rem',
                 cursor: 'pointer',
                 transition: 'all 0.3s ease',
+                textDecoration: 'none',
+                textAlign: 'center',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
               Return to Home
-            </button>
+            </a>
           </div>
         </div>
       </div>
