@@ -43,6 +43,23 @@ This is a multi-step loan application intake form for Today Capital Group's Merc
 - Displays application details with "View Application" button for accessing agent view URLs
 - Full data-testid coverage for automated testing
 
+### Brand Integration & Design Update (November 20, 2025)
+- **Logo Integration**: Added Today Capital Group logo (from CDN) to all application pages:
+  - IntakeForm (/) header
+  - FullApplication (/application) header
+  - Agent view ApplicationView.html header
+- **Agent View Redesign**: Updated color scheme to match brand guidelines
+  - Header background: Light blue-gray (#E8EEF3) instead of dark gradient
+  - Primary text: Dark navy (#1B2E4D)
+  - Accent color: Teal (#5FBFB8) for section borders and buttons
+  - Logo replaces "TODAY CAPITAL GROUP" text in header
+  - "BUSINESS INFORMATION" text appears next to logo
+  - Date displayed on right side of header
+- **PDF Generation**: Updated PDF export to match new brand colors
+  - Header uses light blue-gray background with dark navy text
+  - Section headers use teal accent color
+  - Maintains professional, clean appearance matching web view
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
