@@ -4,8 +4,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { type LoanApplication } from "@shared/schema";
+import { type Agent } from "@shared/agents";
 
-export default function FullApplication() {
+interface FullApplicationProps {
+  agent?: Agent;
+}
+
+export default function FullApplication({ agent }: FullApplicationProps = {}) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [applicationId, setApplicationId] = useState<string | null>(null);
@@ -244,6 +249,12 @@ export default function FullApplication() {
         ownership: formData.ownership_percentage,
         applicantSignature: signature || persistedSignature,
         isFullApplicationCompleted: true,
+        // Agent tracking
+        ...(agent && {
+          agentName: agent.name,
+          agentEmail: agent.email,
+          agentGhlId: agent.ghlId,
+        }),
       });
 
       setIsSubmitting(false);
