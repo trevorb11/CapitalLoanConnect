@@ -60,6 +60,24 @@ This is a multi-step loan application intake form for Today Capital Group's Merc
   - Section headers use teal accent color
   - Maintains professional, clean appearance matching web view
 
+### Signature Pad Implementation (November 20, 2025)
+- **Canvas-Based Signature**: Added HTML5 canvas signature pad to FullApplication Step 2
+  - Mouse and touch drawing support for cross-device compatibility
+  - Clear button allows users to redo their signature
+  - Visual feedback with red border when signature is missing
+- **Signature Validation**: Required signature before form submission
+  - Validates both new signatures and previously saved signatures
+  - Uses signature || persistedSignature fallback for re-submissions
+- **Signature Persistence**: Signatures stored as base64 data URLs in `applicantSignature` field
+  - Automatically rehydrated when editing an existing application
+  - Smart hydration prevents re-drawing when user intentionally clears
+  - Uses `hasHydratedSignature` ref flag to track initial load state
+- **Agent View Display**: Signature displayed in agent view and included in PDF exports
+  - Shows signature image with fallback placeholder for missing signatures
+  - PDF export includes signature section with error handling
+- **Mobile Optimization**: Touch events use preventDefault to prevent page scrolling during signing
+- **GoHighLevel Fix**: Moved `industry` field from standard contact field to custom field to resolve API 422 errors
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -122,6 +140,7 @@ Preferred communication style: Simple, everyday language.
 - Loan information (requestedAmount, useOfFunds, hasOutstandingLoans, outstandingLoansAmount)
 - Owner information (ownerFullName, ownerSsn, ownerCsz, ownerPercentage, ownerDob)
 - Address details (businessAddress, city, state, zipCode)
+- Signature data (applicantSignature - base64 encoded PNG image)
 - Metadata (currentStep, isCompleted, isFullApplicationCompleted, ghlContactId, agentViewUrl, createdAt, updatedAt)
 
 **Validation**: Step-by-step Zod schemas derived from Drizzle schema using `drizzle-zod` for type-safe validation that matches database constraints.
@@ -135,7 +154,8 @@ Preferred communication style: Simple, everyday language.
 **Full Application Design**: Dark gradient aesthetic (#192F56 to #19112D) with 2-step structure:
 - Step 1: Business Information (legal name, DBA, website, start date, EIN, location, revenue, credit, MCA balance)
 - Step 2: Owner Information (name, SSN, location, ownership %, date of birth)
-- Includes consent checkbox and data validation
+- Includes consent checkbox, signature pad, and data validation
+- HTML5 canvas-based signature pad with mouse/touch support
 - Success screen with agent view shareable URL
 
 **Spacing**: Tailwind utility classes with consistent spacing scale (2, 4, 6, 8, 12, 16, 20).
@@ -164,13 +184,13 @@ Preferred communication style: Simple, everyday language.
 
 *Standard Contact Fields* (built-in to GHL):
 - `businessName` → `contact.company_name`
-- `industry` → `contact.industry`
 - `businessAddress` → `contact.address1`
 - `city` → `contact.city`
 - `state` → `contact.state`
 - `zipCode` → `contact.postal_code`
 
 *Custom Fields* (require setup in GHL):
+- `industry` → `contact.industry` (moved from standard field to custom field)
 - `ein` → `contact.ein`
 - `timeInBusiness` → `contact.time_in_business_years`
 - `businessType` → `contact.business_type`
