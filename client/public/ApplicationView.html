@@ -408,40 +408,48 @@
         doc.setFillColor(...headerBg);
         doc.rect(0, 0, 210, 40, 'F');
         
-        // Load and add logo
+        // Load and add logo (using local PNG file)
         const logoImg = new Image();
-        logoImg.crossOrigin = 'anonymous';
-        logoImg.src = 'https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c1b87657a831f612b5390_Group%2017%20(1).svg';
+        logoImg.src = '/assets/tcg-logo.png';
         
         // Wait for logo to load, then generate PDF
         logoImg.onload = function() {
             try {
-                // Add logo to PDF
-                doc.addImage(logoImg, 'SVG', 20, 10, 50, 20);
+                // Add logo to PDF (PNG format works reliably with jsPDF)
+                doc.addImage(logoImg, 'PNG', 20, 10, 50, 20);
+                
+                // "Business Information" text next to logo
+                doc.setTextColor(...darkNavy);
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'normal');
+                doc.text('BUSINESS INFORMATION', 75, 25);
+                
+                // Date on right side
+                const dateText = document.getElementById('submissionDate').textContent;
+                doc.setFontSize(10);
+                doc.text(`Date: ${dateText}`, 150, 25);
+                
+                continuePDFGeneration(doc, darkNavy, teal);
             } catch (error) {
-                // If SVG fails, fallback to text
+                // If logo fails, fallback to text
                 console.error('Failed to add logo:', error);
                 doc.setTextColor(...darkNavy);
                 doc.setFontSize(18);
                 doc.setFont('helvetica', 'bold');
                 doc.text('TODAY CAPITAL GROUP', 20, 20);
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'normal');
+                doc.text('BUSINESS INFORMATION', 20, 28);
+                
+                const dateText = document.getElementById('submissionDate').textContent;
+                doc.setFontSize(10);
+                doc.text(`Date: ${dateText}`, 150, 20);
+                
+                continuePDFGeneration(doc, darkNavy, teal);
             }
-            
-            // "Business Information" text next to logo
-            doc.setTextColor(...darkNavy);
-            doc.setFontSize(12);
-            doc.setFont('helvetica', 'normal');
-            doc.text('BUSINESS INFORMATION', 75, 25);
-            
-            // Date on right side
-            const dateText = document.getElementById('submissionDate').textContent;
-            doc.setFontSize(10);
-            doc.text(`Date: ${dateText}`, 150, 25);
-            
-            continuePDFGeneration(doc, darkNavy, teal);
         };
         
-        // If logo fails to load after 2 seconds, continue without it
+        // If logo fails to load, fallback to text
         logoImg.onerror = function() {
             doc.setTextColor(...darkNavy);
             doc.setFontSize(18);
@@ -458,6 +466,7 @@
             continuePDFGeneration(doc, darkNavy, teal);
         };
         
+        // Timeout fallback in case image doesn't load within 2 seconds
         setTimeout(() => {
             if (!logoImg.complete) {
                 logoImg.onerror();
