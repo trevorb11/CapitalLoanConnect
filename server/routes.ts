@@ -124,12 +124,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const updates = sanitizeApplicationData(req.body);
 
-      // If full application is being completed, generate agent view URL
-      if (updates.isFullApplicationCompleted && !updates.agentViewUrl) {
-        const baseUrl = process.env.REPL_SLUG 
-          ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-          : `http://localhost:${process.env.PORT || 5000}`;
-        updates.agentViewUrl = `${baseUrl}/agent/application/${id}`;
+      // If either form is being completed, generate agent view URL
+      if ((updates.isCompleted || updates.isFullApplicationCompleted) && !updates.agentViewUrl) {
+        // Use relative path for agent view URL - works in all environments
+        updates.agentViewUrl = `/agent/application/${id}`;
       }
 
       const updatedApp = await storage.updateLoanApplication(id, updates);
@@ -146,8 +144,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
           const finalApp = await storage.updateLoanApplication(id, { ghlContactId });
           
-          // Send webhook if full application completed (fire-and-forget, non-blocking)
-          if (updatedApp.isFullApplicationCompleted) {
+          // Send webhook if either form completed (fire-and-forget, non-blocking)
+          if (updatedApp.isCompleted || updatedApp.isFullApplicationCompleted) {
             ghlService.sendWebhook(finalApp || updatedApp).catch(err => 
               console.error("Webhook error (non-blocking):", err)
             );
@@ -156,8 +154,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.json(finalApp || updatedApp);
         }
         
-        // Send webhook if full application completed (fire-and-forget, non-blocking)
-        if (updatedApp.isFullApplicationCompleted) {
+        // Send webhook if either form completed (fire-and-forget, non-blocking)
+        if (updatedApp.isCompleted || updatedApp.isFullApplicationCompleted) {
           ghlService.sendWebhook(updatedApp).catch(err => 
             console.error("Webhook error (non-blocking):", err)
           );

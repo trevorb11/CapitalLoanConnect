@@ -296,14 +296,32 @@
             document.getElementById('company_website').textContent = data.companyWebsite || '';
             document.getElementById('business_start_date').textContent = data.businessStartDate || '';
             document.getElementById('ein').textContent = data.ein || '';
-            document.getElementById('business_email').textContent = data.businessEmail || data.email || '';
+            document.getElementById('business_email').textContent = data.companyEmail || data.businessEmail || data.email || '';
             document.getElementById('state_of_incorporation').textContent = data.stateOfIncorporation || '';
             document.getElementById('do_you_process_credit_cards').textContent = data.doYouProcessCreditCards || '';
             document.getElementById('industry').textContent = data.industry || '';
-            document.getElementById('business_address').textContent = data.businessAddress || '';
-            document.getElementById('city').textContent = data.city || '';
-            document.getElementById('state').textContent = data.state || '';
-            document.getElementById('zip_code').textContent = data.zipCode || '';
+            document.getElementById('business_address').textContent = data.businessStreetAddress || data.businessAddress || '';
+            
+            // Parse businessCsz (format: "City, ST 12345") into separate fields
+            const businessCsz = data.businessCsz || '';
+            if (businessCsz) {
+                const parts = businessCsz.split(',').map(p => p.trim());
+                if (parts.length >= 2) {
+                    document.getElementById('city').textContent = parts[0] || '';
+                    const stateZip = parts[1].split(' ').filter(p => p);
+                    document.getElementById('state').textContent = stateZip[0] || '';
+                    document.getElementById('zip_code').textContent = stateZip[1] || '';
+                } else {
+                    document.getElementById('city').textContent = data.city || '';
+                    document.getElementById('state').textContent = data.state || '';
+                    document.getElementById('zip_code').textContent = data.zipCode || '';
+                }
+            } else {
+                document.getElementById('city').textContent = data.city || '';
+                document.getElementById('state').textContent = data.state || '';
+                document.getElementById('zip_code').textContent = data.zipCode || '';
+            }
+            
             document.getElementById('requested_amount').textContent = data.requestedAmount ? `$${parseFloat(data.requestedAmount).toLocaleString()}` : '';
             document.getElementById('mca_balance_amount').textContent = data.mcaBalanceAmount ? `$${parseFloat(data.mcaBalanceAmount).toLocaleString()}` : '';
             document.getElementById('mca_balance_bank_name').textContent = data.mcaBalanceBankName || '';
@@ -312,15 +330,32 @@
             document.getElementById('full_name').textContent = data.fullName || '';
             document.getElementById('email').textContent = data.email || '';
             document.getElementById('phone').textContent = data.phone || '';
-            document.getElementById('social_security_number').textContent = data.socialSecurityNumber || '';
-            document.getElementById('date_of_birth').textContent = data.dateOfBirth || '';
-            document.getElementById('fico_score').textContent = data.ficoScoreExact || data.creditScore || '';
-            document.getElementById('ownership').textContent = data.ownership || '';
-            document.getElementById('owner_address1').textContent = data.ownerAddress1 || '';
-            document.getElementById('owner_address2').textContent = data.ownerAddress2 || '';
-            document.getElementById('owner_city').textContent = data.ownerCity || '';
-            document.getElementById('owner_state').textContent = data.ownerState || '';
-            document.getElementById('owner_zip').textContent = data.ownerZip || '';
+            document.getElementById('social_security_number').textContent = data.socialSecurityNumber || data.ownerSsn || '';
+            document.getElementById('date_of_birth').textContent = data.dateOfBirth || data.ownerDob || '';
+            document.getElementById('fico_score').textContent = data.personalCreditScoreRange || data.ficoScoreExact || data.creditScore || '';
+            document.getElementById('ownership').textContent = data.ownerPercentage || data.ownership || '';
+            document.getElementById('owner_address1').textContent = data.ownerAddress1 || data.address1 || '';
+            document.getElementById('owner_address2').textContent = data.ownerAddress2 || data.address2 || '';
+            
+            // Parse ownerCsz (format: "City, ST 12345") into separate fields
+            const ownerCsz = data.ownerCsz || '';
+            if (ownerCsz) {
+                const parts = ownerCsz.split(',').map(p => p.trim());
+                if (parts.length >= 2) {
+                    document.getElementById('owner_city').textContent = parts[0] || '';
+                    const stateZip = parts[1].split(' ').filter(p => p);
+                    document.getElementById('owner_state').textContent = stateZip[0] || '';
+                    document.getElementById('owner_zip').textContent = stateZip[1] || '';
+                } else {
+                    document.getElementById('owner_city').textContent = data.ownerCity || '';
+                    document.getElementById('owner_state').textContent = data.ownerState || '';
+                    document.getElementById('owner_zip').textContent = data.ownerZip || '';
+                }
+            } else {
+                document.getElementById('owner_city').textContent = data.ownerCity || '';
+                document.getElementById('owner_state').textContent = data.ownerState || '';
+                document.getElementById('owner_zip').textContent = data.ownerZip || '';
+            }
             
             // Set submission date
             if (data.updatedAt) {
