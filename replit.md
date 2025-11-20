@@ -6,9 +6,28 @@ This is a multi-step loan application intake form for Today Capital Group's Merc
 
 ## Recent Changes
 
+### Critical Storage Bug Fix (November 20, 2025)
+- **Issue**: Agent view was not displaying most business information fields (only EIN, Business Email, and Industry were showing)
+- **Root Cause**: The `createLoanApplication` method in `server/storage.ts` was using an explicit hardcoded field list that only included OLD fields, ignoring new fields added for FullApplication
+- **Fields That Were Being Ignored**:
+  - legalBusinessName, doingBusinessAs, companyWebsite, businessStartDate
+  - stateOfIncorporation, doYouProcessCreditCards
+  - businessStreetAddress, businessCsz, companyEmail
+  - And all other newly added schema fields
+- **Fix Applied**: Changed from explicit field list to spread operator pattern:
+  ```typescript
+  // Spread all fields first, then apply required defaults
+  .values({
+    ...insertApplication,
+    email: insertApplication.email ?? "",
+    currentStep: insertApplication.currentStep ?? 1,
+    isCompleted: insertApplication.isCompleted ?? false,
+  })
+  ```
+- **Impact**: All current and future schema fields are now automatically saved during application creation
+
 ### Agent View Field Mapping Fix (November 20, 2025)
-- **Issue**: Agent view was not displaying most business information fields (only EIN and industry were showing)
-- **Root Cause**: Field name mismatch between database schema and agent view HTML template
+- **Additional Fix**: Agent view HTML was using incorrect field names for display
 - **Fixed Field Mappings**:
   - Business Email: Now correctly reads from `companyEmail` field
   - Business Address: Now correctly reads from `businessStreetAddress` field
