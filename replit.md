@@ -4,6 +4,26 @@
 
 This is a multi-step loan application intake form for Today Capital Group's Merchant Cash Advance (MCA) program. The application guides users through a 5-step process to collect contact information, business details, financial data, funding requirements, and business address. The form features automatic saving, progress tracking, and integration with GoHighLevel CRM for lead management.
 
+## Recent Changes
+
+### Agent View Field Mapping Fix (November 20, 2025)
+- **Issue**: Agent view was not displaying most business information fields (only EIN and industry were showing)
+- **Root Cause**: Field name mismatch between database schema and agent view HTML template
+- **Fixed Field Mappings**:
+  - Business Email: Now correctly reads from `companyEmail` field
+  - Business Address: Now correctly reads from `businessStreetAddress` field
+  - City/State/ZIP: Added parser for combined `businessCsz` format ("City, ST 12345")
+  - Owner Address: Added parser for combined `ownerCsz` format
+  - Owner Information: Added fallbacks for `ownerSsn`, `ownerDob`, `personalCreditScoreRange`, `ownerPercentage`
+- **Agent View URL**: Changed from absolute URLs to relative paths (`/agent/application/:id`) to work in all environments
+- **Dual Form Support**: Both "/" (IntakeForm) and "/application" (FullApplication) now generate agent view URLs when completed
+
+### Dashboard Implementation (November 20, 2025)
+- Created comprehensive agent dashboard at `/dashboard` route
+- Features: Real-time search, filtering (All/Intake/Full), stats overview, application cards
+- Displays application details with "View Application" button for accessing agent view URLs
+- Full data-testid coverage for automated testing
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
