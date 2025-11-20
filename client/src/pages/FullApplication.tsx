@@ -735,7 +735,7 @@ function SelectGroup({ label, name, value, onChange, options, required = false }
       >
         <option value="" disabled>Select...</option>
         {options.map((opt: string) => (
-          <option key={opt} value={opt}>{opt}</option>
+          <option key={opt} value={opt} style={{ color: 'black' }}>{opt}</option>
         ))}
       </select>
     </div>
