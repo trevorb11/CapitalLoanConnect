@@ -1,10 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle, Mail, Phone, Clock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 export default function Success() {
+  const [applicationId, setApplicationId] = useState<string | null>(null);
+
   useEffect(() => {
+    // Get application ID before clearing
+    const savedId = localStorage.getItem("applicationId");
+    setApplicationId(savedId);
+    
     // Clear application ID from localStorage on success
     localStorage.removeItem("applicationId");
   }, []);
@@ -78,7 +84,30 @@ export default function Success() {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
+            {applicationId && (
+              <div className="flex gap-3 justify-center flex-wrap">
+                <a
+                  href={`/applications/${applicationId}?pdf=true`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="button-download-full-pdf"
+                  className="h-12 px-8 bg-primary text-primary-foreground rounded-md font-semibold hover:bg-primary/90 transition-all no-underline flex items-center justify-center"
+                >
+                  Download Full PDF
+                </a>
+                <a
+                  href={`/applications/${applicationId}?pdf=true&redacted=true`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="button-download-redacted-pdf"
+                  className="h-12 px-8 bg-muted text-muted-foreground rounded-md font-semibold hover:bg-muted/80 transition-all no-underline flex items-center justify-center"
+                >
+                  Download Redacted PDF
+                </a>
+              </div>
+            )}
+            
             <p className="text-sm text-muted-foreground">
               Questions? Contact us at{" "}
               <a href="mailto:support@todaycapitalgroup.com" className="text-primary hover:underline font-medium">
