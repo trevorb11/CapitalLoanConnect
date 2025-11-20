@@ -64,6 +64,11 @@ export const loanApplications = pgTable("loan_applications", {
   // Signature
   applicantSignature: text("applicant_signature"), // Base64 encoded signature
 
+  // --- Agent Tracking ---
+  agentName: text("agent_name"), // Name of the agent who sent the application
+  agentEmail: text("agent_email"), // Email of the agent
+  agentGhlId: text("agent_ghl_id"), // GoHighLevel user ID of the agent
+
   // --- System Fields ---
   agentViewUrl: text("agent_view_url"), // To store the generated PDF link
   currentStep: integer("current_step").default(1),
