@@ -46,16 +46,36 @@ export default function FullApplication(props?: FullApplicationProps) {
   const [isDrawing, setIsDrawing] = useState(false);
   const hasHydratedSignature = useRef(false);
 
-  // Check for Application ID
+  // Check for or create Application ID
   useEffect(() => {
-    const savedId = localStorage.getItem("applicationId");
-    if (!savedId) {
-      navigate("/");
-    } else {
-      setApplicationId(savedId);
-    }
-    setIsCheckingId(false);
-  }, [navigate]);
+    const initializeApplication = async () => {
+      const savedId = localStorage.getItem("applicationId");
+      if (savedId) {
+        setApplicationId(savedId);
+      } else {
+        // Create a new application if none exists
+        try {
+          const response = await apiRequest("POST", "/api/applications", {
+            email: "",
+            fullName: "",
+            phone: "",
+            legalBusinessName: "",
+            doingBusinessAs: "",
+            currentStep: 1,
+          });
+          const newApp = await response.json();
+          localStorage.setItem("applicationId", newApp.id);
+          setApplicationId(newApp.id);
+        } catch (error) {
+          console.error("Failed to create application:", error);
+          toast({ title: "Error", description: "Failed to create application", variant: "destructive" });
+        }
+      }
+      setIsCheckingId(false);
+    };
+    
+    initializeApplication();
+  }, []);
 
   // Fetch existing data to pre-fill
   const { data: existingData, isLoading } = useQuery<LoanApplication>({
