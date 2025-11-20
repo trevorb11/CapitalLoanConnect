@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -16,6 +16,10 @@ export default function FullApplication() {
   const [showConsentError, setShowConsentError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [signature, setSignature] = useState<string>("");
+  const [showSignatureError, setShowSignatureError] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
 
   // Check for Application ID
   useEffect(() => {
@@ -70,6 +74,66 @@ export default function FullApplication() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Signature pad functions
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    setIsDrawing(true);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.nativeEvent.offsetX;
+    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.nativeEvent.offsetY;
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.nativeEvent.offsetX;
+    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.nativeEvent.offsetY;
+    
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = '#1B2E4D';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    // Save signature as base64
+    const signatureData = canvas.toDataURL('image/png');
+    setSignature(signatureData);
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setSignature("");
+    setShowSignatureError(false);
+  };
+
   const goToStep2 = () => {
     // Validate Step 1
     const step1Fields = ['legal_business_name', 'doing_business_as', 'business_start_date', 'ein', 'company_email', 'state_of_incorporation', 'do_you_process_credit_cards', 'industry', 'business_street_address', 'business_csz', 'requested_loan_amount'];
@@ -86,6 +150,7 @@ export default function FullApplication() {
 
   const submitApplication = async () => {
     setShowConsentError(false);
+    setShowSignatureError(false);
 
     // Validate Step 2
     const step2Fields = ['full_name', 'email', 'social_security_', 'phone', 'address1', 'owner_csz', 'date_of_birth', 'ownership_percentage'];
@@ -98,6 +163,12 @@ export default function FullApplication() {
 
     if (!consentChecked) {
       setShowConsentError(true);
+      return;
+    }
+
+    if (!signature) {
+      setShowSignatureError(true);
+      toast({ title: "Signature Required", description: "Please sign the application before submitting.", variant: "destructive" });
       return;
     }
 
@@ -130,6 +201,7 @@ export default function FullApplication() {
         ownerCsz: formData.owner_csz,
         dateOfBirth: formData.date_of_birth,
         ownership: formData.ownership_percentage,
+        applicantSignature: signature,
         isFullApplicationCompleted: true,
       });
 
@@ -366,6 +438,68 @@ export default function FullApplication() {
               {showConsentError && (
                 <div style={{ display: 'block', marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '4px' }}>
                   <p style={{ color: '#ef4444', fontSize: '0.85rem', margin: 0 }}>Please accept the terms to continue</p>
+                </div>
+              )}
+            </div>
+
+            {/* Signature Pad */}
+            <div style={{ margin: '2rem 0' }}>
+              <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: 'rgba(255,255,255,0.9)', marginBottom: '0.75rem' }}>
+                Applicant Signature *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <canvas
+                  ref={canvasRef}
+                  width={800}
+                  height={200}
+                  data-testid="canvas-signature"
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                  style={{
+                    width: '100%',
+                    height: '150px',
+                    border: showSignatureError ? '2px solid rgba(239, 68, 68, 0.6)' : '2px solid rgba(255,255,255,0.2)',
+                    background: 'white',
+                    borderRadius: '8px',
+                    cursor: 'crosshair',
+                    touchAction: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={clearSignature}
+                  data-testid="button-clear-signature"
+                  style={{
+                    position: 'absolute',
+                    top: '10px',
+                    right: '10px',
+                    background: 'rgba(239, 68, 68, 0.8)',
+                    color: 'white',
+                    border: 'none',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '4px',
+                    fontSize: '0.85rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.8)'}
+                >
+                  Clear
+                </button>
+              </div>
+              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', marginTop: '0.5rem', margin: '0.5rem 0 0 0' }}>
+                Please sign above using your mouse or finger
+              </p>
+              {showSignatureError && (
+                <div style={{ display: 'block', marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '4px' }} data-testid="error-signature">
+                  <p style={{ color: '#ef4444', fontSize: '0.85rem', margin: 0 }}>Please sign the application before submitting</p>
                 </div>
               )}
             </div>
