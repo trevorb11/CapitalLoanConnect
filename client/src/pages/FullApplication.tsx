@@ -390,8 +390,7 @@ export default function FullApplication(props?: FullApplicationProps) {
               rel="noopener noreferrer"
               data-testid="button-view-application"
               style={{
-                maxWidth: '300px',
-                width: '100%',
+                width: '270px',
                 background: 'white',
                 color: '#192F56',
                 padding: '1rem 2rem',
@@ -406,7 +405,6 @@ export default function FullApplication(props?: FullApplicationProps) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: '1rem',
               }}
             >
               View Application
@@ -418,8 +416,7 @@ export default function FullApplication(props?: FullApplicationProps) {
                 navigate("/");
               }}
               style={{
-                maxWidth: '300px',
-                width: '100%',
+                width: '270px',
                 background: 'white',
                 color: '#192F56',
                 padding: '1rem 2rem',
