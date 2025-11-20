@@ -383,14 +383,14 @@ export default function FullApplication(props?: FullApplicationProps) {
           <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem', lineHeight: 1.5, marginBottom: '2.5rem' }}>
             Our underwriting team is reviewing your details. You will receive an update via email within 24-48 hours.
           </p>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '0' }}>
             <a
-              href={`/applications/${applicationId}?pdf=true`}
+              href={`/agent/application/${applicationId}`}
               target="_blank"
               rel="noopener noreferrer"
-              data-testid="button-download-full-pdf"
+              data-testid="button-view-application"
               style={{
-                maxWidth: '280px',
+                maxWidth: '300px',
                 width: '100%',
                 background: 'white',
                 color: '#192F56',
@@ -406,20 +406,22 @@ export default function FullApplication(props?: FullApplicationProps) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                marginBottom: '1rem',
               }}
             >
-              Download Full PDF
+              View Application
             </a>
-            <a
-              href={`/applications/${applicationId}?pdf=true&redacted=true`}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="button-download-redacted-pdf"
+            <button
+              data-testid="button-return-home"
+              onClick={() => {
+                localStorage.removeItem("applicationId");
+                navigate("/");
+              }}
               style={{
-                maxWidth: '280px',
+                maxWidth: '300px',
                 width: '100%',
-                background: '#666666',
-                color: 'white',
+                background: 'white',
+                color: '#192F56',
                 padding: '1rem 2rem',
                 borderRadius: '8px',
                 border: 'none',
@@ -427,35 +429,11 @@ export default function FullApplication(props?: FullApplicationProps) {
                 fontSize: '1.1rem',
                 cursor: 'pointer',
                 transition: 'all 0.3s ease',
-                textDecoration: 'none',
-                textAlign: 'center',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
               }}
             >
-              Download Redacted PDF
-            </a>
+              Return to Home
+            </button>
           </div>
-          <button
-            data-testid="button-return-home"
-            onClick={() => navigate("/")}
-            style={{
-              maxWidth: '300px',
-              width: '100%',
-              background: 'white',
-              color: '#192F56',
-              padding: '1rem 2rem',
-              borderRadius: '8px',
-              border: 'none',
-              fontWeight: 600,
-              fontSize: '1.1rem',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-            }}
-          >
-            Return to Home
-          </button>
         </div>
       </div>
     );
