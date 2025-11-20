@@ -60,6 +60,9 @@ export const loanApplications = pgTable("loan_applications", {
   businessCsz: text("business_csz"), // Combined City, State, Zip for business
   ownerCsz: text("owner_csz"), // Combined City, State, Zip for owner
   personalCreditScoreRange: text("personal_credit_score_range"),
+  
+  // Signature
+  applicantSignature: text("applicant_signature"), // Base64 encoded signature
 
   // --- System Fields ---
   agentViewUrl: text("agent_view_url"), // To store the generated PDF link
