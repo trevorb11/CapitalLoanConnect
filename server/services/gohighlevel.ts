@@ -167,7 +167,18 @@ export class GoHighLevelService {
     pushField("contact.date_of_birth", application.dateOfBirth);
     pushField("contact.ownership_percentage", application.ownership);
 
-    // 4. Application URL - Maps to GHL custom field for agent access
+    // 4. Agent Tracking - Track which agent processed the application
+    if (application.agentName) {
+      pushField("contact.agent_name", application.agentName);
+    }
+    if (application.agentEmail) {
+      pushField("contact.agent_email", application.agentEmail);
+    }
+    if (application.agentGhlId) {
+      pushField("contact.agent_ghl_id", application.agentGhlId);
+    }
+
+    // 5. Application URL - Maps to GHL custom field for agent access
     if (application.agentViewUrl) {
        pushField("contact.application_url", application.agentViewUrl);
     }
