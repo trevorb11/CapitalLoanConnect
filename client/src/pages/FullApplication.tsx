@@ -23,6 +23,21 @@ const validateCsz = (csz: string) => {
   return statePart.length === 2 && /^[A-Z]{2}$/.test(statePart);
 };
 
+// Format EIN to XX-XXXXXXX
+const formatEin = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 9);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+};
+
+// Format SSN to XXX-XX-XXXX
+const formatSsn = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 9);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
+};
+
 interface FullApplicationProps {
   agent?: Agent;
 }
@@ -115,7 +130,19 @@ export default function FullApplication(props?: FullApplicationProps) {
   }, [existingData]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    let value = e.target.value;
+    
+    // Apply formatting for SSN
+    if (e.target.name === 'social_security_') {
+      value = formatSsn(value);
+    }
+    
+    // Apply formatting for EIN
+    if (e.target.name === 'ein') {
+      value = formatEin(value);
+    }
+    
+    setFormData({ ...formData, [e.target.name]: value });
   };
 
   // Signature pad functions

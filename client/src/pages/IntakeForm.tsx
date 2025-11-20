@@ -24,6 +24,21 @@ const validateCsz = (csz: string) => {
   return statePart.length === 2 && /^[A-Z]{2}$/.test(statePart);
 };
 
+// Format EIN to XX-XXXXXXX
+const formatEin = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 9);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+};
+
+// Format SSN to XXX-XX-XXXX
+const formatSsn = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 9);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
+};
+
 // Validation schemas for each step
 const step1Schema = z.object({
   email: z.string().email("Invalid email"),
@@ -33,7 +48,7 @@ const step1Schema = z.object({
   doingBusinessAs: z.string().min(1, "Required"),
   companyWebsite: z.string().optional(),
   businessStartDate: z.string().min(1, "Required"),
-  ein: z.string().min(1, "Required"),
+  ein: z.string().min(1, "Required").refine((val) => val.replace(/\D/g, '').length === 9, "EIN must be 9 digits"),
   companyEmail: z.string().email("Invalid email"),
   stateOfIncorporation: z.string().min(1, "Required"),
   doYouProcessCreditCards: z.enum(["Yes", "No"]),
