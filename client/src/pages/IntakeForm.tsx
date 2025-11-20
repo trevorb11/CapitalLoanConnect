@@ -7,6 +7,23 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Check } from "lucide-react";
 
+// US States list
+const US_STATES = [
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"
+];
+
+// Validation helper for CSZ format
+const validateCsz = (csz: string) => {
+  const parts = csz.split(',').map(p => p.trim());
+  if (parts.length < 2) return false;
+  const statePart = parts[1].trim().split(/\s+/)[0];
+  return statePart.length === 2 && /^[A-Z]{2}$/.test(statePart);
+};
+
 // Validation schemas for each step
 const step1Schema = z.object({
   email: z.string().email("Invalid email"),
@@ -18,11 +35,11 @@ const step1Schema = z.object({
   businessStartDate: z.string().min(1, "Required"),
   ein: z.string().min(1, "Required"),
   companyEmail: z.string().email("Invalid email"),
-  stateOfIncorporation: z.string().length(2, "Enter 2-letter state code"),
+  stateOfIncorporation: z.string().min(1, "Required"),
   doYouProcessCreditCards: z.enum(["Yes", "No"]),
   industry: z.string().min(1, "Required"),
   businessStreetAddress: z.string().min(1, "Required"),
-  businessCsz: z.string().min(1, "Required"),
+  businessCsz: z.string().min(1, "Required").refine(validateCsz, "Use format: City, ST 12345 (state must be 2 letters)"),
   requestedAmount: z.string().min(1, "Required"),
   mcaBalanceAmount: z.string().optional(),
   mcaBalanceBankName: z.string().optional(),
@@ -33,7 +50,7 @@ const step2Schema = z.object({
   personalCreditScoreRange: z.string().optional(),
   address1: z.string().min(1, "Required"),
   address2: z.string().optional(),
-  ownerCsz: z.string().min(1, "Required"),
+  ownerCsz: z.string().min(1, "Required").refine(validateCsz, "Use format: City, ST 12345 (state must be 2 letters)"),
   ownerDob: z.string().min(1, "Required"),
   ownerPercentage: z.string().min(1, "Required"),
   consent: z.boolean().refine((val) => val === true, "You must accept the terms"),
@@ -340,7 +357,12 @@ export default function IntakeForm() {
                 <InputField label="Business Start Date" type="date" {...form1.register("businessStartDate")} required data-testid="input-business-start-date" />
                 <InputField label="Tax ID or EIN" {...form1.register("ein")} placeholder="XX-XXXXXXX" required data-testid="input-ein" />
                 <InputField label="Company Email" type="email" {...form1.register("companyEmail")} required data-testid="input-company-email" />
-                <InputField label="State of Incorporation" {...form1.register("stateOfIncorporation")} maxLength={2} placeholder="e.g. CA" required data-testid="input-state-incorporation" />
+                <SelectField label="State of Incorporation" {...form1.register("stateOfIncorporation")} required data-testid="select-state-incorporation">
+                  <option value="">Select a state...</option>
+                  {US_STATES.map(state => (
+                    <option key={state} value={state}>{state}</option>
+                  ))}
+                </SelectField>
                 <SelectField label="Do You Process Credit Cards?" {...form1.register("doYouProcessCreditCards")} required data-testid="select-credit-cards">
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
