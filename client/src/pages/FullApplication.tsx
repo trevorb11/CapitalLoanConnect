@@ -325,6 +325,60 @@ export default function FullApplication(props?: FullApplicationProps) {
           <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem', lineHeight: 1.5, marginBottom: '2.5rem' }}>
             Our underwriting team is reviewing your details. You will receive an update via email within 24-48 hours.
           </p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}>
+            <a
+              href={`/applications/${applicationId}?pdf=true`}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="button-download-full-pdf"
+              style={{
+                maxWidth: '280px',
+                width: '100%',
+                background: 'white',
+                color: '#192F56',
+                padding: '1rem 2rem',
+                borderRadius: '8px',
+                border: 'none',
+                fontWeight: 600,
+                fontSize: '1.1rem',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                textDecoration: 'none',
+                textAlign: 'center',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              Download Full PDF
+            </a>
+            <a
+              href={`/applications/${applicationId}?pdf=true&redacted=true`}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="button-download-redacted-pdf"
+              style={{
+                maxWidth: '280px',
+                width: '100%',
+                background: '#666666',
+                color: 'white',
+                padding: '1rem 2rem',
+                borderRadius: '8px',
+                border: 'none',
+                fontWeight: 600,
+                fontSize: '1.1rem',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                textDecoration: 'none',
+                textAlign: 'center',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              Download Redacted PDF
+            </a>
+          </div>
           <button
             data-testid="button-return-home"
             onClick={() => navigate("/")}

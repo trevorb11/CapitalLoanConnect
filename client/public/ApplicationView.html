@@ -287,13 +287,20 @@
         <div id="signature_placeholder" class="value" style="text-align: center; color: #9ca3af;">No signature provided</div>
     </div>
 
-    <button class="btn" onclick="downloadPDF()">Download PDF Application</button>
+    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 40px;">
+        <button class="btn" onclick="downloadPDF(false)" style="max-width: 250px;">Download Full PDF</button>
+        <button class="btn" onclick="downloadPDF(true)" style="max-width: 250px; background: #666666;">Download Redacted PDF</button>
+    </div>
 </div>
 
 <script>
     // Get application ID from URL path
     const pathParts = window.location.pathname.split('/');
     const applicationId = pathParts[pathParts.length - 1];
+    
+    // Check if redacted mode is requested
+    const urlParams = new URLSearchParams(window.location.search);
+    const isRedactedMode = urlParams.get('redacted') === 'true';
 
     // Fetch application data
     async function loadApplicationData() {
@@ -395,7 +402,7 @@
     }
 
     // Download PDF function
-    function downloadPDF() {
+    function downloadPDF(isRedacted = false) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         
@@ -434,7 +441,7 @@
                 doc.setFontSize(10);
                 doc.text(`Date: ${dateText}`, 150, 20);
                 
-                continuePDFGeneration(doc, darkNavy, teal);
+                continuePDFGeneration(doc, darkNavy, teal, isRedacted);
             } catch (error) {
                 // If logo fails, fallback to text
                 console.error('Failed to add logo:', error);
@@ -459,7 +466,7 @@
             doc.setFontSize(10);
             doc.text(`Date: ${dateText}`, 150, 20);
             
-            continuePDFGeneration(doc, darkNavy, teal);
+            continuePDFGeneration(doc, darkNavy, teal, isRedacted);
         };
         
         // Set up handlers BEFORE setting src to avoid race condition
@@ -481,8 +488,11 @@
     }
     
     // Continue PDF generation after header
-    function continuePDFGeneration(doc, darkNavy, teal) {
+    function continuePDFGeneration(doc, darkNavy, teal, isRedacted = false) {
         let yPos = 50;
+        
+        // Fields to redact (hide in redacted version)
+        const redactedFields = ['full_name', 'email', 'phone', 'social_security_number', 'date_of_birth', 'owner_address1', 'owner_address2', 'owner_city', 'owner_state', 'owner_zip'];
         
         // Helper functions
         const addSectionHeader = (title) => {
@@ -496,7 +506,12 @@
             yPos += 10;
         };
         
-        const addField = (label, value, x, width) => {
+        const addField = (label, value, fieldId, x, width) => {
+            // Skip redacted fields in redacted mode
+            if (isRedacted && redactedFields.includes(fieldId)) {
+                return;
+            }
+            
             if (yPos > 270) {
                 doc.addPage();
                 yPos = 20;
@@ -519,49 +534,49 @@
         
         // Business Information
         addSectionHeader('Business Information');
-        addField('Legal Name:', document.getElementById('legal_business_name').textContent, 20, 85);
-        addField('DBA:', document.getElementById('doing_business_as').textContent, 110, 85);
+        addField('Legal Name:', document.getElementById('legal_business_name').textContent, 'legal_business_name', 20, 85);
+        addField('DBA:', document.getElementById('doing_business_as').textContent, 'doing_business_as', 110, 85);
         yPos += 13;
-        addField('Website:', document.getElementById('company_website').textContent, 20, 85);
-        addField('Start Date:', document.getElementById('business_start_date').textContent, 110, 85);
+        addField('Website:', document.getElementById('company_website').textContent, 'company_website', 20, 85);
+        addField('Start Date:', document.getElementById('business_start_date').textContent, 'business_start_date', 110, 85);
         yPos += 13;
-        addField('EIN:', document.getElementById('ein').textContent, 20, 85);
-        addField('Industry:', document.getElementById('industry').textContent, 110, 85);
+        addField('EIN:', document.getElementById('ein').textContent, 'ein', 20, 85);
+        addField('Industry:', document.getElementById('industry').textContent, 'industry', 110, 85);
         yPos += 13;
-        addField('Address:', document.getElementById('business_address').textContent, 20, 85);
-        addField('City:', document.getElementById('city').textContent, 110, 85);
+        addField('Address:', document.getElementById('business_address').textContent, 'business_address', 20, 85);
+        addField('City:', document.getElementById('city').textContent, 'city', 110, 85);
         yPos += 13;
-        addField('State:', document.getElementById('state').textContent, 20, 40);
-        addField('ZIP:', document.getElementById('zip_code').textContent, 65, 40);
-        addField('State of Inc:', document.getElementById('state_of_incorporation').textContent, 110, 85);
+        addField('State:', document.getElementById('state').textContent, 'state', 20, 40);
+        addField('ZIP:', document.getElementById('zip_code').textContent, 'zip_code', 65, 40);
+        addField('State of Inc:', document.getElementById('state_of_incorporation').textContent, 'state_of_incorporation', 110, 85);
         yPos += 13;
-        addField('Requested Amount:', document.getElementById('requested_amount').textContent, 20, 85);
-        addField('MCA Balance:', document.getElementById('mca_balance_amount').textContent, 110, 85);
+        addField('Requested Amount:', document.getElementById('requested_amount').textContent, 'requested_amount', 20, 85);
+        addField('MCA Balance:', document.getElementById('mca_balance_amount').textContent, 'mca_balance_amount', 110, 85);
         yPos += 13;
-        addField('Credit Cards:', document.getElementById('do_you_process_credit_cards').textContent, 20, 85);
-        addField('MCA Bank:', document.getElementById('mca_balance_bank_name').textContent, 110, 85);
+        addField('Credit Cards:', document.getElementById('do_you_process_credit_cards').textContent, 'do_you_process_credit_cards', 20, 85);
+        addField('MCA Bank:', document.getElementById('mca_balance_bank_name').textContent, 'mca_balance_bank_name', 110, 85);
         yPos += 20;
         
         // Owner Information
         addSectionHeader('Owner Information');
-        addField('Full Name:', document.getElementById('full_name').textContent, 20, 85);
-        addField('Email:', document.getElementById('email').textContent, 110, 85);
+        addField('Full Name:', document.getElementById('full_name').textContent, 'full_name', 20, 85);
+        addField('Email:', document.getElementById('email').textContent, 'email', 110, 85);
         yPos += 13;
-        addField('Phone:', document.getElementById('phone').textContent, 20, 85);
-        addField('SSN:', document.getElementById('social_security_number').textContent, 110, 85);
+        addField('Phone:', document.getElementById('phone').textContent, 'phone', 20, 85);
+        addField('SSN:', document.getElementById('social_security_number').textContent, 'social_security_number', 110, 85);
         yPos += 13;
-        addField('Date of Birth:', document.getElementById('date_of_birth').textContent, 20, 85);
-        addField('FICO Score:', document.getElementById('fico_score').textContent, 110, 85);
+        addField('Date of Birth:', document.getElementById('date_of_birth').textContent, 'date_of_birth', 20, 85);
+        addField('FICO Score:', document.getElementById('fico_score').textContent, 'fico_score', 110, 85);
         yPos += 13;
-        addField('Ownership %:', document.getElementById('ownership').textContent, 20, 85);
+        addField('Ownership %:', document.getElementById('ownership').textContent, 'ownership', 20, 85);
         yPos += 13;
-        addField('Home Address:', document.getElementById('owner_address1').textContent, 20, 175);
+        addField('Home Address:', document.getElementById('owner_address1').textContent, 'owner_address1', 20, 175);
         yPos += 13;
-        addField('Address Line 2:', document.getElementById('owner_address2').textContent, 20, 175);
+        addField('Address Line 2:', document.getElementById('owner_address2').textContent, 'owner_address2', 20, 175);
         yPos += 13;
-        addField('City:', document.getElementById('owner_city').textContent, 20, 85);
-        addField('State:', document.getElementById('owner_state').textContent, 110, 40);
-        addField('ZIP:', document.getElementById('owner_zip').textContent, 155, 40);
+        addField('City:', document.getElementById('owner_city').textContent, 'owner_city', 20, 85);
+        addField('State:', document.getElementById('owner_state').textContent, 'owner_state', 110, 40);
+        addField('ZIP:', document.getElementById('owner_zip').textContent, 'owner_zip', 155, 40);
         yPos += 20;
         
         // Signature Section
@@ -592,7 +607,8 @@
         
         // Save PDF
         const businessName = document.getElementById('legal_business_name').textContent || 'Application';
-        const fileName = `Application_${businessName.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+        const redactedSuffix = isRedacted ? '_Redacted' : '';
+        const fileName = `Application_${businessName.replace(/[^a-z0-9]/gi, '_')}${redactedSuffix}.pdf`;
         doc.save(fileName);
     }
 

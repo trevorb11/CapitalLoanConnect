@@ -1,0 +1,231 @@
+import type { LoanApplication } from "@shared/schema";
+
+const GHL_API_KEY = process.env.GHL_API_KEY;
+const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
+const GHL_API_BASE = "https://services.leadconnectorhq.com";
+
+interface GHLCustomField {
+  key: string;
+  value: string | number | boolean | null;
+}
+
+interface GHLContact {
+  locationId: string;
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  phone?: string;
+  companyName?: string;
+  address1?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  source?: string;
+  tags?: string[];
+  customFields?: GHLCustomField[];
+}
+
+export class GoHighLevelService {
+  private apiKey: string | null;
+  private locationId: string | null;
+  private isEnabled: boolean;
+
+  constructor() {
+    this.apiKey = GHL_API_KEY || null;
+    this.locationId = GHL_LOCATION_ID || null;
+    this.isEnabled = !!(this.apiKey && this.locationId);
+    
+    if (!this.isEnabled) {
+      console.warn("GoHighLevel integration disabled: GHL_API_KEY or GHL_LOCATION_ID not configured");
+    }
+  }
+
+  private async makeRequest(endpoint: string, method: string = "GET", body?: any) {
+    if (!this.isEnabled || !this.apiKey) {
+      throw new Error("GoHighLevel service is not enabled");
+    }
+
+    const url = `${GHL_API_BASE}${endpoint}`;
+    
+    const response = await fetch(url, {
+      method,
+      headers: {
+        "Authorization": `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+        "Version": "2021-07-28", 
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`GHL API Error (${method} ${url}): ${response.status} - ${errorText}`);
+      throw new Error(`GHL API request failed: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  private buildContactData(application: Partial<LoanApplication> & { agentViewUrl?: string }, includeLocationId: boolean = true): Partial<GHLContact> {
+    const contactData: Partial<GHLContact> = {};
+    
+    if (includeLocationId) {
+      contactData.locationId = this.locationId!;
+    }
+
+    // --- Standard Fields ---
+    if (application.fullName) {
+      const nameParts = application.fullName.trim().split(" ");
+      contactData.firstName = nameParts[0] || "";
+      contactData.lastName = nameParts.slice(1).join(" ") || "";
+    }
+
+    // Prioritize business email for contact record if available, otherwise fallback to intake email
+    contactData.email = application.businessEmail || application.email;
+    contactData.phone = application.phone;
+    
+    // Map Legal Business Name to standard Company Name field
+    contactData.companyName = application.legalBusinessName || application.businessName;
+    
+    // Map Business Address to standard address fields
+    contactData.address1 = application.businessAddress;
+    contactData.city = application.city;
+    contactData.state = application.state;
+    contactData.postalCode = application.zipCode;
+    
+    contactData.source = application.referralSource || "Full Application Form";
+
+    // --- Custom Fields Mapping ---
+    const customFields: GHLCustomField[] = [];
+
+    // Helper to push only if value exists
+    const pushField = (key: string, value: any) => {
+      if (value !== undefined && value !== null && value !== "") {
+        // Convert booleans to "Yes"/"No" if needed by GHL text fields, or keep as boolean if GHL supports it.
+        // Based on your provided list, most seem to be Text fields.
+        let finalValue = value;
+        if (typeof value === 'boolean') {
+            finalValue = value ? "Yes" : "No";
+        }
+        customFields.push({ key, value: finalValue.toString() });
+      }
+    };
+
+    // 1. Business Information
+    pushField("contact.doing_business_as", application.doingBusinessAs);
+    pushField("contact.company_email", application.companyEmail || application.businessEmail);
+    pushField("contact.primary_business_bank", application.bankName); // Mapped "Bank Name" from schema to "Primary Business Bank"
+    pushField("contact.business_street_address", application.businessAddress); // Redundant custom field
+    
+    // Combined City, State, Zip for custom field if needed (though standard fields are populated above)
+    // If you have a specific single field for "City, State, Zip" in GHL, add it here. 
+    // Based on your list, you have individual standard fields, so standard mapping above is primary.
+
+    pushField("contact.website", application.companyWebsite);
+    pushField("contact.business_start_date", application.businessStartDate);
+    pushField("contact.ein", application.ein);
+    
+    // State of Incorporation
+    pushField("contact.state_of_incorporation", application.stateOfIncorporation); // Assuming you create this key if not in list, or map to standard State
+    
+    // Do You Process Credit Cards? (Yes/No)
+    pushField("contact.do_you_process_credit_cards", application.doYouProcessCreditCards);
+    
+    pushField("contact.industry", application.industry);
+    
+    // 2. Financials & Loan Info
+    pushField("contact.requested_loan_amount", application.requestedAmount);
+    pushField("contact.mca_balance_amount", application.mcaBalanceAmount);
+    pushField("contact.mca_balance_bank_name", application.mcaBalanceBankName);
+    pushField("contact.monthly_revenue", application.monthlyRevenue);
+    
+    // Outstanding Loans (Yes/No)
+    // Schema has boolean `hasOutstandingLoans`, GHL has `contact.outstanding_business_loans_or_cash_advances`
+    if (application.hasOutstandingLoans !== undefined) {
+        pushField("contact.outstanding_business_loans_or_cash_advances", application.hasOutstandingLoans ? "Yes" : "No");
+    }
+
+    // 3. Owner Information
+    pushField("contact.social_security_", application.socialSecurityNumber); // Note trailing underscore
+    
+    // FICO Score (Estimate) -> personal_credit_score_range
+    // Use exact FICO from full app if available, otherwise the range from intake
+    const ficoValue = application.ficoScoreExact || application.creditScore;
+    pushField("contact.personal_credit_score_range", ficoValue);
+    
+    // Owner Address
+    // You listed "Home Address Line 1" and "Address Line 2" but didn't provide specific GHL keys for them in the list.
+    // Assuming you might want to map them to standard fields if they are the contact's personal address,
+    // OR to custom fields if you created them. 
+    // I will map them to potential custom keys based on naming convention if they exist, 
+    // otherwise GHL only supports one standard address set (which we used for Business above).
+    // IF GHL Contact Address = Home Address, swap the standard mapping above.
+    // For now, pushing to custom fields assuming you create them:
+    // pushField("contact.home_address_line_1", application.ownerAddress1);
+    // pushField("contact.home_address_line_2", application.ownerAddress2);
+    
+    // City, State, Zip (Owner) -> You listed this specifically.
+    // If it's a single text field:
+    if (application.ownerCity || application.ownerState || application.ownerZip) {
+        const ownerCsz = `${application.ownerCity || ''}, ${application.ownerState || ''} ${application.ownerZip || ''}`;
+        // You listed "City, State, Zip (Owner)" but no key. Assuming key is needed.
+        // pushField("contact.owner_csz", ownerCsz); 
+    }
+
+    pushField("contact.date_of_birth", application.dateOfBirth);
+    pushField("contact.ownership_percentage", application.ownership);
+
+    // 4. Application URL
+    // You listed "Application URL" in the prompt.
+    // Ensure you have created the Custom Field "Application URL" in GHL and use its key here.
+    if (application.agentViewUrl) {
+       pushField("contact.application_url", application.agentViewUrl); // Assuming key is contact.application_url
+    }
+
+    // Add fields to payload
+    if (customFields.length > 0) {
+      contactData.customFields = customFields;
+    }
+
+    // Tags
+    const tags = ["MCA Application"];
+    if (application.isFullApplicationCompleted) {
+      tags.push("Full Application Submitted");
+    }
+    contactData.tags = tags;
+
+    return contactData;
+  }
+
+  async createOrUpdateContact(application: Partial<LoanApplication> & { agentViewUrl?: string }): Promise<string> {
+    if (!this.isEnabled) return "";
+
+    try {
+      // If we have a GHL ID, update it
+      if (application.ghlContactId) {
+        const updateData = this.buildContactData(application, false);
+        await this.makeRequest(`/contacts/${application.ghlContactId}`, "PUT", updateData);
+        return application.ghlContactId;
+      }
+
+      // Otherwise create/upsert
+      const createData = this.buildContactData(application, true);
+      const response = await this.makeRequest("/contacts", "POST", createData);
+      return response.contact?.id || response.id;
+    } catch (error) {
+      console.error("Error syncing to GoHighLevel:", error);
+      return "";
+    }
+  }
+
+  // ... (keep searchContact and updateContact methods as is) ...
+  async searchContact(query: string): Promise<any | null> {
+     // ... (existing search logic) ...
+     return null; 
+  }
+  async updateContact(contactId: string, application: Partial<LoanApplication>): Promise<void> {
+     // ... (existing update logic) ...
+  }
+}
+
+export const ghlService = new GoHighLevelService();
