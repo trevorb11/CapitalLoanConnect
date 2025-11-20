@@ -23,8 +23,8 @@
             border-radius: 8px;
         }
         .header {
-            background: linear-gradient(135deg, #192F56 0%, #2a4a7f 100%);
-            color: white;
+            background: #E8EEF3;
+            color: #1B2E4D;
             padding: 30px;
             margin: -40px -40px 30px -40px;
             border-radius: 8px 8px 0 0;
@@ -32,34 +32,40 @@
             justify-content: space-between;
             align-items: center;
         }
-        .header h1 { 
-            margin: 0; 
-            font-size: 28px; 
-            font-weight: 700;
+        .header img { 
+            height: 50px;
+            width: auto;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
         }
         .header p { 
-            margin: 5px 0 0 0; 
-            font-size: 14px; 
-            opacity: 0.9; 
+            margin: 0; 
+            font-size: 24px; 
+            font-weight: 700;
+            color: #1B2E4D;
         }
         .header-right {
             text-align: right;
         }
         .header-right .label {
             font-size: 11px;
-            opacity: 0.7;
+            color: #6b7280;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         .header-right .date {
-            font-weight: 700;
+            font-weight: 400;
             font-size: 16px;
             margin-top: 4px;
+            color: #1B2E4D;
         }
         
         .section-title {
-            border-bottom: 3px solid #F97316;
-            color: #192F56;
+            border-bottom: 3px solid #5FBFB8;
+            color: #1B2E4D;
             font-size: 20px;
             font-weight: 700;
             padding-bottom: 8px;
@@ -99,7 +105,7 @@
         }
 
         .btn {
-            background: linear-gradient(135deg, #F97316 0%, #ea580c 100%);
+            background: #5FBFB8;
             color: white;
             border: none;
             padding: 16px 32px;
@@ -110,11 +116,12 @@
             display: block;
             margin: 40px auto 0;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 6px rgba(249, 115, 22, 0.3);
+            box-shadow: 0 4px 6px rgba(95, 191, 184, 0.3);
         }
         .btn:hover { 
+            background: #4EAEA7;
             transform: translateY(-2px);
-            box-shadow: 0 6px 8px rgba(249, 115, 22, 0.4);
+            box-shadow: 0 6px 8px rgba(95, 191, 184, 0.4);
         }
         .btn:active {
             transform: translateY(0);
@@ -144,12 +151,11 @@
 
 <div class="container" id="appContent">
     <div class="header">
-        <div>
-            <h1>TODAY CAPITAL GROUP</h1>
-            <p>MCA Loan Application</p>
+        <div class="header-left">
+            <img src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c1b87657a831f612b5390_Group%2017%20(1).svg" alt="Today Capital Group" />
+            <p>BUSINESS INFORMATION</p>
         </div>
         <div class="header-right">
-            <div class="label">Date Submitted</div>
             <div class="date" id="submissionDate">—</div>
         </div>
     </div>
@@ -377,21 +383,22 @@
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         
-        // Colors
-        const darkBlue = [25, 47, 86];
-        const orange = [249, 115, 22];
+        // Colors - Updated to match brand
+        const headerBg = [232, 238, 243]; // Light blue-gray
+        const darkNavy = [27, 46, 77]; // Dark navy text
+        const teal = [95, 191, 184]; // Teal accent
         
         // Header
-        doc.setFillColor(...darkBlue);
+        doc.setFillColor(...headerBg);
         doc.rect(0, 0, 210, 40, 'F');
         
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(...darkNavy);
         doc.setFontSize(20);
         doc.setFont('helvetica', 'bold');
         doc.text('TODAY CAPITAL GROUP', 20, 20);
         doc.setFontSize(12);
         doc.setFont('helvetica', 'normal');
-        doc.text('MCA Loan Application', 20, 28);
+        doc.text('Business Information', 20, 28);
         
         // Date
         const dateText = document.getElementById('submissionDate').textContent;
@@ -404,9 +411,9 @@
         const addSectionHeader = (title) => {
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
-            doc.setTextColor(...darkBlue);
+            doc.setTextColor(...darkNavy);
             doc.text(title, 20, yPos);
-            doc.setDrawColor(...orange);
+            doc.setDrawColor(...teal);
             doc.setLineWidth(0.5);
             doc.line(20, yPos + 2, 60, yPos + 2);
             yPos += 10;
