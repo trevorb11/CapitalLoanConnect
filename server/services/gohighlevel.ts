@@ -80,29 +80,29 @@ export class GoHighLevelService {
       contactData.locationId = this.locationId!;
     }
 
-    // Standard contact fields
+    // --- Standard Fields ---
     if (application.fullName) {
       const nameParts = application.fullName.trim().split(" ");
       contactData.firstName = nameParts[0] || "";
       contactData.lastName = nameParts.slice(1).join(" ") || "";
     }
 
-    if (application.email) {
-      contactData.email = application.email;
-    }
-
+    // Prioritize business email for contact record if available, otherwise fallback to intake email
+    contactData.email = application.companyEmail || application.businessEmail || application.email || "";
+    
     if (application.phone) {
       contactData.phone = application.phone;
     }
-
-    // Business information - top-level contact fields
+    
+    // Map Legal Business Name to standard Company Name field
     if (application.businessName || application.legalBusinessName) {
       contactData.companyName = application.legalBusinessName || application.businessName || "";
     }
-
-    // Address - top-level contact fields
-    if (application.businessAddress) {
-      contactData.address1 = application.businessAddress;
+    
+    // Map Business Address to standard address fields
+    const businessAddr = application.businessAddress || application.businessStreetAddress;
+    if (businessAddr) {
+      contactData.address1 = businessAddr;
     }
 
     if (application.city) {
@@ -116,127 +116,70 @@ export class GoHighLevelService {
     if (application.zipCode) {
       contactData.postalCode = application.zipCode;
     }
+    
+    contactData.source = application.referralSource || "Full Application Form";
 
-    // Custom fields for detailed application data
+    // --- Custom Fields Mapping ---
     const customFields: GHLCustomField[] = [];
 
-    // Map application data to custom fields
-    // NOTE: You must create these custom fields in your GoHighLevel account
-    // with the exact keys specified below for them to sync properly
+    // Helper to push only if value exists
+    const pushField = (key: string, value: any) => {
+      if (value !== undefined && value !== null && value !== "") {
+        // Convert booleans to "Yes"/"No" for text fields
+        let finalValue = value;
+        if (typeof value === 'boolean') {
+            finalValue = value ? "Yes" : "No";
+        }
+        customFields.push({ key, value: finalValue.toString() });
+      }
+    };
+
+    // 1. Business Information
+    pushField("contact.doing_business_as", application.doingBusinessAs);
+    pushField("contact.company_email", application.companyEmail || application.businessEmail);
+    pushField("contact.website", application.companyWebsite);
+    pushField("contact.business_start_date", application.businessStartDate);
+    pushField("contact.ein", application.ein);
+    pushField("contact.state_of_incorporation", application.stateOfIncorporation);
+    pushField("contact.do_you_process_credit_cards", application.doYouProcessCreditCards);
+    pushField("contact.industry", application.industry);
+    pushField("contact.business_street_address", application.businessAddress || application.businessStreetAddress);
     
-    if (application.industry) {
-      customFields.push({ key: "industry", value: application.industry });
-    }
+    // 2. Financials & Loan Info
+    pushField("contact.requested_loan_amount", application.requestedAmount);
+    pushField("contact.mca_balance_amount", application.mcaBalanceAmount);
+    pushField("contact.mca_balance_bank_name", application.mcaBalanceBankName);
+    pushField("contact.monthly_revenue", application.monthlyRevenue);
     
-    if (application.ein) {
-      customFields.push({ key: "ein", value: application.ein });
-    }
-
-    if (application.timeInBusiness) {
-      customFields.push({ key: "time_in_business_years", value: application.timeInBusiness });
-    }
-
-    if (application.businessType) {
-      customFields.push({ key: "business_type", value: application.businessType });
-    }
-
-    if (application.ownership) {
-      customFields.push({ key: "ownership_percentage", value: application.ownership });
-    }
-
-    if (application.monthlyRevenue) {
-      customFields.push({ key: "monthly_revenue_usd", value: application.monthlyRevenue.toString() });
-    }
-
-    if (application.averageMonthlyRevenue) {
-      customFields.push({ key: "monthly_revenue_approx", value: application.averageMonthlyRevenue.toString() });
-    }
-
-    if (application.creditScore) {
-      customFields.push({ key: "personal_credit_score", value: application.creditScore });
-    }
-
+    // Outstanding Loans (Yes/No)
     if (application.hasOutstandingLoans !== undefined) {
-      customFields.push({ key: "has_outstanding_loans", value: application.hasOutstandingLoans ? "Yes" : "No" });
+        pushField("contact.outstanding_business_loans_or_cash_advances", application.hasOutstandingLoans ? "Yes" : "No");
     }
 
-    if (application.outstandingLoansAmount) {
-      customFields.push({ key: "outstanding_loans_amount", value: application.outstandingLoansAmount.toString() });
-    }
+    // 3. Owner Information
+    pushField("contact.social_security_", application.socialSecurityNumber);
+    
+    // FICO Score (Estimate) -> personal_credit_score_range
+    // Use exact FICO from full app if available, otherwise the range from intake
+    const ficoValue = application.ficoScoreExact || application.personalCreditScoreRange || application.creditScore;
+    pushField("contact.personal_credit_score_range", ficoValue);
+    
+    pushField("contact.date_of_birth", application.dateOfBirth);
+    pushField("contact.ownership_percentage", application.ownership);
 
-    if (application.requestedAmount) {
-      customFields.push({ key: "amount_requested", value: application.requestedAmount.toString() });
-    }
-
-    if (application.useOfFunds) {
-      customFields.push({ key: "purpose_of_funds", value: application.useOfFunds });
-    }
-
-    if (application.fundingUrgency) {
-      customFields.push({ key: "funding_urgency", value: application.fundingUrgency });
-    }
-
-    if (application.referralSource) {
-      customFields.push({ key: "referral_source", value: application.referralSource });
-    }
-
-    if (application.currentStep) {
-      customFields.push({ key: "application_current_step", value: application.currentStep.toString() });
-    }
-
-    if (application.isFullApplicationCompleted !== undefined) {
-      customFields.push({ key: "application_status", value: application.isFullApplicationCompleted ? "Full Application Complete" : "Intake Complete" });
-    }
-
-    // CRITICAL: Include agent view URL for broker access
+    // 4. Application URL - Maps to GHL custom field for agent access
     if (application.agentViewUrl) {
-      customFields.push({ key: "application_view_link", value: application.agentViewUrl });
-    }
-
-    // Full application fields
-    if (application.socialSecurityNumber) {
-      customFields.push({ key: "ssn", value: application.socialSecurityNumber });
-    }
-
-    if (application.dateOfBirth) {
-      customFields.push({ key: "date_of_birth", value: application.dateOfBirth });
-    }
-
-    if (application.ficoScoreExact) {
-      customFields.push({ key: "fico_score_exact", value: application.ficoScoreExact });
-    }
-
-    if (application.doingBusinessAs) {
-      customFields.push({ key: "dba", value: application.doingBusinessAs });
-    }
-
-    if (application.stateOfIncorporation) {
-      customFields.push({ key: "state_of_incorporation", value: application.stateOfIncorporation });
-    }
-
-    if (application.doYouProcessCreditCards) {
-      customFields.push({ key: "processes_credit_cards", value: application.doYouProcessCreditCards });
-    }
-
-    if (application.mcaBalanceAmount) {
-      customFields.push({ key: "current_mca_balance", value: application.mcaBalanceAmount.toString() });
-    }
-
-    if (application.mcaBalanceBankName) {
-      customFields.push({ key: "mca_bank_name", value: application.mcaBalanceBankName });
+       pushField("contact.application_url", application.agentViewUrl);
     }
 
     if (customFields.length > 0) {
       contactData.customFields = customFields;
     }
 
-    // Source tracking
-    contactData.source = "MCA Application Form";
-
     // Tags
     const tags = ["MCA Application"];
     if (application.isFullApplicationCompleted) {
-      tags.push("Full Application Complete");
+      tags.push("Full Application Submitted");
     } else if (application.isCompleted) {
       tags.push("Intake Complete");
     } else {
