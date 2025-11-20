@@ -220,6 +220,16 @@ export default function IntakeForm() {
           minHeight: "600px",
         }}
       >
+        {/* Logo */}
+        <div className="flex justify-center mb-8">
+          <img 
+            src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c1b87657a831f612b5390_Group%2017%20(1).svg" 
+            alt="Today Capital Group" 
+            style={{ height: "60px", width: "auto" }}
+            data-testid="img-logo"
+          />
+        </div>
+
         {/* Progress Bar */}
         <div className="w-full h-1 rounded-full mb-10" style={{ background: "rgba(255,255,255,0.2)" }}>
           <div
