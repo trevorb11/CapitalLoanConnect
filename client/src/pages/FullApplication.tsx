@@ -20,6 +20,7 @@ export default function FullApplication() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [applicationId, setApplicationId] = useState<string | null>(null);
+  const [isCheckingId, setIsCheckingId] = useState(true);
 
   // Check for Application ID
   useEffect(() => {
@@ -29,11 +30,12 @@ export default function FullApplication() {
     } else {
       setApplicationId(savedId);
     }
+    setIsCheckingId(false);
   }, [navigate]);
 
   // Fetch existing data to pre-fill
   const { data: existingData, isLoading } = useQuery<LoanApplication>({
-    queryKey: ["/api/applications", applicationId],
+    queryKey: [`/api/applications/${applicationId}`],
     enabled: !!applicationId,
   });
 
@@ -106,7 +108,7 @@ export default function FullApplication() {
     }
   });
 
-  if (isLoading) {
+  if (isCheckingId || isLoading) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Loader2 className="animate-spin h-8 w-8" />
