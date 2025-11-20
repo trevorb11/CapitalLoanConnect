@@ -10,7 +10,7 @@ interface FullApplicationProps {
   agent?: Agent;
 }
 
-export default function FullApplication({ agent }: FullApplicationProps = {}) {
+export default function FullApplication({ agent }: FullApplicationProps = {} as FullApplicationProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [applicationId, setApplicationId] = useState<string | null>(null);

@@ -8,14 +8,28 @@ import FullApplication from "@/pages/FullApplication";
 import Success from "@/pages/Success";
 import Dashboard from "@/pages/Dashboard";
 import NotFound from "@/pages/not-found";
+import { AGENTS, getAgentByInitials } from "@shared/agents";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={IntakeForm} />
-      <Route path="/application" component={FullApplication} />
+      <Route path="/application">
+        {() => <FullApplication />}
+      </Route>
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
+      
+      {/* Agent-specific application pages */}
+      {AGENTS.map((agent) => (
+        <Route 
+          key={agent.initials} 
+          path={`/${agent.initials}`}
+        >
+          {() => <FullApplication agent={agent} />}
+        </Route>
+      ))}
+      
       <Route component={NotFound} />
     </Switch>
   );
