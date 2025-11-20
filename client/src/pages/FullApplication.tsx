@@ -46,35 +46,13 @@ export default function FullApplication(props?: FullApplicationProps) {
   const [isDrawing, setIsDrawing] = useState(false);
   const hasHydratedSignature = useRef(false);
 
-  // Check for or create Application ID
+  // Check for existing Application ID
   useEffect(() => {
-    const initializeApplication = async () => {
-      const savedId = localStorage.getItem("applicationId");
-      if (savedId) {
-        setApplicationId(savedId);
-      } else {
-        // Create a new application if none exists
-        try {
-          const response = await apiRequest("POST", "/api/applications", {
-            email: "",
-            fullName: "",
-            phone: "",
-            legalBusinessName: "",
-            doingBusinessAs: "",
-            currentStep: 1,
-          });
-          const newApp = await response.json();
-          localStorage.setItem("applicationId", newApp.id);
-          setApplicationId(newApp.id);
-        } catch (error) {
-          console.error("Failed to create application:", error);
-          toast({ title: "Error", description: "Failed to create application", variant: "destructive" });
-        }
-      }
-      setIsCheckingId(false);
-    };
-    
-    initializeApplication();
+    const savedId = localStorage.getItem("applicationId");
+    if (savedId) {
+      setApplicationId(savedId);
+    }
+    setIsCheckingId(false);
   }, []);
 
   // Fetch existing data to pre-fill
@@ -216,7 +194,7 @@ export default function FullApplication(props?: FullApplicationProps) {
     setShowSignatureError(false);
   };
 
-  const goToStep2 = () => {
+  const goToStep2 = async () => {
     // Validate Step 1
     const step1Fields = ['legal_business_name', 'doing_business_as', 'business_start_date', 'ein', 'company_email', 'state_of_incorporation', 'do_you_process_credit_cards', 'industry', 'business_street_address', 'business_csz', 'requested_loan_amount'];
     const isValid = step1Fields.every(field => formData[field] && formData[field].toString().trim() !== '');
@@ -230,6 +208,37 @@ export default function FullApplication(props?: FullApplicationProps) {
     if (!validateCsz(formData.business_csz)) {
       toast({ title: "Invalid Format", description: "City, State, Zip must be in format: City, ST 12345 (state must be 2 letters)", variant: "destructive" });
       return;
+    }
+
+    // Create application if it doesn't exist yet
+    if (!applicationId) {
+      try {
+        const response = await apiRequest("POST", "/api/applications", {
+          email: formData.email || formData.company_email,
+          fullName: formData.full_name,
+          phone: formData.phone,
+          legalBusinessName: formData.legal_business_name,
+          doingBusinessAs: formData.doing_business_as,
+          companyWebsite: formData.company_website,
+          businessStartDate: formData.business_start_date,
+          ein: formData.ein,
+          companyEmail: formData.company_email,
+          stateOfIncorporation: formData.state_of_incorporation,
+          doYouProcessCreditCards: formData.do_you_process_credit_cards,
+          industry: formData.industry,
+          businessStreetAddress: formData.business_street_address,
+          businessCsz: formData.business_csz,
+          requestedAmount: formData.requested_loan_amount.replace(/\D/g, ""),
+          currentStep: 1,
+        });
+        const newApp = await response.json();
+        localStorage.setItem("applicationId", newApp.id);
+        setApplicationId(newApp.id);
+      } catch (error) {
+        console.error("Failed to create application:", error);
+        toast({ title: "Error", description: "Failed to create application. Please try again.", variant: "destructive" });
+        return;
+      }
     }
     
     setCurrentStep(2);
