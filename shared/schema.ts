@@ -52,6 +52,13 @@ export const loanApplications = pgTable("loan_applications", {
   ownerState: text("owner_state"),
   ownerZip: text("owner_zip"),
   businessEmail: text("business_email"),
+  
+  // NEW: Additional fields to match webhook form
+  companyEmail: text("company_email"),
+  businessStreetAddress: text("business_street_address"),
+  businessCsz: text("business_csz"), // Combined City, State, Zip for business
+  ownerCsz: text("owner_csz"), // Combined City, State, Zip for owner
+  personalCreditScoreRange: text("personal_credit_score_range"),
 
   // --- System Fields ---
   agentViewUrl: text("agent_view_url"), // To store the generated PDF link
