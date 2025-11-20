@@ -25,9 +25,11 @@ Preferred communication style: Simple, everyday language.
 
 **State Management**: React Query (@tanstack/react-query) for server state management and API interactions. Local state managed with React hooks for form steps and auto-save status.
 
-**Routing**: Wouter for lightweight client-side routing with two main routes:
-- `/` - Main intake form
+**Routing**: Wouter for lightweight client-side routing with four main routes:
+- `/` - 5-step initial intake form
+- `/application` - 2-step Full Application form (dark gradient design)
 - `/success` - Completion confirmation page
+- `/agent/application/:id` - Agent view for completed applications (no authentication)
 
 **Auto-Save Pattern**: Debounced auto-save functionality that persists form data to the backend as users progress through steps. Visual feedback provided through an auto-save status indicator showing "saving", "saved", or "error" states.
 
@@ -38,7 +40,16 @@ Preferred communication style: Simple, everyday language.
 **API Design**: RESTful endpoints for loan application management:
 - `GET /api/applications/:id` - Retrieve application by ID
 - `POST /api/applications` - Create new application (returns existing incomplete application if user has one)
-- `PUT /api/applications/:id` - Update existing application
+- `PATCH /api/applications/:id` - Update existing application
+- `GET /api/applications` - Get all applications (admin/debugging)
+- `GET /agent/application/:id` - Serve agent view HTML page
+- `GET /api/applications/:id/view` - Get application data for agent view (no auth required)
+
+**Integration Flow**:
+1. User completes intake form → Creates application in database → Syncs to GHL API
+2. User completes full application → Updates database → Syncs to GHL API → Triggers webhooks (non-blocking) → Generates agent view URL
+3. Webhooks fire in background without blocking user response
+4. Agent view URL generated for sharing with loan officers
 
 **Storage Layer**: Abstracted storage interface (`IStorage`) with in-memory implementation (`MemStorage`). Designed to support future database integration with Drizzle ORM and PostgreSQL based on the Drizzle configuration present in the codebase.
 
@@ -49,12 +60,13 @@ Preferred communication style: Simple, everyday language.
 **ORM**: Drizzle ORM configured for PostgreSQL dialect.
 
 **Main Table**: `loan_applications` with comprehensive fields including:
-- Contact information (email, fullName, phone)
-- Business details (businessName, businessType, industry, ein, timeInBusiness)
-- Financial data (monthlyRevenue, averageMonthlyRevenue, creditScore)
+- Contact information (email, fullName, phone, companyEmail)
+- Business details (businessName, businessType, industry, ein, timeInBusiness, legalBusinessName, doingBusinessAs, companyWebsite, businessStartDate, businessCsz, businessStreetAddress)
+- Financial data (monthlyRevenue, averageMonthlyRevenue, creditScore, personalCreditScoreRange, mcaBalance, mcaBalanceAmount)
 - Loan information (requestedAmount, useOfFunds, hasOutstandingLoans, outstandingLoansAmount)
+- Owner information (ownerFullName, ownerSsn, ownerCsz, ownerPercentage, ownerDob)
 - Address details (businessAddress, city, state, zipCode)
-- Metadata (currentStep, isCompleted, ghlContactId, createdAt, updatedAt)
+- Metadata (currentStep, isCompleted, isFullApplicationCompleted, ghlContactId, agentViewUrl, createdAt, updatedAt)
 
 **Validation**: Step-by-step Zod schemas derived from Drizzle schema using `drizzle-zod` for type-safe validation that matches database constraints.
 
@@ -63,6 +75,12 @@ Preferred communication style: Simple, everyday language.
 **Typography**: Inter font family loaded from Google Fonts, chosen for its professional, modern fintech aesthetic.
 
 **Color System**: Implemented using CSS custom properties with HSL values for light mode. Neutral base colors with a primary blue accent (217 91% 35%) inspired by fintech platforms like Stripe and Plaid.
+
+**Full Application Design**: Dark gradient aesthetic (#192F56 to #19112D) with 2-step structure:
+- Step 1: Business Information (legal name, DBA, website, start date, EIN, location, revenue, credit, MCA balance)
+- Step 2: Owner Information (name, SSN, location, ownership %, date of birth)
+- Includes consent checkbox and data validation
+- Success screen with agent view shareable URL
 
 **Spacing**: Tailwind utility classes with consistent spacing scale (2, 4, 6, 8, 12, 16, 20).
 
@@ -75,11 +93,16 @@ Preferred communication style: Simple, everyday language.
 ### Third-Party Services
 
 **GoHighLevel CRM Integration**: 
-- Service class (`GoHighLevelService`) handles contact creation and updates
+- Service class (`GoHighLevelService`) handles contact creation, updates, and webhook submissions
 - Requires `GHL_API_KEY` and `GHL_LOCATION_ID` environment variables
+- **Two-tier integration approach**:
+  - **API Integration**: Creates/updates contacts in GHL using Private Integration Token
+  - **Webhook Integration**: Triggers GHL workflows via webhook endpoints (fire-and-forget, non-blocking)
+- Webhooks sent to both primary GHL endpoint and backup Google Sheets endpoint
 - Gracefully degrades if credentials not configured
 - Syncs loan application data to CRM contacts with custom fields
 - Stores GHL contact ID in loan application record for future reference
+- **Security**: Webhook URLs stored server-side in environment variables, never exposed to browser
 
 **GoHighLevel Field Mappings**:
 
