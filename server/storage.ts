@@ -60,30 +60,10 @@ export class DatabaseStorage implements IStorage {
     const [application] = await db
       .insert(loanApplications)
       .values({
-        email: insertApplication.email || "",
-        fullName: insertApplication.fullName,
-        phone: insertApplication.phone,
-        businessName: insertApplication.businessName,
-        businessType: insertApplication.businessType,
-        industry: insertApplication.industry,
-        ein: insertApplication.ein,
-        timeInBusiness: insertApplication.timeInBusiness,
-        monthlyRevenue: insertApplication.monthlyRevenue,
-        averageMonthlyRevenue: insertApplication.averageMonthlyRevenue,
-        creditScore: insertApplication.creditScore,
-        requestedAmount: insertApplication.requestedAmount,
-        useOfFunds: insertApplication.useOfFunds,
-        hasOutstandingLoans: insertApplication.hasOutstandingLoans,
-        outstandingLoansAmount: insertApplication.outstandingLoansAmount,
-        bankName: insertApplication.bankName,
-        businessAddress: insertApplication.businessAddress,
-        city: insertApplication.city,
-        state: insertApplication.state,
-        zipCode: insertApplication.zipCode,
-        ownership: insertApplication.ownership,
-        currentStep: insertApplication.currentStep || 1,
-        isCompleted: insertApplication.isCompleted || false,
-        ghlContactId: insertApplication.ghlContactId,
+        ...insertApplication,
+        email: insertApplication.email ?? "",
+        currentStep: insertApplication.currentStep ?? 1,
+        isCompleted: insertApplication.isCompleted ?? false,
       })
       .returning();
     return application;
