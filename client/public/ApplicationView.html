@@ -419,18 +419,19 @@
             
             try {
                 // Add logo to PDF (PNG format works reliably with jsPDF)
-                doc.addImage(logoImg, 'PNG', 20, 10, 50, 20);
+                // Adjusted dimensions to maintain proper aspect ratio (50x25 instead of 50x20)
+                doc.addImage(logoImg, 'PNG', 20, 10, 50, 25);
                 
                 // "Business Information" text next to logo
                 doc.setTextColor(...darkNavy);
                 doc.setFontSize(12);
                 doc.setFont('helvetica', 'normal');
-                doc.text('BUSINESS INFORMATION', 75, 25);
+                doc.text('BUSINESS INFORMATION', 75, 27);
                 
                 // Date on right side
                 const dateText = document.getElementById('submissionDate').textContent;
                 doc.setFontSize(10);
-                doc.text(`Date: ${dateText}`, 150, 25);
+                doc.text(`Date: ${dateText}`, 150, 27);
                 
                 continuePDFGeneration(doc, darkNavy, teal);
             } catch (error) {

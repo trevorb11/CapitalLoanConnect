@@ -10,7 +10,8 @@ interface FullApplicationProps {
   agent?: Agent;
 }
 
-export default function FullApplication({ agent }: FullApplicationProps = {} as FullApplicationProps) {
+export default function FullApplication(props?: FullApplicationProps) {
+  const { agent } = props || {};
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [applicationId, setApplicationId] = useState<string | null>(null);
@@ -221,8 +222,8 @@ export default function FullApplication({ agent }: FullApplicationProps = {} as 
     setIsSubmitting(true);
 
     try {
-      // Update database (backend will handle GHL webhooks)
-      await apiRequest("PATCH", `/api/applications/${applicationId}`, {
+      // Build the payload
+      const payload: any = {
         legalBusinessName: formData.legal_business_name,
         doingBusinessAs: formData.doing_business_as,
         companyWebsite: formData.company_website,
@@ -249,13 +250,17 @@ export default function FullApplication({ agent }: FullApplicationProps = {} as 
         ownership: formData.ownership_percentage,
         applicantSignature: signature || persistedSignature,
         isFullApplicationCompleted: true,
-        // Agent tracking
-        ...(agent && {
-          agentName: agent.name,
-          agentEmail: agent.email,
-          agentGhlId: agent.ghlId,
-        }),
-      });
+      };
+
+      // Only include agent fields if agent prop exists
+      if (agent) {
+        payload.agentName = agent.name;
+        payload.agentEmail = agent.email;
+        payload.agentGhlId = agent.ghlId;
+      }
+
+      // Update database (backend will handle GHL webhooks)
+      await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
 
       setIsSubmitting(false);
       setShowSuccess(true);
