@@ -238,6 +238,16 @@ export default function FullApplication() {
         maxWidth: '900px',
         margin: '2rem auto',
       }}>
+        {/* Logo */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
+          <img 
+            src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c1b87657a831f612b5390_Group%2017%20(1).svg" 
+            alt="Today Capital Group" 
+            style={{ height: '60px', width: 'auto' }}
+            data-testid="img-logo"
+          />
+        </div>
+
         {/* Progress Bar */}
         <div style={{
           width: '100%',
