@@ -1,18 +1,17 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { CheckCircle, Mail, Phone, Clock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 export default function Success() {
+  const [, navigate] = useLocation();
   const [applicationId, setApplicationId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Get application ID before clearing
+    // Get application ID - keep it in localStorage so user can view the application
     const savedId = localStorage.getItem("applicationId");
     setApplicationId(savedId);
-    
-    // Clear application ID from localStorage on success
-    localStorage.removeItem("applicationId");
   }, []);
 
   return (
@@ -86,26 +85,13 @@ export default function Success() {
 
           <div className="space-y-4">
             {applicationId && (
-              <div className="flex gap-3 justify-center flex-wrap">
-                <a
-                  href={`/applications/${applicationId}?pdf=true`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-testid="button-download-full-pdf"
-                  className="h-12 px-8 bg-primary text-primary-foreground rounded-md font-semibold hover:bg-primary/90 transition-all no-underline flex items-center justify-center"
-                >
-                  Download Full PDF
-                </a>
-                <a
-                  href={`/applications/${applicationId}?pdf=true&redacted=true`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-testid="button-download-redacted-pdf"
-                  className="h-12 px-8 bg-muted text-muted-foreground rounded-md font-semibold hover:bg-muted/80 transition-all no-underline flex items-center justify-center"
-                >
-                  Download Redacted PDF
-                </a>
-              </div>
+              <Button
+                onClick={() => navigate("/application")}
+                className="h-12 px-8"
+                data-testid="button-view-application"
+              >
+                View Application
+              </Button>
             )}
             
             <p className="text-sm text-muted-foreground">
@@ -115,7 +101,10 @@ export default function Success() {
               </a>
             </p>
             <Button
-              onClick={() => window.location.href = "/"}
+              onClick={() => {
+                localStorage.removeItem("applicationId");
+                navigate("/");
+              }}
               variant="outline"
               className="h-12 px-8"
               data-testid="button-newhome"
