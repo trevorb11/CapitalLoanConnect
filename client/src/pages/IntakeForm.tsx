@@ -1,4 +1,4 @@
-import { useState, forwardRef } from "react";
+import { useState, forwardRef, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -49,6 +49,10 @@ export default function IntakeForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showConsentError, setShowConsentError] = useState(false);
+  const [signature, setSignature] = useState<string>("");
+  const [showSignatureError, setShowSignatureError] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
 
   // Step 1 form
   const form1 = useForm<Step1Data>({
@@ -128,12 +132,84 @@ export default function IntakeForm() {
         ownerCsz: data.ownerCsz,
         dateOfBirth: data.ownerDob,
         ownerPercentage: data.ownerPercentage,
+        applicantSignature: signature,
         isCompleted: true,
         currentStep: 2,
       }) as Response;
       return response.json();
     },
   });
+
+  // Signature pad functions
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if ('touches' in e) {
+      e.preventDefault();
+    }
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    setIsDrawing(true);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.nativeEvent.offsetX;
+    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.nativeEvent.offsetY;
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    
+    if ('touches' in e) {
+      e.preventDefault();
+    }
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.nativeEvent.offsetX;
+    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.nativeEvent.offsetY;
+    
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = '#1B2E4D';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  };
+
+  const stopDrawing = (e?: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (e && 'touches' in e) {
+      e.preventDefault();
+    }
+    
+    setIsDrawing(false);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const signatureData = canvas.toDataURL('image/png');
+    setSignature(signatureData);
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setSignature("");
+    setShowSignatureError(false);
+  };
 
   const handleStep1Submit = async (data: Step1Data) => {
     try {
@@ -149,9 +225,16 @@ export default function IntakeForm() {
 
   const handleStep2Submit = async (data: Step2Data) => {
     setShowConsentError(false);
+    setShowSignatureError(false);
     
     if (!data.consent) {
       setShowConsentError(true);
+      return;
+    }
+
+    if (!signature) {
+      setShowSignatureError(true);
+      window.scrollTo(0, document.body.scrollHeight);
       return;
     }
 
@@ -326,6 +409,57 @@ export default function IntakeForm() {
                 {showConsentError && (
                   <div className="mt-2 p-2 rounded" style={{ background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)" }} data-testid="error-consent">
                     <p className="text-sm m-0" style={{ color: "#ef4444" }}>Please accept the terms to continue</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Signature Pad */}
+              <div className="my-8">
+                <label className="block text-sm font-semibold mb-3" style={{ color: "rgba(255,255,255,0.9)" }}>
+                  Applicant Signature *
+                </label>
+                <div className="relative">
+                  <canvas
+                    ref={canvasRef}
+                    width={800}
+                    height={200}
+                    data-testid="canvas-signature"
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                    className="w-full rounded-lg cursor-crosshair"
+                    style={{
+                      height: "150px",
+                      border: showSignatureError ? "2px solid rgba(239, 68, 68, 0.6)" : "2px solid rgba(255,255,255,0.2)",
+                      background: "white",
+                      touchAction: "none",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={clearSignature}
+                    data-testid="button-clear-signature"
+                    className="absolute top-2 right-2 px-4 py-2 rounded text-sm font-medium transition-all"
+                    style={{
+                      background: "rgba(239, 68, 68, 0.8)",
+                      color: "white",
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 1)"}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.8)"}
+                  >
+                    Clear
+                  </button>
+                </div>
+                <p className="text-xs mt-2 mb-0" style={{ color: "rgba(255,255,255,0.6)" }}>
+                  Please sign above using your mouse or finger
+                </p>
+                {showSignatureError && (
+                  <div className="mt-2 p-2 rounded" style={{ background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)" }} data-testid="error-signature">
+                    <p className="text-sm m-0" style={{ color: "#ef4444" }}>Please sign the application before submitting</p>
                   </div>
                 )}
               </div>
