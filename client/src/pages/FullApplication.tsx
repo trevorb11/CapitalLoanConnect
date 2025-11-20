@@ -6,6 +6,23 @@ import { apiRequest } from "@/lib/queryClient";
 import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
 
+// US States list
+const US_STATES = [
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"
+];
+
+// Validation helper for CSZ format
+const validateCsz = (csz: string) => {
+  const parts = csz.split(',').map(p => p.trim());
+  if (parts.length < 2) return false;
+  const statePart = parts[1].trim().split(/\s+/)[0];
+  return statePart.length === 2 && /^[A-Z]{2}$/.test(statePart);
+};
+
 interface FullApplicationProps {
   agent?: Agent;
 }
@@ -188,6 +205,12 @@ export default function FullApplication(props?: FullApplicationProps) {
       toast({ title: "Missing Information", description: "Please fill in all required fields.", variant: "destructive" });
       return;
     }
+
+    // Validate CSZ format
+    if (!validateCsz(formData.business_csz)) {
+      toast({ title: "Invalid Format", description: "City, State, Zip must be in format: City, ST 12345 (state must be 2 letters)", variant: "destructive" });
+      return;
+    }
     
     setCurrentStep(2);
     window.scrollTo(0, 0);
@@ -203,6 +226,12 @@ export default function FullApplication(props?: FullApplicationProps) {
     
     if (!isValid) {
       toast({ title: "Missing Information", description: "Please fill in all required fields.", variant: "destructive" });
+      return;
+    }
+
+    // Validate owner CSZ format
+    if (!validateCsz(formData.owner_csz)) {
+      toast({ title: "Invalid Format", description: "City, State, Zip must be in format: City, ST 12345 (state must be 2 letters)", variant: "destructive" });
       return;
     }
 
@@ -470,7 +499,7 @@ export default function FullApplication(props?: FullApplicationProps) {
               <InputGroup label="Business Start Date" name="business_start_date" type="date" value={formData.business_start_date || ''} onChange={handleInputChange} required />
               <InputGroup label="Tax ID or EIN" name="ein" placeholder="XX-XXXXXXX" value={formData.ein || ''} onChange={handleInputChange} required />
               <InputGroup label="Company Email" name="company_email" type="email" value={formData.company_email || ''} onChange={handleInputChange} required />
-              <InputGroup label="State of Incorporation" name="state_of_incorporation" placeholder="e.g. CA" maxLength={2} value={formData.state_of_incorporation || ''} onChange={handleInputChange} required />
+              <SelectGroup label="State of Incorporation" name="state_of_incorporation" value={formData.state_of_incorporation || ''} onChange={handleInputChange} options={US_STATES} required />
               <SelectGroup label="Do You Process Credit Cards?" name="do_you_process_credit_cards" value={formData.do_you_process_credit_cards || ''} onChange={handleInputChange} options={["Yes", "No"]} required />
               <InputGroup label="Industry Type" name="industry" value={formData.industry || ''} onChange={handleInputChange} required />
               <InputGroup label="Business Street Address" name="business_street_address" value={formData.business_street_address || ''} onChange={handleInputChange} required />
