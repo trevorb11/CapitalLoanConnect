@@ -7,6 +7,7 @@ import IntakeForm from "@/pages/IntakeForm";
 import FullApplication from "@/pages/FullApplication";
 import Success from "@/pages/Success";
 import Dashboard from "@/pages/Dashboard";
+import AgentSelector from "@/pages/AgentSelector";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -19,6 +20,7 @@ function Router() {
       <Route path="/intake" component={IntakeForm} />
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/agents" component={AgentSelector} />
       
       {/* Agent-specific application pages */}
       {AGENTS.map((agent) => (

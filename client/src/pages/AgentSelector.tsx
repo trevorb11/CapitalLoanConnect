@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useNavigate } from "wouter";
+import { useLocation } from "wouter";
 import { AGENTS } from "@shared/agents";
 
 export default function AgentSelector() {
   const [selectedAgent, setSelectedAgent] = useState("");
-  const navigate = useNavigate();
+  const [, navigate] = useLocation();
 
   const handleAgentSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const initials = e.target.value;
