@@ -491,8 +491,8 @@
     function continuePDFGeneration(doc, darkNavy, teal, isRedacted = false) {
         let yPos = 50;
         
-        // Fields to redact (hide in redacted version)
-        const redactedFields = ['full_name', 'email', 'phone', 'social_security_number', 'date_of_birth', 'owner_address1', 'owner_address2', 'owner_city', 'owner_state', 'owner_zip'];
+        // Fields to redact (hide in redacted version) - only email and phone
+        const redactedFields = ['email', 'phone'];
         
         // Helper functions
         const addSectionHeader = (title) => {
