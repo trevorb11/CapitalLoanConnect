@@ -417,7 +417,7 @@ export default function IntakeForm() {
                 <InputField label="Home Address Line 1" {...form2.register("address1")} required data-testid="input-address-1" />
                 <InputField label="Address Line 2" {...form2.register("address2")} data-testid="input-address-2" />
                 <InputField label="City, State, Zip (Owner)" {...form2.register("ownerCsz")} placeholder="City, ST 12345" required data-testid="input-owner-csz" />
-                <InputField label="Date of Birth" type="date" {...form2.register("ownerDob")} required data-testid="input-dob" />
+                <InputField label="Date of Birth" type="date" {...form2.register("ownerDob")} maxLength="10" required data-testid="input-dob" />
                 <InputField label="Ownership %" type="number" {...form2.register("ownerPercentage")} placeholder="100" required data-testid="input-ownership-percentage" />
               </div>
 

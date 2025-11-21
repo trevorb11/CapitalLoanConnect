@@ -590,7 +590,7 @@ export default function FullApplication(props?: FullApplicationProps) {
               <InputGroup label="Home Address Line 1" name="address1" value={formData.address1 || ''} onChange={handleInputChange} required />
               <InputGroup label="Address Line 2" name="address2" value={formData.address2 || ''} onChange={handleInputChange} />
               <InputGroup label="City, State, Zip (Owner)" name="owner_csz" placeholder="City, ST 12345" value={formData.owner_csz || ''} onChange={handleInputChange} required />
-              <InputGroup label="Date of Birth" name="date_of_birth" type="date" value={formData.date_of_birth || ''} onChange={handleInputChange} required />
+              <InputGroup label="Date of Birth" name="date_of_birth" type="date" maxLength="10" value={formData.date_of_birth || ''} onChange={handleInputChange} required />
               <InputGroup label="Ownership %" name="ownership_percentage" type="number" placeholder="100" value={formData.ownership_percentage || ''} onChange={handleInputChange} required />
             </div>
 
