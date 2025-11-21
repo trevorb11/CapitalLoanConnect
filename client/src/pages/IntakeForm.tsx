@@ -383,7 +383,12 @@ export default function IntakeForm() {
                 <InputField label="Doing Business As (DBA)" {...form1.register("doingBusinessAs")} required data-testid="input-dba" />
                 <InputField label="Company Website" {...form1.register("companyWebsite")} data-testid="input-company-website" />
                 <InputField label="Business Start Date" type="date" {...form1.register("businessStartDate")} required data-testid="input-business-start-date" />
-                <InputField label="Tax ID or EIN" {...form1.register("ein")} placeholder="XX-XXXXXXX" required data-testid="input-ein" />
+                <InputField label="Tax ID or EIN" {...form1.register("ein", {
+                  onChange: (e) => {
+                    const formatted = formatEin(e.target.value);
+                    form1.setValue("ein", formatted);
+                  }
+                })} placeholder="XX-XXXXXXX" required data-testid="input-ein" />
                 <InputField label="Company Email" type="email" {...form1.register("companyEmail")} required data-testid="input-company-email" />
                 <SelectField label="State of Incorporation" {...form1.register("stateOfIncorporation")} required data-testid="select-state-incorporation">
                   <option value="">Select a state...</option>
@@ -425,7 +430,12 @@ export default function IntakeForm() {
 
             <form onSubmit={form2.handleSubmit(handleStep2Submit)}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <InputField label="Social Security Number" {...form2.register("ownerSsn")} placeholder="XXX-XX-XXXX" required data-testid="input-ssn" />
+                <InputField label="Social Security Number" {...form2.register("ownerSsn", {
+                  onChange: (e) => {
+                    const formatted = formatSsn(e.target.value);
+                    form2.setValue("ownerSsn", formatted);
+                  }
+                })} placeholder="XXX-XX-XXXX" required data-testid="input-ssn" />
                 <InputField label="FICO Score (Estimate)" type="number" {...form2.register("personalCreditScoreRange")} placeholder="e.g. 700" data-testid="input-fico-score" />
                 <InputField label="Home Address Line 1" {...form2.register("address1")} required data-testid="input-address-1" />
                 <InputField label="Address Line 2" {...form2.register("address2")} data-testid="input-address-2" />
