@@ -79,21 +79,10 @@ export default function FullApplication(props?: FullApplicationProps) {
   }, []);
 
   // Fetch existing data to pre-fill
-  const { data: existingData, isLoading, error } = useQuery<LoanApplication>({
+  const { data: existingData, isLoading } = useQuery<LoanApplication>({
     queryKey: [`/api/applications/${applicationId}`],
     enabled: !!applicationId,
-    retry: false, // Don't retry on 404
   });
-
-  // Handle 404 errors - clear localStorage if application doesn't exist
-  useEffect(() => {
-    if (error && applicationId) {
-      console.log("Application not found in database, clearing localStorage");
-      localStorage.removeItem("applicationId");
-      setApplicationId(null);
-      setIsCheckingId(false);
-    }
-  }, [error, applicationId]);
 
   // Pre-fill form data from intake
   useEffect(() => {
