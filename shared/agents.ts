@@ -40,13 +40,13 @@ export const AGENTS: Agent[] = [
     initials: "rw",
     name: "Ryan Wilcox",
     email: "ryan@todaycapitalgroup.com",
-    ghlId: "",
+    ghlId: "wlaFqqBVxwucMUnogZG9",
   },
   {
     initials: "sr",
     name: "Sage Robinson",
     email: "sage@todaycapitalgroup.com",
-    ghlId: "",
+    ghlId: "GxuuCIet62gbUyac6acX",
   },
 ];
 
