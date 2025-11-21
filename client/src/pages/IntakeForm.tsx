@@ -49,7 +49,7 @@ const formatPhone = (value: string) => {
 
 // Validation schemas for each step
 const step1Schema = z.object({
-  email: z.string().email("Invalid email"),
+  email: z.string().email("Please enter a valid email address"),
   fullName: z.string().min(1, "Required"),
   phone: z.string().min(1, "Required"),
   legalBusinessName: z.string().min(1, "Required"),
@@ -57,7 +57,7 @@ const step1Schema = z.object({
   companyWebsite: z.string().optional(),
   businessStartDate: z.string().min(1, "Required"),
   ein: z.string().min(1, "Required").refine((val) => val.replace(/\D/g, '').length === 9, "EIN must be 9 digits"),
-  companyEmail: z.string().email("Invalid email"),
+  companyEmail: z.string().email("Please enter a valid email address"),
   stateOfIncorporation: z.string().min(1, "Required"),
   doYouProcessCreditCards: z.enum(["Yes", "No"]),
   industry: z.string().min(1, "Required"),

@@ -46,6 +46,12 @@ const formatPhone = (value: string) => {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 };
 
+// Validate email format
+const isValidEmail = (email: string) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
 interface FullApplicationProps {
   agent?: Agent;
 }
@@ -68,6 +74,7 @@ export default function FullApplication(props?: FullApplicationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const hasHydratedSignature = useRef(false);
+  const [emailErrors, setEmailErrors] = useState<{ company_email?: string; email?: string }>({});
 
   // Check for existing Application ID
   useEffect(() => {
@@ -153,6 +160,17 @@ export default function FullApplication(props?: FullApplicationProps) {
     // Apply formatting for Phone
     if (e.target.name === 'phone') {
       value = formatPhone(value);
+    }
+    
+    // Validate email fields
+    if (e.target.name === 'company_email' || e.target.name === 'email') {
+      if (value.trim() && !isValidEmail(value)) {
+        setEmailErrors({ ...emailErrors, [e.target.name]: "Please enter a valid email address" });
+      } else {
+        const newErrors = { ...emailErrors };
+        delete newErrors[e.target.name as 'company_email' | 'email'];
+        setEmailErrors(newErrors);
+      }
     }
     
     setFormData({ ...formData, [e.target.name]: value });
@@ -244,6 +262,19 @@ export default function FullApplication(props?: FullApplicationProps) {
       return;
     }
 
+    // Check for email validation errors
+    if (emailErrors.company_email) {
+      toast({ title: "Invalid Email", description: emailErrors.company_email, variant: "destructive" });
+      return;
+    }
+
+    // Validate company email format
+    if (formData.company_email && !isValidEmail(formData.company_email)) {
+      setEmailErrors({ ...emailErrors, company_email: "Please enter a valid email address" });
+      toast({ title: "Invalid Email", description: "Please enter a valid email address for Company Email", variant: "destructive" });
+      return;
+    }
+
     // Validate CSZ format
     if (!validateCsz(formData.business_csz)) {
       toast({ title: "Invalid Format", description: "City, State, Zip must be in format: City, ST 12345 (state must be 2 letters)", variant: "destructive" });
@@ -295,6 +326,19 @@ export default function FullApplication(props?: FullApplicationProps) {
     
     if (!isValid) {
       toast({ title: "Missing Information", description: "Please fill in all required fields.", variant: "destructive" });
+      return;
+    }
+
+    // Check for email validation errors
+    if (emailErrors.email) {
+      toast({ title: "Invalid Email", description: emailErrors.email, variant: "destructive" });
+      return;
+    }
+
+    // Validate owner email format
+    if (formData.email && !isValidEmail(formData.email)) {
+      setEmailErrors({ ...emailErrors, email: "Please enter a valid email address" });
+      toast({ title: "Invalid Email", description: "Please enter a valid email address for Business Email (Owner)", variant: "destructive" });
       return;
     }
 
@@ -548,7 +592,7 @@ export default function FullApplication(props?: FullApplicationProps) {
               <InputGroup label="Company Website" name="company_website" value={formData.company_website || ''} onChange={handleInputChange} />
               <InputGroup label="Business Start Date" name="business_start_date" type="date" value={formData.business_start_date || ''} onChange={handleInputChange} required />
               <InputGroup label="Tax ID or EIN" name="ein" placeholder="XX-XXXXXXX" value={formData.ein || ''} onChange={handleInputChange} required />
-              <InputGroup label="Company Email" name="company_email" type="email" value={formData.company_email || ''} onChange={handleInputChange} required />
+              <InputGroup label="Company Email" name="company_email" type="email" value={formData.company_email || ''} onChange={handleInputChange} required error={emailErrors.company_email} />
               <SelectGroup label="State of Incorporation" name="state_of_incorporation" value={formData.state_of_incorporation || ''} onChange={handleInputChange} options={US_STATES} required />
               <SelectGroup label="Do You Process Credit Cards?" name="do_you_process_credit_cards" value={formData.do_you_process_credit_cards || ''} onChange={handleInputChange} options={["Yes", "No"]} required />
               <InputGroup label="Industry Type" name="industry" value={formData.industry || ''} onChange={handleInputChange} required />
@@ -598,7 +642,7 @@ export default function FullApplication(props?: FullApplicationProps) {
               marginBottom: '2rem',
             }}>
               <InputGroup label="Full Name" name="full_name" value={formData.full_name || ''} onChange={handleInputChange} required />
-              <InputGroup label="Business Email (Owner)" name="email" type="email" value={formData.email || ''} onChange={handleInputChange} required />
+              <InputGroup label="Business Email (Owner)" name="email" type="email" value={formData.email || ''} onChange={handleInputChange} required error={emailErrors.email} />
               <InputGroup label="Social Security Number" name="social_security_" placeholder="XXX-XX-XXXX" value={formData.social_security_ || ''} onChange={handleInputChange} required />
               <InputGroup label="Mobile Phone" name="phone" type="tel" value={formData.phone || ''} onChange={handleInputChange} required />
               <InputGroup label="FICO Score (Estimate)" name="personal_credit_score_range" type="number" placeholder="e.g. 700" value={formData.personal_credit_score_range || ''} onChange={handleInputChange} />
@@ -723,7 +767,7 @@ export default function FullApplication(props?: FullApplicationProps) {
 }
 
 // Helper Components
-function InputGroup({ label, name, type = "text", placeholder = "", maxLength, value, onChange, required = false }: any) {
+function InputGroup({ label, name, type = "text", placeholder = "", maxLength, value, onChange, required = false, error }: any) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       <label style={{ fontSize: '0.9rem', fontWeight: 500, color: 'rgba(255,255,255,0.9)' }}>
@@ -741,7 +785,7 @@ function InputGroup({ label, name, type = "text", placeholder = "", maxLength, v
         style={{
           width: '100%',
           padding: '0.85rem 1rem',
-          border: '2px solid rgba(255,255,255,0.2)',
+          border: error ? '2px solid rgba(239, 68, 68, 0.6)' : '2px solid rgba(255,255,255,0.2)',
           background: 'rgba(255,255,255,0.1)',
           color: 'white',
           borderRadius: '8px',
@@ -750,6 +794,11 @@ function InputGroup({ label, name, type = "text", placeholder = "", maxLength, v
           transition: 'all 0.2s ease',
         }}
       />
+      {error && (
+        <p data-testid={`error-${name}`} style={{ color: '#ef4444', fontSize: '0.85rem', margin: '0', marginTop: '-0.25rem' }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
