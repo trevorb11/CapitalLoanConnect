@@ -373,12 +373,7 @@ export default function IntakeForm() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <InputField label="Your Full Name" {...form1.register("fullName")} required data-testid="input-full-name-step1" />
                 <InputField label="Your Email" type="email" {...form1.register("email")} required data-testid="input-email-step1" />
-                <InputField label="Your Phone" type="tel" {...form1.register("phone", {
-                  onChange: (e) => {
-                    const formatted = formatPhone(e.target.value);
-                    form1.setValue("phone", formatted);
-                  }
-                })} required data-testid="input-phone-step1" />
+                <InputField label="Your Phone" type="tel" {...form1.register("phone")} required data-testid="input-phone-step1" />
                 <InputField label="Legal Company Name" {...form1.register("legalBusinessName")} required data-testid="input-legal-business-name" />
                 <InputField label="Doing Business As (DBA)" {...form1.register("doingBusinessAs")} required data-testid="input-dba" />
                 <InputField label="Company Website" {...form1.register("companyWebsite")} data-testid="input-company-website" />
