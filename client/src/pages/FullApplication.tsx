@@ -424,31 +424,33 @@ export default function FullApplication(props?: FullApplicationProps) {
             Our underwriting team is reviewing your details. You will receive an update via email within 24-48 hours.
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '0' }}>
-            <a
-              href={`/agent/application/${applicationId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="button-view-application"
-              style={{
-                width: '270px',
-                background: 'white',
-                color: '#192F56',
-                padding: '1rem 2rem',
-                borderRadius: '8px',
-                border: 'none',
-                fontWeight: 600,
-                fontSize: '1.1rem',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                textDecoration: 'none',
-                textAlign: 'center',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              View Application
-            </a>
+            {agent && (
+              <a
+                href={`/agent/application/${applicationId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="button-view-application"
+                style={{
+                  width: '270px',
+                  background: 'white',
+                  color: '#192F56',
+                  padding: '1rem 2rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontWeight: 600,
+                  fontSize: '1.1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  textDecoration: 'none',
+                  textAlign: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                View Application
+              </a>
+            )}
             <a
               href="https://www.todaycapitalgroup.com"
               target="_blank"
