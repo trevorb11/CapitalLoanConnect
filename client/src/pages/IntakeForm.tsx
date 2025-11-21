@@ -39,6 +39,14 @@ const formatSsn = (value: string) => {
   return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
 };
 
+// Format Phone to XXX-XXX-XXXX
+const formatPhone = (value: string) => {
+  const digits = value.replace(/\D/g, '').slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+};
+
 // Validation schemas for each step
 const step1Schema = z.object({
   email: z.string().email("Invalid email"),
@@ -365,7 +373,12 @@ export default function IntakeForm() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <InputField label="Your Full Name" {...form1.register("fullName")} required data-testid="input-full-name-step1" />
                 <InputField label="Your Email" type="email" {...form1.register("email")} required data-testid="input-email-step1" />
-                <InputField label="Your Phone" type="tel" {...form1.register("phone")} required data-testid="input-phone-step1" />
+                <InputField label="Your Phone" type="tel" {...form1.register("phone", {
+                  onChange: (e) => {
+                    const formatted = formatPhone(e.target.value);
+                    form1.setValue("phone", formatted);
+                  }
+                })} required data-testid="input-phone-step1" />
                 <InputField label="Legal Company Name" {...form1.register("legalBusinessName")} required data-testid="input-legal-business-name" />
                 <InputField label="Doing Business As (DBA)" {...form1.register("doingBusinessAs")} required data-testid="input-dba" />
                 <InputField label="Company Website" {...form1.register("companyWebsite")} data-testid="input-company-website" />
