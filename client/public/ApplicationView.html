@@ -392,11 +392,11 @@
                     signatureImg.style.display = 'block';
                     signaturePlaceholder.style.display = 'none';
                 } else {
-                    // It's a checkbox signature - display stamp
+                    // It's a checkbox signature (ISO timestamp) - display stamp
                     signaturePlaceholder.innerHTML = `
                         <div style="padding: 20px; text-align: left;">
                             <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px;">Digitally Signed by: ${data.fullName || 'Unknown'}</div>
-                            <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">Date: ${new Date(data.applicantSignature).toISOString()}</div>
+                            <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">Date: ${data.applicantSignature}</div>
                             <div style="font-size: 13px; font-style: italic; color: #6b7280;">Electronic Consent Accepted</div>
                         </div>
                     `;
@@ -628,7 +628,7 @@
                 
                 // Add signature (image or stamp)
                 if (isCheckboxSignature) {
-                    // Checkbox signature - display stamp
+                    // Checkbox signature - display stamp using the stored ISO timestamp
                     const stampY = signatureStartY + 10;
                     doc.setFontSize(11);
                     doc.setFont('helvetica', 'bold');
@@ -638,8 +638,10 @@
                     doc.setFontSize(9);
                     doc.setFont('helvetica', 'normal');
                     doc.setTextColor(100, 100, 100);
-                    const currentDate = new Date().toISOString();
-                    doc.text(`Date: ${currentDate}`, 120, stampY + 6);
+                    // Extract timestamp from the placeholder's innerHTML
+                    const timestampMatch = signaturePlaceholder.innerHTML.match(/Date: ([^<]+)</);
+                    const timestamp = timestampMatch ? timestampMatch[1] : new Date().toISOString();
+                    doc.text(`Date: ${timestamp}`, 120, stampY + 6);
                     
                     doc.setFont('helvetica', 'italic');
                     doc.text('Electronic Consent Accepted', 120, stampY + 11);

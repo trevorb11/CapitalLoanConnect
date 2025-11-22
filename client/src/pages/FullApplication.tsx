@@ -267,8 +267,8 @@ export default function FullApplication(props?: FullApplicationProps) {
 
     if (isFinal) {
         payload.isFullApplicationCompleted = true;
-        // We use a placeholder signature for the "Click to Sign" flow
-        payload.applicantSignature = "SIGNED_VIA_CHECKBOX_CONSENT"; 
+        // Save ISO timestamp for checkbox signature
+        payload.applicantSignature = new Date().toISOString(); 
     }
 
     if (agent) {
