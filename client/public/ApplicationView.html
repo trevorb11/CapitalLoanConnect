@@ -383,11 +383,25 @@
 
             // Display signature if available
             if (data.applicantSignature) {
-                const signatureImg = document.getElementById('signature_image');
                 const signaturePlaceholder = document.getElementById('signature_placeholder');
-                signatureImg.src = data.applicantSignature;
-                signatureImg.style.display = 'block';
-                signaturePlaceholder.style.display = 'none';
+                
+                if (data.applicantSignature.startsWith('data:image')) {
+                    // It's a drawn signature (legacy support)
+                    const signatureImg = document.getElementById('signature_image');
+                    signatureImg.src = data.applicantSignature;
+                    signatureImg.style.display = 'block';
+                    signaturePlaceholder.style.display = 'none';
+                } else {
+                    // It's a checkbox signature - display stamp
+                    signaturePlaceholder.innerHTML = `
+                        <div style="padding: 20px; text-align: left;">
+                            <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px;">Digitally Signed by: ${data.fullName || 'Unknown'}</div>
+                            <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">Date: ${new Date(data.applicantSignature).toISOString()}</div>
+                            <div style="font-size: 13px; font-style: italic; color: #6b7280;">Electronic Consent Accepted</div>
+                        </div>
+                    `;
+                    signaturePlaceholder.style.display = 'block';
+                }
             }
         } catch (error) {
             console.error('Error loading application:', error);
@@ -580,8 +594,19 @@
         yPos += 25;
         
         // Signature Section - Two column layout
-        const signatureImg = document.getElementById('signature_image');
-        if (signatureImg && signatureImg.src && signatureImg.style.display !== 'none' && signatureImg.complete) {
+        // Get signature data from the DOM
+        const signatureData = {
+            src: document.getElementById('signature_image').src,
+            isVisible: document.getElementById('signature_image').style.display !== 'none',
+            fullName: document.getElementById('full_name').textContent,
+            timestamp: null
+        };
+        
+        // Check if it's a checkbox signature by looking at the placeholder content
+        const signaturePlaceholder = document.getElementById('signature_placeholder');
+        const isCheckboxSignature = signaturePlaceholder && signaturePlaceholder.style.display !== 'none' && signaturePlaceholder.innerHTML.includes('Digitally Signed by');
+        
+        if ((signatureData.src && signatureData.isVisible) || isCheckboxSignature) {
             try {
                 // LEFT COLUMN: Disclosure text
                 doc.setFontSize(7);
@@ -591,7 +616,7 @@
                 const splitDisclosure = doc.splitTextToSize(disclosureText, 95);
                 doc.text(splitDisclosure, 20, yPos);
                 
-                // RIGHT COLUMN: Signature header and image
+                // RIGHT COLUMN: Signature header
                 const signatureStartY = yPos;
                 doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
@@ -601,8 +626,27 @@
                 doc.setLineWidth(0.5);
                 doc.line(120, signatureStartY + 2, 175, signatureStartY + 2);
                 
-                // Add signature image in right column
-                doc.addImage(signatureImg.src, 'PNG', 120, signatureStartY + 8, 70, 21);
+                // Add signature (image or stamp)
+                if (isCheckboxSignature) {
+                    // Checkbox signature - display stamp
+                    const stampY = signatureStartY + 10;
+                    doc.setFontSize(11);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(`Digitally Signed by: ${signatureData.fullName}`, 120, stampY);
+                    
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(100, 100, 100);
+                    const currentDate = new Date().toISOString();
+                    doc.text(`Date: ${currentDate}`, 120, stampY + 6);
+                    
+                    doc.setFont('helvetica', 'italic');
+                    doc.text('Electronic Consent Accepted', 120, stampY + 11);
+                } else if (signatureData.src && signatureData.isVisible) {
+                    // Drawn signature (legacy support)
+                    doc.addImage(signatureData.src, 'PNG', 120, signatureStartY + 8, 70, 21);
+                }
             } catch (error) {
                 console.error('Failed to add signature to PDF:', error);
             }
