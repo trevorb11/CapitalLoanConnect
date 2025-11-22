@@ -32,65 +32,75 @@ const INDUSTRIES = [
 
 // --- FORM CONFIGURATION ---
 
+// Added 'autoComplete' and 'mode' properties for dummy-proofing
 const FORM_STEPS = [
   // --- SECTION 1: BUSINESS INFO ---
-  { name: "legal_business_name", label: "What is the Legal Name of your company?", type: "text", required: true, placeholder: "e.g. Acme Corp LLC" },
-  { name: "doing_business_as", label: "Do you have a DBA? If not, re-enter Legal Name.", type: "text", required: true, placeholder: "Doing Business As" },
-  { name: "company_email", label: "What is the primary Company Email address?", type: "email", required: true, placeholder: "company@example.com" },
+  { name: "legal_business_name", label: "What is the Legal Name of your company?", type: "text", required: true, placeholder: "e.g. Acme Corp LLC", autoComplete: "organization" },
+  { name: "doing_business_as", label: "Do you have a DBA? If not, re-enter Legal Name.", type: "text", required: true, placeholder: "Doing Business As", autoComplete: "off" },
+
+  { name: "company_email", label: "What is the primary Company Email address?", type: "email", required: true, placeholder: "company@example.com", autoComplete: "email" },
+
   { name: "business_start_date", label: "When did the business start?", type: "date", required: true },
-  { name: "ein", label: "What is the business Tax ID (EIN)?", type: "text", required: true, placeholder: "XX-XXXXXXX", mask: "ein" },
-
-  // UPDATED: Industry Selection Style
+  { name: "ein", label: "What is the business Tax ID (EIN)?", type: "text", required: true, placeholder: "XX-XXXXXXX", mask: "ein", mode: "numeric" }, // numeric mode
   { name: "industry", label: "Choose your business industry", type: "industry_select", required: true },
-
-  { name: "company_website", label: "Company Website (Optional)", type: "text", required: false, placeholder: "www.example.com" },
+  { name: "company_website", label: "Company Website (Optional)", type: "text", required: false, placeholder: "www.example.com", autoComplete: "url" },
   { name: "state_of_incorporation", label: "State of Incorporation", type: "select", options: US_STATES, required: true },
   { name: "do_you_process_credit_cards", label: "Does the business process credit cards?", type: "select", options: ["Yes", "No"], required: true },
-
-  // UPDATED: Grouped Address Step (Business)
   { name: "business_address_group", label: "Please enter your business address", type: "address_group", prefix: "business", required: true },
 
-  { name: "requested_loan_amount", label: "How much financing are you requesting?", type: "number", required: true, placeholder: "$" },
-  { name: "mca_balance_amount", label: "Current MCA Balance Amount (if any)", type: "number", required: false, placeholder: "$0" },
+  // Changed type to 'currency' for better user experience
+  { name: "requested_loan_amount", label: "How much financing are you requesting?", type: "currency", required: true, placeholder: "$0.00", mode: "numeric" },
+  { name: "mca_balance_amount", label: "Current MCA Balance Amount (if any)", type: "currency", required: false, placeholder: "$0.00", mode: "numeric" },
+
   { name: "mca_balance_bank_name", label: "MCA Balance Bank Name (if any)", type: "text", required: false, placeholder: "N/A" },
 
   // --- SECTION 2: OWNER INFO ---
-  { name: "full_name", label: "Business Owner Full Name", type: "text", required: true },
-  { name: "email", label: "Owner's Direct Email", type: "email", required: true, placeholder: "owner@example.com" },
-  { name: "phone", label: "Mobile Phone Number", type: "tel", required: true, placeholder: "XXX-XXX-XXXX", mask: "phone" },
-  { name: "social_security_", label: "Social Security Number", type: "text", required: true, placeholder: "XXX-XX-XXXX", mask: "ssn" },
-  { name: "personal_credit_score_range", label: "Estimated FICO Score", type: "number", required: false, placeholder: "e.g. 720" },
-
-  // UPDATED: Grouped Address Step (Owner)
+  { name: "full_name", label: "Business Owner Full Name", type: "text", required: true, autoComplete: "name" },
+  { name: "email", label: "Owner's Direct Email", type: "email", required: true, placeholder: "owner@example.com", autoComplete: "email" },
+  { name: "phone", label: "Mobile Phone Number", type: "tel", required: true, placeholder: "XXX-XXX-XXXX", mask: "phone", mode: "tel", autoComplete: "tel" },
+  { name: "social_security_", label: "Social Security Number", type: "text", required: true, placeholder: "XXX-XX-XXXX", mask: "ssn", mode: "numeric" },
+  { name: "personal_credit_score_range", label: "Estimated FICO Score", type: "number", required: false, placeholder: "e.g. 720", mode: "numeric" },
   { name: "owner_address_group", label: "Please enter your home address", type: "address_group", prefix: "owner", required: true },
+  { name: "date_of_birth", label: "Date of Birth", type: "date", required: true, autoComplete: "bday" },
+  { name: "ownership_percentage", label: "Ownership Percentage (%)", type: "number", required: true, placeholder: "100", mode: "numeric" },
 
-  { name: "date_of_birth", label: "Date of Birth", type: "date", required: true },
-  { name: "ownership_percentage", label: "Ownership Percentage (%)", type: "number", required: true, placeholder: "100" },
-
-  // UPDATED: Simplified Signature Step
+  // --- FINAL STEP ---
   { name: "signature_step", label: "Click to Sign & Get Funded", type: "simple_signature" }
 ];
 
-// --- UTILITIES ---
+// --- UTILITIES & FORMATTERS ---
+
+// Strict numeric stripper: Removes anything that isn't a number
+const stripNonNumeric = (val: string) => val.replace(/\D/g, '');
 
 const formatEin = (value: string) => {
-  const digits = value.replace(/\D/g, '').slice(0, 9);
+  const digits = stripNonNumeric(value).slice(0, 9);
   if (digits.length <= 2) return digits;
   return `${digits.slice(0, 2)}-${digits.slice(2)}`;
 };
 
 const formatSsn = (value: string) => {
-  const digits = value.replace(/\D/g, '').slice(0, 9);
+  const digits = stripNonNumeric(value).slice(0, 9);
   if (digits.length <= 3) return digits;
   if (digits.length <= 5) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
   return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
 };
 
 const formatPhone = (value: string) => {
-  const digits = value.replace(/\D/g, '').slice(0, 10);
+  const digits = stripNonNumeric(value).slice(0, 10);
   if (digits.length <= 3) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+};
+
+const formatCurrency = (value: string) => {
+  const digits = stripNonNumeric(value);
+  if (!digits) return "";
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0
+  }).format(Number(digits));
 };
 
 const isValidEmail = (email: string) => {
@@ -130,7 +140,6 @@ export default function FullApplication(props?: FullApplicationProps) {
   // Hydrate Form
   useEffect(() => {
     if (existingData) {
-      // Helper to parse CSZ string back into components
       const parseCsz = (csz: string) => {
         if (!csz) return { city: '', state: '', zip: '' };
         try {
@@ -156,29 +165,27 @@ export default function FullApplication(props?: FullApplicationProps) {
         doing_business_as: existingData.doingBusinessAs || existingData.businessName || "",
         company_website: existingData.companyWebsite || "",
         business_start_date: existingData.businessStartDate || "",
-        ein: existingData.ein || "",
+        ein: existingData.ein ? formatEin(existingData.ein) : "",
         company_email: existingData.companyEmail || existingData.businessEmail || existingData.email || "",
         state_of_incorporation: existingData.stateOfIncorporation || existingData.state || "",
         do_you_process_credit_cards: existingData.doYouProcessCreditCards || "",
         industry: existingData.industry || "",
 
-        // Breakout Business Address
         business_street: existingData.businessStreetAddress || existingData.businessAddress || "",
-        business_unit: "", // Usually not stored separately in old schema, default empty
+        business_unit: "", 
         business_city: bAddr.city,
         business_state: bAddr.state,
         business_zip: bAddr.zip,
 
-        requested_loan_amount: existingData.requestedAmount ? existingData.requestedAmount.toString() : "",
-        mca_balance_amount: existingData.mcaBalanceAmount ? existingData.mcaBalanceAmount.toString() : "",
+        requested_loan_amount: existingData.requestedAmount ? formatCurrency(existingData.requestedAmount.toString()) : "",
+        mca_balance_amount: existingData.mcaBalanceAmount ? formatCurrency(existingData.mcaBalanceAmount.toString()) : "",
         mca_balance_bank_name: existingData.mcaBalanceBankName || "",
         full_name: existingData.fullName || "",
         email: existingData.email || "",
-        social_security_: existingData.socialSecurityNumber || "",
-        phone: existingData.phone || "",
+        social_security_: existingData.socialSecurityNumber ? formatSsn(existingData.socialSecurityNumber) : "",
+        phone: existingData.phone ? formatPhone(existingData.phone) : "",
         personal_credit_score_range: existingData.personalCreditScoreRange || existingData.ficoScoreExact || existingData.creditScore || "",
 
-        // Breakout Owner Address
         address1: existingData.ownerAddress1 || existingData.businessAddress || "",
         address2: existingData.ownerAddress2 || "",
         owner_city: oAddr.city,
@@ -199,18 +206,38 @@ export default function FullApplication(props?: FullApplicationProps) {
     let value = e.target.value;
     const name = e.target.name;
 
-    // Check if this name belongs to a step with a mask
     const step = FORM_STEPS.find(s => s.name === name);
+
+    // --- DUMMY PROOFING LOGIC ---
+
+    // 1. Strict Masking (SSN, EIN, Phone)
     if (step?.mask === 'ssn') value = formatSsn(value);
     if (step?.mask === 'ein') value = formatEin(value);
     if (step?.mask === 'phone') value = formatPhone(value);
+
+    // 2. Currency Formatting (prevents typing letters, adds commas)
+    if (step?.type === 'currency') value = formatCurrency(value);
+
+    // 3. Strict Zip Code (5 Digits Only)
+    if (name.includes('zip')) {
+        value = stripNonNumeric(value).slice(0, 5);
+    }
+
+    // 4. Generic Numeric Fields (Credit Score, Ownership %) - No letters allowed
+    if (step?.type === 'number') {
+        // If it's a number type, we generally want to strip non-numeric, 
+        // unless it's a float, but these fields are integers
+        value = stripNonNumeric(value);
+
+        // Ownership cap
+        if (name === 'ownership_percentage' && Number(value) > 100) value = "100";
+    }
 
     setFormData((prev: any) => ({ ...prev, [name]: value }));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-        // Prevent default and move next, unless it's a textarea or we are at end
         if (currentStepIndex < FORM_STEPS.length - 1) {
              e.preventDefault();
              handleNext();
@@ -219,10 +246,10 @@ export default function FullApplication(props?: FullApplicationProps) {
   };
 
   const saveProgress = async (isFinal = false) => {
-    // Construct legacy fields from broken-out inputs
     const businessStreet = formData.business_unit 
         ? `${formData.business_street} ${formData.business_unit}` 
         : formData.business_street;
+
     const businessCsz = (formData.business_city && formData.business_state) 
         ? `${formData.business_city}, ${formData.business_state} ${formData.business_zip}`
         : undefined;
@@ -241,25 +268,20 @@ export default function FullApplication(props?: FullApplicationProps) {
       stateOfIncorporation: formData.state_of_incorporation,
       doYouProcessCreditCards: formData.do_you_process_credit_cards,
       industry: formData.industry,
-
-      // Mapped Address Fields
       businessStreetAddress: businessStreet,
       businessCsz: businessCsz,
-
-      requestedAmount: formData.requested_loan_amount ? formData.requested_loan_amount.replace(/\D/g, "") : undefined,
-      mcaBalanceAmount: formData.mca_balance_amount ? formData.mca_balance_amount.replace(/\D/g, "") : undefined,
+      // Strip non-numeric for DB saving
+      requestedAmount: formData.requested_loan_amount ? stripNonNumeric(formData.requested_loan_amount) : undefined,
+      mcaBalanceAmount: formData.mca_balance_amount ? stripNonNumeric(formData.mca_balance_amount) : undefined,
       mcaBalanceBankName: formData.mca_balance_bank_name,
       fullName: formData.full_name,
       email: formData.email,
       socialSecurityNumber: formData.social_security_,
       phone: formData.phone,
       personalCreditScoreRange: formData.personal_credit_score_range,
-
-      // Mapped Owner Address Fields
-      ownerAddress1: formData.address1, // mapped from inputs in render
+      ownerAddress1: formData.address1, 
       ownerAddress2: formData.address2,
       ownerCsz: ownerCsz,
-
       dateOfBirth: formData.date_of_birth,
       ownership: formData.ownership_percentage,
       currentStep: currentStepIndex > 10 ? 2 : 1 
@@ -267,8 +289,7 @@ export default function FullApplication(props?: FullApplicationProps) {
 
     if (isFinal) {
         payload.isFullApplicationCompleted = true;
-        // Save ISO timestamp for checkbox signature
-        payload.applicantSignature = new Date().toISOString(); 
+        payload.applicantSignature = "SIGNED_VIA_CHECKBOX_CONSENT"; 
     }
 
     if (agent) {
@@ -287,7 +308,7 @@ export default function FullApplication(props?: FullApplicationProps) {
         await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
       }
     } catch (error) {
-      console.error("Auto-save failed", error);
+      console.warn("Save attempt failed", error);
     }
   };
 
@@ -295,8 +316,6 @@ export default function FullApplication(props?: FullApplicationProps) {
     const currentConfig = FORM_STEPS[currentStepIndex];
 
     // --- Validation ---
-
-    // 1. Standard Fields
     if (currentConfig.required && !['address_group', 'simple_signature', 'industry_select'].includes(currentConfig.type)) {
       const value = formData[currentConfig.name];
       if (!value || value.toString().trim() === "") {
@@ -305,48 +324,48 @@ export default function FullApplication(props?: FullApplicationProps) {
       }
     }
 
-    // 2. Email Validation
+    // Strict Email Check
     if (currentConfig.type === 'email' && !isValidEmail(formData[currentConfig.name])) {
-      toast({ title: "Invalid Email", description: "Please enter a valid email address.", variant: "destructive" });
+      toast({ title: "Typo Detected", description: "That doesn't look like a valid email address.", variant: "destructive" });
       return;
     }
 
-    // 3. Address Group Validation
+    // Strict Zip Code Check
     if (currentConfig.type === 'address_group') {
         const prefix = currentConfig.prefix === 'business' ? 'business' : 'owner';
-        // Owner uses address1/address2 keys, Business uses business_street/unit keys
+        const zip = formData[`${prefix}_zip`];
         const street = prefix === 'business' ? formData.business_street : formData.address1;
         const city = formData[`${prefix}_city`];
         const state = formData[`${prefix}_state`];
-        const zip = formData[`${prefix}_zip`];
 
         if (!street || !city || !state || !zip) {
-            toast({ title: "Missing Address", description: "Please complete the full address.", variant: "destructive" });
+            toast({ title: "Incomplete Address", description: "Please fill out all address fields.", variant: "destructive" });
             return;
+        }
+        if (zip.length !== 5) {
+             toast({ title: "Invalid Zip Code", description: "Zip code must be exactly 5 digits.", variant: "destructive" });
+             return;
         }
     }
 
-    // 4. Industry Validation
     if (currentConfig.type === 'industry_select' && !formData.industry) {
         toast({ title: "Required", description: "Please select an industry.", variant: "destructive" });
         return;
     }
 
-    // 5. Signature/Final Step
     if (currentConfig.type === 'simple_signature') {
         if (!consentChecked) {
-            toast({ title: "Required", description: "You must agree to the terms to proceed.", variant: "destructive" });
+            toast({ title: "Action Required", description: "Please check the box to accept the terms.", variant: "destructive" });
             return;
         }
         setIsSubmitting(true);
-        await saveProgress(true); // Final Save
+        await saveProgress(true); 
         setIsSubmitting(false);
         setShowSuccess(true);
         return;
     }
 
-    // --- Save & Proceed ---
-    setIsSubmitting(true);
+    setIsSubmitting(true); 
     await saveProgress(false);
     setIsSubmitting(false);
     setCurrentStepIndex(prev => prev + 1);
@@ -357,8 +376,6 @@ export default function FullApplication(props?: FullApplicationProps) {
       setCurrentStepIndex(prev => prev - 1);
     }
   };
-
-  // --- Render Helpers ---
 
   if (isCheckingId) return <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">Loading...</div>;
 
@@ -409,10 +426,9 @@ export default function FullApplication(props?: FullApplicationProps) {
   );
 
   const renderAddressGroup = (prefix: 'business' | 'owner') => {
-      // Key Mapping for the two different address types in formData
       const isBiz = prefix === 'business';
       const streetKey = isBiz ? 'business_street' : 'address1';
-      const unitKey = isBiz ? 'business_unit' : 'address2'; // mapping address2 to unit for owner
+      const unitKey = isBiz ? 'business_unit' : 'address2';
       const cityKey = `${prefix}_city`;
       const stateKey = `${prefix}_state`;
       const zipKey = `${prefix}_zip`;
@@ -422,22 +438,29 @@ export default function FullApplication(props?: FullApplicationProps) {
             <div style={{ display: 'grid', gridTemplateColumns: '20% 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                      <input name={unitKey} placeholder="Unit" value={formData[unitKey] || ''} onChange={handleInputChange} 
+                        autoComplete={isBiz ? "off" : "address-line2"}
                         style={{ width: '100%', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', color: '#1f2937', fontSize: '1rem' }} />
                 </div>
                 <div>
                      <input name={streetKey} placeholder="Street*" value={formData[streetKey] || ''} onChange={handleInputChange} 
+                        autoComplete={isBiz ? "street-address" : "address-line1"}
                         style={{ width: '100%', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', color: '#1f2937', fontSize: '1rem' }} />
                 </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                 <input name={cityKey} placeholder="City*" value={formData[cityKey] || ''} onChange={handleInputChange} 
+                    autoComplete={isBiz ? "address-level2" : "address-level2"}
                     style={{ width: '100%', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', color: '#1f2937', fontSize: '1rem' }} />
+
                 <select name={stateKey} value={formData[stateKey] || ''} onChange={handleInputChange} 
+                    autoComplete={isBiz ? "address-level1" : "address-level1"}
                     style={{ width: '100%', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', color: '#1f2937', fontSize: '1rem', appearance: 'none', background: 'white' }}>
                     <option value="" disabled>State*</option>
                     {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
+
                 <input name={zipKey} placeholder="Zip*" value={formData[zipKey] || ''} onChange={handleInputChange} 
+                    maxLength={5} inputMode="numeric" autoComplete="postal-code"
                     style={{ width: '100%', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', color: '#1f2937', fontSize: '1rem' }} />
             </div>
             <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: '#6b7280' }}>*Required</p>
@@ -476,12 +499,10 @@ export default function FullApplication(props?: FullApplicationProps) {
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', backgroundColor: '#f0f2f5', minHeight: '100vh', padding: '20px', display: 'flex', flexDirection: 'column' }}>
-        {/* Logo */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
             <img src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c1b87657a831f612b5390_Group%2017%20(1).svg" alt="Today Capital" style={{ height: '50px' }} />
         </div>
 
-        {/* Step Indicator (Top Circles for Signature Page, Bar for others) */}
         {currentStep.type === 'simple_signature' ? (
              <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
                 {FORM_STEPS.map((_, idx) => (
@@ -494,12 +515,10 @@ export default function FullApplication(props?: FullApplicationProps) {
             </div>
         )}
 
-        {/* Main Content Container */}
         <div style={{ 
             width: '100%', 
             maxWidth: '800px', 
             margin: '0 auto',
-            // Conditional Styling: Simple Clean background for signature, Blue Card for inputs
             background: currentStep.type === 'simple_signature' ? 'transparent' : 'linear-gradient(to bottom, #192F56 0%, #19112D 100%)',
             borderRadius: '15px', 
             boxShadow: currentStep.type === 'simple_signature' ? 'none' : '0 12px 30px rgba(25, 47, 86, 0.3)',
@@ -510,7 +529,6 @@ export default function FullApplication(props?: FullApplicationProps) {
             flexDirection: 'column'
         }}>
 
-            {/* Heading */}
             <h1 style={{ 
                 fontSize: '2.5rem', fontWeight: 'bold', textAlign: 'center', marginBottom: '1.5rem', lineHeight: 1.2,
                 color: currentStep.type === 'simple_signature' ? '#1f2937' : 'white'
@@ -518,15 +536,11 @@ export default function FullApplication(props?: FullApplicationProps) {
                 {currentStep.label}
             </h1>
 
-            {/* Input Rendering Logic */}
             <div style={{ flex: 1 }}>
                 {currentStep.type === 'industry_select' && renderIndustrySelect()}
-
                 {currentStep.type === 'address_group' && renderAddressGroup(currentStep.prefix as any)}
-
                 {currentStep.type === 'simple_signature' && renderSignatureStep()}
 
-                {/* Standard Inputs */}
                 {!['industry_select', 'address_group', 'simple_signature'].includes(currentStep.type) && (
                     <div style={{ maxWidth: '500px', margin: '0 auto' }}>
                          {currentStep.type === 'select' ? (
@@ -534,6 +548,7 @@ export default function FullApplication(props?: FullApplicationProps) {
                                 name={currentStep.name}
                                 value={formData[currentStep.name] || ''}
                                 onChange={handleInputChange}
+                                autoComplete={currentStep.autoComplete}
                                 style={{ 
                                     width: '100%', padding: '1.2rem', fontSize: '1.1rem', borderRadius: '8px', 
                                     border: '2px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)', color: 'white'
@@ -545,11 +560,15 @@ export default function FullApplication(props?: FullApplicationProps) {
                         ) : (
                             <input
                                 name={currentStep.name}
-                                type={currentStep.type}
+                                // If type is currency, allow 'text' input but restrict keys via handleInputChange
+                                type={currentStep.type === 'currency' ? 'text' : currentStep.type}
                                 value={formData[currentStep.name] || ''}
                                 onChange={handleInputChange}
                                 onKeyDown={handleKeyDown}
                                 placeholder={currentStep.placeholder}
+                                // Enforce numeric keypad on mobile if mode is set
+                                inputMode={currentStep.mode as any} 
+                                autoComplete={currentStep.autoComplete}
                                 autoFocus
                                 style={{ 
                                     width: '100%', padding: '1.2rem', fontSize: '1.1rem', borderRadius: '8px', 
@@ -561,7 +580,6 @@ export default function FullApplication(props?: FullApplicationProps) {
                 )}
             </div>
 
-            {/* Footer Navigation (Hidden for Signature Step) */}
             {currentStep.type !== 'simple_signature' && (
                 <div style={{ padding: '2rem 0 0 0', marginTop: '2rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <button 
@@ -595,7 +613,6 @@ export default function FullApplication(props?: FullApplicationProps) {
             )}
         </div>
         <style>{`
-            /* Scrollbar Styling for Industry List */
             ::-webkit-scrollbar { width: 8px; }
             ::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); }
             ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); borderRadius: 4px; }
