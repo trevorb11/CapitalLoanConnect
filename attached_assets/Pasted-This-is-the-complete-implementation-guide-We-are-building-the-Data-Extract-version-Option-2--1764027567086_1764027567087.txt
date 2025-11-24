@@ -1,0 +1,396 @@
+This is the complete implementation guide. We are building the **"Data Extract"** version (Option 2), where we pull transaction data to instantly calculate their revenue and approval odds. This is faster, cheaper, and provides immediate value to the user compared to just downloading PDFs.
+
+### **Phase 1: Setup & Configuration**
+
+**1. Install Dependencies**
+In your Replit shell (Tools \> Shell), run:
+
+```bash
+npm install plaid react-plaid-link
+```
+
+**2. Environment Variables**
+Add these to your Replit Secrets (Tools \> Secrets):
+
+  * `PLAID_CLIENT_ID`: (Get this from your Plaid Dashboard)
+  * `PLAID_SECRET`: (Get this from your Plaid Dashboard)
+  * `PLAID_ENV`: `sandbox` (Use 'sandbox' for testing, 'production' when live)
+
+-----
+
+### **Phase 2: Backend Implementation**
+
+#### **1. Update Database Schema (`shared/schema.ts`)**
+
+We need to store the `accessToken` securely so we can fetch their data later (e.g., for the lender) without asking them to log in again.
+
+```typescript
+// ... existing imports
+import { pgTable, text, varchar, decimal, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+
+// ... existing tables ...
+
+// NEW: Table to store Plaid connection details
+export const plaidItems = pgTable("plaid_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemId: text("item_id").notNull(),
+  accessToken: text("access_token").notNull(),
+  institutionName: text("institution_name"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// UPDATED: Funding Analysis table to store the calculated results
+export const fundingAnalyses = pgTable("funding_analyses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  businessName: text("business_name"),
+  email: text("email"),
+  
+  // Calculated Metrics from Plaid
+  calculatedMonthlyRevenue: decimal("calculated_monthly_revenue", { precision: 12, scale: 2 }),
+  calculatedAvgBalance: decimal("calculated_avg_balance", { precision: 12, scale: 2 }),
+  negativeDaysCount: integer("negative_days_count"),
+  
+  // The "Report"
+  analysisResult: jsonb("analysis_result"), // Storing the full recommendation object
+  plaidItemId: text("plaid_item_id"), // Link to the token
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPlaidItemSchema = createInsertSchema(plaidItems);
+export const insertAnalysisSchema = createInsertSchema(fundingAnalyses);
+```
+
+#### **2. Create Plaid Service (`server/services/plaid.ts`)**
+
+Create this new file. This contains the "Underwriting Logic" that reads the bank transaction history.
+
+```typescript
+import { Configuration, PlaidApi, PlaidEnvironments, CountryCode, Products } from 'plaid';
+
+const configuration = new Configuration({
+  basePath: PlaidEnvironments[process.env.PLAID_ENV || 'sandbox'],
+  baseOptions: {
+    headers: {
+      'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
+      'PLAID-SECRET': process.env.PLAID_SECRET,
+    },
+  },
+});
+
+export const plaidClient = new PlaidApi(configuration);
+
+export class PlaidService {
+  // 1. Create Link Token (Frontend needs this to open the widget)
+  async createLinkToken(userId: string) {
+    const response = await plaidClient.linkTokenCreate({
+      user: { client_user_id: userId },
+      client_name: 'Today Capital Group',
+      products: [Products.Transactions], // We only need transactions for analysis
+      country_codes: [CountryCode.Us],
+      language: 'en',
+    });
+    return response.data;
+  }
+
+  // 2. Exchange Public Token for Access Token (Save this to DB)
+  async exchangePublicToken(publicToken: string) {
+    const response = await plaidClient.itemPublicTokenExchange({
+      public_token: publicToken,
+    });
+    return response.data; // Contains access_token and item_id
+  }
+
+  // 3. THE MAGIC: Fetch Transactions & Analyze
+  async analyzeFinancials(accessToken: string) {
+    // Fetch last 12 months of data
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date();
+    startDate.setFullYear(startDate.getFullYear() - 1);
+    const startDateStr = startDate.toISOString().split('T')[0];
+
+    const response = await plaidClient.transactionsGet({
+      access_token: accessToken,
+      start_date: startDateStr,
+      end_date: endDate,
+    });
+
+    const transactions = response.data.transactions;
+    const accounts = response.data.accounts;
+
+    // --- UNDERWRITING LOGIC ---
+    
+    // 1. Calculate Total Revenue (Sum of deposits)
+    // Plaid: Positive amount = Withdrawal, Negative amount = Deposit (usually)
+    // BUT verify account type. Usually for Depository accounts, negative is inflow.
+    let totalDeposits = 0;
+    let negativeDays = 0;
+    
+    // Calculate simplified revenue (Absolute value of negative transactions)
+    transactions.forEach((txn) => {
+      if (txn.amount < 0) {
+        totalDeposits += Math.abs(txn.amount);
+      }
+    });
+
+    const monthlyRevenue = totalDeposits / 12;
+
+    // 2. Calculate Average Balance (from available current balance data)
+    const totalCurrentBalance = accounts.reduce((acc, account) => acc + (account.balances.current || 0), 0);
+    
+    // 3. Generate Recommendations
+    const recommendations = {
+      sba: { status: "Low", reason: "Requires higher consistent daily balances." },
+      loc: { status: "Low", reason: "Revenue is strong, but cash buffers are low." },
+      mca: { status: "High", reason: "You have strong consistent deposits, making you a perfect fit." }
+    };
+
+    // Simple Rule Engine
+    if (monthlyRevenue > 25000 && totalCurrentBalance > 5000) {
+        recommendations.sba.status = "Medium";
+        recommendations.sba.reason = "Revenue is strong enough, but we need to verify 2 years of history.";
+    }
+    if (monthlyRevenue > 50000) {
+        recommendations.loc.status = "High";
+        recommendations.loc.reason = "Your cash flow supports a healthy Line of Credit.";
+    }
+
+    return {
+      metrics: {
+        monthlyRevenue,
+        avgBalance: totalCurrentBalance, // Simplified for this demo
+        negativeDays: 0 // Placeholder: Requires daily balance history endpoint for accuracy
+      },
+      recommendations
+    };
+  }
+}
+
+export const plaidService = new PlaidService();
+```
+
+#### **3. Update Server Routes (`server/routes.ts`)**
+
+Add these endpoints to handle the frontend requests.
+
+```typescript
+// ... existing imports
+import { plaidService } from "./services/plaid";
+import { plaidItems, fundingAnalyses } from "@shared/schema";
+
+// ... inside registerRoutes function ...
+
+  // 1. Generate Link Token
+  app.post("/api/plaid/create-link-token", async (req, res) => {
+    try {
+      // In a real app, use the actual user ID from session
+      const tokenData = await plaidService.createLinkToken("user-session-id");
+      res.json(tokenData);
+    } catch (error) {
+      console.error("Plaid Create Token Error:", error);
+      res.status(500).json({ error: "Failed to initialize Plaid" });
+    }
+  });
+
+  // 2. Handle Successful Link & Analyze
+  app.post("/api/plaid/exchange-token", async (req, res) => {
+    try {
+      const { publicToken, metadata, businessName, email } = req.body;
+
+      // A. Exchange Token
+      const tokenResponse = await plaidService.exchangePublicToken(publicToken);
+      
+      // B. Save Access Token (CRITICAL: This allows you to pull statements later for lenders)
+      await db.insert(plaidItems).values({
+        itemId: tokenResponse.item_id,
+        accessToken: tokenResponse.access_token,
+        institutionName: metadata.institution.name,
+      });
+
+      // C. Run Analysis immediately
+      const analysis = await plaidService.analyzeFinancials(tokenResponse.access_token);
+
+      // D. Save Lead & Results
+      await db.insert(fundingAnalyses).values({
+        businessName,
+        email,
+        calculatedMonthlyRevenue: analysis.metrics.monthlyRevenue.toString(),
+        calculatedAvgBalance: analysis.metrics.avgBalance.toString(),
+        analysisResult: analysis.recommendations,
+        plaidItemId: tokenResponse.item_id
+      });
+
+      // E. Return results to frontend
+      res.json(analysis);
+
+    } catch (error) {
+      console.error("Plaid Exchange Error:", error);
+      res.status(500).json({ error: "Failed to analyze bank data" });
+    }
+  });
+```
+
+-----
+
+### **Phase 3: Frontend Implementation**
+
+#### **Updated Page: `client/src/pages/FundingAnalysis.tsx`**
+
+This page now replaces the manual "Monthly Revenue" inputs with the Plaid button.
+
+```tsx
+import { useState, useEffect, useCallback } from "react";
+import { usePlaidLink } from "react-plaid-link";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Loader2, CheckCircle2, TrendingUp, Building2, Lock } from "lucide-react";
+
+export default function FundingAnalysis() {
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [step, setStep] = useState<'input' | 'analyzing' | 'results'>('input');
+  const [results, setResults] = useState<any>(null);
+  const [formData, setFormData] = useState({ businessName: "", email: "" });
+
+  // 1. Fetch Link Token on mount
+  useEffect(() => {
+    const createToken = async () => {
+      const res = await apiRequest("POST", "/api/plaid/create-link-token");
+      const data = await res.json();
+      setLinkToken(data.link_token);
+    };
+    createToken();
+  }, []);
+
+  // 2. Handle Plaid Success
+  const onSuccess = useCallback(async (publicToken: string, metadata: any) => {
+    setStep('analyzing');
+    
+    try {
+      const res = await apiRequest("POST", "/api/plaid/exchange-token", {
+        publicToken,
+        metadata,
+        ...formData
+      });
+      const data = await res.json();
+      setResults(data);
+      setStep('results');
+    } catch (err) {
+      console.error(err);
+      alert("Analysis failed. Please try again.");
+      setStep('input');
+    }
+  }, [formData]);
+
+  // 3. Initialize Plaid Hook
+  const { open, ready } = usePlaidLink({
+    token: linkToken,
+    onSuccess,
+  });
+
+  // --- RENDER LOGIC ---
+
+  if (step === 'analyzing') {
+    return (
+      <div className="min-h-screen bg-[#192F56] flex flex-col items-center justify-center text-white p-4">
+        <Loader2 className="w-16 h-16 animate-spin text-[#5FBFB8] mb-4" />
+        <h2 className="text-2xl font-bold mb-2">Analyzing Bank Data...</h2>
+        <p className="text-white/70">Calculating revenue, daily balances, and approval odds.</p>
+      </div>
+    );
+  }
+
+  if (step === 'results' && results) {
+    const { metrics, recommendations } = results;
+    return (
+      <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-[#192F56]">Funding Eligibility Report</h1>
+            <div className="flex justify-center gap-4 mt-4 text-sm text-gray-600">
+                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full">Verified Revenue: ${Math.round(metrics.monthlyRevenue).toLocaleString()}/mo</span>
+                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full">Avg Balance: ${Math.round(metrics.avgBalance).toLocaleString()}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <ResultCard title="SBA Loans" data={recommendations.sba} icon={<Building2 className="w-6 h-6" />} />
+            <ResultCard title="Line of Credit" data={recommendations.loc} icon={<TrendingUp className="w-6 h-6" />} />
+            <ResultCard title="Working Capital" data={recommendations.mca} icon={<CheckCircle2 className="w-6 h-6" />} />
+          </div>
+
+          <div className="bg-white p-8 rounded-xl shadow-sm border text-center">
+            <h2 className="text-2xl font-bold text-[#192F56] mb-4">We have your data. Ready to fund?</h2>
+            <p className="text-gray-600 mb-6">Since you connected your bank, we can fast-track your application. No need to upload statements manually.</p>
+            <Button size="lg" className="bg-[#192F56] hover:bg-[#2a4575] text-white px-8 py-6 text-lg" onClick={() => window.location.href = "/full-application"}>
+              Finalize Application
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center p-4">
+      <Card className="w-full max-w-lg shadow-xl border-0">
+        <CardHeader className="bg-[#192F56] text-white rounded-t-xl p-8 text-center">
+          <CardTitle className="text-2xl">Analyze My Business</CardTitle>
+          <p className="text-white/70 mt-2">Connect your primary business account to see instant funding offers.</p>
+        </CardHeader>
+        <CardContent className="p-8 space-y-6">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Business Name</label>
+              <Input 
+                value={formData.businessName}
+                onChange={(e) => setFormData(prev => ({...prev, businessName: e.target.value}))}
+                placeholder="e.g. Acme Corp" 
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Email Address</label>
+              <Input 
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({...prev, email: e.target.value}))}
+                placeholder="you@company.com" 
+              />
+            </div>
+
+            <div className="pt-4">
+                <Button 
+                    onClick={() => open()} 
+                    disabled={!ready || !formData.businessName || !formData.email}
+                    className="w-full bg-[#5FBFB8] hover:bg-[#4ca8a1] text-white py-6 text-lg font-semibold flex items-center justify-center gap-2"
+                >
+                    <Lock className="w-5 h-5" />
+                    Connect Bank & Analyze
+                </Button>
+                <p className="text-xs text-center text-gray-400 mt-3">
+                    Secure connection via Plaid. We do not store your login credentials.
+                </p>
+            </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ResultCard({ title, data, icon }: any) {
+  const color = data.status === "High" ? "bg-green-50 border-green-200 text-green-700" : 
+                data.status === "Medium" ? "bg-yellow-50 border-yellow-200 text-yellow-700" : 
+                "bg-red-50 border-red-200 text-red-700";
+  
+  return (
+    <div className={`border rounded-xl p-6 ${color}`}>
+      <div className="flex justify-between items-start mb-4">
+        <h3 className="font-bold text-lg">{title}</h3>
+        {icon}
+      </div>
+      <div className="text-3xl font-bold mb-2">{data.status} Odds</div>
+      <p className="text-sm opacity-90">{data.reason}</p>
+    </div>
+  );
+}
+```

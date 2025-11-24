@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, integer, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -167,6 +167,47 @@ export const fullApplicationSchema = z.object({
 });
 
 export type FullApplicationData = z.infer<typeof fullApplicationSchema>;
+
+// Plaid Items - Store access tokens for bank connections
+export const plaidItems = pgTable("plaid_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemId: text("item_id").notNull(),
+  accessToken: text("access_token").notNull(),
+  institutionName: text("institution_name"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Funding Analyses - Store calculated results from Plaid data
+export const fundingAnalyses = pgTable("funding_analyses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  businessName: text("business_name"),
+  email: text("email"),
+  
+  // Calculated Metrics from Plaid
+  calculatedMonthlyRevenue: decimal("calculated_monthly_revenue", { precision: 12, scale: 2 }),
+  calculatedAvgBalance: decimal("calculated_avg_balance", { precision: 12, scale: 2 }),
+  negativeDaysCount: integer("negative_days_count"),
+  
+  // The "Report" - Storing the full recommendation object
+  analysisResult: jsonb("analysis_result"),
+  plaidItemId: text("plaid_item_id"), // Link to the token
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPlaidItemSchema = createInsertSchema(plaidItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertFundingAnalysisSchema = createInsertSchema(fundingAnalyses).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPlaidItem = z.infer<typeof insertPlaidItemSchema>;
+export type PlaidItem = typeof plaidItems.$inferSelect;
+export type InsertFundingAnalysis = z.infer<typeof insertFundingAnalysisSchema>;
+export type FundingAnalysis = typeof fundingAnalyses.$inferSelect;
 
 // User schema for authentication (if needed)
 export const users = pgTable("users", {
