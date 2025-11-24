@@ -3,7 +3,10 @@ import { createServer, type Server } from "http";
 import path from "path";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
+import { plaidService } from "./services/plaid";
 import { z } from "zod";
+import { db } from "./db";
+import { plaidItems, fundingAnalyses } from "@shared/schema";
 
 // Helper function to sanitize application data for database storage
 function sanitizeApplicationData(data: any): any {
@@ -209,6 +212,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching application for view:", error);
       res.status(500).json({ error: "Failed to fetch application" });
+    }
+  });
+
+  // ========================================
+  // PLAID INTEGRATION ROUTES
+  // ========================================
+
+  // 1. Generate Link Token for Plaid Link widget
+  app.post("/api/plaid/create-link-token", async (req, res) => {
+    try {
+      // In a real app, use the actual user ID from session
+      const tokenData = await plaidService.createLinkToken("user-session-id");
+      res.json(tokenData);
+    } catch (error) {
+      console.error("Plaid Create Token Error:", error);
+      res.status(500).json({ error: "Failed to initialize Plaid" });
+    }
+  });
+
+  // 2. Handle Successful Link & Analyze
+  app.post("/api/plaid/exchange-token", async (req, res) => {
+    try {
+      const { publicToken, metadata, businessName, email } = req.body;
+
+      // A. Exchange Token
+      const tokenResponse = await plaidService.exchangePublicToken(publicToken);
+      
+      // B. Save Access Token (CRITICAL: This allows you to pull statements later for lenders)
+      await db.insert(plaidItems).values({
+        itemId: tokenResponse.item_id,
+        accessToken: tokenResponse.access_token,
+        institutionName: metadata?.institution?.name || 'Unknown Bank',
+      });
+
+      // C. Run Analysis immediately
+      const analysis = await plaidService.analyzeFinancials(tokenResponse.access_token);
+
+      // D. Save Lead & Results
+      await db.insert(fundingAnalyses).values({
+        businessName,
+        email,
+        calculatedMonthlyRevenue: analysis.metrics.monthlyRevenue.toString(),
+        calculatedAvgBalance: analysis.metrics.avgBalance.toString(),
+        negativeDaysCount: analysis.metrics.negativeDays,
+        analysisResult: analysis.recommendations,
+        plaidItemId: tokenResponse.item_id
+      });
+
+      // E. Return results to frontend
+      res.json(analysis);
+
+    } catch (error) {
+      console.error("Plaid Exchange Error:", error);
+      res.status(500).json({ error: "Failed to analyze bank data" });
     }
   });
 
