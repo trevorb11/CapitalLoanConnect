@@ -20,7 +20,11 @@ The backend is an Express.js application written in TypeScript, providing RESTfu
 
 ### Database Schema
 
-The database schema, defined using Drizzle ORM for PostgreSQL, includes a `loan_applications` table. This table stores comprehensive data covering contact information, business details, financial data, loan requests, owner information, address details, and base64-encoded applicant signatures. Metadata fields track current step, completion status, GHL contact ID, and agent view URL. Validation uses Zod schemas derived from the Drizzle schema.
+The database schema, defined using Drizzle ORM for PostgreSQL, includes:
+- `loan_applications` table: Stores comprehensive data covering contact information, business details, financial data, loan requests, owner information, address details, and base64-encoded applicant signatures. Metadata fields track current step, completion status, GHL contact ID, and agent view URL.
+- `plaid_items` table: Stores Plaid access tokens and institution information for bank connections.
+- `funding_analyses` table: Stores calculated funding analysis results including monthly revenue, average balance, and funding recommendations (SBA, LOC, MCA).
+- Validation uses Zod schemas derived from the Drizzle schema.
 
 ### Design System
 
@@ -35,6 +39,14 @@ The application uses the Inter font from Google Fonts and a color system based o
 - Requires `GHL_API_KEY` and `GHL_LOCATION_ID` environment variables.
 - Syncs various loan application fields to standard and custom GHL contact fields (e.g., `businessName` to `company_name`, `ein` to `contact.ein`).
 - Supports both direct API integration and webhook-based workflow triggers.
+
+**Plaid Integration**:
+- Provides instant funding eligibility analysis by connecting to business bank accounts.
+- Requires `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `PLAID_ENV` (sandbox/development/production) environment variables.
+- Uses Plaid Link widget for secure bank connection.
+- Analyzes transaction history to calculate monthly revenue, average balance, and funding recommendations.
+- Stores access tokens for future statement retrieval (for lender submissions).
+- Database tables: `plaid_items` (stores access tokens) and `funding_analyses` (stores calculated results).
 
 ### Database
 

@@ -5,8 +5,19 @@ import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { z } from "zod";
-import { db } from "./db";
-import { plaidItems, fundingAnalyses } from "@shared/schema";
+
+// Validation schema for Plaid token exchange
+const plaidExchangeSchema = z.object({
+  publicToken: z.string().min(1, "Public token is required"),
+  metadata: z.object({
+    institution: z.object({
+      name: z.string().optional(),
+      institution_id: z.string().optional()
+    }).optional()
+  }).optional(),
+  businessName: z.string().min(1, "Business name is required"),
+  email: z.string().email("Valid email is required")
+});
 
 // Helper function to sanitize application data for database storage
 function sanitizeApplicationData(data: any): any {
@@ -222,7 +233,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 1. Generate Link Token for Plaid Link widget
   app.post("/api/plaid/create-link-token", async (req, res) => {
     try {
-      // In a real app, use the actual user ID from session
       const tokenData = await plaidService.createLinkToken("user-session-id");
       res.json(tokenData);
     } catch (error) {
@@ -234,23 +244,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 2. Handle Successful Link & Analyze
   app.post("/api/plaid/exchange-token", async (req, res) => {
     try {
-      const { publicToken, metadata, businessName, email } = req.body;
+      // Validate request body
+      const validationResult = plaidExchangeSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request data",
+          details: validationResult.error.errors 
+        });
+      }
+      
+      const { publicToken, metadata, businessName, email } = validationResult.data;
 
       // A. Exchange Token
       const tokenResponse = await plaidService.exchangePublicToken(publicToken);
       
-      // B. Save Access Token (CRITICAL: This allows you to pull statements later for lenders)
-      await db.insert(plaidItems).values({
+      // B. Save Access Token using storage layer
+      await storage.createPlaidItem({
         itemId: tokenResponse.item_id,
         accessToken: tokenResponse.access_token,
         institutionName: metadata?.institution?.name || 'Unknown Bank',
       });
 
-      // C. Run Analysis immediately
+      // C. Run Analysis
       const analysis = await plaidService.analyzeFinancials(tokenResponse.access_token);
 
-      // D. Save Lead & Results
-      await db.insert(fundingAnalyses).values({
+      // D. Save Results using storage layer
+      await storage.createFundingAnalysis({
         businessName,
         email,
         calculatedMonthlyRevenue: analysis.metrics.monthlyRevenue.toString(),
@@ -266,6 +285,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Plaid Exchange Error:", error);
       res.status(500).json({ error: "Failed to analyze bank data" });
+    }
+  });
+
+  // 3. Get existing funding analysis by email
+  app.get("/api/plaid/analysis/:email", async (req, res) => {
+    try {
+      const { email } = req.params;
+      const analysis = await storage.getFundingAnalysisByEmail(email);
+      
+      if (!analysis) {
+        return res.status(404).json({ error: "No analysis found for this email" });
+      }
+      
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error fetching analysis:", error);
+      res.status(500).json({ error: "Failed to fetch analysis" });
     }
   });
 

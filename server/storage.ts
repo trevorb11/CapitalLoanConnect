@@ -1,4 +1,8 @@
-import { users, loanApplications, type User, type InsertUser, type LoanApplication, type InsertLoanApplication } from "@shared/schema";
+import { 
+  users, loanApplications, plaidItems, fundingAnalyses,
+  type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
+  type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis
+} from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
 
@@ -12,6 +16,12 @@ export interface IStorage {
   createLoanApplication(application: Partial<InsertLoanApplication>): Promise<LoanApplication>;
   updateLoanApplication(id: string, application: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined>;
   getAllLoanApplications(): Promise<LoanApplication[]>;
+  
+  // Plaid methods
+  createPlaidItem(item: InsertPlaidItem): Promise<PlaidItem>;
+  getPlaidItem(itemId: string): Promise<PlaidItem | undefined>;
+  createFundingAnalysis(analysis: InsertFundingAnalysis): Promise<FundingAnalysis>;
+  getFundingAnalysisByEmail(email: string): Promise<FundingAnalysis | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -86,6 +96,40 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(loanApplications)
       .orderBy(desc(loanApplications.createdAt));
+  }
+
+  // Plaid methods
+  async createPlaidItem(item: InsertPlaidItem): Promise<PlaidItem> {
+    const [plaidItem] = await db
+      .insert(plaidItems)
+      .values(item)
+      .returning();
+    return plaidItem;
+  }
+
+  async getPlaidItem(itemId: string): Promise<PlaidItem | undefined> {
+    const [item] = await db
+      .select()
+      .from(plaidItems)
+      .where(eq(plaidItems.itemId, itemId));
+    return item || undefined;
+  }
+
+  async createFundingAnalysis(analysis: InsertFundingAnalysis): Promise<FundingAnalysis> {
+    const [fundingAnalysis] = await db
+      .insert(fundingAnalyses)
+      .values(analysis)
+      .returning();
+    return fundingAnalysis;
+  }
+
+  async getFundingAnalysisByEmail(email: string): Promise<FundingAnalysis | undefined> {
+    const [analysis] = await db
+      .select()
+      .from(fundingAnalyses)
+      .where(eq(fundingAnalyses.email, email))
+      .orderBy(desc(fundingAnalyses.createdAt));
+    return analysis || undefined;
   }
 }
 

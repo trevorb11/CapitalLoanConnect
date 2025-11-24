@@ -12,8 +12,27 @@ const configuration = new Configuration({
 
 export const plaidClient = new PlaidApi(configuration);
 
+export interface AnalysisMetrics {
+  monthlyRevenue: number;
+  avgBalance: number;
+  negativeDays: number;
+}
+
+export interface Recommendation {
+  status: "High" | "Medium" | "Low";
+  reason: string;
+}
+
+export interface AnalysisResult {
+  metrics: AnalysisMetrics;
+  recommendations: {
+    sba: Recommendation;
+    loc: Recommendation;
+    mca: Recommendation;
+  };
+}
+
 export class PlaidService {
-  // 1. Create Link Token (Frontend needs this to open the widget)
   async createLinkToken(userId: string) {
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: userId },
@@ -25,7 +44,6 @@ export class PlaidService {
     return response.data;
   }
 
-  // 2. Exchange Public Token for Access Token (Save this to DB)
   async exchangePublicToken(publicToken: string) {
     const response = await plaidClient.itemPublicTokenExchange({
       public_token: publicToken,
@@ -33,66 +51,111 @@ export class PlaidService {
     return response.data;
   }
 
-  // 3. THE MAGIC: Fetch Transactions & Analyze
-  async analyzeFinancials(accessToken: string) {
-    // Fetch last 12 months of data
+  async analyzeFinancials(accessToken: string): Promise<AnalysisResult> {
     const endDate = new Date().toISOString().split('T')[0];
     const startDate = new Date();
     startDate.setFullYear(startDate.getFullYear() - 1);
     const startDateStr = startDate.toISOString().split('T')[0];
 
-    const response = await plaidClient.transactionsGet({
+    let allTransactions: any[] = [];
+    let hasMore = true;
+    let cursor: string | undefined;
+
+    while (hasMore) {
+      const response = await plaidClient.transactionsGet({
+        access_token: accessToken,
+        start_date: startDateStr,
+        end_date: endDate,
+        options: cursor ? { offset: allTransactions.length } : undefined
+      });
+
+      allTransactions = allTransactions.concat(response.data.transactions);
+      hasMore = allTransactions.length < response.data.total_transactions;
+    }
+
+    const accounts = (await plaidClient.transactionsGet({
       access_token: accessToken,
       start_date: startDateStr,
       end_date: endDate,
-    });
+    })).data.accounts;
 
-    const transactions = response.data.transactions;
-    const accounts = response.data.accounts;
-
-    // --- UNDERWRITING LOGIC ---
-    
-    // 1. Calculate Total Revenue (Sum of deposits)
-    // Plaid: Positive amount = Withdrawal, Negative amount = Deposit (usually)
     let totalDeposits = 0;
-    
-    // Calculate simplified revenue (Absolute value of negative transactions)
-    transactions.forEach((txn) => {
+    let negativeDays = 0;
+    const dailyBalances: Map<string, number> = new Map();
+
+    allTransactions.forEach((txn) => {
       if (txn.amount < 0) {
         totalDeposits += Math.abs(txn.amount);
       }
+      
+      const date = txn.date;
+      const currentBalance = dailyBalances.get(date) || 0;
+      dailyBalances.set(date, currentBalance - txn.amount);
     });
 
-    const monthlyRevenue = totalDeposits / 12;
+    const monthsInData = Math.max(1, allTransactions.length > 0 ? 12 : 1);
+    const monthlyRevenue = totalDeposits / monthsInData;
 
-    // 2. Calculate Average Balance (from available current balance data)
-    const totalCurrentBalance = accounts.reduce((acc, account) => acc + (account.balances.current || 0), 0);
-    
-    // 3. Generate Recommendations
-    const recommendations = {
-      sba: { status: "Low", reason: "Requires higher consistent daily balances." },
-      loc: { status: "Low", reason: "Revenue is strong, but cash buffers are low." },
-      mca: { status: "High", reason: "You have strong consistent deposits, making you a perfect fit." }
-    };
+    const totalCurrentBalance = accounts.reduce((acc, account) => {
+      return acc + (account.balances.current || 0);
+    }, 0);
 
-    // Simple Rule Engine
-    if (monthlyRevenue > 25000 && totalCurrentBalance > 5000) {
-      recommendations.sba.status = "Medium";
-      recommendations.sba.reason = "Revenue is strong enough, but we need to verify 2 years of history.";
-    }
-    if (monthlyRevenue > 50000) {
-      recommendations.loc.status = "High";
-      recommendations.loc.reason = "Your cash flow supports a healthy Line of Credit.";
-    }
+    let runningBalance = totalCurrentBalance;
+    dailyBalances.forEach((change) => {
+      runningBalance += change;
+      if (runningBalance < 0) {
+        negativeDays++;
+      }
+    });
+
+    const recommendations = this.generateRecommendations(monthlyRevenue, totalCurrentBalance, negativeDays);
 
     return {
       metrics: {
-        monthlyRevenue,
-        avgBalance: totalCurrentBalance,
-        negativeDays: 0
+        monthlyRevenue: Math.round(monthlyRevenue * 100) / 100,
+        avgBalance: Math.round(totalCurrentBalance * 100) / 100,
+        negativeDays
       },
       recommendations
     };
+  }
+
+  private generateRecommendations(
+    monthlyRevenue: number, 
+    avgBalance: number, 
+    negativeDays: number
+  ): { sba: Recommendation; loc: Recommendation; mca: Recommendation } {
+    let sba: Recommendation = { 
+      status: "Low", 
+      reason: "Requires higher consistent daily balances and at least 2 years of business history." 
+    };
+    let loc: Recommendation = { 
+      status: "Low", 
+      reason: "Revenue is promising, but cash reserves are below typical requirements." 
+    };
+    let mca: Recommendation = { 
+      status: "High", 
+      reason: "Your deposit history shows strong consistent cash flow, making you a great candidate." 
+    };
+
+    if (monthlyRevenue >= 50000 && avgBalance >= 10000 && negativeDays <= 5) {
+      sba = { status: "High", reason: "Strong financials indicate high likelihood of SBA approval." };
+      loc = { status: "High", reason: "Your cash flow and reserves support a healthy Line of Credit." };
+    } else if (monthlyRevenue >= 25000 && avgBalance >= 5000) {
+      sba = { status: "Medium", reason: "Revenue is solid; we'd need to verify 2+ years of business history." };
+      loc = { status: "High", reason: "Your monthly deposits support a Line of Credit application." };
+    } else if (monthlyRevenue >= 15000) {
+      loc = { status: "Medium", reason: "Revenue supports a smaller line; higher deposits would help." };
+    }
+
+    if (negativeDays > 15) {
+      mca = { 
+        status: "Medium", 
+        reason: "Your deposit pattern is good, but frequent negative balances may affect terms." 
+      };
+    }
+
+    return { sba, loc, mca };
   }
 }
 
