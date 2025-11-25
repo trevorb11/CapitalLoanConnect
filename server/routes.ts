@@ -455,8 +455,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // 5. Get all bank connections (for dashboard Bank Statements tab)
   app.get("/api/plaid/all", async (req, res) => {
-    const session = req.session as any;
-    if (!session?.isAuthenticated) {
+    if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
 
@@ -491,8 +490,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // 6. Get bank statements by Plaid item ID (for bank statements tab)
   app.get("/api/plaid/statements-by-item/:plaidItemId", async (req, res) => {
-    const session = req.session as any;
-    if (!session?.isAuthenticated) {
+    if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
 
