@@ -6,6 +6,7 @@ import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { AGENTS } from "../shared/agents";
 import { z } from "zod";
+import type { LoanApplication } from "@shared/schema";
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Tcg1!tcg";
 
@@ -383,7 +384,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         plaidItemId: tokenResponse.item_id
       });
 
-      // E. Return results to frontend
+      // E. Auto-link to existing application if email matches
+      const applications = await storage.getAllLoanApplications();
+      const matchingApp = applications.find((app: LoanApplication) => app.email === email);
+      if (matchingApp && !matchingApp.plaidItemId) {
+        await storage.updateLoanApplication(matchingApp.id, { 
+          plaidItemId: tokenResponse.item_id 
+        });
+        console.log(`Linked Plaid item ${tokenResponse.item_id} to application ${matchingApp.id}`);
+      }
+
+      // F. Return results to frontend
       res.json(analysis);
 
     } catch (error) {
@@ -406,6 +417,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching analysis:", error);
       res.status(500).json({ error: "Failed to fetch analysis" });
+    }
+  });
+
+  // 4. Get bank statements for an application (requires dashboard auth)
+  app.get("/api/plaid/statements/:applicationId", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { applicationId } = req.params;
+      const months = parseInt(req.query.months as string) || 3;
+      
+      const application = await storage.getLoanApplication(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+
+      if (!application.plaidItemId) {
+        return res.status(404).json({ error: "No bank connection found for this application" });
+      }
+
+      const plaidItem = await storage.getPlaidItem(application.plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Bank connection data not found" });
+      }
+
+      const statements = await plaidService.getBankStatements(plaidItem.accessToken, months);
+      res.json(statements);
+    } catch (error) {
+      console.error("Error fetching bank statements:", error);
+      res.status(500).json({ error: "Failed to fetch bank statements" });
+    }
+  });
+
+  // 5. Link Plaid data to an existing application by email
+  app.post("/api/plaid/link-to-application", async (req, res) => {
+    try {
+      const { email, plaidItemId } = req.body;
+      
+      if (!email || !plaidItemId) {
+        return res.status(400).json({ error: "Email and plaidItemId are required" });
+      }
+
+      const applications = await storage.getAllLoanApplications();
+      const matchingApp = applications.find((app: LoanApplication) => app.email === email);
+      
+      if (!matchingApp) {
+        return res.status(404).json({ error: "No application found with this email" });
+      }
+
+      await storage.updateLoanApplication(matchingApp.id, { plaidItemId });
+      res.json({ success: true, applicationId: matchingApp.id });
+    } catch (error) {
+      console.error("Error linking Plaid to application:", error);
+      res.status(500).json({ error: "Failed to link bank data to application" });
     }
   });
 

@@ -32,6 +32,30 @@ export interface AnalysisResult {
   };
 }
 
+export interface BankStatement {
+  accounts: Array<{
+    accountId: string;
+    name: string;
+    type: string;
+    subtype: string;
+    currentBalance: number;
+    availableBalance: number | null;
+  }>;
+  transactions: Array<{
+    transactionId: string;
+    date: string;
+    name: string;
+    amount: number;
+    category: string[];
+    pending: boolean;
+  }>;
+  institutionName: string;
+  dateRange: {
+    startDate: string;
+    endDate: string;
+  };
+}
+
 export class PlaidService {
   async createLinkToken(userId: string) {
     const response = await plaidClient.linkTokenCreate({
@@ -49,6 +73,75 @@ export class PlaidService {
       public_token: publicToken,
     });
     return response.data;
+  }
+
+  async getBankStatements(accessToken: string, months: number = 3): Promise<BankStatement> {
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - months);
+    const startDateStr = startDate.toISOString().split('T')[0];
+
+    let allTransactions: any[] = [];
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await plaidClient.transactionsGet({
+        access_token: accessToken,
+        start_date: startDateStr,
+        end_date: endDate,
+        options: { offset: allTransactions.length }
+      });
+
+      allTransactions = allTransactions.concat(response.data.transactions);
+      hasMore = allTransactions.length < response.data.total_transactions;
+    }
+
+    const accountsResponse = await plaidClient.transactionsGet({
+      access_token: accessToken,
+      start_date: startDateStr,
+      end_date: endDate,
+    });
+
+    const itemResponse = await plaidClient.itemGet({
+      access_token: accessToken,
+    });
+
+    let institutionName = 'Unknown Bank';
+    if (itemResponse.data.item.institution_id) {
+      try {
+        const instResponse = await plaidClient.institutionsGetById({
+          institution_id: itemResponse.data.item.institution_id,
+          country_codes: [CountryCode.Us],
+        });
+        institutionName = instResponse.data.institution.name;
+      } catch (e) {
+        console.log('Could not fetch institution name');
+      }
+    }
+
+    return {
+      accounts: accountsResponse.data.accounts.map(acc => ({
+        accountId: acc.account_id,
+        name: acc.name,
+        type: acc.type,
+        subtype: acc.subtype || '',
+        currentBalance: acc.balances.current || 0,
+        availableBalance: acc.balances.available,
+      })),
+      transactions: allTransactions.map(txn => ({
+        transactionId: txn.transaction_id,
+        date: txn.date,
+        name: txn.name,
+        amount: txn.amount,
+        category: txn.category || [],
+        pending: txn.pending,
+      })),
+      institutionName,
+      dateRange: {
+        startDate: startDateStr,
+        endDate: endDate,
+      },
+    };
   }
 
   async analyzeFinancials(accessToken: string): Promise<AnalysisResult> {

@@ -64,6 +64,9 @@ export const loanApplications = pgTable("loan_applications", {
   // Signature
   applicantSignature: text("applicant_signature"), // Base64 encoded signature
 
+  // --- Plaid Integration ---
+  plaidItemId: text("plaid_item_id"), // Link to Plaid access token for retrieving statements
+
   // --- Agent Tracking ---
   agentName: text("agent_name"), // Name of the agent who sent the application
   agentEmail: text("agent_email"), // Email of the agent

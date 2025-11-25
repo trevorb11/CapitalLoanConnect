@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText } from "lucide-react";
 import { format } from "date-fns";
 
 interface AuthState {
@@ -105,9 +105,149 @@ function LoginForm({ onLoginSuccess }: { onLoginSuccess: () => void }) {
   );
 }
 
+interface BankStatement {
+  accounts: Array<{
+    accountId: string;
+    name: string;
+    type: string;
+    subtype: string;
+    currentBalance: number;
+    availableBalance: number | null;
+  }>;
+  transactions: Array<{
+    transactionId: string;
+    date: string;
+    name: string;
+    amount: number;
+    category: string[];
+    pending: boolean;
+  }>;
+  institutionName: string;
+  dateRange: {
+    startDate: string;
+    endDate: string;
+  };
+}
+
+function StatementsModal({ 
+  applicationId, 
+  onClose 
+}: { 
+  applicationId: string; 
+  onClose: () => void;
+}) {
+  const { data: statements, isLoading, error } = useQuery<BankStatement>({
+    queryKey: ['/api/plaid/statements', applicationId],
+    queryFn: async () => {
+      const res = await fetch(`/api/plaid/statements/${applicationId}?months=3`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to fetch statements');
+      }
+      return res.json();
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-6 border-b flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold">Bank Statements</h2>
+            {statements && (
+              <p className="text-sm text-muted-foreground">
+                {statements.institutionName} | {statements.dateRange.startDate} to {statements.dateRange.endDate}
+              </p>
+            )}
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <span className="sr-only">Close</span>
+            &times;
+          </Button>
+        </div>
+        
+        <div className="flex-1 overflow-auto p-6">
+          {isLoading ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">Loading bank statements...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12">
+              <p className="text-destructive">{(error as Error).message}</p>
+            </div>
+          ) : statements ? (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-semibold mb-3">Accounts</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {statements.accounts.map((account) => (
+                    <Card key={account.accountId} className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium">{account.name}</p>
+                          <p className="text-sm text-muted-foreground capitalize">{account.type} - {account.subtype}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-lg">${account.currentBalance.toLocaleString()}</p>
+                          {account.availableBalance !== null && (
+                            <p className="text-xs text-muted-foreground">Available: ${account.availableBalance.toLocaleString()}</p>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="font-semibold mb-3">Recent Transactions ({statements.transactions.length})</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="text-left p-3">Date</th>
+                        <th className="text-left p-3">Description</th>
+                        <th className="text-left p-3">Category</th>
+                        <th className="text-right p-3">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statements.transactions.slice(0, 50).map((txn) => (
+                        <tr key={txn.transactionId} className="border-t">
+                          <td className="p-3">{txn.date}</td>
+                          <td className="p-3">
+                            {txn.name}
+                            {txn.pending && <Badge variant="outline" className="ml-2 text-xs">Pending</Badge>}
+                          </td>
+                          <td className="p-3 text-muted-foreground">{txn.category.join(', ') || 'N/A'}</td>
+                          <td className={`p-3 text-right font-medium ${txn.amount < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {txn.amount < 0 ? '+' : '-'}${Math.abs(txn.amount).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {statements.transactions.length > 50 && (
+                    <div className="p-3 text-center text-sm text-muted-foreground bg-muted">
+                      Showing 50 of {statements.transactions.length} transactions
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full">("all");
+  const [selectedAppForStatements, setSelectedAppForStatements] = useState<string | null>(null);
 
   const { data: authData, isLoading: authLoading, refetch: refetchAuth } = useQuery<AuthState | null>({
     queryKey: ["/api/auth/check"],
@@ -337,6 +477,12 @@ export default function Dashboard() {
                           {app.agentName}
                         </Badge>
                       )}
+                      {app.plaidItemId && (
+                        <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-700" data-testid={`badge-plaid-${app.id}`}>
+                          <Landmark className="w-3 h-3 mr-1" />
+                          Bank Connected
+                        </Badge>
+                      )}
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
@@ -387,6 +533,17 @@ export default function Dashboard() {
                         No Agent View
                       </Button>
                     )}
+                    {app.plaidItemId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedAppForStatements(app.id)}
+                        data-testid={`button-view-statements-${app.id}`}
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        View Statements
+                      </Button>
+                    )}
                     <p className="text-xs text-muted-foreground text-center" data-testid={`text-app-id-${app.id}`}>ID: {app.id?.slice(0, 8)}...</p>
                   </div>
                 </div>
@@ -405,6 +562,13 @@ export default function Dashboard() {
           </Card>
         )}
       </div>
+
+      {selectedAppForStatements && (
+        <StatementsModal
+          applicationId={selectedAppForStatements}
+          onClose={() => setSelectedAppForStatements(null)}
+        />
+      )}
     </div>
   );
 }
