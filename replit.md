@@ -14,6 +14,10 @@ Preferred communication style: Simple, everyday language.
 
 The frontend is built with React and TypeScript, using Vite for bundling. It leverages Shadcn UI (with Radix UI primitives) and Tailwind CSS for a consistent, accessible design. Form management is handled by React Hook Form with Zod for validation across a 5-step application process (Contact Info, Business Details, Financials, Funding, Address) and a 2-step Full Application. React Query manages server state, while Wouter handles client-side routing for the intake form, full application, success page, and agent views. A debounced auto-save feature persists form data, providing real-time feedback.
 
+**Application Form Variants:**
+- **Homepage (FullApplication)**: One-question-per-slide format with smooth transitions
+- **Agent Routes (AgentApplication)**: Two-page format (Step 1: Business Info, Step 2: Owner Info + Signature) for agent-specific URLs like /DL, /GD, etc.
+
 ### Backend Architecture
 
 The backend is an Express.js application written in TypeScript, providing RESTful APIs for loan application management (create, retrieve, update). It integrates with GoHighLevel CRM for contact creation, updates, and webhook submissions, designed with a two-tier API and webhook approach. The system generates agent view URLs and allows for agent attribution via specific routes. The storage layer uses an abstracted interface, currently in-memory, but designed for future Drizzle ORM and PostgreSQL integration. Application progress is persistent, allowing users to resume incomplete applications via localStorage.
