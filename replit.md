@@ -50,7 +50,10 @@ The application uses the Inter font from Google Fonts and a color system based o
 - Uses Plaid Link widget for secure bank connection.
 - Analyzes transaction history to calculate monthly revenue, average balance, and funding recommendations.
 - Stores access tokens for future statement retrieval (for lender submissions).
+- Bank statements are viewable on demand from the Dashboard via "View Statements" button.
+- Applications are automatically linked to Plaid items via email matching when users connect their bank.
 - Database tables: `plaid_items` (stores access tokens) and `funding_analyses` (stores calculated results).
+- Schema field `plaidItemId` on loan_applications links to connected bank data.
 
 ### Database
 

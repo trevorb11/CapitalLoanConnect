@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -120,6 +120,7 @@ export default function FundingAnalysis() {
     onSuccess: (data) => {
       setResults(data);
       setStep('results');
+      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
       toast({
         title: "Analysis Complete",
         description: "Your funding eligibility report is ready!"

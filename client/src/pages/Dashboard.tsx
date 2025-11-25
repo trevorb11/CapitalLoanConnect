@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
 interface AuthState {
@@ -131,12 +132,14 @@ interface BankStatement {
 
 function StatementsModal({ 
   applicationId, 
+  isOpen,
   onClose 
 }: { 
-  applicationId: string; 
+  applicationId: string;
+  isOpen: boolean;
   onClose: () => void;
 }) {
-  const { data: statements, isLoading, error } = useQuery<BankStatement>({
+  const { data: statements, isLoading, error, refetch } = useQuery<BankStatement>({
     queryKey: ['/api/plaid/statements', applicationId],
     queryFn: async () => {
       const res = await fetch(`/api/plaid/statements/${applicationId}?months=3`, {
@@ -148,34 +151,40 @@ function StatementsModal({
       }
       return res.json();
     },
+    enabled: isOpen && !!applicationId,
+    retry: 1,
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold">Bank Statements</h2>
-            {statements && (
-              <p className="text-sm text-muted-foreground">
-                {statements.institutionName} | {statements.dateRange.startDate} to {statements.dateRange.endDate}
-              </p>
-            )}
-          </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <span className="sr-only">Close</span>
-            &times;
-          </Button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" data-testid="dialog-statements">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Landmark className="w-5 h-5" />
+            Bank Statements
+          </DialogTitle>
+          {statements && (
+            <p className="text-sm text-muted-foreground">
+              {statements.institutionName} | {statements.dateRange.startDate} to {statements.dateRange.endDate}
+            </p>
+          )}
+        </DialogHeader>
         
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto">
           {isLoading ? (
-            <div className="text-center py-12">
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <p className="text-muted-foreground">Loading bank statements...</p>
             </div>
           ) : error ? (
-            <div className="text-center py-12">
+            <div className="text-center py-12 flex flex-col items-center gap-3">
               <p className="text-destructive">{(error as Error).message}</p>
+              <div className="flex gap-2 mt-4">
+                <Button variant="default" onClick={() => refetch()} data-testid="button-retry-statements">
+                  Retry
+                </Button>
+                <Button variant="outline" onClick={onClose}>Close</Button>
+              </div>
             </div>
           ) : statements ? (
             <div className="space-y-6">
@@ -183,8 +192,8 @@ function StatementsModal({
                 <h3 className="font-semibold mb-3">Accounts</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {statements.accounts.map((account) => (
-                    <Card key={account.accountId} className="p-4">
-                      <div className="flex justify-between items-start">
+                    <Card key={account.accountId} className="p-4" data-testid={`card-account-${account.accountId}`}>
+                      <div className="flex justify-between items-start gap-2">
                         <div>
                           <p className="font-medium">{account.name}</p>
                           <p className="text-sm text-muted-foreground capitalize">{account.type} - {account.subtype}</p>
@@ -215,7 +224,7 @@ function StatementsModal({
                     </thead>
                     <tbody>
                       {statements.transactions.slice(0, 50).map((txn) => (
-                        <tr key={txn.transactionId} className="border-t">
+                        <tr key={txn.transactionId} className="border-t" data-testid={`row-transaction-${txn.transactionId}`}>
                           <td className="p-3">{txn.date}</td>
                           <td className="p-3">
                             {txn.name}
@@ -239,8 +248,8 @@ function StatementsModal({
             </div>
           ) : null}
         </div>
-      </Card>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -322,6 +331,7 @@ export default function Dashboard() {
     total: applications?.length || 0,
     intakeOnly: applications?.filter((a) => a.isCompleted && !a.isFullApplicationCompleted).length || 0,
     fullCompleted: applications?.filter((a) => a.isFullApplicationCompleted).length || 0,
+    bankConnected: applications?.filter((a) => a.plaidItemId).length || 0,
   };
 
   return (
@@ -366,9 +376,9 @@ export default function Dashboard() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card className="p-6" data-testid="card-stat-total">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">
                   {authData.role === "admin" ? "Total Applications" : "Your Applications"}
@@ -382,7 +392,7 @@ export default function Dashboard() {
           </Card>
 
           <Card className="p-6" data-testid="card-stat-intake">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Intake Only</p>
                 <p className="text-3xl font-bold" data-testid="text-intake-count">{stats.intakeOnly}</p>
@@ -394,13 +404,25 @@ export default function Dashboard() {
           </Card>
 
           <Card className="p-6" data-testid="card-stat-full">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Full Applications</p>
                 <p className="text-3xl font-bold" data-testid="text-full-count">{stats.fullCompleted}</p>
               </div>
               <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
                 <CheckCircle2 className="w-6 h-6 text-green-500" />
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-6" data-testid="card-stat-bank">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Bank Connected</p>
+                <p className="text-3xl font-bold" data-testid="text-bank-count">{stats.bankConnected}</p>
+              </div>
+              <div className="w-12 h-12 bg-emerald-500/10 rounded-lg flex items-center justify-center">
+                <Landmark className="w-6 h-6 text-emerald-500" />
               </div>
             </div>
           </Card>
@@ -563,12 +585,11 @@ export default function Dashboard() {
         )}
       </div>
 
-      {selectedAppForStatements && (
-        <StatementsModal
-          applicationId={selectedAppForStatements}
-          onClose={() => setSelectedAppForStatements(null)}
-        />
-      )}
+      <StatementsModal
+        applicationId={selectedAppForStatements || ''}
+        isOpen={!!selectedAppForStatements}
+        onClose={() => setSelectedAppForStatements(null)}
+      />
     </div>
   );
 }
