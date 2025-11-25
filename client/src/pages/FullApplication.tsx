@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -30,47 +29,98 @@ const INDUSTRIES = [
   { value: "Other", label: "Other", desc: "" }
 ];
 
-// --- FORM CONFIGURATION ---
+// --- FORM CONFIGURATION (11 STEPS) ---
 
-// Added 'autoComplete' and 'mode' properties for dummy-proofing
 const FORM_STEPS = [
-  // --- SECTION 1: BUSINESS INFO ---
-  { name: "legal_business_name", label: "What is the Legal Name of your company?", type: "text", required: true, placeholder: "e.g. Acme Corp LLC", autoComplete: "organization" },
-  { name: "doing_business_as", label: "Do you have a DBA? If not, re-enter Legal Name.", type: "text", required: true, placeholder: "Doing Business As", autoComplete: "off" },
+  // --- STEP 1: BUSINESS NAME ---
+  { 
+    label: "Business Name",
+    type: "group",
+    fields: [
+      { name: "legal_business_name", label: "Legal Business Name", type: "text", required: true, placeholder: "e.g. Acme Corp LLC", autoComplete: "organization" },
+      { name: "doing_business_as", label: "DBA (if applicable)", type: "text", required: false, placeholder: "Doing Business As", autoComplete: "off" }
+    ]
+  },
 
-  { name: "company_email", label: "What is the primary Company Email address?", type: "email", required: true, placeholder: "company@example.com", autoComplete: "email" },
+  // --- STEP 2: COMPANY CONTACT ---
+  { 
+    label: "Company Contact",
+    type: "group",
+    fields: [
+      { name: "company_email", label: "Company Email", type: "email", required: true, placeholder: "company@example.com", autoComplete: "email" },
+      { name: "company_website", label: "Website (Optional)", type: "text", required: false, placeholder: "www.example.com", autoComplete: "url" }
+    ]
+  },
 
-  { name: "business_start_date", label: "When did the business start?", type: "date", required: true },
-  { name: "ein", label: "What is the business Tax ID (EIN)?", type: "text", required: true, placeholder: "XX-XXXXXXX", mask: "ein", mode: "numeric" }, // numeric mode
+  // --- STEP 3: BUSINESS ORIGIN ---
+  {
+    label: "Business Origin",
+    type: "group",
+    fields: [
+      { name: "business_start_date", label: "Business Start Date", type: "date", required: true },
+      { name: "state_of_incorporation", label: "State of Incorporation", type: "select", options: US_STATES, required: true }
+    ]
+  },
+
+  // --- STEP 4: BUSINESS DETAILS ---
+  {
+    label: "Business Details",
+    type: "group",
+    fields: [
+      { name: "ein", label: "Tax ID (EIN)", type: "text", required: true, placeholder: "XX-XXXXXXX", mask: "ein", mode: "numeric" },
+      { name: "do_you_process_credit_cards", label: "Do you process credit cards?", type: "select", options: ["Yes", "No"], required: true }
+    ]
+  },
+
+  // --- STEP 5: INDUSTRY ---
   { name: "industry", label: "Choose your business industry", type: "industry_select", required: true },
-  { name: "company_website", label: "Company Website (Optional)", type: "text", required: false, placeholder: "www.example.com", autoComplete: "url" },
-  { name: "state_of_incorporation", label: "State of Incorporation", type: "select", options: US_STATES, required: true },
-  { name: "do_you_process_credit_cards", label: "Does the business process credit cards?", type: "select", options: ["Yes", "No"], required: true },
-  { name: "business_address_group", label: "Please enter your business address", type: "address_group", prefix: "business", required: true },
 
-  // Changed type to 'currency' for better user experience
-  { name: "requested_loan_amount", label: "How much financing are you requesting?", type: "currency", required: true, placeholder: "$0.00", mode: "numeric" },
-  { name: "mca_balance_amount", label: "Current MCA Balance Amount (if any)", type: "currency", required: false, placeholder: "$0.00", mode: "numeric" },
+  // --- STEP 6: BUSINESS ADDRESS ---
+  { name: "business_address_group", label: "Business Address", type: "address_group", prefix: "business", required: true },
 
-  { name: "mca_balance_bank_name", label: "MCA Balance Bank Name (if any)", type: "text", required: false, placeholder: "N/A" },
+  // --- STEP 7: FINANCIAL REQUEST ---
+  {
+    label: "Financing Request",
+    type: "group",
+    fields: [
+      { name: "requested_loan_amount", label: "Requested Amount", type: "currency", required: true, placeholder: "$0.00", mode: "numeric" },
+      { name: "mca_balance_amount", label: "Current MCA Balance (if any)", type: "currency", required: false, placeholder: "$0.00", mode: "numeric" },
+      { name: "mca_balance_bank_name", label: "MCA Bank Name", type: "text", required: false, placeholder: "N/A" }
+    ]
+  },
 
-  // --- SECTION 2: OWNER INFO ---
-  { name: "full_name", label: "Business Owner Full Name", type: "text", required: true, autoComplete: "name" },
-  { name: "email", label: "Owner's Direct Email", type: "email", required: true, placeholder: "owner@example.com", autoComplete: "email" },
-  { name: "phone", label: "Mobile Phone Number", type: "tel", required: true, placeholder: "XXX-XXX-XXXX", mask: "phone", mode: "tel", autoComplete: "tel" },
-  { name: "social_security_", label: "Social Security Number", type: "text", required: true, placeholder: "XXX-XX-XXXX", mask: "ssn", mode: "numeric" },
-  { name: "personal_credit_score_range", label: "Estimated FICO Score", type: "number", required: false, placeholder: "e.g. 720", mode: "numeric" },
-  { name: "owner_address_group", label: "Please enter your home address", type: "address_group", prefix: "owner", required: true },
-  { name: "date_of_birth", label: "Date of Birth", type: "date", required: true, autoComplete: "bday" },
-  { name: "ownership_percentage", label: "Ownership Percentage (%)", type: "number", required: true, placeholder: "100", mode: "numeric" },
+  // --- STEP 8: OWNER PROFILE ---
+  {
+    label: "Owner Profile",
+    type: "group",
+    fields: [
+      { name: "full_name", label: "Full Name", type: "text", required: true, autoComplete: "name" },
+      { name: "email", label: "Direct Email", type: "email", required: true, placeholder: "owner@example.com", autoComplete: "email" },
+      { name: "phone", label: "Mobile Phone", type: "tel", required: true, placeholder: "XXX-XXX-XXXX", mask: "phone", mode: "tel", autoComplete: "tel" },
+      { name: "ownership_percentage", label: "Ownership %", type: "number", required: true, placeholder: "100", mode: "numeric" }
+    ]
+  },
 
-  // --- FINAL STEP ---
+  // --- STEP 9: IDENTITY VERIFICATION ---
+  {
+    label: "Identity Verification",
+    type: "group",
+    fields: [
+      { name: "social_security_", label: "Social Security Number", type: "text", required: true, placeholder: "XXX-XX-XXXX", mask: "ssn", mode: "numeric" },
+      { name: "date_of_birth", label: "Date of Birth", type: "date", required: true, autoComplete: "bday" },
+      { name: "personal_credit_score_range", label: "Est. FICO Score", type: "number", required: false, placeholder: "e.g. 720", mode: "numeric" }
+    ]
+  },
+
+  // --- STEP 10: HOME ADDRESS ---
+  { name: "owner_address_group", label: "Home Address", type: "address_group", prefix: "owner", required: true },
+
+  // --- STEP 11: SIGNATURE ---
   { name: "signature_step", label: "Click to Sign & Get Funded", type: "simple_signature" }
 ];
 
 // --- UTILITIES & FORMATTERS ---
 
-// Strict numeric stripper: Removes anything that isn't a number
 const stripNonNumeric = (val: string) => val.replace(/\D/g, '');
 
 const formatEin = (value: string) => {
@@ -202,11 +252,24 @@ export default function FullApplication(props?: FullApplicationProps) {
     }
   }, [existingData]);
 
+  // --- UPDATED INPUT HANDLER FOR GROUPS ---
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     let value = e.target.value;
     const name = e.target.name;
 
-    const step = FORM_STEPS.find(s => s.name === name);
+    // Find the field config (searching inside groups if necessary)
+    let step: any = FORM_STEPS.find((s: any) => s.name === name);
+    if (!step) {
+      for (const s of FORM_STEPS) {
+        if (s.type === 'group' && s.fields) {
+          const found = s.fields.find((f: any) => f.name === name);
+          if (found) {
+            step = found;
+            break;
+          }
+        }
+      }
+    }
 
     // --- DUMMY PROOFING LOGIC ---
 
@@ -215,21 +278,17 @@ export default function FullApplication(props?: FullApplicationProps) {
     if (step?.mask === 'ein') value = formatEin(value);
     if (step?.mask === 'phone') value = formatPhone(value);
 
-    // 2. Currency Formatting (prevents typing letters, adds commas)
+    // 2. Currency Formatting
     if (step?.type === 'currency') value = formatCurrency(value);
 
-    // 3. Strict Zip Code (5 Digits Only)
+    // 3. Strict Zip Code
     if (name.includes('zip')) {
         value = stripNonNumeric(value).slice(0, 5);
     }
 
-    // 4. Generic Numeric Fields (Credit Score, Ownership %) - No letters allowed
+    // 4. Generic Numeric Fields
     if (step?.type === 'number') {
-        // If it's a number type, we generally want to strip non-numeric, 
-        // unless it's a float, but these fields are integers
         value = stripNonNumeric(value);
-
-        // Ownership cap
         if (name === 'ownership_percentage' && Number(value) > 100) value = "100";
     }
 
@@ -270,7 +329,6 @@ export default function FullApplication(props?: FullApplicationProps) {
       industry: formData.industry,
       businessStreetAddress: businessStreet,
       businessCsz: businessCsz,
-      // Strip non-numeric for DB saving
       requestedAmount: formData.requested_loan_amount ? stripNonNumeric(formData.requested_loan_amount) : undefined,
       mcaBalanceAmount: formData.mca_balance_amount ? stripNonNumeric(formData.mca_balance_amount) : undefined,
       mcaBalanceBankName: formData.mca_balance_bank_name,
@@ -284,7 +342,8 @@ export default function FullApplication(props?: FullApplicationProps) {
       ownerCsz: ownerCsz,
       dateOfBirth: formData.date_of_birth,
       ownership: formData.ownership_percentage,
-      currentStep: currentStepIndex > 10 ? 2 : 1 
+      // Rough approximation of progress for backend
+      currentStep: currentStepIndex >= 4 ? 2 : 1 
     };
 
     if (isFinal) {
@@ -312,25 +371,46 @@ export default function FullApplication(props?: FullApplicationProps) {
     }
   };
 
+  // --- UPDATED NEXT HANDLER (VALIDATION) ---
   const handleNext = async () => {
     const currentConfig = FORM_STEPS[currentStepIndex];
 
-    // --- Validation ---
-    if (currentConfig.required && !['address_group', 'simple_signature', 'industry_select'].includes(currentConfig.type)) {
-      const value = formData[currentConfig.name];
-      if (!value || value.toString().trim() === "") {
-        toast({ title: "Required", description: "Please fill out this field.", variant: "destructive" });
-        return;
-      }
+    // Helper to validate a single field definition
+    const validateField = (field: any) => {
+        const val = formData[field.name];
+
+        // Check Required
+        if (field.required && (!val || val.toString().trim() === "")) {
+            return `Please fill out ${field.label}`;
+        }
+        // Check Email
+        if (field.type === 'email' && val && !isValidEmail(val)) {
+            return `Invalid email for ${field.label}`;
+        }
+        return null;
+    };
+
+    // 1. Validate Group Fields
+    if (currentConfig.type === 'group' && currentConfig.fields) {
+        for (const field of currentConfig.fields) {
+            const error = validateField(field);
+            if (error) {
+                toast({ title: "Missing Information", description: error, variant: "destructive" });
+                return;
+            }
+        }
+    } 
+    // 2. Validate Single Fields (that are not complex types)
+    else if (currentConfig.required && !['address_group', 'simple_signature', 'industry_select', 'group'].includes(currentConfig.type)) {
+       const error = validateField(currentConfig);
+       if (error) {
+           toast({ title: "Required", description: error, variant: "destructive" });
+           return;
+       }
     }
 
-    // Strict Email Check
-    if (currentConfig.type === 'email' && !isValidEmail(formData[currentConfig.name])) {
-      toast({ title: "Typo Detected", description: "That doesn't look like a valid email address.", variant: "destructive" });
-      return;
-    }
-
-    // Strict Zip Code Check
+    // 3. Complex Type Validation
+    // Address Group
     if (currentConfig.type === 'address_group') {
         const prefix = currentConfig.prefix === 'business' ? 'business' : 'owner';
         const zip = formData[`${prefix}_zip`];
@@ -347,12 +427,12 @@ export default function FullApplication(props?: FullApplicationProps) {
              return;
         }
     }
-
+    // Industry Select
     if (currentConfig.type === 'industry_select' && !formData.industry) {
         toast({ title: "Required", description: "Please select an industry.", variant: "destructive" });
         return;
     }
-
+    // Signature
     if (currentConfig.type === 'simple_signature') {
         if (!consentChecked) {
             toast({ title: "Action Required", description: "Please check the box to accept the terms.", variant: "destructive" });
@@ -365,6 +445,7 @@ export default function FullApplication(props?: FullApplicationProps) {
         return;
     }
 
+    // Proceed
     setIsSubmitting(true); 
     await saveProgress(false);
     setIsSubmitting(false);
@@ -397,7 +478,7 @@ export default function FullApplication(props?: FullApplicationProps) {
   const currentStep = FORM_STEPS[currentStepIndex];
   const progress = ((currentStepIndex + 1) / FORM_STEPS.length) * 100;
 
-  // --- Sub-Component Renderers ---
+  // --- SUB-COMPONENT RENDERERS ---
 
   const renderIndustrySelect = () => (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', marginTop: '1rem', maxHeight: '60vh', overflowY: 'auto' }}>
@@ -537,45 +618,78 @@ export default function FullApplication(props?: FullApplicationProps) {
             </h1>
 
             <div style={{ flex: 1 }}>
+                {/* 1. Custom Renderers */}
                 {currentStep.type === 'industry_select' && renderIndustrySelect()}
                 {currentStep.type === 'address_group' && renderAddressGroup(currentStep.prefix as any)}
                 {currentStep.type === 'simple_signature' && renderSignatureStep()}
 
-                {!['industry_select', 'address_group', 'simple_signature'].includes(currentStep.type) && (
+                {/* 2. Grouped Renderer */}
+                {currentStep.type === 'group' && currentStep.fields && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        {currentStep.fields.map((field: any) => (
+                             <div key={field.name}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>
+                                    {field.label} {field.required && <span style={{color: '#ff8888'}}>*</span>}
+                                </label>
+                                {field.type === 'select' ? (
+                                    <select
+                                        name={field.name}
+                                        value={formData[field.name] || ''}
+                                        onChange={handleInputChange}
+                                        autoComplete={field.autoComplete}
+                                        style={{ 
+                                            width: '100%', padding: '1rem', fontSize: '1rem', borderRadius: '8px', 
+                                            border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)', color: 'white'
+                                        }}
+                                    >
+                                        <option value="" disabled>Select...</option>
+                                        {field.options?.map((opt: string) => <option key={opt} value={opt} style={{ color: 'black' }}>{opt}</option>)}
+                                    </select>
+                                ) : (
+                                    <input
+                                        name={field.name}
+                                        type={field.type === 'currency' ? 'text' : field.type}
+                                        value={formData[field.name] || ''}
+                                        onChange={handleInputChange}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder={field.placeholder}
+                                        inputMode={field.mode} 
+                                        autoComplete={field.autoComplete}
+                                        style={{ 
+                                            width: '100%', padding: '1rem', fontSize: '1rem', borderRadius: '8px', 
+                                            border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)', color: 'white', outline: 'none'
+                                        }}
+                                    />
+                                )}
+                             </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* 3. Legacy Single Field Renderer (Fallback if needed) */}
+                {!['industry_select', 'address_group', 'simple_signature', 'group'].includes(currentStep.type) && (
                     <div style={{ maxWidth: '500px', margin: '0 auto' }}>
                          {currentStep.type === 'select' ? (
                             <select
                                 name={currentStep.name}
                                 value={formData[currentStep.name] || ''}
                                 onChange={handleInputChange}
-                                autoComplete={currentStep.autoComplete}
-                                style={{ 
-                                    width: '100%', padding: '1.2rem', fontSize: '1.1rem', borderRadius: '8px', 
-                                    border: '2px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)', color: 'white'
-                                }}
+                                style={{ width: '100%', padding: '1.2rem', fontSize: '1.1rem', borderRadius: '8px', border: '2px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)', color: 'white' }}
                             >
                                 <option value="" disabled>Select...</option>
                                 {currentStep.options?.map((opt: string) => <option key={opt} value={opt} style={{ color: 'black' }}>{opt}</option>)}
                             </select>
-                        ) : (
+                         ) : (
                             <input
                                 name={currentStep.name}
-                                // If type is currency, allow 'text' input but restrict keys via handleInputChange
                                 type={currentStep.type === 'currency' ? 'text' : currentStep.type}
                                 value={formData[currentStep.name] || ''}
                                 onChange={handleInputChange}
                                 onKeyDown={handleKeyDown}
                                 placeholder={currentStep.placeholder}
-                                // Enforce numeric keypad on mobile if mode is set
-                                inputMode={currentStep.mode as any} 
-                                autoComplete={currentStep.autoComplete}
-                                autoFocus
-                                style={{ 
-                                    width: '100%', padding: '1.2rem', fontSize: '1.1rem', borderRadius: '8px', 
-                                    border: '2px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)', color: 'white', outline: 'none'
-                                }}
+                                style={{ width: '100%', padding: '1.2rem', fontSize: '1.1rem', borderRadius: '8px', border: '2px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)', color: 'white', outline: 'none' }}
                             />
-                        )}
+                         )}
                     </div>
                 )}
             </div>
