@@ -1,24 +1,175 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { type LoanApplication } from "@shared/schema";
+import { AGENTS } from "@shared/agents";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield } from "lucide-react";
 import { format } from "date-fns";
 
+const ADMIN_PASSWORD = "Tcg1!tcg";
+
+type UserRole = "admin" | "agent" | null;
+
+interface AuthState {
+  isAuthenticated: boolean;
+  role: UserRole;
+  agentEmail: string | null;
+  agentName: string | null;
+}
+
+function LoginForm({ onLogin }: { onLogin: (auth: AuthState) => void }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+
+    setTimeout(() => {
+      if (password === ADMIN_PASSWORD) {
+        onLogin({
+          isAuthenticated: true,
+          role: "admin",
+          agentEmail: null,
+          agentName: null,
+        });
+        return;
+      }
+
+      const agent = AGENTS.find(
+        (a) => a.email.toLowerCase() === password.toLowerCase()
+      );
+
+      if (agent) {
+        onLogin({
+          isAuthenticated: true,
+          role: "agent",
+          agentEmail: agent.email,
+          agentName: agent.name,
+        });
+        return;
+      }
+
+      setError("Invalid credentials. Please try again.");
+      setIsLoading(false);
+    }, 500);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#192F56] to-[#19112D] p-4">
+      <Card className="w-full max-w-md p-8 bg-card/95 backdrop-blur">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Lock className="w-8 h-8 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold mb-2">Dashboard Login</h1>
+          <p className="text-muted-foreground text-sm">
+            Enter your credentials to access the dashboard
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Password or Agent Email
+            </label>
+            <Input
+              type="text"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password or email..."
+              className="w-full"
+              data-testid="input-login-password"
+              autoComplete="off"
+            />
+          </div>
+
+          {error && (
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md" data-testid="text-login-error">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={!password || isLoading}
+            data-testid="button-login"
+          >
+            {isLoading ? "Logging in..." : "Login"}
+          </Button>
+        </form>
+
+        <div className="mt-6 pt-6 border-t">
+          <p className="text-xs text-muted-foreground text-center">
+            Admin users use the admin password.
+            <br />
+            Agents login with their email address.
+          </p>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function Dashboard() {
+  const [auth, setAuth] = useState<AuthState>({
+    isAuthenticated: false,
+    role: null,
+    agentEmail: null,
+    agentName: null,
+  });
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full">("all");
 
+  useEffect(() => {
+    const savedAuth = localStorage.getItem("dashboardAuth");
+    if (savedAuth) {
+      try {
+        const parsed = JSON.parse(savedAuth);
+        setAuth(parsed);
+      } catch {
+        localStorage.removeItem("dashboardAuth");
+      }
+    }
+  }, []);
+
+  const handleLogin = (newAuth: AuthState) => {
+    setAuth(newAuth);
+    localStorage.setItem("dashboardAuth", JSON.stringify(newAuth));
+  };
+
+  const handleLogout = () => {
+    setAuth({
+      isAuthenticated: false,
+      role: null,
+      agentEmail: null,
+      agentName: null,
+    });
+    localStorage.removeItem("dashboardAuth");
+  };
+
   const { data: applications, isLoading } = useQuery<LoanApplication[]>({
     queryKey: ["/api/applications"],
+    enabled: auth.isAuthenticated,
   });
 
   const filteredApplications = applications
     ? applications
         .filter((app) => {
+          if (auth.role === "agent" && auth.agentEmail) {
+            const agentEmailLower = auth.agentEmail.toLowerCase();
+            const appAgentEmail = (app.agentEmail || "").toLowerCase();
+            if (appAgentEmail !== agentEmailLower) {
+              return false;
+            }
+          }
+
           const matchesSearch =
             (app.fullName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
             (app.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -39,29 +190,70 @@ export default function Dashboard() {
         })
     : [];
 
+  const agentApplications = auth.role === "agent" && auth.agentEmail
+    ? applications?.filter((app) => 
+        (app.agentEmail || "").toLowerCase() === auth.agentEmail!.toLowerCase()
+      ) || []
+    : applications || [];
+
   const stats = {
-    total: applications?.length || 0,
-    intakeOnly: applications ? applications.filter((a) => a.isCompleted && !a.isFullApplicationCompleted).length : 0,
-    fullCompleted: applications ? applications.filter((a) => a.isFullApplicationCompleted).length : 0,
+    total: agentApplications.length,
+    intakeOnly: agentApplications.filter((a) => a.isCompleted && !a.isFullApplicationCompleted).length,
+    fullCompleted: agentApplications.filter((a) => a.isFullApplicationCompleted).length,
   };
+
+  if (!auth.isAuthenticated) {
+    return <LoginForm onLogin={handleLogin} />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <div className="border-b bg-card">
         <div className="container mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold mb-2">Agent Dashboard</h1>
-          <p className="text-muted-foreground">Review and manage loan applications</p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-3xl font-bold">
+                  {auth.role === "admin" ? "Admin Dashboard" : "Agent Dashboard"}
+                </h1>
+                {auth.role === "admin" ? (
+                  <Badge variant="default" className="bg-primary" data-testid="badge-role-admin">
+                    <Shield className="w-3 h-3 mr-1" />
+                    Admin
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" data-testid="badge-role-agent">
+                    <User className="w-3 h-3 mr-1" />
+                    Agent
+                  </Badge>
+                )}
+              </div>
+              <p className="text-muted-foreground">
+                {auth.role === "admin" 
+                  ? "Viewing all loan applications" 
+                  : `Viewing applications for ${auth.agentName}`}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={handleLogout}
+              data-testid="button-logout"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Logout
+            </Button>
+          </div>
         </div>
       </div>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card className="p-6" data-testid="card-stat-total">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground mb-1">Total Applications</p>
+                <p className="text-sm text-muted-foreground mb-1">
+                  {auth.role === "admin" ? "Total Applications" : "Your Applications"}
+                </p>
                 <p className="text-3xl font-bold" data-testid="text-total-count">{stats.total}</p>
               </div>
               <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -95,7 +287,6 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Filters and Search */}
         <Card className="p-6 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
@@ -108,7 +299,7 @@ export default function Dashboard() {
                 data-testid="input-search-applications"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button
                 variant={filterStatus === "all" ? "default" : "outline"}
                 onClick={() => setFilterStatus("all")}
@@ -134,7 +325,6 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {/* Applications Table */}
         {isLoading ? (
           <Card className="p-12" data-testid="card-loading-state">
             <p className="text-center text-muted-foreground" data-testid="text-loading-message">Loading applications...</p>
@@ -145,7 +335,7 @@ export default function Dashboard() {
               <Card key={app.id} className="p-6 hover-elevate" data-testid={`card-application-${app.id}`}>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
                       <h3 className="font-semibold text-lg" data-testid={`text-applicant-name-${app.id}`}>
                         {app.fullName || "No name"}
                       </h3>
@@ -161,6 +351,12 @@ export default function Dashboard() {
                         </Badge>
                       ) : (
                         <Badge variant="outline" data-testid={`badge-status-incomplete-${app.id}`}>Incomplete</Badge>
+                      )}
+                      {auth.role === "admin" && app.agentName && (
+                        <Badge variant="outline" className="text-xs" data-testid={`badge-agent-${app.id}`}>
+                          <User className="w-3 h-3 mr-1" />
+                          {app.agentName}
+                        </Badge>
                       )}
                     </div>
                     
@@ -184,7 +380,7 @@ export default function Dashboard() {
                       {app.requestedAmount && (
                         <div>
                           <span className="font-medium">Amount:</span>{" "}
-                          <span data-testid={`value-amount-${app.id}`}>${app.requestedAmount.toLocaleString()}</span>
+                          <span data-testid={`value-amount-${app.id}`}>${Number(app.requestedAmount).toLocaleString()}</span>
                         </div>
                       )}
                       {app.industry && (
@@ -221,7 +417,11 @@ export default function Dashboard() {
         ) : (
           <Card className="p-12" data-testid="card-empty-state">
             <p className="text-center text-muted-foreground" data-testid="text-empty-message">
-              {searchTerm || filterStatus !== "all" ? "No applications match your filters" : "No applications yet"}
+              {searchTerm || filterStatus !== "all" 
+                ? "No applications match your filters" 
+                : auth.role === "agent" 
+                  ? "No applications submitted through your link yet"
+                  : "No applications yet"}
             </p>
           </Card>
         )}

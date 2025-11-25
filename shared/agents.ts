@@ -7,6 +7,12 @@ export interface Agent {
 
 export const AGENTS: Agent[] = [
   {
+    initials: "aw",
+    name: "Alex Walker",
+    email: "alex@todaycapitalgroup.com",
+    ghlId: "",
+  },
+  {
     initials: "dl",
     name: "Dillon LeBlanc",
     email: "Dillon@todaycapitalgroup.com",
