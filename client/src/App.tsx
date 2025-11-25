@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import IntakeForm from "@/pages/IntakeForm";
 import FullApplication from "@/pages/FullApplication";
+import AgentApplication from "@/pages/AgentApplication";
 import Success from "@/pages/Success";
 import Dashboard from "@/pages/Dashboard";
 import AgentSelector from "@/pages/AgentSelector";
@@ -24,13 +25,13 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/agents" component={AgentSelector} />
       
-      {/* Agent-specific application pages */}
+      {/* Agent-specific application pages - use two-page format */}
       {AGENTS.map((agent) => (
         <Route 
           key={agent.initials} 
           path={`/${agent.initials}`}
         >
-          {() => <FullApplication agent={agent} />}
+          {() => <AgentApplication agent={agent} />}
         </Route>
       ))}
       
