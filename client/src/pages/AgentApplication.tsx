@@ -74,6 +74,7 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [agentViewUrl, setAgentViewUrl] = useState<string | null>(null);
+  const [existingSignature, setExistingSignature] = useState<string | null>(null);
 
   useEffect(() => {
     const savedId = localStorage.getItem("applicationId");
@@ -120,6 +121,9 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         date_of_birth: existingData.dateOfBirth || "",
         ownership_percentage: existingData.ownership || "",
       });
+      if (existingData.applicantSignature) {
+        setExistingSignature(existingData.applicantSignature);
+      }
     }
   }, [existingData]);
 
@@ -179,12 +183,14 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
     setIsSubmitting(true);
 
     try {
+      const signatureToUse = existingSignature || new Date().toISOString();
+      
       const payload: any = {
         legalBusinessName: formData.legal_business_name,
         doingBusinessAs: formData.doing_business_as,
         companyWebsite: formData.company_website,
         businessStartDate: formData.business_start_date,
-        ein: formData.ein,
+        ein: formData.ein.replace(/\D/g, ''),
         companyEmail: formData.company_email,
         stateOfIncorporation: formData.state_of_incorporation,
         doYouProcessCreditCards: formData.do_you_process_credit_cards,
@@ -200,8 +206,8 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         mcaBalanceBankName: formData.mca_balance_bank_name,
         fullName: formData.full_name,
         email: formData.email,
-        socialSecurityNumber: formData.social_security_,
-        phone: formData.phone,
+        socialSecurityNumber: formData.social_security_.replace(/\D/g, ''),
+        phone: formData.phone.replace(/\D/g, ''),
         personalCreditScoreRange: formData.personal_credit_score_range,
         ownerAddress1: formData.owner_address1,
         ownerAddress2: formData.owner_address2,
@@ -211,22 +217,25 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         ownerCsz: `${formData.owner_city}, ${formData.owner_state} ${formData.owner_zip}`,
         dateOfBirth: formData.date_of_birth,
         ownership: formData.ownership_percentage,
-        applicantSignature: new Date().toISOString(),
+        applicantSignature: signatureToUse,
         isFullApplicationCompleted: true,
         agentName: agent.name,
         agentEmail: agent.email,
         agentGhlId: agent.ghlId,
       };
 
-      let response;
+      let data: any;
       if (applicationId) {
-        response = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
+        data = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
       } else {
-        response = await apiRequest("POST", "/api/applications", payload);
+        data = await apiRequest("POST", "/api/applications", payload);
+        if (data.id) {
+          localStorage.setItem("applicationId", data.id.toString());
+          setApplicationId(data.id.toString());
+        }
       }
       
-      const data = await response.json();
-      if (data.agentViewUrl) {
+      if (data && data.agentViewUrl) {
         setAgentViewUrl(data.agentViewUrl);
       }
 
