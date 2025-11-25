@@ -1,12 +1,47 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import path from "path";
+import fs from "fs";
+import { randomUUID } from "crypto";
+import multer from "multer";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { AGENTS } from "../shared/agents";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
+
+// Configure multer for bank statement uploads
+const UPLOAD_DIR = path.join(process.cwd(), "server/uploads/bank-statements");
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+
+// Ensure upload directory exists
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+const bankStatementStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, UPLOAD_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const storedName = `${randomUUID()}${ext}`;
+    cb(null, storedName);
+  },
+});
+
+const bankStatementUpload = multer({
+  storage: bankStatementStorage,
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are allowed"));
+    }
+  },
+});
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Tcg1!tcg";
 
@@ -532,6 +567,105 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error linking Plaid to application:", error);
       res.status(500).json({ error: "Failed to link bank data to application" });
+    }
+  });
+
+  // ========================================
+  // BANK STATEMENT UPLOAD ROUTES
+  // ========================================
+
+  // 1. Upload bank statement PDF
+  app.post("/api/bank-statements/upload", bankStatementUpload.single("file"), async (req, res) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const { email, businessName, applicationId } = req.body;
+      
+      if (!email) {
+        // Clean up uploaded file
+        fs.unlinkSync(file.path);
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      // Save upload record to database
+      const upload = await storage.createBankStatementUpload({
+        email,
+        businessName: businessName || null,
+        loanApplicationId: applicationId || null,
+        originalFileName: file.originalname,
+        storedFileName: file.filename,
+        mimeType: file.mimetype,
+        fileSize: file.size,
+      });
+
+      // Auto-link to existing application if email matches
+      if (!applicationId) {
+        const applications = await storage.getAllLoanApplications();
+        const matchingApp = applications.find((app: LoanApplication) => app.email === email);
+        if (matchingApp) {
+          console.log(`Auto-linked bank statement upload ${upload.id} to application ${matchingApp.id}`);
+        }
+      }
+
+      res.json({
+        success: true,
+        upload: {
+          id: upload.id,
+          originalFileName: upload.originalFileName,
+          fileSize: upload.fileSize,
+          createdAt: upload.createdAt,
+        },
+      });
+    } catch (error) {
+      console.error("Bank statement upload error:", error);
+      res.status(500).json({ error: "Failed to upload bank statement" });
+    }
+  });
+
+  // 2. Get all bank statement uploads (for dashboard)
+  app.get("/api/bank-statements/uploads", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const uploads = await storage.getAllBankStatementUploads();
+      res.json(uploads);
+    } catch (error) {
+      console.error("Error fetching bank statement uploads:", error);
+      res.status(500).json({ error: "Failed to fetch uploads" });
+    }
+  });
+
+  // 3. Download bank statement PDF (admin only)
+  app.get("/api/bank-statements/download/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const upload = await storage.getBankStatementUpload(req.params.id);
+      if (!upload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+
+      const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found on disk" });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${upload.originalFileName}"`
+      );
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Error downloading bank statement:", error);
+      res.status(500).json({ error: "Failed to download file" });
     }
   });
 
