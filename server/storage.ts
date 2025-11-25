@@ -20,8 +20,11 @@ export interface IStorage {
   // Plaid methods
   createPlaidItem(item: InsertPlaidItem): Promise<PlaidItem>;
   getPlaidItem(itemId: string): Promise<PlaidItem | undefined>;
+  getPlaidItemById(id: string): Promise<PlaidItem | undefined>;
+  getAllPlaidItems(): Promise<PlaidItem[]>;
   createFundingAnalysis(analysis: InsertFundingAnalysis): Promise<FundingAnalysis>;
   getFundingAnalysisByEmail(email: string): Promise<FundingAnalysis | undefined>;
+  getAllFundingAnalyses(): Promise<FundingAnalysis[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -115,6 +118,21 @@ export class DatabaseStorage implements IStorage {
     return item || undefined;
   }
 
+  async getPlaidItemById(id: string): Promise<PlaidItem | undefined> {
+    const [item] = await db
+      .select()
+      .from(plaidItems)
+      .where(eq(plaidItems.id, id));
+    return item || undefined;
+  }
+
+  async getAllPlaidItems(): Promise<PlaidItem[]> {
+    return await db
+      .select()
+      .from(plaidItems)
+      .orderBy(desc(plaidItems.createdAt));
+  }
+
   async createFundingAnalysis(analysis: InsertFundingAnalysis): Promise<FundingAnalysis> {
     const [fundingAnalysis] = await db
       .insert(fundingAnalyses)
@@ -130,6 +148,13 @@ export class DatabaseStorage implements IStorage {
       .where(eq(fundingAnalyses.email, email))
       .orderBy(desc(fundingAnalyses.createdAt));
     return analysis || undefined;
+  }
+
+  async getAllFundingAnalyses(): Promise<FundingAnalysis[]> {
+    return await db
+      .select()
+      .from(fundingAnalyses)
+      .orderBy(desc(fundingAnalyses.createdAt));
   }
 }
 

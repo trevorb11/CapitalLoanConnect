@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar } from "lucide-react";
 import { format } from "date-fns";
 
 interface AuthState {
@@ -130,6 +131,23 @@ interface BankStatement {
   };
 }
 
+interface BankConnection {
+  id: string;
+  businessName: string;
+  email: string;
+  institutionName: string;
+  monthlyRevenue: string;
+  avgBalance: string;
+  negativeDays: number;
+  analysisResult: {
+    sba: { status: string; reason: string };
+    loc: { status: string; reason: string };
+    mca: { status: string; reason: string };
+  };
+  plaidItemId: string;
+  createdAt: string;
+}
+
 function StatementsModal({ 
   applicationId, 
   isOpen,
@@ -250,6 +268,270 @@ function StatementsModal({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ItemStatementsModal({ 
+  plaidItemId, 
+  institutionName,
+  isOpen,
+  onClose 
+}: { 
+  plaidItemId: string;
+  institutionName: string;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const { data: statements, isLoading, error, refetch } = useQuery<BankStatement>({
+    queryKey: ['/api/plaid/statements-by-item', plaidItemId],
+    queryFn: async () => {
+      const res = await fetch(`/api/plaid/statements-by-item/${plaidItemId}?months=3`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to fetch statements');
+      }
+      return res.json();
+    },
+    enabled: isOpen && !!plaidItemId,
+    retry: 1,
+  });
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" data-testid="dialog-item-statements">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Landmark className="w-5 h-5" />
+            Bank Statements - {institutionName}
+          </DialogTitle>
+          {statements && (
+            <p className="text-sm text-muted-foreground">
+              {statements.dateRange.startDate} to {statements.dateRange.endDate}
+            </p>
+          )}
+        </DialogHeader>
+        
+        <div className="flex-1 overflow-auto">
+          {isLoading ? (
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Loading bank statements...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <p className="text-destructive">{(error as Error).message}</p>
+              <div className="flex gap-2 mt-4">
+                <Button variant="default" onClick={() => refetch()} data-testid="button-retry-item-statements">
+                  Retry
+                </Button>
+                <Button variant="outline" onClick={onClose}>Close</Button>
+              </div>
+            </div>
+          ) : statements ? (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-semibold mb-3">Accounts</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {statements.accounts.map((account) => (
+                    <Card key={account.accountId} className="p-4" data-testid={`card-item-account-${account.accountId}`}>
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <p className="font-medium">{account.name}</p>
+                          <p className="text-sm text-muted-foreground capitalize">{account.type} - {account.subtype}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-lg">${account.currentBalance.toLocaleString()}</p>
+                          {account.availableBalance !== null && (
+                            <p className="text-xs text-muted-foreground">Available: ${account.availableBalance.toLocaleString()}</p>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="font-semibold mb-3">Recent Transactions ({statements.transactions.length})</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="text-left p-3">Date</th>
+                        <th className="text-left p-3">Description</th>
+                        <th className="text-left p-3">Category</th>
+                        <th className="text-right p-3">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statements.transactions.slice(0, 50).map((txn) => (
+                        <tr key={txn.transactionId} className="border-t" data-testid={`row-item-transaction-${txn.transactionId}`}>
+                          <td className="p-3">{txn.date}</td>
+                          <td className="p-3">
+                            {txn.name}
+                            {txn.pending && <Badge variant="outline" className="ml-2 text-xs">Pending</Badge>}
+                          </td>
+                          <td className="p-3 text-muted-foreground">{txn.category.join(', ') || 'N/A'}</td>
+                          <td className={`p-3 text-right font-medium ${txn.amount < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {txn.amount < 0 ? '+' : '-'}${Math.abs(txn.amount).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {statements.transactions.length > 50 && (
+                    <div className="p-3 text-center text-sm text-muted-foreground bg-muted">
+                      Showing 50 of {statements.transactions.length} transactions
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BankStatementsTab() {
+  const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
+
+  const { data: bankConnections, isLoading } = useQuery<BankConnection[]>({
+    queryKey: ['/api/plaid/all'],
+    queryFn: async () => {
+      const res = await fetch('/api/plaid/all', {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to fetch bank connections');
+      }
+      return res.json();
+    },
+  });
+
+  const getStatusIcon = (status: string) => {
+    if (status === 'High') return <TrendingUp className="w-4 h-4 text-green-600" />;
+    if (status === 'Low') return <TrendingDown className="w-4 h-4 text-red-600" />;
+    return <Minus className="w-4 h-4 text-yellow-600" />;
+  };
+
+  const getStatusBadge = (status: string) => {
+    if (status === 'High') return <Badge className="bg-green-600 hover:bg-green-700">High</Badge>;
+    if (status === 'Low') return <Badge variant="destructive">Low</Badge>;
+    return <Badge variant="secondary">Medium</Badge>;
+  };
+
+  if (isLoading) {
+    return (
+      <Card className="p-12" data-testid="card-bank-loading">
+        <div className="text-center flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading bank connections...</p>
+        </div>
+      </Card>
+    );
+  }
+
+  if (!bankConnections || bankConnections.length === 0) {
+    return (
+      <Card className="p-12" data-testid="card-bank-empty">
+        <div className="text-center">
+          <Landmark className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No Bank Connections</h3>
+          <p className="text-muted-foreground">
+            Bank connections will appear here when applicants complete the funding analysis.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <div className="space-y-4">
+        {bankConnections.map((connection) => (
+          <Card key={connection.id} className="p-6 hover-elevate" data-testid={`card-bank-connection-${connection.id}`}>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-3 flex-wrap">
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-primary" />
+                    {connection.businessName}
+                  </h3>
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <Landmark className="w-3 h-3" />
+                    {connection.institutionName}
+                  </Badge>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <DollarSign className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Monthly Revenue:</span>
+                    <span className="font-medium">${parseFloat(connection.monthlyRevenue).toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Landmark className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Avg Balance:</span>
+                    <span className="font-medium">${parseFloat(connection.avgBalance).toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Connected:</span>
+                    <span className="font-medium">{format(new Date(connection.createdAt), 'MMM d, yyyy')}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-sm mb-4">
+                  <User className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">{connection.email}</span>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                    {getStatusIcon(connection.analysisResult.sba.status)}
+                    <span className="text-sm font-medium">SBA:</span>
+                    {getStatusBadge(connection.analysisResult.sba.status)}
+                  </div>
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                    {getStatusIcon(connection.analysisResult.loc.status)}
+                    <span className="text-sm font-medium">LOC:</span>
+                    {getStatusBadge(connection.analysisResult.loc.status)}
+                  </div>
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                    {getStatusIcon(connection.analysisResult.mca.status)}
+                    <span className="text-sm font-medium">MCA:</span>
+                    {getStatusBadge(connection.analysisResult.mca.status)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={() => setSelectedConnection(connection)}
+                  data-testid={`button-view-bank-statements-${connection.id}`}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  View Statements
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {selectedConnection && (
+        <ItemStatementsModal
+          plaidItemId={selectedConnection.plaidItemId}
+          institutionName={selectedConnection.institutionName}
+          isOpen={!!selectedConnection}
+          onClose={() => setSelectedConnection(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -428,7 +710,20 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        <Card className="p-6 mb-6">
+        <Tabs defaultValue="applications" className="w-full">
+          <TabsList className="mb-6" data-testid="tabs-dashboard">
+            <TabsTrigger value="applications" data-testid="tab-applications">
+              <FileText className="w-4 h-4 mr-2" />
+              Applications
+            </TabsTrigger>
+            <TabsTrigger value="bank-statements" data-testid="tab-bank-statements">
+              <Landmark className="w-4 h-4 mr-2" />
+              Bank Statements
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="applications">
+            <Card className="p-6 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -583,6 +878,12 @@ export default function Dashboard() {
             </p>
           </Card>
         )}
+          </TabsContent>
+
+          <TabsContent value="bank-statements">
+            <BankStatementsTab />
+          </TabsContent>
+        </Tabs>
       </div>
 
       <StatementsModal

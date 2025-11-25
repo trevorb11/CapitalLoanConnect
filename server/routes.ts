@@ -453,7 +453,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 5. Link Plaid data to an existing application by email
+  // 5. Get all bank connections (for dashboard Bank Statements tab)
+  app.get("/api/plaid/all", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const [plaidItems, fundingAnalyses] = await Promise.all([
+        storage.getAllPlaidItems(),
+        storage.getAllFundingAnalyses()
+      ]);
+
+      const bankConnections = fundingAnalyses.map(analysis => {
+        const plaidItem = plaidItems.find(item => item.itemId === analysis.plaidItemId);
+        return {
+          id: analysis.id,
+          businessName: analysis.businessName,
+          email: analysis.email,
+          institutionName: plaidItem?.institutionName || 'Unknown Bank',
+          monthlyRevenue: analysis.calculatedMonthlyRevenue,
+          avgBalance: analysis.calculatedAvgBalance,
+          negativeDays: analysis.negativeDaysCount,
+          analysisResult: analysis.analysisResult,
+          plaidItemId: analysis.plaidItemId,
+          createdAt: analysis.createdAt
+        };
+      });
+
+      res.json(bankConnections);
+    } catch (error) {
+      console.error("Error fetching bank connections:", error);
+      res.status(500).json({ error: "Failed to fetch bank connections" });
+    }
+  });
+
+  // 6. Get bank statements by Plaid item ID (for bank statements tab)
+  app.get("/api/plaid/statements-by-item/:plaidItemId", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { plaidItemId } = req.params;
+      const months = parseInt(req.query.months as string) || 3;
+      
+      const plaidItem = await storage.getPlaidItem(plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Bank connection not found" });
+      }
+
+      const statements = await plaidService.getBankStatements(plaidItem.accessToken, months);
+      res.json(statements);
+    } catch (error) {
+      console.error("Error fetching bank statements:", error);
+      res.status(500).json({ error: "Failed to fetch bank statements" });
+    }
+  });
+
+  // 7. Link Plaid data to an existing application by email
   app.post("/api/plaid/link-to-application", async (req, res) => {
     try {
       const { email, plaidItemId } = req.body;
