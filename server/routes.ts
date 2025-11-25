@@ -575,7 +575,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
 
   // 1. Upload bank statement PDF
-  app.post("/api/bank-statements/upload", bankStatementUpload.single("file"), async (req, res) => {
+  app.post("/api/bank-statements/upload", (req, res, next) => {
+    bankStatementUpload.single("file")(req, res, (err: any) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: "File size exceeds 25MB limit" });
+        }
+        if (err.message === 'Only PDF files are allowed') {
+          return res.status(400).json({ error: err.message });
+        }
+        return res.status(400).json({ error: "File upload error: " + err.message });
+      }
+      next();
+    });
+  }, async (req, res) => {
     try {
       const file = req.file;
       if (!file) {
@@ -601,11 +614,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fileSize: file.size,
       });
 
-      // Auto-link to existing application if email matches
-      if (!applicationId) {
+      // Check if there's a matching application by email
+      let linkedApplicationId = applicationId;
+      if (!linkedApplicationId) {
         const applications = await storage.getAllLoanApplications();
         const matchingApp = applications.find((app: LoanApplication) => app.email === email);
         if (matchingApp) {
+          linkedApplicationId = matchingApp.id;
           console.log(`Auto-linked bank statement upload ${upload.id} to application ${matchingApp.id}`);
         }
       }
@@ -617,6 +632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           originalFileName: upload.originalFileName,
           fileSize: upload.fileSize,
           createdAt: upload.createdAt,
+          linkedApplicationId: linkedApplicationId || null,
         },
       });
     } catch (error) {

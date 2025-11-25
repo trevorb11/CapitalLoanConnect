@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { type LoanApplication } from "@shared/schema";
+import { type LoanApplication, type BankStatementUpload } from "@shared/schema";
 import { queryClient, getQueryFn } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload } from "lucide-react";
 import { format } from "date-fns";
 
 interface AuthState {
@@ -399,7 +399,7 @@ function ItemStatementsModal({
 function BankStatementsTab() {
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
 
-  const { data: bankConnections, isLoading } = useQuery<BankConnection[]>({
+  const { data: bankConnections, isLoading: connectionsLoading } = useQuery<BankConnection[]>({
     queryKey: ['/api/plaid/all'],
     queryFn: async () => {
       const res = await fetch('/api/plaid/all', {
@@ -407,6 +407,19 @@ function BankStatementsTab() {
       });
       if (!res.ok) {
         throw new Error('Failed to fetch bank connections');
+      }
+      return res.json();
+    },
+  });
+
+  const { data: bankUploads, isLoading: uploadsLoading } = useQuery<BankStatementUpload[]>({
+    queryKey: ['/api/bank-statements/uploads'],
+    queryFn: async () => {
+      const res = await fetch('/api/bank-statements/uploads', {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to fetch bank statement uploads');
       }
       return res.json();
     },
@@ -424,25 +437,57 @@ function BankStatementsTab() {
     return <Badge variant="secondary">Medium</Badge>;
   };
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleDownload = async (uploadId: string, fileName: string) => {
+    try {
+      const res = await fetch(`/api/bank-statements/download/${uploadId}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Download failed');
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download error:', error);
+    }
+  };
+
+  const isLoading = connectionsLoading || uploadsLoading;
+  const hasConnections = bankConnections && bankConnections.length > 0;
+  const hasUploads = bankUploads && bankUploads.length > 0;
+  const isEmpty = !hasConnections && !hasUploads;
+
   if (isLoading) {
     return (
       <Card className="p-12" data-testid="card-bank-loading">
         <div className="text-center flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading bank connections...</p>
+          <p className="text-muted-foreground">Loading bank statements...</p>
         </div>
       </Card>
     );
   }
 
-  if (!bankConnections || bankConnections.length === 0) {
+  if (isEmpty) {
     return (
       <Card className="p-12" data-testid="card-bank-empty">
         <div className="text-center">
           <Landmark className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No Bank Connections</h3>
+          <h3 className="text-lg font-semibold mb-2">No Bank Statements</h3>
           <p className="text-muted-foreground">
-            Bank connections will appear here when applicants complete the funding analysis.
+            Bank connections and uploaded statements will appear here.
           </p>
         </div>
       </Card>
@@ -451,76 +496,151 @@ function BankStatementsTab() {
 
   return (
     <>
-      <div className="space-y-4">
-        {bankConnections.map((connection) => (
-          <Card key={connection.id} className="p-6 hover-elevate" data-testid={`card-bank-connection-${connection.id}`}>
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-3 flex-wrap">
-                  <h3 className="font-semibold text-lg flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-primary" />
-                    {connection.businessName}
-                  </h3>
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    <Landmark className="w-3 h-3" />
-                    {connection.institutionName}
-                  </Badge>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div className="flex items-center gap-2 text-sm">
-                    <DollarSign className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Monthly Revenue:</span>
-                    <span className="font-medium">${parseFloat(connection.monthlyRevenue).toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Landmark className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Avg Balance:</span>
-                    <span className="font-medium">${parseFloat(connection.avgBalance).toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">Connected:</span>
-                    <span className="font-medium">{format(new Date(connection.createdAt), 'MMM d, yyyy')}</span>
-                  </div>
-                </div>
+      <div className="space-y-6">
+        {/* Plaid Connections Section */}
+        {hasConnections && (
+          <div>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Landmark className="w-5 h-5" />
+              Connected Banks
+            </h3>
+            <div className="space-y-4">
+              {bankConnections.map((connection) => (
+                <Card key={connection.id} className="p-6 hover-elevate" data-testid={`card-bank-connection-${connection.id}`}>
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3 flex-wrap">
+                        <h3 className="font-semibold text-lg flex items-center gap-2">
+                          <Building2 className="w-5 h-5 text-primary" />
+                          {connection.businessName}
+                        </h3>
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Landmark className="w-3 h-3" />
+                          {connection.institutionName}
+                        </Badge>
+                        <Badge className="bg-emerald-600">Plaid Connected</Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div className="flex items-center gap-2 text-sm">
+                          <DollarSign className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Monthly Revenue:</span>
+                          <span className="font-medium">${parseFloat(connection.monthlyRevenue).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Landmark className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Avg Balance:</span>
+                          <span className="font-medium">${parseFloat(connection.avgBalance).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Connected:</span>
+                          <span className="font-medium">{format(new Date(connection.createdAt), 'MMM d, yyyy')}</span>
+                        </div>
+                      </div>
 
-                <div className="flex items-center gap-2 text-sm mb-4">
-                  <User className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">{connection.email}</span>
-                </div>
+                      <div className="flex items-center gap-2 text-sm mb-4">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">{connection.email}</span>
+                      </div>
 
-                <div className="flex flex-wrap gap-3">
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                    {getStatusIcon(connection.analysisResult.sba.status)}
-                    <span className="text-sm font-medium">SBA:</span>
-                    {getStatusBadge(connection.analysisResult.sba.status)}
-                  </div>
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                    {getStatusIcon(connection.analysisResult.loc.status)}
-                    <span className="text-sm font-medium">LOC:</span>
-                    {getStatusBadge(connection.analysisResult.loc.status)}
-                  </div>
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                    {getStatusIcon(connection.analysisResult.mca.status)}
-                    <span className="text-sm font-medium">MCA:</span>
-                    {getStatusBadge(connection.analysisResult.mca.status)}
-                  </div>
-                </div>
-              </div>
+                      <div className="flex flex-wrap gap-3">
+                        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                          {getStatusIcon(connection.analysisResult.sba.status)}
+                          <span className="text-sm font-medium">SBA:</span>
+                          {getStatusBadge(connection.analysisResult.sba.status)}
+                        </div>
+                        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                          {getStatusIcon(connection.analysisResult.loc.status)}
+                          <span className="text-sm font-medium">LOC:</span>
+                          {getStatusBadge(connection.analysisResult.loc.status)}
+                        </div>
+                        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                          {getStatusIcon(connection.analysisResult.mca.status)}
+                          <span className="text-sm font-medium">MCA:</span>
+                          {getStatusBadge(connection.analysisResult.mca.status)}
+                        </div>
+                      </div>
+                    </div>
 
-              <div className="flex flex-col gap-2">
-                <Button
-                  onClick={() => setSelectedConnection(connection)}
-                  data-testid={`button-view-bank-statements-${connection.id}`}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  View Statements
-                </Button>
-              </div>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        onClick={() => setSelectedConnection(connection)}
+                        data-testid={`button-view-bank-statements-${connection.id}`}
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        View Statements
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
             </div>
-          </Card>
-        ))}
+          </div>
+        )}
+
+        {/* PDF Uploads Section */}
+        {hasUploads && (
+          <div>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              Uploaded Statements
+            </h3>
+            <div className="space-y-4">
+              {bankUploads.map((upload) => (
+                <Card key={upload.id} className="p-6 hover-elevate" data-testid={`card-bank-upload-${upload.id}`}>
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3 flex-wrap">
+                        <h3 className="font-semibold text-lg flex items-center gap-2">
+                          <FileText className="w-5 h-5 text-primary" />
+                          {upload.businessName || 'Unknown Business'}
+                        </h3>
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <Upload className="w-3 h-3" />
+                          PDF Upload
+                        </Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div className="flex items-center gap-2 text-sm">
+                          <FileText className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">File:</span>
+                          <span className="font-medium truncate max-w-[200px]">{upload.originalFileName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <DollarSign className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Size:</span>
+                          <span className="font-medium">{formatFileSize(upload.fileSize)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Uploaded:</span>
+                          <span className="font-medium">{upload.createdAt ? format(new Date(upload.createdAt), 'MMM d, yyyy') : 'N/A'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-sm">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">{upload.email}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        onClick={() => handleDownload(upload.id, upload.originalFileName)}
+                        data-testid={`button-download-statement-${upload.id}`}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download PDF
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {selectedConnection && (

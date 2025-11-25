@@ -10,6 +10,7 @@ import Success from "@/pages/Success";
 import Dashboard from "@/pages/Dashboard";
 import AgentSelector from "@/pages/AgentSelector";
 import FundingAnalysis from "@/pages/FundingAnalysis";
+import ConnectBank from "@/pages/ConnectBank";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -21,6 +22,7 @@ function Router() {
       </Route>
       <Route path="/intake" component={IntakeForm} />
       <Route path="/funding-analysis" component={FundingAnalysis} />
+      <Route path="/connect-bank" component={ConnectBank} />
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/agents" component={AgentSelector} />
