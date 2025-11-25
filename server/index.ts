@@ -1,20 +1,46 @@
 import express, { type Request, Response, NextFunction } from "express";
+import session from "express-session";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+declare module 'express-session' {
+  interface SessionData {
+    user?: {
+      isAuthenticated: boolean;
+      role: 'admin' | 'agent';
+      agentEmail?: string;
+      agentName?: string;
+    };
+  }
+}
 
 declare module 'http' {
   interface IncomingMessage {
     rawBody: unknown
   }
 }
+
 app.use(express.json({
   verify: (req, _res, buf) => {
     req.rawBody = buf;
   }
 }));
 app.use(express.urlencoded({ extended: false }));
+
+const isProduction = process.env.NODE_ENV === 'production';
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'tcg-dashboard-secret-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: isProduction,
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000,
+    sameSite: isProduction ? 'strict' : 'lax',
+  }
+}));
 
 app.use((req, res, next) => {
   const start = Date.now();

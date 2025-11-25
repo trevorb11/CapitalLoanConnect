@@ -1,10 +1,17 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import path from "path";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
+import { AGENTS } from "../shared/agents";
 import { z } from "zod";
+
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Tcg1!tcg";
+
+const loginSchema = z.object({
+  credential: z.string().min(1, "Credential is required"),
+});
 
 // Validation schema for Plaid token exchange
 const plaidExchangeSchema = z.object({
@@ -63,7 +70,85 @@ function sanitizeApplicationData(data: any): any {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Get loan application by ID
+  // ========================================
+  // AUTHENTICATION ROUTES
+  // ========================================
+  
+  // Login endpoint
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const validationResult = loginSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ error: "Credential is required" });
+      }
+      
+      const { credential } = validationResult.data;
+      
+      // Check admin password
+      if (credential === ADMIN_PASSWORD) {
+        req.session.user = {
+          isAuthenticated: true,
+          role: 'admin',
+        };
+        return res.json({ 
+          success: true, 
+          role: 'admin',
+          message: 'Logged in as admin'
+        });
+      }
+      
+      // Check agent email
+      const agent = AGENTS.find(
+        (a) => a.email.toLowerCase() === credential.toLowerCase()
+      );
+      
+      if (agent) {
+        req.session.user = {
+          isAuthenticated: true,
+          role: 'agent',
+          agentEmail: agent.email,
+          agentName: agent.name,
+        };
+        return res.json({ 
+          success: true, 
+          role: 'agent',
+          agentName: agent.name,
+          agentEmail: agent.email,
+          message: `Logged in as ${agent.name}`
+        });
+      }
+      
+      return res.status(401).json({ error: "Invalid credentials" });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+  
+  // Logout endpoint
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Logout failed" });
+      }
+      res.json({ success: true, message: "Logged out" });
+    });
+  });
+  
+  // Check auth status
+  app.get("/api/auth/check", (req, res) => {
+    if (req.session.user?.isAuthenticated) {
+      return res.json({
+        isAuthenticated: true,
+        role: req.session.user.role,
+        agentEmail: req.session.user.agentEmail,
+        agentName: req.session.user.agentName,
+      });
+    }
+    res.json({ isAuthenticated: false });
+  });
+
+  // Get loan application by ID (for intake/application forms - no auth required for own app)
   app.get("/api/applications/:id", async (req, res) => {
     try {
       const { id } = req.params;
@@ -185,11 +270,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all applications (for admin/debugging)
+  // Get all applications (requires authentication)
   app.get("/api/applications", async (req, res) => {
     try {
-      const applications = await storage.getAllLoanApplications();
-      res.json(applications);
+      // Check authentication
+      if (!req.session.user?.isAuthenticated) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      
+      const allApplications = await storage.getAllLoanApplications();
+      
+      // Filter based on role
+      if (req.session.user.role === 'admin') {
+        // Admin sees all applications
+        return res.json(allApplications);
+      } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        // Agent sees only their applications
+        const agentEmail = req.session.user.agentEmail.toLowerCase();
+        const filteredApplications = allApplications.filter(
+          (app) => (app.agentEmail || '').toLowerCase() === agentEmail
+        );
+        return res.json(filteredApplications);
+      }
+      
+      return res.status(403).json({ error: "Access denied" });
     } catch (error) {
       console.error("Error fetching applications:", error);
       res.status(500).json({ error: "Failed to fetch applications" });

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { type LoanApplication } from "@shared/schema";
-import { AGENTS } from "@shared/agents";
+import { queryClient, getQueryFn } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,55 +9,43 @@ import { Badge } from "@/components/ui/badge";
 import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield } from "lucide-react";
 import { format } from "date-fns";
 
-const ADMIN_PASSWORD = "Tcg1!tcg";
-
-type UserRole = "admin" | "agent" | null;
-
 interface AuthState {
   isAuthenticated: boolean;
-  role: UserRole;
-  agentEmail: string | null;
-  agentName: string | null;
+  role?: 'admin' | 'agent';
+  agentEmail?: string;
+  agentName?: string;
 }
 
-function LoginForm({ onLogin }: { onLogin: (auth: AuthState) => void }) {
-  const [password, setPassword] = useState("");
+function LoginForm({ onLoginSuccess }: { onLoginSuccess: () => void }) {
+  const [credential, setCredential] = useState("");
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+
+  const loginMutation = useMutation({
+    mutationFn: async (cred: string) => {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: cred }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Login failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      onLoginSuccess();
+    },
+    onError: (err: any) => {
+      setError(err.message || "Invalid credentials. Please try again.");
+    },
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError("");
-
-    setTimeout(() => {
-      if (password === ADMIN_PASSWORD) {
-        onLogin({
-          isAuthenticated: true,
-          role: "admin",
-          agentEmail: null,
-          agentName: null,
-        });
-        return;
-      }
-
-      const agent = AGENTS.find(
-        (a) => a.email.toLowerCase() === password.toLowerCase()
-      );
-
-      if (agent) {
-        onLogin({
-          isAuthenticated: true,
-          role: "agent",
-          agentEmail: agent.email,
-          agentName: agent.name,
-        });
-        return;
-      }
-
-      setError("Invalid credentials. Please try again.");
-      setIsLoading(false);
-    }, 500);
+    loginMutation.mutate(credential);
   };
 
   return (
@@ -79,9 +67,9 @@ function LoginForm({ onLogin }: { onLogin: (auth: AuthState) => void }) {
               Password or Agent Email
             </label>
             <Input
-              type="text"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              value={credential}
+              onChange={(e) => setCredential(e.target.value)}
               placeholder="Enter password or email..."
               className="w-full"
               data-testid="input-login-password"
@@ -98,10 +86,10 @@ function LoginForm({ onLogin }: { onLogin: (auth: AuthState) => void }) {
           <Button
             type="submit"
             className="w-full"
-            disabled={!password || isLoading}
+            disabled={!credential || loginMutation.isPending}
             data-testid="button-login"
           >
-            {isLoading ? "Logging in..." : "Login"}
+            {loginMutation.isPending ? "Logging in..." : "Login"}
           </Button>
         </form>
 
@@ -118,58 +106,58 @@ function LoginForm({ onLogin }: { onLogin: (auth: AuthState) => void }) {
 }
 
 export default function Dashboard() {
-  const [auth, setAuth] = useState<AuthState>({
-    isAuthenticated: false,
-    role: null,
-    agentEmail: null,
-    agentName: null,
-  });
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full">("all");
 
-  useEffect(() => {
-    const savedAuth = localStorage.getItem("dashboardAuth");
-    if (savedAuth) {
-      try {
-        const parsed = JSON.parse(savedAuth);
-        setAuth(parsed);
-      } catch {
-        localStorage.removeItem("dashboardAuth");
-      }
-    }
-  }, []);
+  const { data: authData, isLoading: authLoading, refetch: refetchAuth } = useQuery<AuthState | null>({
+    queryKey: ["/api/auth/check"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+  });
 
-  const handleLogin = (newAuth: AuthState) => {
-    setAuth(newAuth);
-    localStorage.setItem("dashboardAuth", JSON.stringify(newAuth));
-  };
+  const { data: applications, isLoading: appsLoading } = useQuery<LoanApplication[]>({
+    queryKey: ["/api/applications"],
+    enabled: authData?.isAuthenticated === true,
+    queryFn: getQueryFn({ on401: "returnNull" }),
+    retry: false,
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/check"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+    },
+  });
 
   const handleLogout = () => {
-    setAuth({
-      isAuthenticated: false,
-      role: null,
-      agentEmail: null,
-      agentName: null,
-    });
-    localStorage.removeItem("dashboardAuth");
+    logoutMutation.mutate();
   };
 
-  const { data: applications, isLoading } = useQuery<LoanApplication[]>({
-    queryKey: ["/api/applications"],
-    enabled: auth.isAuthenticated,
-  });
+  const handleLoginSuccess = () => {
+    refetchAuth();
+    queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#192F56] to-[#19112D]">
+        <div className="text-white text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!authData?.isAuthenticated) {
+    return <LoginForm onLoginSuccess={handleLoginSuccess} />;
+  }
 
   const filteredApplications = applications
     ? applications
         .filter((app) => {
-          if (auth.role === "agent" && auth.agentEmail) {
-            const agentEmailLower = auth.agentEmail.toLowerCase();
-            const appAgentEmail = (app.agentEmail || "").toLowerCase();
-            if (appAgentEmail !== agentEmailLower) {
-              return false;
-            }
-          }
-
           const matchesSearch =
             (app.fullName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
             (app.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -190,21 +178,11 @@ export default function Dashboard() {
         })
     : [];
 
-  const agentApplications = auth.role === "agent" && auth.agentEmail
-    ? applications?.filter((app) => 
-        (app.agentEmail || "").toLowerCase() === auth.agentEmail!.toLowerCase()
-      ) || []
-    : applications || [];
-
   const stats = {
-    total: agentApplications.length,
-    intakeOnly: agentApplications.filter((a) => a.isCompleted && !a.isFullApplicationCompleted).length,
-    fullCompleted: agentApplications.filter((a) => a.isFullApplicationCompleted).length,
+    total: applications?.length || 0,
+    intakeOnly: applications?.filter((a) => a.isCompleted && !a.isFullApplicationCompleted).length || 0,
+    fullCompleted: applications?.filter((a) => a.isFullApplicationCompleted).length || 0,
   };
-
-  if (!auth.isAuthenticated) {
-    return <LoginForm onLogin={handleLogin} />;
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -212,11 +190,11 @@ export default function Dashboard() {
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
                 <h1 className="text-3xl font-bold">
-                  {auth.role === "admin" ? "Admin Dashboard" : "Agent Dashboard"}
+                  {authData.role === "admin" ? "Admin Dashboard" : "Agent Dashboard"}
                 </h1>
-                {auth.role === "admin" ? (
+                {authData.role === "admin" ? (
                   <Badge variant="default" className="bg-primary" data-testid="badge-role-admin">
                     <Shield className="w-3 h-3 mr-1" />
                     Admin
@@ -229,18 +207,19 @@ export default function Dashboard() {
                 )}
               </div>
               <p className="text-muted-foreground">
-                {auth.role === "admin" 
+                {authData.role === "admin" 
                   ? "Viewing all loan applications" 
-                  : `Viewing applications for ${auth.agentName}`}
+                  : `Viewing applications for ${authData.agentName}`}
               </p>
             </div>
             <Button
               variant="outline"
               onClick={handleLogout}
+              disabled={logoutMutation.isPending}
               data-testid="button-logout"
             >
               <LogOut className="w-4 h-4 mr-2" />
-              Logout
+              {logoutMutation.isPending ? "Logging out..." : "Logout"}
             </Button>
           </div>
         </div>
@@ -252,7 +231,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">
-                  {auth.role === "admin" ? "Total Applications" : "Your Applications"}
+                  {authData.role === "admin" ? "Total Applications" : "Your Applications"}
                 </p>
                 <p className="text-3xl font-bold" data-testid="text-total-count">{stats.total}</p>
               </div>
@@ -325,7 +304,7 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {isLoading ? (
+        {appsLoading ? (
           <Card className="p-12" data-testid="card-loading-state">
             <p className="text-center text-muted-foreground" data-testid="text-loading-message">Loading applications...</p>
           </Card>
@@ -352,7 +331,7 @@ export default function Dashboard() {
                       ) : (
                         <Badge variant="outline" data-testid={`badge-status-incomplete-${app.id}`}>Incomplete</Badge>
                       )}
-                      {auth.role === "admin" && app.agentName && (
+                      {authData.role === "admin" && app.agentName && (
                         <Badge variant="outline" className="text-xs" data-testid={`badge-agent-${app.id}`}>
                           <User className="w-3 h-3 mr-1" />
                           {app.agentName}
@@ -419,7 +398,7 @@ export default function Dashboard() {
             <p className="text-center text-muted-foreground" data-testid="text-empty-message">
               {searchTerm || filterStatus !== "all" 
                 ? "No applications match your filters" 
-                : auth.role === "agent" 
+                : authData.role === "agent" 
                   ? "No applications submitted through your link yet"
                   : "No applications yet"}
             </p>
