@@ -1,7 +1,8 @@
 import { 
-  users, loanApplications, plaidItems, fundingAnalyses,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
-  type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis
+  type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
+  type BankStatementUpload, type InsertBankStatementUpload
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -25,6 +26,12 @@ export interface IStorage {
   createFundingAnalysis(analysis: InsertFundingAnalysis): Promise<FundingAnalysis>;
   getFundingAnalysisByEmail(email: string): Promise<FundingAnalysis | undefined>;
   getAllFundingAnalyses(): Promise<FundingAnalysis[]>;
+  
+  // Bank Statement Upload methods
+  createBankStatementUpload(upload: InsertBankStatementUpload): Promise<BankStatementUpload>;
+  getBankStatementUpload(id: string): Promise<BankStatementUpload | undefined>;
+  getAllBankStatementUploads(): Promise<BankStatementUpload[]>;
+  getBankStatementUploadsByEmail(email: string): Promise<BankStatementUpload[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -155,6 +162,38 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(fundingAnalyses)
       .orderBy(desc(fundingAnalyses.createdAt));
+  }
+
+  // Bank Statement Upload methods
+  async createBankStatementUpload(upload: InsertBankStatementUpload): Promise<BankStatementUpload> {
+    const [bankUpload] = await db
+      .insert(bankStatementUploads)
+      .values(upload)
+      .returning();
+    return bankUpload;
+  }
+
+  async getBankStatementUpload(id: string): Promise<BankStatementUpload | undefined> {
+    const [upload] = await db
+      .select()
+      .from(bankStatementUploads)
+      .where(eq(bankStatementUploads.id, id));
+    return upload || undefined;
+  }
+
+  async getAllBankStatementUploads(): Promise<BankStatementUpload[]> {
+    return await db
+      .select()
+      .from(bankStatementUploads)
+      .orderBy(desc(bankStatementUploads.createdAt));
+  }
+
+  async getBankStatementUploadsByEmail(email: string): Promise<BankStatementUpload[]> {
+    return await db
+      .select()
+      .from(bankStatementUploads)
+      .where(eq(bankStatementUploads.email, email))
+      .orderBy(desc(bankStatementUploads.createdAt));
   }
 }
 

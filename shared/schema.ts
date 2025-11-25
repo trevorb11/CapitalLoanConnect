@@ -212,6 +212,27 @@ export type PlaidItem = typeof plaidItems.$inferSelect;
 export type InsertFundingAnalysis = z.infer<typeof insertFundingAnalysisSchema>;
 export type FundingAnalysis = typeof fundingAnalyses.$inferSelect;
 
+// Bank Statement Uploads - Store uploaded PDF bank statements
+export const bankStatementUploads = pgTable("bank_statement_uploads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  loanApplicationId: varchar("loan_application_id").references(() => loanApplications.id),
+  email: text("email").notNull(),
+  businessName: text("business_name"),
+  originalFileName: text("original_file_name").notNull(),
+  storedFileName: text("stored_file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBankStatementUploadSchema = createInsertSchema(bankStatementUploads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertBankStatementUpload = z.infer<typeof insertBankStatementUploadSchema>;
+export type BankStatementUpload = typeof bankStatementUploads.$inferSelect;
+
 // User schema for authentication (if needed)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
