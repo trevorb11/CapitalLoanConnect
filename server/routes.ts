@@ -240,8 +240,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user already has an incomplete application
       const existingApp = await storage.getLoanApplicationByEmail(applicationData.email);
       if (existingApp && !existingApp.isCompleted) {
-        // Generate agent view URL if completing the application
-        if ((applicationData.isCompleted || applicationData.isFullApplicationCompleted) && !applicationData.agentViewUrl) {
+        // Always ensure agent view URL exists for all applications
+        if (!existingApp.agentViewUrl) {
           applicationData.agentViewUrl = `/agent/application/${existingApp.id}`;
         }
         
@@ -267,29 +267,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create new application
       const application = await storage.createLoanApplication(applicationData);
 
-      // Generate agent view URL for completed applications
-      let agentViewUrl: string | undefined;
-      if (application.isCompleted || application.isFullApplicationCompleted) {
-        agentViewUrl = `/agent/application/${application.id}`;
-      }
+      // Always generate agent view URL for all applications (allows viewing incomplete apps too)
+      const agentViewUrl = `/agent/application/${application.id}`;
 
       // Sync to GoHighLevel
       try {
         const ghlContactId = await ghlService.createOrUpdateContact(application);
         const updatedApp = await storage.updateLoanApplication(application.id, {
           ghlContactId,
-          ...(agentViewUrl && { agentViewUrl }),
+          agentViewUrl,
         });
         res.json(updatedApp || application);
       } catch (ghlError) {
         console.error("GHL sync error, but application saved:", ghlError);
         // Still update the agentViewUrl even if GHL sync fails
-        if (agentViewUrl) {
-          const updatedApp = await storage.updateLoanApplication(application.id, { agentViewUrl });
-          res.json(updatedApp || application);
-        } else {
-          res.json(application);
-        }
+        const updatedApp = await storage.updateLoanApplication(application.id, { agentViewUrl });
+        res.json(updatedApp || application);
       }
     } catch (error) {
       console.error("Error creating application:", error);
@@ -303,9 +296,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const updates = sanitizeApplicationData(req.body);
 
-      // If either form is being completed, generate agent view URL
-      if ((updates.isCompleted || updates.isFullApplicationCompleted) && !updates.agentViewUrl) {
-        // Use relative path for agent view URL - works in all environments
+      // Always ensure agent view URL exists for all applications
+      if (!updates.agentViewUrl) {
         updates.agentViewUrl = `/agent/application/${id}`;
       }
 

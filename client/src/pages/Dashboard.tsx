@@ -1154,18 +1154,16 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Action Buttons - only for completed applications */}
-              {(selectedAppDetails.isCompleted || selectedAppDetails.isFullApplicationCompleted) && selectedAppDetails.agentViewUrl && (
-                <div className="flex gap-3 pt-4 border-t">
-                  <Button
-                    onClick={() => window.open(selectedAppDetails.agentViewUrl!, "_blank")}
-                    data-testid="button-view-full-application"
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    View Full Application
-                  </Button>
-                </div>
-              )}
+              {/* Action Buttons - View Application available for all apps */}
+              <div className="flex gap-3 pt-4 border-t">
+                <Button
+                  onClick={() => window.open(`/agent/application/${selectedAppDetails.id}`, "_blank")}
+                  data-testid="button-view-application"
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  View Application
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>
