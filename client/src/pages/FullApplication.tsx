@@ -528,7 +528,7 @@ export default function FullApplication(props?: FullApplicationProps) {
                         style={{ width: '100%', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', color: '#1f2937', fontSize: '1rem' }} />
                 </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+            <div className="address-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
                 <input name={cityKey} placeholder="City*" value={formData[cityKey] || ''} onChange={handleInputChange} 
                     autoComplete={isBiz ? "address-level2" : "address-level2"}
                     style={{ width: '100%', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', color: '#1f2937', fontSize: '1rem' }} />
