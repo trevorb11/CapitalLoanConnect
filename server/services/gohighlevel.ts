@@ -135,6 +135,7 @@ export class GoHighLevelService {
     };
 
     // 1. Business Information
+    pushField("contact.legal_business_name", application.legalBusinessName || application.businessName);
     pushField("contact.doing_business_as", application.doingBusinessAs);
     pushField("contact.company_email", application.companyEmail || application.businessEmail);
     pushField("contact.primary_business_bank", application.bankName);
@@ -143,11 +144,11 @@ export class GoHighLevelService {
     pushField("contact.ein", application.ein);
     pushField("contact.state_of_incorporation", application.stateOfIncorporation);
     pushField("contact.do_you_process_credit_cards", application.doYouProcessCreditCards);
-    pushField("contact.industry", application.industry);
+    pushField("contact.industry_dropdown", application.industry);
     pushField("contact.business_street_address", application.businessAddress || application.businessStreetAddress);
     
     // 2. Financials & Loan Info
-    pushField("contact.requested_loan_amount", application.requestedAmount);
+    pushField("contact.amount_requested", application.requestedAmount);
     pushField("contact.mca_balance_amount", application.mcaBalanceAmount);
     pushField("contact.mca_balance_bank_name", application.mcaBalanceBankName);
     pushField("contact.monthly_revenue", application.monthlyRevenue);
@@ -167,6 +168,9 @@ export class GoHighLevelService {
     
     pushField("contact.date_of_birth", application.dateOfBirth);
     pushField("contact.ownership_percentage", application.ownership);
+    
+    // Owner Address (separate from business address)
+    pushField("contact.address1", application.ownerAddress1);
 
     // 4. Agent Tracking - Track which agent processed the application
     if (application.agentName) {
