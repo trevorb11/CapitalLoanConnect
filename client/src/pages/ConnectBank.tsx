@@ -356,7 +356,7 @@ export default function ConnectBank() {
                   Choose Your Method
                 </h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
                   {/* Plaid Option */}
                   <div className="border-2 border-[#5FBFB8] rounded-xl p-6 hover-elevate transition-all">
                     <div className="text-center mb-4">
@@ -388,6 +388,13 @@ export default function ConnectBank() {
                     <p className="text-xs text-center text-gray-400 mt-2">
                       Fast & automatic verification
                     </p>
+                  </div>
+
+                  {/* Or Divider */}
+                  <div className="hidden md:flex absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    <div className="bg-white px-3 py-1 border border-gray-300 rounded-full text-sm text-gray-500 font-medium">
+                      or
+                    </div>
                   </div>
 
                   {/* Upload Option */}
