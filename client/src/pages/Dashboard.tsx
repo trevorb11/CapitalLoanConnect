@@ -834,7 +834,7 @@ export default function Dashboard() {
         </div>
 
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-          <Tabs defaultValue="applications" className="w-full" data-testid="tabs-dashboard">
+          <div>
             <TabsList data-testid="tabs-dashboard">
               <TabsTrigger value="applications" data-testid="tab-applications">
                 <FileText className="w-4 h-4 mr-2" />
@@ -845,7 +845,7 @@ export default function Dashboard() {
                 Bank Statements
               </TabsTrigger>
             </TabsList>
-          </Tabs>
+          </div>
           <Button
             variant="outline"
             onClick={() => window.open("/api/application-template", "_blank")}
@@ -858,8 +858,6 @@ export default function Dashboard() {
         </div>
 
         <Tabs defaultValue="applications" className="w-full">
-          <TabsList className="hidden" data-testid="tabs-dashboard-hidden" />
-
           <TabsContent value="applications">
             <Card className="p-6 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
