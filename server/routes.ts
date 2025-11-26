@@ -743,9 +743,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Header background
       doc.rect(0, 0, 595, 113).fill(headerBg);
       
-      // Header text (logo fallback)
-      doc.fillColor(teal).fontSize(24).font('Helvetica-Bold').text('TODAY', 57, 28);
-      doc.fillColor(darkNavy).fontSize(24).font('Helvetica-Bold').text('CAPITAL GROUP', 57, 50, { continued: false });
+      // Add logo image (matching the completed application PDF)
+      // Logo dimensions: original 450x138, scaled to ~170x52 for PDF
+      const logoPath = path.join(process.cwd(), 'client', 'public', 'assets', 'tcg-logo.png');
+      try {
+        if (fs.existsSync(logoPath)) {
+          doc.image(logoPath, 57, 28, { width: 170 });
+        } else {
+          // Fallback to text if logo not found
+          doc.fillColor(teal).fontSize(24).font('Helvetica-Bold').text('TODAY', 57, 28);
+          doc.fillColor(darkNavy).fontSize(24).font('Helvetica-Bold').text('CAPITAL GROUP', 57, 50, { continued: false });
+        }
+      } catch (logoError) {
+        // Fallback to text if logo fails to load
+        doc.fillColor(teal).fontSize(24).font('Helvetica-Bold').text('TODAY', 57, 28);
+        doc.fillColor(darkNavy).fontSize(24).font('Helvetica-Bold').text('CAPITAL GROUP', 57, 50, { continued: false });
+      }
       
       // Date on right
       const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
