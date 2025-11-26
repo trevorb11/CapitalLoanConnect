@@ -286,3 +286,10 @@
     inset: -1px;
   }
 }
+
+/* Responsive Address Grid */
+@media (max-width: 768px) {
+  .address-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
