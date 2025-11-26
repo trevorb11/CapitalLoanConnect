@@ -656,7 +656,7 @@
         
         // Save PDF
         const businessName = document.getElementById('legal_business_name').textContent || 'Application';
-        const redactedSuffix = isRedacted ? '_Redacted' : '';
+        const redactedSuffix = isRedacted ? ' *' : '';
         const fileName = `Application_${businessName.replace(/[^a-z0-9]/gi, '_')}${redactedSuffix}.pdf`;
         doc.save(fileName);
     }
