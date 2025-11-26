@@ -118,7 +118,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Credential is required" });
       }
       
-      const { credential } = validationResult.data;
+      // Trim whitespace from credential (handles copy/paste issues)
+      const credential = validationResult.data.credential.trim();
       
       // Check admin password
       if (credential === ADMIN_PASSWORD) {
