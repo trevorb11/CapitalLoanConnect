@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
 import multer from "multer";
+import PDFDocument from "pdfkit";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
@@ -718,6 +719,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error downloading bank statement:", error);
       res.status(500).json({ error: "Failed to download file" });
+    }
+  });
+
+  // Download blank application template as PDF
+  app.get("/api/application-template", async (req, res) => {
+    try {
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", 'attachment; filename="Application-Template.pdf"');
+      
+      doc.pipe(res);
+      
+      // Title
+      doc.fontSize(24).font("Helvetica-Bold").text("Business Financing Application", { align: "center" });
+      doc.fontSize(12).font("Helvetica").text("Today Capital Group", { align: "center" });
+      doc.moveDown(0.5);
+      
+      // Section: Applicant Information
+      doc.fontSize(14).font("Helvetica-Bold").text("Applicant Information");
+      doc.fontSize(10).font("Helvetica");
+      doc.text("Full Name: _________________________________");
+      doc.text("Email: _________________________________");
+      doc.text("Phone: _________________________________");
+      doc.text("Date of Birth: _________________________________");
+      doc.moveDown();
+      
+      // Section: Business Information
+      doc.fontSize(14).font("Helvetica-Bold").text("Business Information");
+      doc.fontSize(10).font("Helvetica");
+      doc.text("Legal Business Name: _________________________________");
+      doc.text("Doing Business As (DBA): _________________________________");
+      doc.text("Industry: _________________________________");
+      doc.text("EIN: _________________________________");
+      doc.text("Business Start Date: _________________________________");
+      doc.text("State of Incorporation: _________________________________");
+      doc.text("Company Email: _________________________________");
+      doc.text("Website: _________________________________");
+      doc.moveDown();
+      
+      // Section: Business Address
+      doc.fontSize(14).font("Helvetica-Bold").text("Business Address");
+      doc.fontSize(10).font("Helvetica");
+      doc.text("Street Address: _________________________________");
+      doc.text("City: _________________ State: _____ Zip: _________");
+      doc.moveDown();
+      
+      // Section: Owner Information
+      doc.fontSize(14).font("Helvetica-Bold").text("Owner Information");
+      doc.fontSize(10).font("Helvetica");
+      doc.text("Owner Address: _________________________________");
+      doc.text("City: _________________ State: _____ Zip: _________");
+      doc.text("Ownership %: __________ Credit Score Range: __________");
+      doc.moveDown();
+      
+      // Section: Financial Information
+      doc.fontSize(14).font("Helvetica-Bold").text("Financial Information");
+      doc.fontSize(10).font("Helvetica");
+      doc.text("Do you process credit cards? Yes ___ No ___");
+      doc.text("Requested Loan Amount: $ _________________________________");
+      doc.text("Current MCA Balance: $ _________________________________");
+      doc.text("MCA Lender Name: _________________________________");
+      doc.moveDown();
+      
+      // Footer
+      doc.fontSize(9).font("Helvetica").text("Generated: " + new Date().toLocaleDateString(), { align: "center" });
+      
+      doc.end();
+    } catch (error) {
+      console.error("Error generating application template:", error);
+      res.status(500).json({ error: "Failed to generate template" });
     }
   });
 
