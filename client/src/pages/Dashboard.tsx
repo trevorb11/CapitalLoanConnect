@@ -974,17 +974,15 @@ export default function Dashboard() {
                       <Search className="w-4 h-4 mr-2" />
                       View Details
                     </Button>
-                    {app.agentViewUrl && (
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => window.open(app.agentViewUrl!, "_blank")}
-                        data-testid={`button-view-application-${app.id}`}
-                      >
-                        <ExternalLink className="w-4 h-4 mr-2" />
-                        View Application
-                      </Button>
-                    )}
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => window.open(`/agent/application/${app.id}`, "_blank")}
+                      data-testid={`button-view-application-${app.id}`}
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      View Application
+                    </Button>
                     {app.plaidItemId && (
                       <Button
                         variant="outline"
