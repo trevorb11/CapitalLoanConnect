@@ -657,7 +657,8 @@ function BankStatementsTab() {
 
 export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial">("all");
+  const [selectedAppDetails, setSelectedAppDetails] = useState<LoanApplication | null>(null);
   const [selectedAppForStatements, setSelectedAppForStatements] = useState<string | null>(null);
 
   const { data: authData, isLoading: authLoading, refetch: refetchAuth } = useQuery<AuthState | null>({
@@ -718,7 +719,8 @@ export default function Dashboard() {
           const matchesFilter =
             filterStatus === "all" ||
             (filterStatus === "intake" && app.isCompleted && !app.isFullApplicationCompleted) ||
-            (filterStatus === "full" && app.isFullApplicationCompleted);
+            (filterStatus === "full" && app.isFullApplicationCompleted) ||
+            (filterStatus === "partial" && !app.isCompleted && !app.isFullApplicationCompleted);
 
           return matchesSearch && matchesFilter;
         })
@@ -733,6 +735,7 @@ export default function Dashboard() {
     total: applications?.length || 0,
     intakeOnly: applications?.filter((a) => a.isCompleted && !a.isFullApplicationCompleted).length || 0,
     fullCompleted: applications?.filter((a) => a.isFullApplicationCompleted).length || 0,
+    partial: applications?.filter((a) => !a.isCompleted && !a.isFullApplicationCompleted).length || 0,
     bankConnected: applications?.filter((a) => a.plaidItemId).length || 0,
   };
 
@@ -877,6 +880,13 @@ export default function Dashboard() {
               >
                 Full App
               </Button>
+              <Button
+                variant={filterStatus === "partial" ? "default" : "outline"}
+                onClick={() => setFilterStatus("partial")}
+                data-testid="button-filter-partial"
+              >
+                Partial
+              </Button>
             </div>
           </div>
         </Card>
@@ -955,7 +965,16 @@ export default function Dashboard() {
                   </div>
 
                   <div className="flex flex-col gap-2">
-                    {app.agentViewUrl ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedAppDetails(app)}
+                      data-testid={`button-view-details-${app.id}`}
+                    >
+                      <Search className="w-4 h-4 mr-2" />
+                      View Details
+                    </Button>
+                    {app.agentViewUrl && (
                       <Button
                         variant="default"
                         size="sm"
@@ -964,10 +983,6 @@ export default function Dashboard() {
                       >
                         <ExternalLink className="w-4 h-4 mr-2" />
                         View Application
-                      </Button>
-                    ) : (
-                      <Button variant="outline" size="sm" disabled data-testid={`button-no-view-${app.id}`}>
-                        No Agent View
                       </Button>
                     )}
                     {app.plaidItemId && (
