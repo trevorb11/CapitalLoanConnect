@@ -134,7 +134,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Check agent email
+      // Check agent password (format: Tcg[initials], e.g., "Tcgdl" for Dillon LeBlanc)
+      const agentPasswordMatch = credential.toLowerCase().match(/^tcg([a-z]{2})$/);
+      if (agentPasswordMatch) {
+        const initials = agentPasswordMatch[1];
+        const agent = AGENTS.find(
+          (a) => a.initials.toLowerCase() === initials
+        );
+        
+        if (agent) {
+          req.session.user = {
+            isAuthenticated: true,
+            role: 'agent',
+            agentEmail: agent.email,
+            agentName: agent.name,
+          };
+          return res.json({ 
+            success: true, 
+            role: 'agent',
+            agentName: agent.name,
+            agentEmail: agent.email,
+            message: `Logged in as ${agent.name}`
+          });
+        }
+      }
+      
+      // Legacy: Also check agent email for backwards compatibility
       const agent = AGENTS.find(
         (a) => a.email.toLowerCase() === credential.toLowerCase()
       );
