@@ -848,6 +848,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Export all applications as CSV
+  app.get("/api/applications/export/csv", async (req, res) => {
+    try {
+      const applications = await storage.getAllLoanApplications();
+      
+      // Define CSV headers matching all application fields
+      const headers = [
+        'ID',
+        'Full Name',
+        'Email',
+        'Phone',
+        'Date of Birth',
+        'Legal Business Name',
+        'DBA',
+        'Industry',
+        'EIN',
+        'Business Start Date',
+        'State of Incorporation',
+        'Company Email',
+        'Website',
+        'Business Address',
+        'Business City',
+        'Business State',
+        'Business ZIP',
+        'Owner Address',
+        'Owner City',
+        'Owner State',
+        'Owner ZIP',
+        'Ownership %',
+        'FICO Score',
+        'SSN',
+        'Process Credit Cards',
+        'Requested Amount',
+        'MCA Balance Amount',
+        'MCA Balance Bank',
+        'Current Step',
+        'Is Completed',
+        'Is Full Application Completed',
+        'Agent',
+        'GHL Contact ID',
+        'Agent View URL',
+        'Plaid Item ID',
+        'Created At'
+      ];
+      
+      // Helper to escape CSV values
+      const escapeCSV = (value: any): string => {
+        if (value === null || value === undefined) return '';
+        const str = String(value);
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+      
+      // Build CSV rows
+      const rows = applications.map(app => [
+        escapeCSV(app.id),
+        escapeCSV(app.fullName),
+        escapeCSV(app.email),
+        escapeCSV(app.phone),
+        escapeCSV(app.dateOfBirth),
+        escapeCSV(app.legalBusinessName),
+        escapeCSV(app.doingBusinessAs),
+        escapeCSV(app.industry),
+        escapeCSV(app.ein),
+        escapeCSV(app.businessStartDate),
+        escapeCSV(app.stateOfIncorporation),
+        escapeCSV(app.companyEmail),
+        escapeCSV(app.companyWebsite),
+        escapeCSV(app.businessAddress),
+        escapeCSV(app.city),
+        escapeCSV(app.state),
+        escapeCSV(app.zipCode),
+        escapeCSV(app.ownerAddress1),
+        escapeCSV(app.ownerCity),
+        escapeCSV(app.ownerState),
+        escapeCSV(app.ownerZip),
+        escapeCSV(app.ownership),
+        escapeCSV(app.ficoScoreExact),
+        escapeCSV(app.socialSecurityNumber),
+        escapeCSV(app.doYouProcessCreditCards),
+        escapeCSV(app.requestedAmount),
+        escapeCSV(app.mcaBalanceAmount),
+        escapeCSV(app.mcaBalanceBankName),
+        escapeCSV(app.currentStep),
+        escapeCSV(app.isCompleted),
+        escapeCSV(app.isFullApplicationCompleted),
+        escapeCSV(app.agentName),
+        escapeCSV(app.ghlContactId),
+        escapeCSV(app.agentViewUrl),
+        escapeCSV(app.plaidItemId),
+        escapeCSV(app.createdAt)
+      ].join(','));
+      
+      const csvContent = [headers.join(','), ...rows].join('\n');
+      
+      const filename = `Applications_Export_${new Date().toISOString().split('T')[0]}.csv`;
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csvContent);
+    } catch (error) {
+      console.error("Error exporting applications to CSV:", error);
+      res.status(500).json({ error: "Failed to export applications" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

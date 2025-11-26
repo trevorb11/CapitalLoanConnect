@@ -845,15 +845,26 @@ export default function Dashboard() {
                 Bank Statements
               </TabsTrigger>
             </TabsList>
-            <Button
-              variant="outline"
-              onClick={() => window.open("/api/application-template", "_blank")}
-              data-testid="button-download-template"
-              className="w-full md:w-auto"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download Template
-            </Button>
+            <div className="flex gap-2 w-full md:w-auto">
+              <Button
+                variant="outline"
+                onClick={() => window.open("/api/application-template", "_blank")}
+                data-testid="button-download-template"
+                className="flex-1 md:flex-none"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download Template
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => window.open("/api/applications/export/csv", "_blank")}
+                data-testid="button-export-csv"
+                className="flex-1 md:flex-none"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
           </div>
 
           <TabsContent value="applications">
