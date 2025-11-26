@@ -240,6 +240,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user already has an incomplete application
       const existingApp = await storage.getLoanApplicationByEmail(applicationData.email);
       if (existingApp && !existingApp.isCompleted) {
+        // Generate agent view URL if completing the application
+        if ((applicationData.isCompleted || applicationData.isFullApplicationCompleted) && !applicationData.agentViewUrl) {
+          applicationData.agentViewUrl = `/agent/application/${existingApp.id}`;
+        }
+        
         // Update existing application with new data instead of just returning old data
         const updatedApp = await storage.updateLoanApplication(existingApp.id, applicationData);
         
@@ -262,16 +267,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create new application
       const application = await storage.createLoanApplication(applicationData);
 
+      // Generate agent view URL for completed applications
+      let agentViewUrl: string | undefined;
+      if (application.isCompleted || application.isFullApplicationCompleted) {
+        agentViewUrl = `/agent/application/${application.id}`;
+      }
+
       // Sync to GoHighLevel
       try {
         const ghlContactId = await ghlService.createOrUpdateContact(application);
         const updatedApp = await storage.updateLoanApplication(application.id, {
           ghlContactId,
+          ...(agentViewUrl && { agentViewUrl }),
         });
         res.json(updatedApp || application);
       } catch (ghlError) {
         console.error("GHL sync error, but application saved:", ghlError);
-        res.json(application);
+        // Still update the agentViewUrl even if GHL sync fails
+        if (agentViewUrl) {
+          const updatedApp = await storage.updateLoanApplication(application.id, { agentViewUrl });
+          res.json(updatedApp || application);
+        } else {
+          res.json(application);
+        }
       }
     } catch (error) {
       console.error("Error creating application:", error);

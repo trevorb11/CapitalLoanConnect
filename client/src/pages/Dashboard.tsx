@@ -1026,6 +1026,150 @@ export default function Dashboard() {
         isOpen={!!selectedAppForStatements}
         onClose={() => setSelectedAppForStatements(null)}
       />
+
+      {/* Application Details Dialog */}
+      <Dialog open={!!selectedAppDetails} onOpenChange={() => setSelectedAppDetails(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3 flex-wrap">
+              Application Details
+              {selectedAppDetails?.isFullApplicationCompleted ? (
+                <Badge variant="default" className="bg-green-600">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  Full App
+                </Badge>
+              ) : selectedAppDetails?.isCompleted ? (
+                <Badge variant="secondary">
+                  <Clock className="w-3 h-3 mr-1" />
+                  Intake Only
+                </Badge>
+              ) : (
+                <Badge variant="outline">Incomplete</Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedAppDetails && (
+            <div className="space-y-6">
+              {/* Contact Information */}
+              <div>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Contact Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div><span className="font-medium">Full Name:</span> {selectedAppDetails.fullName || "N/A"}</div>
+                  <div><span className="font-medium">Email:</span> {selectedAppDetails.email || "N/A"}</div>
+                  <div><span className="font-medium">Phone:</span> {selectedAppDetails.phone || "N/A"}</div>
+                  {selectedAppDetails.dateOfBirth && (
+                    <div><span className="font-medium">DOB:</span> {selectedAppDetails.dateOfBirth}</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Business Information */}
+              <div>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Business Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div><span className="font-medium">Legal Name:</span> {selectedAppDetails.legalBusinessName || selectedAppDetails.businessName || "N/A"}</div>
+                  <div><span className="font-medium">DBA:</span> {selectedAppDetails.doingBusinessAs || "N/A"}</div>
+                  <div><span className="font-medium">Industry:</span> {selectedAppDetails.industry || "N/A"}</div>
+                  <div><span className="font-medium">EIN:</span> {selectedAppDetails.ein || "N/A"}</div>
+                  <div><span className="font-medium">Start Date:</span> {selectedAppDetails.businessStartDate || "N/A"}</div>
+                  <div><span className="font-medium">State of Inc:</span> {selectedAppDetails.stateOfIncorporation || "N/A"}</div>
+                  <div><span className="font-medium">Company Email:</span> {selectedAppDetails.companyEmail || "N/A"}</div>
+                  <div><span className="font-medium">Website:</span> {selectedAppDetails.companyWebsite || "N/A"}</div>
+                </div>
+              </div>
+
+              {/* Business Address */}
+              {(selectedAppDetails.businessStreetAddress || selectedAppDetails.businessAddress || selectedAppDetails.city) && (
+                <div>
+                  <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Business Address</h4>
+                  <div className="text-sm">
+                    <p>{selectedAppDetails.businessStreetAddress || selectedAppDetails.businessAddress || "N/A"}</p>
+                    <p>{selectedAppDetails.businessCsz || `${selectedAppDetails.city || ""} ${selectedAppDetails.state || ""} ${selectedAppDetails.zipCode || ""}`.trim() || "N/A"}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Owner Address (for full applications) */}
+              {selectedAppDetails.ownerAddress1 && (
+                <div>
+                  <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Owner Address</h4>
+                  <div className="text-sm">
+                    <p>{selectedAppDetails.ownerAddress1} {selectedAppDetails.ownerAddress2 || ""}</p>
+                    <p>{selectedAppDetails.ownerCsz || `${selectedAppDetails.ownerCity || ""} ${selectedAppDetails.ownerState || ""} ${selectedAppDetails.ownerZip || ""}`.trim() || "N/A"}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Financial Information */}
+              <div>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Financial Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                  <div><span className="font-medium">Requested Amount:</span> {selectedAppDetails.requestedAmount ? `$${Number(selectedAppDetails.requestedAmount).toLocaleString()}` : "N/A"}</div>
+                  <div><span className="font-medium">Credit Cards:</span> {selectedAppDetails.doYouProcessCreditCards || "N/A"}</div>
+                  {selectedAppDetails.personalCreditScoreRange && (
+                    <div><span className="font-medium">Credit Score Range:</span> {selectedAppDetails.personalCreditScoreRange}</div>
+                  )}
+                  {selectedAppDetails.ownership && (
+                    <div><span className="font-medium">Ownership %:</span> {selectedAppDetails.ownership}%</div>
+                  )}
+                  {selectedAppDetails.mcaBalanceAmount && (
+                    <div><span className="font-medium">MCA Balance:</span> ${Number(selectedAppDetails.mcaBalanceAmount).toLocaleString()}</div>
+                  )}
+                  {selectedAppDetails.mcaBalanceBankName && (
+                    <div><span className="font-medium">MCA Bank:</span> {selectedAppDetails.mcaBalanceBankName}</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Agent Information */}
+              {selectedAppDetails.agentName && (
+                <div>
+                  <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Agent Information</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div><span className="font-medium">Agent:</span> {selectedAppDetails.agentName}</div>
+                    <div><span className="font-medium">Agent Email:</span> {selectedAppDetails.agentEmail || "N/A"}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Progress Information for Partial Applications */}
+              {!selectedAppDetails.isCompleted && !selectedAppDetails.isFullApplicationCompleted && (
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                  <h4 className="font-semibold text-sm text-amber-800 dark:text-amber-200 mb-2">Application Progress</h4>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    This application is incomplete. The user stopped at step {selectedAppDetails.currentStep || 1} of the intake process.
+                    Consider following up with the applicant to help them complete their application.
+                  </p>
+                </div>
+              )}
+
+              {/* Metadata */}
+              <div className="pt-4 border-t">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
+                  <div>Created: {selectedAppDetails.createdAt ? format(new Date(selectedAppDetails.createdAt), "MMM d, yyyy h:mm a") : "N/A"}</div>
+                  <div>Updated: {selectedAppDetails.updatedAt ? format(new Date(selectedAppDetails.updatedAt), "MMM d, yyyy h:mm a") : "N/A"}</div>
+                  <div>ID: {selectedAppDetails.id}</div>
+                  {selectedAppDetails.ghlContactId && <div>GHL ID: {selectedAppDetails.ghlContactId}</div>}
+                </div>
+              </div>
+
+              {/* Action Buttons - only for completed applications */}
+              {(selectedAppDetails.isCompleted || selectedAppDetails.isFullApplicationCompleted) && selectedAppDetails.agentViewUrl && (
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button
+                    onClick={() => window.open(selectedAppDetails.agentViewUrl!, "_blank")}
+                    data-testid="button-view-full-application"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    View Full Application
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
