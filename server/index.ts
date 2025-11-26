@@ -5,6 +5,10 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 
+// Trust proxy for production (Replit runs behind a proxy)
+// This is required for secure cookies to work correctly
+app.set('trust proxy', 1);
+
 declare module 'express-session' {
   interface SessionData {
     user?: {
