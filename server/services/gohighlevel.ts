@@ -196,8 +196,10 @@ export class GoHighLevelService {
     const tags = ["MCA Application"];
     if (application.isFullApplicationCompleted) {
       tags.push("Full Application Submitted");
+      tags.push("Application Complete");
     } else if (application.isCompleted) {
       tags.push("Intake Complete");
+      tags.push("Application Complete");
     } else {
       tags.push("Application In Progress");
     }
