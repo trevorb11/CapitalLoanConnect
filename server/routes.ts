@@ -722,69 +722,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Download blank application template as PDF
+  // Download blank application template as PDF (matching completed application style)
   app.get("/api/application-template", async (req, res) => {
     try {
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const doc = new PDFDocument({ margin: 0, size: 'A4' });
       
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", 'attachment; filename="Application-Template.pdf"');
       
       doc.pipe(res);
       
-      // Title
-      doc.fontSize(24).font("Helvetica-Bold").text("Business Financing Application", { align: "center" });
-      doc.fontSize(12).font("Helvetica").text("Today Capital Group", { align: "center" });
-      doc.moveDown(0.5);
+      // Colors (matching the completed application PDF)
+      const headerBg = '#E8EEF3'; // Light blue-gray
+      const darkNavy = '#1B2E4D'; // Dark navy text
+      const teal = '#5FBFB8'; // Teal accent
+      const fieldBg = '#FAFAFA'; // Light gray for field boxes
+      const fieldBorder = '#E5E7EB'; // Border for fields
+      const labelColor = '#6B7280'; // Gray for labels
       
-      // Section: Applicant Information
-      doc.fontSize(14).font("Helvetica-Bold").text("Applicant Information");
-      doc.fontSize(10).font("Helvetica");
-      doc.text("Full Name: _________________________________");
-      doc.text("Email: _________________________________");
-      doc.text("Phone: _________________________________");
-      doc.text("Date of Birth: _________________________________");
-      doc.moveDown();
+      // Header background
+      doc.rect(0, 0, 595, 113).fill(headerBg);
       
-      // Section: Business Information
-      doc.fontSize(14).font("Helvetica-Bold").text("Business Information");
-      doc.fontSize(10).font("Helvetica");
-      doc.text("Legal Business Name: _________________________________");
-      doc.text("Doing Business As (DBA): _________________________________");
-      doc.text("Industry: _________________________________");
-      doc.text("EIN: _________________________________");
-      doc.text("Business Start Date: _________________________________");
-      doc.text("State of Incorporation: _________________________________");
-      doc.text("Company Email: _________________________________");
-      doc.text("Website: _________________________________");
-      doc.moveDown();
+      // Header text (logo fallback)
+      doc.fillColor(teal).fontSize(24).font('Helvetica-Bold').text('TODAY', 57, 28);
+      doc.fillColor(darkNavy).fontSize(24).font('Helvetica-Bold').text('CAPITAL GROUP', 57, 50, { continued: false });
       
-      // Section: Business Address
-      doc.fontSize(14).font("Helvetica-Bold").text("Business Address");
-      doc.fontSize(10).font("Helvetica");
-      doc.text("Street Address: _________________________________");
-      doc.text("City: _________________ State: _____ Zip: _________");
-      doc.moveDown();
+      // Date on right
+      const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      doc.fillColor(teal).fontSize(10).font('Helvetica').text('Date: ' + today, 425, 35);
       
-      // Section: Owner Information
-      doc.fontSize(14).font("Helvetica-Bold").text("Owner Information");
-      doc.fontSize(10).font("Helvetica");
-      doc.text("Owner Address: _________________________________");
-      doc.text("City: _________________ State: _____ Zip: _________");
-      doc.text("Ownership %: __________ Credit Score Range: __________");
-      doc.moveDown();
+      let yPos = 140;
+      const leftCol = 57;
+      const rightCol = 306;
+      const fieldWidth = 230;
+      const smallFieldWidth = 107;
+      const fieldHeight = 24;
+      const rowSpacing = 37;
       
-      // Section: Financial Information
-      doc.fontSize(14).font("Helvetica-Bold").text("Financial Information");
-      doc.fontSize(10).font("Helvetica");
-      doc.text("Do you process credit cards? Yes ___ No ___");
-      doc.text("Requested Loan Amount: $ _________________________________");
-      doc.text("Current MCA Balance: $ _________________________________");
-      doc.text("MCA Lender Name: _________________________________");
-      doc.moveDown();
+      // Helper function for section headers
+      const addSectionHeader = (title: string) => {
+        doc.fillColor(darkNavy).fontSize(14).font('Helvetica-Bold').text(title, leftCol, yPos);
+        doc.strokeColor(teal).lineWidth(2).moveTo(leftCol, yPos + 18).lineTo(leftCol + 160, yPos + 18).stroke();
+        yPos += 35;
+      };
       
-      // Footer
-      doc.fontSize(9).font("Helvetica").text("Generated: " + new Date().toLocaleDateString(), { align: "center" });
+      // Helper function for field with label and box
+      const addField = (label: string, x: number, y: number, width: number) => {
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text(label, x, y);
+        doc.rect(x, y + 10, width, fieldHeight).fillAndStroke(fieldBg, fieldBorder);
+        doc.fillColor('#9CA3AF').fontSize(10).font('Helvetica').text('—', x + 8, y + 17);
+      };
+      
+      // Business Information Section
+      addSectionHeader('Business Information');
+      
+      addField('Legal Name:', leftCol, yPos, fieldWidth);
+      addField('DBA:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('Website:', leftCol, yPos, fieldWidth);
+      addField('Start Date:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('EIN:', leftCol, yPos, fieldWidth);
+      addField('Industry:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('Address:', leftCol, yPos, fieldWidth);
+      addField('City:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('State:', leftCol, yPos, smallFieldWidth);
+      addField('ZIP:', leftCol + 120, yPos, smallFieldWidth);
+      addField('State of Inc:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('Requested Amount:', leftCol, yPos, fieldWidth);
+      addField('MCA Balance:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('Credit Cards:', leftCol, yPos, fieldWidth);
+      addField('MCA Bank:', rightCol, yPos, fieldWidth);
+      yPos += 50;
+      
+      // Owner Information Section
+      addSectionHeader('Owner Information');
+      
+      addField('Full Name:', leftCol, yPos, fieldWidth);
+      addField('Email:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('Phone:', leftCol, yPos, fieldWidth);
+      addField('SSN:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('Date of Birth:', leftCol, yPos, fieldWidth);
+      addField('FICO Score:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('Ownership %:', leftCol, yPos, fieldWidth);
+      addField('Home Address:', rightCol, yPos, fieldWidth);
+      yPos += rowSpacing;
+      
+      addField('City:', leftCol, yPos, fieldWidth);
+      addField('State:', rightCol, yPos, smallFieldWidth);
+      addField('ZIP:', rightCol + 120, yPos, smallFieldWidth);
       
       doc.end();
     } catch (error) {
