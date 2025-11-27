@@ -18,6 +18,9 @@ The frontend is built with React and TypeScript, using Vite for bundling. It lev
 - **Homepage (FullApplication)**: One-question-per-slide format with smooth transitions
 - **Agent Routes (AgentApplication)**: Two-page format (Step 1: Business Info, Step 2: Owner Info + Signature) for agent-specific URLs like /DL, /GD, etc.
 
+**Additional Pages:**
+- **/upload-statements**: Standalone bank statement upload page (no Plaid integration) for manual PDF uploads while Plaid is in sandbox mode. Features drag-and-drop, multi-file support, and success confirmation.
+
 ### Backend Architecture
 
 The backend is an Express.js application written in TypeScript, providing RESTful APIs for loan application management (create, retrieve, update). It integrates with GoHighLevel CRM for contact creation, updates, and webhook submissions, designed with a two-tier API and webhook approach. The system generates agent view URLs and allows for agent attribution via specific routes. The storage layer uses an abstracted interface, currently in-memory, but designed for future Drizzle ORM and PostgreSQL integration. Application progress is persistent, allowing users to resume incomplete applications via localStorage.
