@@ -52,9 +52,10 @@ const loginSchema = z.object({
 });
 
 async function verifyRecaptcha(token: string): Promise<{ success: boolean; score?: number; error?: string }> {
+  // Fail closed: if secret key is not configured, reject submission
   if (!RECAPTCHA_SECRET_KEY) {
-    console.log("[RECAPTCHA] Secret key not configured, skipping verification");
-    return { success: true };
+    console.error("[RECAPTCHA] Secret key not configured - rejecting submission for security");
+    return { success: false, error: "reCAPTCHA configuration error" };
   }
 
   try {
@@ -81,8 +82,9 @@ async function verifyRecaptcha(token: string): Promise<{ success: boolean; score
       return { success: false, error: data["error-codes"]?.join(", ") || "Verification failed" };
     }
   } catch (error) {
-    console.error("[RECAPTCHA] Verification error:", error);
-    return { success: true };
+    // Fail closed: if verification fails due to network/API issues, reject submission
+    console.error("[RECAPTCHA] Verification error - rejecting submission for security:", error);
+    return { success: false, error: "reCAPTCHA verification service unavailable" };
   }
 }
 
