@@ -157,6 +157,13 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         return;
       }
     }
+
+    // Validate EIN format (must have 9 digits)
+    const einDigits = formData.ein.replace(/\D/g, '');
+    if (einDigits.length !== 9) {
+      toast({ title: "Invalid EIN", description: "EIN must be exactly 9 digits (XX-XXXXXXX)", variant: "destructive" });
+      return;
+    }
     
     setCurrentStep(2);
     window.scrollTo(0, 0);
@@ -174,6 +181,13 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         toast({ title: "Missing Information", description: "Please fill in all required fields.", variant: "destructive" });
         return;
       }
+    }
+
+    // Validate SSN format (must have 9 digits)
+    const ssnDigits = formData.social_security_.replace(/\D/g, '');
+    if (ssnDigits.length !== 9) {
+      toast({ title: "Invalid SSN", description: "Social Security Number must be exactly 9 digits", variant: "destructive" });
+      return;
     }
 
     if (!consentChecked) {

@@ -412,6 +412,20 @@ export default function FullApplication(props?: FullApplicationProps) {
         if (field.type === 'email' && val && !isValidEmail(val)) {
             return `Invalid email for ${field.label}`;
         }
+        // Check EIN format (must have 9 digits, formatted as XX-XXXXXXX)
+        if (field.mask === 'ein' && val) {
+            const digitsOnly = val.replace(/\D/g, '');
+            if (digitsOnly.length !== 9) {
+                return `EIN must be exactly 9 digits (XX-XXXXXXX)`;
+            }
+        }
+        // Check SSN format (must have 9 digits, formatted as XXX-XX-XXXX)
+        if (field.mask === 'ssn' && val) {
+            const digitsOnly = val.replace(/\D/g, '');
+            if (digitsOnly.length !== 9) {
+                return `Social Security Number must be exactly 9 digits`;
+            }
+        }
         return null;
     };
 
