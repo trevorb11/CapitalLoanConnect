@@ -19,7 +19,11 @@ The frontend is built with React and TypeScript, using Vite for bundling. It lev
 - **Agent Routes (AgentApplication)**: Two-page format (Step 1: Business Info, Step 2: Owner Info + Signature) for agent-specific URLs like /DL, /GD, etc.
 
 **Additional Pages:**
+- **/intake**: Quiz-style 5-step intake form with slider for financing amount, radio selections for business age/revenue/credit score, and contact info. Submits to GHL and redirects to full application page.
 - **/upload-statements**: Standalone bank statement upload page (no Plaid integration) for manual PDF uploads while Plaid is in sandbox mode. Features drag-and-drop, multi-file support, and success confirmation.
+
+**Dashboard Stats:**
+- "Banks Connected" counter includes both Plaid connections and uploaded bank statement PDFs.
 
 ### Backend Architecture
 

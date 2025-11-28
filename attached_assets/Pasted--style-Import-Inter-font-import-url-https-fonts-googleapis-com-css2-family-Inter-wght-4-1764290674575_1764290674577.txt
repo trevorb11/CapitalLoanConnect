@@ -1,0 +1,748 @@
+<style>
+/* Import Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Slider Styles */
+#financingSlider {
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255,255,255,0.2);
+    border-radius: 4px;
+    height: 8px;
+}
+
+#financingSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+#financingSlider::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* Radio Button Styles */
+input[type="radio"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: transparent;
+    margin: 0;
+    font: inherit;
+    color: white;
+    width: 20px;
+    height: 20px;
+    border: 2px solid white;
+    border-radius: 50%;
+    display: grid;
+    place-content: center;
+    flex-shrink: 0;
+}
+
+input[type="radio"]::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    transform: scale(0);
+    transition: 120ms transform ease-in-out;
+    box-shadow: inset 1em 1em white;
+}
+
+input[type="radio"]:checked::before {
+    transform: scale(1);
+}
+
+.radio-option:hover {
+    background: rgba(255,255,255,0.1) !important;
+}
+
+.radio-option:has(input:checked) {
+    background: rgba(255,255,255,0.15) !important;
+}
+
+.quiz-option:hover {
+    background: rgba(255,255,255,0.2) !important;
+    border-color: white !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.quiz-option.selected {
+    background: white !important;
+    color: #192F56 !important;
+    border-color: white !important;
+}
+
+.quiz-question {
+    text-align: center;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+    #question1 h3 {
+        font-size: 2rem !important;
+        line-height: 1.3 !important;
+        margin-bottom: 1.25rem !important;
+    }
+    
+    #question1 p {
+        font-size: 1rem !important;
+        margin-bottom: 2rem !important;
+    }
+    
+    #amountDisplay {
+        font-size: 2.5rem !important;
+        margin-bottom: 1.5rem !important;
+    }
+    
+    #getQuoteBtn {
+        font-size: 1.1rem !important;
+        padding: 1rem 2rem !important;
+    }
+}
+
+input::placeholder {
+    color: rgba(255,255,255,0.7);
+}
+
+input:focus {
+    outline: none;
+    border-color: white;
+    background: rgba(255,255,255,0.15);
+}
+
+#submitQuiz:hover, #getQuoteBtn:hover {
+    background: #f8f9fa;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+#submitQuiz:disabled {
+    background: rgba(255,255,255,0.5);
+    cursor: not-allowed;
+    transform: none;
+}
+
+label {
+    cursor: pointer;
+}
+
+input[type="checkbox"] {
+    cursor: pointer;
+}
+</style>
+
+<div id="premiumQuiz" style="background: linear-gradient(to bottom, #192F56 0%, #19112D 100%); color: white; padding: 3rem; margin: 2rem 0; border-radius: 15px; box-shadow: 0 12px 30px rgba(25, 47, 86, 0.3), 0 4px 15px rgba(0, 0, 0, 0.2); min-height: 500px; width: 100%; max-width: 600px; margin: 2rem auto; position: relative; overflow: hidden;">
+    
+    <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; margin-bottom: 2rem;">
+        <div id="progressBar" style="width: 0%; height: 100%; background: white; border-radius: 2px; transition: width 0.5s ease;"></div>
+    </div>
+    
+    <div id="question1" class="quiz-question" style="display: block; opacity: 1; transition: all 0.5s ease;">
+        <h3 style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 2.2rem; margin-bottom: 1.5rem; font-weight: 600; line-height: 1.2;">How much are you thinking about financing?</h3>
+        <p style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: rgba(255,255,255,0.8); margin-bottom: 2.5rem; font-size: 1.1rem;">Drag the slider to select your desired financing amount.</p>
+        <div style="max-width: 500px; margin: 0 auto; padding: 0 1rem;">
+            <div style="margin-bottom: 3rem;">
+                <div id="amountDisplay" style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 3rem; font-weight: 700; text-align: center; margin-bottom: 2rem;">$25,000</div>
+                <input type="range" id="financingSlider" min="5000" max="2000000" value="25000" step="5000" style="width: 100%; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.2); outline: none; -webkit-appearance: none; cursor: pointer;">
+                <div style="display: flex; justify-content: space-between; font-size: 1rem; color: rgba(255,255,255,0.7); margin-top: 0.75rem; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;">
+                    <span>$5K</span>
+                    <span>$2M</span>
+                </div>
+            </div>
+            <button id="getQuoteBtn" style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; width: 100%; background: white; color: #192F56; padding: 1.25rem 2rem; border-radius: 8px; border: none; font-weight: 600; font-size: 1.2rem; cursor: pointer; transition: all 0.3s ease;">Get Your Quote</button>
+        </div>
+    </div>
+    
+    <div id="question2" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+        <h3 style="font-size: 2.5rem; margin-bottom: 2rem; font-weight: 600;">Business Operating Time</h3>
+        <div style="display: flex; flex-direction: column; gap: 1rem; max-width: 500px; margin: 0 auto; text-align: left;">
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="businessAge" value="Less than 3 months" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">Less than 3 months</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="businessAge" value="3-5 months" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">3-5 months</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="businessAge" value="6-12 months" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">6-12 months</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="businessAge" value="1-2 years" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">1-2 years</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="businessAge" value="2-5 years" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">2-5 years</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="businessAge" value="More than 5 years" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">More than 5 years</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="businessAge" value="No Business" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">I currently don't own a business.</span>
+            </label>
+        </div>
+    </div>
+    
+    <div id="question3" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+        <h3 style="font-size: 2.5rem; margin-bottom: 2rem; font-weight: 600;">Gross Monthly Revenue?</h3>
+        <div style="display: flex; flex-direction: column; gap: 1rem; max-width: 500px; margin: 0 auto; text-align: left;">
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="monthlyIncome" value="Less than $1,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">Less than $1,000</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="monthlyIncome" value="$1,000 – $5,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">$1,000 – $5,000</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="monthlyIncome" value="$5,000 – $15,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">$5,000 – $15,000</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="monthlyIncome" value="$15,000 – $20,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">$15,000 – $20,000</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="monthlyIncome" value="$20,000 – $30,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">$20,000 – $30,000</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="monthlyIncome" value="$30,000 – $50,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">$30,000 – $50,000</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="monthlyIncome" value="$50,000 – $100,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">$50,000 – $100,000</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="monthlyIncome" value="$100,000 – $200,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">$100,000 – $200,000</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="monthlyIncome" value="$200,000+" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">$200,000+</span>
+            </label>
+        </div>
+    </div>
+    
+    <div id="question4" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+        <h3 style="font-size: 2.5rem; margin-bottom: 1rem; font-weight: 600;">Personal Credit Score?</h3>
+        <p style="color: rgba(255,255,255,0.8); margin-bottom: 2rem; font-size: 1.1rem;">(Provide your best estimate)</p>
+        <div style="display: flex; flex-direction: column; gap: 1rem; max-width: 500px; margin: 0 auto; text-align: left;">
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="creditScore" value="500 and below" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">500 and below</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="creditScore" value="500-549" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">500-549</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="creditScore" value="550-599" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">550-599</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="creditScore" value="600-649" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">600-649</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="creditScore" value="650-719" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">650-719</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="creditScore" value="720 or above" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">720 or above</span>
+            </label>
+            <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                <input type="radio" name="creditScore" value="Not sure" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                <span style="color: white; font-size: 1.1rem;">Not sure</span>
+            </label>
+        </div>
+    </div>
+    
+    <!-- Question 5: Contact Info -->
+    <div id="question5" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+        <h3 style="font-size: 1.8rem; margin-bottom: 1rem; font-weight: 600;">Get Your Personalized Financing Quote</h3>
+        <p style="color: rgba(255,255,255,0.8); margin-bottom: 2rem;">We'll connect you with the best financing options based on your business profile.</p>
+        <div style="max-width: 400px; margin: 0 auto;">
+            <input type="text" id="firstName" placeholder="Your Full Name" style="width: 100%; padding: 1rem; margin-bottom: 1rem; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 8px; font-size: 1rem;" required>
+            <input type="text" id="businessName" placeholder="Business Name" style="width: 100%; padding: 1rem; margin-bottom: 1rem; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 8px; font-size: 1rem;" required>
+            <input type="email" id="email" placeholder="Email Address" style="width: 100%; padding: 1rem; margin-bottom: 1rem; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 8px; font-size: 1rem;" required>
+            <input type="tel" id="phone" placeholder="Phone Number" style="width: 100%; padding: 1rem; margin-bottom: 1.5rem; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 8px; font-size: 1rem;" required>
+
+            <!-- Updated Consent Checkbox (Cleaner Version) -->
+            <div style="margin-bottom: 2rem;">
+                <div style="display: flex; align-items: flex-start; text-align: left; gap: 0.75rem;">
+                    <input type="checkbox" id="consentCheck" style="width: 16px; height: 16px; margin-top: 3px; cursor: pointer; flex-shrink: 0;" required>
+                    <label for="consentCheck" style="color: rgba(255,255,255,0.6); font-size: 11px; line-height: 1.4; cursor: pointer; font-weight: 400;">
+                        By checking this box, I verify this is my number and I consent to receive automated marketing calls, texts, and emails from Today Capital Group at the phone number provided, even if verified on a state or federal Do Not Call list. Consent is not a condition of purchase. Msg & data rates may apply. Msg frequency varies. Reply HELP for help and STOP to cancel. I agree to the <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" style="text-decoration: underline; color: rgba(255,255,255,0.8);">Terms of Service</a> and <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" style="text-decoration: underline; color: rgba(255,255,255,0.8);">Privacy Policy</a>.
+                    </label>
+                </div>
+                <!-- Consent error message -->
+                <div id="consentError" style="display: none; margin-top: 0.5rem; padding: 0.5rem; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 4px;">
+                    <p style="color: #ef4444; font-size: 0.85rem; margin: 0;">Please accept the terms to continue</p>
+                </div>
+            </div>
+
+            <button id="submitQuiz" style="width: 100%; background: white; color: #192F56; padding: 1rem 2rem; border-radius: 8px; border: none; font-weight: 600; font-size: 1.1rem; cursor: pointer; transition: all 0.3s ease;">Get My Free Quote</button>
+            
+            <!-- Loading state -->
+            <div id="loadingState" style="display: none; text-align: center; margin-top: 1rem;">
+                <p style="color: rgba(255,255,255,0.8);">Sending your information...</p>
+            </div>
+            
+            <!-- Error message -->
+            <div id="errorMessage" style="display: none; background: rgba(239, 68, 68, 0.2); border: 2px solid rgba(239, 68, 68, 0.5); padding: 1rem; border-radius: 8px; margin-top: 1rem; text-align: center;">
+                <p style="color: #ef4444; font-weight: 600;">There was an error submitting your information. Please try again.</p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="thankYouStep" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+        <div style="text-align: center; max-width: 500px; margin: 0 auto;">
+            <div style="width: 80px; height: 80px; margin: 0 auto 2rem; background: rgba(34, 197, 94, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #22c55e;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20,6 9,17 4,12"></polyline>
+                </svg>
+            </div>
+            
+            <h3 style="font-size: 2.2rem; margin-bottom: 1rem; font-weight: 600; color: #22c55e;">Thank You!</h3>
+            
+            <p style="color: rgba(255,255,255,0.9); font-size: 1.1rem; line-height: 1.6; margin-bottom: 1rem;">
+                Your information has been submitted successfully.
+            </p>
+            
+            <p style="color: rgba(255,255,255,0.8); font-size: 1rem; line-height: 1.5; margin-bottom: 2.5rem;">
+                Our team will review your information and contact you soon with personalized financing options that match your business needs and goals.
+            </p>
+            
+            <button onclick="window.location.href='/'" style="background: white; color: #192F56; padding: 1rem 2rem; border-radius: 8px; border: none; font-weight: 600; font-size: 1.1rem; cursor: pointer; transition: all 0.3s ease; min-width: 200px;">
+                Return to Home
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Import Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Slider Styles */
+#financingSlider {
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255,255,255,0.2);
+    border-radius: 4px;
+    height: 8px;
+}
+
+#financingSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+#financingSlider::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.quiz-option:hover {
+    background: rgba(255,255,255,0.2) !important;
+    border-color: white !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.quiz-option.selected {
+    background: white !important;
+    color: #192F56 !important;
+    border-color: white !important;
+}
+
+.quiz-question {
+    text-align: center;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+    #question1 h3 {
+        font-size: 2rem !important;
+        line-height: 1.3 !important;
+        margin-bottom: 1.25rem !important;
+    }
+    
+    #question1 p {
+        font-size: 1rem !important;
+        margin-bottom: 2rem !important;
+    }
+    
+    #amountDisplay {
+        font-size: 2.5rem !important;
+        margin-bottom: 1.5rem !important;
+    }
+    
+    #getQuoteBtn {
+        font-size: 1.1rem !important;
+        padding: 1rem 2rem !important;
+    }
+}
+
+input::placeholder {
+    color: rgba(255,255,255,0.7);
+}
+
+input:focus {
+    outline: none;
+    border-color: white;
+    background: rgba(255,255,255,0.15);
+}
+
+#submitQuiz:hover, #getQuoteBtn:hover {
+    background: #f8f9fa;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+#submitQuiz:disabled {
+    background: rgba(255,255,255,0.5);
+    cursor: not-allowed;
+    transform: none;
+}
+
+label {
+    cursor: pointer;
+}
+
+input[type="checkbox"] {
+    cursor: pointer;
+}
+</style>
+
+<script>
+let currentQuestion = 1;
+let quizData = {};
+const totalQuestions = 5;
+
+// ============================================================
+// 1. PASTE YOUR WEBHOOK URLS HERE
+// ============================================================
+
+// URL 1: GoHighLevel (Your Main CRM Connection)
+const ghlWebhookUrl = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2a9dd48e-792a-4bdb-8688-fddaf3141ae4'; 
+
+// URL 2: Google Sheets Backup (Make/Zapier/AppScript Webhook)
+const backupWebhookUrl = 'https://script.google.com/macros/s/AKfycbwqLajqFfao02IXUIQNPIJ1Ws26942pnPwIwdBcbntj6-ntvSelq2YKGrQnf6IzXSPC/exec'; 
+
+// ============================================================
+// 2. Detect lead source (Google Ads vs everything else)
+// ============================================================
+
+function detectLeadSource() {
+    const params = new URLSearchParams(window.location.search);
+
+    // Google Ads auto-tagging
+    const hasGclid = params.has('gclid');
+
+    // Manual UTM tagging
+    const utmSource = (params.get('utm_source') || '').toLowerCase();
+    const utmMedium = (params.get('utm_medium') || '').toLowerCase();
+
+    if (hasGclid || (utmSource === 'google' && utmMedium === 'cpc')) {
+        return 'Google Ads';
+    }
+
+    // Default if not clearly from Google Ads
+    return 'Website Lead Form';
+}
+
+// Compute once on page load
+const leadSource = detectLeadSource();
+
+// ============================================================
+
+function updateProgress() {
+    const progress = (currentQuestion / totalQuestions) * 100;
+    document.getElementById('progressBar').style.width = progress + '%';
+}
+
+function showQuestion(questionNum) {
+    // Hide all questions
+    document.querySelectorAll('.quiz-question').forEach(q => {
+        q.style.display = 'none';
+        q.style.opacity = '0';
+    });
+    
+    // Show current question with animation
+    setTimeout(() => {
+        const currentQ = document.getElementById('question' + questionNum);
+        currentQ.style.display = 'block';
+        setTimeout(() => {
+            currentQ.style.opacity = '1';
+        }, 50);
+    }, 250);
+    
+    updateProgress();
+}
+
+function showThankYou() {
+    document.getElementById('progressBar').style.width = '100%';
+    
+    document.querySelectorAll('.quiz-question').forEach(q => {
+        q.style.display = 'none';
+        q.style.opacity = '0';
+    });
+    
+    setTimeout(() => {
+        const thankYouElement = document.getElementById('thankYouStep');
+        thankYouElement.style.display = 'block';
+        setTimeout(() => {
+            thankYouElement.style.opacity = '1';
+        }, 50);
+    }, 250);
+}
+
+function nextQuestion() {
+    if (currentQuestion < totalQuestions) {
+        currentQuestion++;
+        showQuestion(currentQuestion);
+    }
+}
+
+function formatAmount(amount) {
+    if (amount >= 1000000) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 1,
+            notation: 'compact',
+            compactDisplay: 'short'
+        }).format(amount);
+    }
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount);
+}
+
+async function submitToWebhook(data) {
+    try {
+        console.log('Starting parallel submission...');
+        
+        const loadingState = document.getElementById('loadingState');
+        const errorMessage = document.getElementById('errorMessage');
+        const submitBtn = document.getElementById('submitQuiz');
+        
+        if (errorMessage) errorMessage.style.display = 'none';
+        if (loadingState) loadingState.style.display = 'block';
+        if (submitBtn) submitBtn.disabled = true;
+        
+        // Prepare requests
+        const requests = [];
+        
+        // 1. Main Request (GHL)
+        if (ghlWebhookUrl) {
+            requests.push(fetch(ghlWebhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(res => ({ destination: 'GHL', ok: res.ok, status: res.status })));
+        }
+        
+        // 2. Backup Request (Google Sheets)
+        if (backupWebhookUrl) {
+            requests.push(fetch(backupWebhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(res => ({ destination: 'Backup', ok: res.ok, status: res.status })));
+        }
+
+        // Send all requests in parallel
+        const results = await Promise.allSettled(requests);
+        
+        // Log results for debugging
+        results.forEach(result => {
+            if (result.status === 'fulfilled') {
+                console.log(`${result.value.destination} Status:`, result.value.ok ? 'Success' : 'Failed');
+            } else {
+                console.error('Network Error:', result.reason);
+            }
+        });
+
+        // Success condition: If AT LEAST ONE succeeded, we redirect
+        const anySuccess = results.some(r => r.status === 'fulfilled' && r.value.ok);
+
+        if (anySuccess) {
+            if (loadingState) loadingState.style.display = 'none';
+
+            // Redirect to app.todaycapitalgroup.com with phone in query string
+            const phoneForRedirect = data.phone ? encodeURIComponent(data.phone) : '';
+            const redirectUrl = phoneForRedirect
+                ? `https://app.todaycapitalgroup.com?phone=${phoneForRedirect}`
+                : 'https://app.todaycapitalgroup.com';
+
+            window.location.href = redirectUrl;
+
+        } else {
+            throw new Error('All submission endpoints failed');
+        }
+
+    } catch (error) {
+        console.error('Critical Error:', error);
+        const loadingState = document.getElementById('loadingState');
+        const errorMessage = document.getElementById('errorMessage');
+        const submitBtn = document.getElementById('submitQuiz');
+        
+        if (loadingState) loadingState.style.display = 'none';
+        if (errorMessage) errorMessage.style.display = 'block';
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+// Financing slider
+const slider = document.getElementById('financingSlider');
+const amountDisplay = document.getElementById('amountDisplay');
+
+slider.addEventListener('input', function() {
+    const value = parseInt(this.value);
+    amountDisplay.textContent = formatAmount(value);
+    quizData.financingAmount = value;
+});
+
+document.getElementById('getQuoteBtn').addEventListener('click', function() {
+    if (!quizData.financingAmount) {
+        quizData.financingAmount = 25000;
+    }
+    nextQuestion();
+});
+
+document.querySelectorAll('input[name="businessAge"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            quizData.businessAge = this.value;
+            setTimeout(() => nextQuestion(), 500);
+        }
+    });
+});
+
+document.querySelectorAll('input[name="monthlyIncome"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            quizData.monthlyIncome = this.value;
+            setTimeout(() => nextQuestion(), 500);
+        }
+    });
+});
+
+document.querySelectorAll('input[name="creditScore"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            quizData.creditScore = this.value;
+            setTimeout(() => nextQuestion(), 500);
+        }
+    });
+});
+
+// Submit quiz
+document.getElementById('submitQuiz').addEventListener('click', async function() {
+    const firstNameInput = document.getElementById('firstName').value.trim();
+    const businessName = document.getElementById('businessName').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const consent = document.getElementById('consentCheck').checked;
+    
+    const consentError = document.getElementById('consentError');
+    if (consentError) consentError.style.display = 'none';
+    
+    if (!firstNameInput || !businessName || !email || !phone) {
+        alert('Please fill in all fields');
+        return;
+    }
+    
+    if (!consent) {
+        if (consentError) consentError.style.display = 'block';
+        document.getElementById('consentCheck').focus();
+        return;
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        alert('Please enter a valid email address');
+        return;
+    }
+
+    // Split name for GHL
+    const nameParts = firstNameInput.split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+    // Grab URL params once here so we can also send UTM data if we want
+    const params = new URLSearchParams(window.location.search);
+    
+    // Prepare data for Webhook
+    const webhookData = {
+        // Standard GHL Fields
+        first_name: firstName,
+        last_name: lastName,
+        email: email,
+        phone: phone,
+        company_name: businessName,
+        
+        // Mapped Custom Fields
+        requested_loan_amount: quizData.financingAmount,
+        years_in_business: quizData.businessAge,
+        monthly_revenue: quizData.monthlyIncome,
+        personal_credit_score_range: quizData.creditScore,
+        doing_business_as: businessName,
+        company_email: email,
+        
+        // Metadata / Attribution
+        submission_date: new Date().toISOString(),
+        source: leadSource,                // <-- maps to {{ contact.source }} in GHL
+        page_url: window.location.href,
+
+        // Optional: raw UTM values for deeper attribution (map to custom fields in GHL if desired)
+        utm_source: params.get('utm_source') || null,
+        utm_medium: params.get('utm_medium') || null,
+        utm_campaign: params.get('utm_campaign') || null,
+        utm_term: params.get('utm_term') || null,
+        utm_content: params.get('utm_content') || null
+    };
+    
+    await submitToWebhook(webhookData);
+});
+
+updateProgress();
+</script>

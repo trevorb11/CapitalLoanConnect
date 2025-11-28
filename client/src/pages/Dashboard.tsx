@@ -673,6 +673,30 @@ export default function Dashboard() {
     retry: false,
   });
 
+  const { data: bankConnections } = useQuery<BankConnection[]>({
+    queryKey: ['/api/plaid/all'],
+    enabled: authData?.isAuthenticated === true,
+    queryFn: async () => {
+      const res = await fetch('/api/plaid/all', {
+        credentials: 'include',
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const { data: bankUploads } = useQuery<BankStatementUpload[]>({
+    queryKey: ['/api/bank-statements/uploads'],
+    enabled: authData?.isAuthenticated === true,
+    queryFn: async () => {
+      const res = await fetch('/api/bank-statements/uploads', {
+        credentials: 'include',
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const logoutMutation = useMutation({
     mutationFn: async () => {
       await fetch("/api/auth/logout", {
@@ -731,12 +755,20 @@ export default function Dashboard() {
         })
     : [];
 
+  const emailsWithBankData = new Set<string>();
+  bankConnections?.forEach((c) => c.email && emailsWithBankData.add(c.email.toLowerCase()));
+  bankUploads?.forEach((u) => u.email && emailsWithBankData.add(u.email.toLowerCase()));
+  
+  const appsWithBankData = applications?.filter((a) => 
+    a.plaidItemId || (a.email && emailsWithBankData.has(a.email.toLowerCase()))
+  ).length || 0;
+
   const stats = {
     total: applications?.length || 0,
     intakeOnly: applications?.filter((a) => a.isCompleted && !a.isFullApplicationCompleted).length || 0,
     fullCompleted: applications?.filter((a) => a.isFullApplicationCompleted).length || 0,
     partial: applications?.filter((a) => !a.isCompleted && !a.isFullApplicationCompleted).length || 0,
-    bankConnected: applications?.filter((a) => a.plaidItemId).length || 0,
+    bankConnected: appsWithBankData,
   };
 
   return (
