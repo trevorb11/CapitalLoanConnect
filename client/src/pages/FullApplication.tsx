@@ -175,11 +175,22 @@ export default function FullApplication(props?: FullApplicationProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [consentChecked, setConsentChecked] = useState(false);
+  const [cameFromIntake, setCameFromIntake] = useState(false);
 
-  // Check for existing ID on mount
+  // Check for existing ID on mount and detect if user came from intake
   useEffect(() => {
     const savedId = localStorage.getItem("applicationId");
     if (savedId) setApplicationId(savedId);
+    
+    // Check if user came from intake form (has applicationId in URL)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlAppId = urlParams.get("applicationId");
+    if (urlAppId) {
+      setCameFromIntake(true);
+      // Clean up URL without reload
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    
     setIsCheckingId(false);
   }, []);
 
@@ -623,6 +634,36 @@ export default function FullApplication(props?: FullApplicationProps) {
             display: 'flex',
             flexDirection: 'column'
         }}>
+
+            {/* Welcome preface for users coming from intake form */}
+            {cameFromIntake && currentStepIndex === 0 && (
+              <div style={{ 
+                textAlign: 'center', 
+                marginBottom: '2rem',
+                padding: '1.5rem',
+                background: 'rgba(255,255,255,0.08)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255,255,255,0.15)'
+              }}>
+                <p style={{ 
+                  fontSize: '1.1rem', 
+                  color: 'rgba(255,255,255,0.95)', 
+                  lineHeight: 1.6,
+                  margin: 0
+                }}>
+                  Thank you for your interest in financing with Today Capital Group.
+                </p>
+                <p style={{ 
+                  fontSize: '1rem', 
+                  color: 'rgba(255,255,255,0.75)', 
+                  lineHeight: 1.6,
+                  marginTop: '0.75rem',
+                  marginBottom: 0
+                }}>
+                  Completing this application takes just a few minutes and helps us fast-track your approval.
+                </p>
+              </div>
+            )}
 
             <h1 style={{ 
                 fontSize: '2.5rem', fontWeight: 'bold', textAlign: 'center', marginBottom: '1.5rem', lineHeight: 1.2,
