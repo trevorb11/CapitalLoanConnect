@@ -62,6 +62,14 @@ The application uses the Inter font from Google Fonts and a color system based o
 - Database tables: `plaid_items` (stores access tokens) and `funding_analyses` (stores calculated results).
 - Schema field `plaidItemId` on loan_applications links to connected bank data.
 
+**Google reCAPTCHA v3 Integration**:
+- Provides invisible bot protection on all application forms without user friction.
+- Requires `VITE_RECAPTCHA_SITE_KEY` (frontend) and `RECAPTCHA_SECRET_KEY` (backend) environment variables.
+- Tokens generated on final form submissions only (not during auto-save).
+- Backend verification uses fail-closed security: rejects submissions if verification fails or service is unavailable.
+- Score threshold of 0.5 filters potential bots while allowing legitimate users.
+- Forms protected: QuizIntake, FullApplication, AgentApplication.
+
 ### Database
 
 **Neon Database**:
