@@ -238,19 +238,21 @@ export default function QuizIntake() {
                 {formatAmount(quizData.financingAmount)}
               </div>
 
-              <input
-                type="range"
-                min="5000"
-                max="2000000"
-                step="5000"
-                value={quizData.financingAmount}
-                onChange={(e) => setQuizData((prev) => ({ ...prev, financingAmount: parseInt(e.target.value) }))}
-                className="w-full h-2 rounded-full appearance-none cursor-pointer mb-3"
-                style={{
-                  background: "rgba(255,255,255,0.2)",
-                }}
-                data-testid="financing-slider"
-              />
+              <div className="relative">
+                <input
+                  type="range"
+                  min="5000"
+                  max="2000000"
+                  step="1000"
+                  value={quizData.financingAmount}
+                  onChange={(e) => setQuizData((prev) => ({ ...prev, financingAmount: parseInt(e.target.value) }))}
+                  className="financing-slider w-full h-3 rounded-full appearance-none cursor-pointer mb-3"
+                  style={{
+                    background: `linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.9) ${((quizData.financingAmount - 5000) / (2000000 - 5000)) * 100}%, rgba(255,255,255,0.2) ${((quizData.financingAmount - 5000) / (2000000 - 5000)) * 100}%, rgba(255,255,255,0.2) 100%)`,
+                  }}
+                  data-testid="financing-slider"
+                />
+              </div>
 
               <div className="flex justify-between text-white/60 text-sm mb-8">
                 <span>$5K</span>
@@ -491,25 +493,67 @@ export default function QuizIntake() {
 
       {/* Custom slider styles */}
       <style>{`
-        input[type="range"]::-webkit-slider-thumb {
+        .financing-slider {
           -webkit-appearance: none;
           appearance: none;
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
-          background: white;
-          cursor: pointer;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+          outline: none;
+          transition: background 0.1s ease;
         }
         
-        input[type="range"]::-moz-range-thumb {
-          width: 24px;
-          height: 24px;
+        .financing-slider::-webkit-slider-runnable-track {
+          height: 12px;
+          border-radius: 9999px;
+        }
+        
+        .financing-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
           background: white;
-          cursor: pointer;
+          cursor: grab;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 0 0 4px rgba(255,255,255,0.2);
+          margin-top: -10px;
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        
+        .financing-slider::-webkit-slider-thumb:hover {
+          transform: scale(1.1);
+          box-shadow: 0 6px 16px rgba(0,0,0,0.4), 0 0 0 6px rgba(255,255,255,0.3);
+        }
+        
+        .financing-slider::-webkit-slider-thumb:active {
+          cursor: grabbing;
+          transform: scale(1.05);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.4), 0 0 0 8px rgba(255,255,255,0.25);
+        }
+        
+        .financing-slider::-moz-range-track {
+          height: 12px;
+          border-radius: 9999px;
+          background: transparent;
+        }
+        
+        .financing-slider::-moz-range-thumb {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: white;
+          cursor: grab;
           border: none;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 0 0 4px rgba(255,255,255,0.2);
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        
+        .financing-slider::-moz-range-thumb:hover {
+          transform: scale(1.1);
+          box-shadow: 0 6px 16px rgba(0,0,0,0.4), 0 0 0 6px rgba(255,255,255,0.3);
+        }
+        
+        .financing-slider::-moz-range-thumb:active {
+          cursor: grabbing;
+          transform: scale(1.05);
         }
       `}</style>
     </div>
