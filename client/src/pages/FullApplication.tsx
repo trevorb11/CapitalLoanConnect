@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
+import { trackApplicationSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 
 // --- CONSTANTS & DATA ---
 
@@ -177,8 +178,10 @@ export default function FullApplication(props?: FullApplicationProps) {
   const [consentChecked, setConsentChecked] = useState(false);
   const [cameFromIntake, setCameFromIntake] = useState(false);
 
-  // Check for existing ID on mount and detect if user came from intake
+  // Track page view and check for existing ID on mount
   useEffect(() => {
+    trackPageView('/', 'Full Application');
+    
     const savedId = localStorage.getItem("applicationId");
     if (savedId) setApplicationId(savedId);
     
@@ -478,11 +481,23 @@ export default function FullApplication(props?: FullApplicationProps) {
             return;
         }
         setIsSubmitting(true);
-        await saveProgress(true); 
+        await saveProgress(true);
+        
+        // Track full application submission
+        trackApplicationSubmitted({
+          applicationType: 'full_application',
+          agentCode: agent?.initials || 'direct',
+          businessName: formData.legal_business_name,
+          requestedAmount: formData.requested_loan_amount,
+        });
+        
         setIsSubmitting(false);
         setShowSuccess(true);
         return;
     }
+
+    // Track step completion
+    trackFormStepCompleted('full_application', currentStepIndex + 1, currentConfig.label);
 
     // Proceed
     setIsSubmitting(true); 

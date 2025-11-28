@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Loader2, CheckCircle } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
+import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 
 const BUSINESS_AGE_OPTIONS = [
   "Less than 3 months",
@@ -98,6 +99,11 @@ export default function QuizIntake() {
   const totalQuestions = 5;
   const progress = (currentQuestion / totalQuestions) * 100;
 
+  // Track page view on mount
+  useEffect(() => {
+    trackPageView('/intake/quiz', 'Intake Quiz Form');
+  }, []);
+
   const parseRevenueToNumber = (revenueRange: string): string => {
     const rangeMap: Record<string, string> = {
       "Less than $1,000": "500",
@@ -132,6 +138,14 @@ export default function QuizIntake() {
       return response.json();
     },
     onSuccess: (data) => {
+      // Track intake form submission
+      trackIntakeFormSubmitted({
+        requestedAmount: quizData.financingAmount.toString(),
+        creditScore: quizData.creditScore,
+        timeInBusiness: quizData.businessAge,
+        monthlyRevenue: quizData.monthlyRevenue,
+      });
+      
       if (data.id) {
         navigate(`/?applicationId=${data.id}`);
       } else {
@@ -154,6 +168,9 @@ export default function QuizIntake() {
 
   const nextQuestion = () => {
     if (currentQuestion < totalQuestions) {
+      // Track step completion
+      const stepNames = ['Financing Amount', 'Business Age', 'Monthly Revenue', 'Credit Score', 'Contact Info'];
+      trackFormStepCompleted('intake_quiz', currentQuestion, stepNames[currentQuestion - 1]);
       goToQuestion(currentQuestion + 1);
     }
   };

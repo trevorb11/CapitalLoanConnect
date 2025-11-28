@@ -1,7 +1,13 @@
+import { useEffect } from "react";
 import { Link } from "wouter";
 import { CheckCircle, Clock, DollarSign, Users, ShieldCheck, Zap, Building2, CreditCard, Landmark, Truck } from "lucide-react";
+import { trackPageView } from "@/lib/analytics";
 
 export default function IntakeLanding() {
+  // Track page view on mount
+  useEffect(() => {
+    trackPageView('/intake', 'Intake Landing Page');
+  }, []);
   return (
     <div style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", backgroundColor: '#f5f5f7', color: '#1d1d1f', lineHeight: 1.6 }}>
       

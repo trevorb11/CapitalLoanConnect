@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
+import { trackApplicationSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -79,12 +80,15 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
   const [existingSignature, setExistingSignature] = useState<string | null>(null);
 
   useEffect(() => {
+    // Track page view for agent application
+    trackPageView(`/${agent.initials}`, `Agent Application - ${agent.name}`);
+    
     const savedId = localStorage.getItem("applicationId");
     if (savedId) {
       setApplicationId(savedId);
     }
     setIsCheckingId(false);
-  }, []);
+  }, [agent.initials, agent.name]);
 
   const { data: existingData, isLoading } = useQuery<LoanApplication>({
     queryKey: [`/api/applications/${applicationId}`],
@@ -164,6 +168,9 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
       toast({ title: "Invalid EIN", description: "EIN must be exactly 9 digits (XX-XXXXXXX)", variant: "destructive" });
       return;
     }
+    
+    // Track step 1 completion
+    trackFormStepCompleted('agent_application', 1, 'Business Information');
     
     setCurrentStep(2);
     window.scrollTo(0, 0);
@@ -264,6 +271,14 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
       if (data && data.agentViewUrl) {
         setAgentViewUrl(data.agentViewUrl);
       }
+
+      // Track agent application submission
+      trackApplicationSubmitted({
+        applicationType: 'agent_application',
+        agentCode: agent.initials,
+        businessName: formData.legal_business_name,
+        requestedAmount: formData.requested_loan_amount,
+      });
 
       setIsSubmitting(false);
       setShowSuccess(true);

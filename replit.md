@@ -71,6 +71,19 @@ The application uses the Inter font from Google Fonts and a color system based o
 - Score threshold of 0.5 filters potential bots while allowing legitimate users.
 - Forms protected: QuizIntake, FullApplication, AgentApplication.
 
+**Google Analytics (gtag.js) Integration**:
+- Tracking ID: `G-CR5Q49Y3J5`
+- Embedded in `client/index.html` for all pages.
+- Custom events tracked:
+  - `application_submitted`: Full application or agent application completed (with `application_type`, `agent_code`, `business_name`, `requested_amount`)
+  - `intake_form_submitted`: Quiz intake form completed (with `requested_amount`, `credit_score`, `time_in_business`, `monthly_revenue`)
+  - `form_step_completed`: Individual form step progression (with `form_type`, `step_number`, `step_name`)
+  - `page_view`: Enhanced page view tracking with custom page paths and titles
+  - `bank_connected`: Plaid bank connection success
+  - `bank_statement_uploaded`: Manual bank statement upload
+  - `form_abandoned`: Form abandonment with last step reached
+- Analytics utility functions in `client/src/lib/analytics.ts` for type-safe event tracking from React components.
+
 ### Database
 
 **Neon Database**:

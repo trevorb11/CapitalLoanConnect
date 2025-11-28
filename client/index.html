@@ -9,6 +9,89 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-CR5Q49Y3J5"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-CR5Q49Y3J5');
+      
+      // Custom event tracking functions
+      window.trackEvent = function(eventName, eventParams) {
+        gtag('event', eventName, eventParams);
+      };
+      
+      // Track full application submission
+      window.trackApplicationSubmitted = function(params) {
+        gtag('event', 'application_submitted', {
+          event_category: 'form_submission',
+          event_label: 'Full Application',
+          application_type: params.applicationType || 'full_application',
+          agent_code: params.agentCode || 'direct',
+          ...params
+        });
+      };
+      
+      // Track intake form (quiz) submission
+      window.trackIntakeFormSubmitted = function(params) {
+        gtag('event', 'intake_form_submitted', {
+          event_category: 'form_submission',
+          event_label: 'Intake Quiz',
+          requested_amount: params.requestedAmount || '',
+          credit_score: params.creditScore || '',
+          ...params
+        });
+      };
+      
+      // Track form step completion
+      window.trackFormStepCompleted = function(formType, stepNumber, stepName) {
+        gtag('event', 'form_step_completed', {
+          event_category: 'form_progress',
+          event_label: formType,
+          form_type: formType,
+          step_number: stepNumber,
+          step_name: stepName
+        });
+      };
+      
+      // Track page views (enhanced)
+      window.trackPageView = function(pagePath, pageTitle) {
+        gtag('event', 'page_view', {
+          page_path: pagePath,
+          page_title: pageTitle
+        });
+      };
+      
+      // Track bank connection via Plaid
+      window.trackBankConnected = function(institutionName) {
+        gtag('event', 'bank_connected', {
+          event_category: 'plaid_integration',
+          event_label: institutionName,
+          institution_name: institutionName
+        });
+      };
+      
+      // Track bank statement upload
+      window.trackBankStatementUploaded = function(fileCount) {
+        gtag('event', 'bank_statement_uploaded', {
+          event_category: 'document_upload',
+          event_label: 'Bank Statement',
+          file_count: fileCount
+        });
+      };
+      
+      // Track form abandonment (when user leaves without completing)
+      window.trackFormAbandonment = function(formType, lastStep) {
+        gtag('event', 'form_abandoned', {
+          event_category: 'form_abandonment',
+          event_label: formType,
+          form_type: formType,
+          last_step: lastStep
+        });
+      };
+    </script>
   </head>
   <body>
     <div id="root"></div>
