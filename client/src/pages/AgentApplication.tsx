@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
+import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -65,6 +66,7 @@ interface AgentApplicationProps {
 export default function AgentApplication({ agent }: AgentApplicationProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { executeRecaptcha } = useGoogleReCaptcha();
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [isCheckingId, setIsCheckingId] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
@@ -183,6 +185,15 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
     setIsSubmitting(true);
 
     try {
+      let recaptchaToken: string | undefined;
+      if (executeRecaptcha) {
+        try {
+          recaptchaToken = await executeRecaptcha("agent_application_submit");
+        } catch (error) {
+          console.error("reCAPTCHA error:", error);
+        }
+      }
+      
       const signatureToUse = existingSignature || new Date().toISOString();
       
       const payload: any = {
@@ -222,6 +233,7 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         agentName: agent.name,
         agentEmail: agent.email,
         agentGhlId: agent.ghlId,
+        ...(recaptchaToken && { recaptchaToken }),
       };
 
       let data: any;
