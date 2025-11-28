@@ -1,6 +1,7 @@
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { GoogleReCaptchaProvider } from "react-google-recaptcha-v3";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import QuizIntake from "@/pages/QuizIntake";
@@ -14,6 +15,8 @@ import ConnectBank from "@/pages/ConnectBank";
 import BankStatementsUpload from "@/pages/BankStatementsUpload";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
+
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "";
 
 function Router() {
   return (
@@ -45,7 +48,7 @@ function Router() {
 }
 
 function App() {
-  return (
+  const appContent = (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
@@ -53,6 +56,23 @@ function App() {
       </TooltipProvider>
     </QueryClientProvider>
   );
+
+  if (RECAPTCHA_SITE_KEY) {
+    return (
+      <GoogleReCaptchaProvider
+        reCaptchaKey={RECAPTCHA_SITE_KEY}
+        scriptProps={{
+          async: true,
+          defer: true,
+          appendTo: "head",
+        }}
+      >
+        {appContent}
+      </GoogleReCaptchaProvider>
+    );
+  }
+
+  return appContent;
 }
 
 export default App;
