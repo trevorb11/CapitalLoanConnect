@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Business Funding Options - Today Capital Group</title>
+  <style>
+    /* Import Inter font */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f5f5f7;
+      color: #1d1d1f;
+      line-height: 1.6;
+    }
+    
+    .header {
+      background-color: #0a0f2c;
+      padding: 20px 0;
+      border-bottom: 1px solid #1a2650;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    
+    .logo {
+      height: 40px;
+    }
+    
+    .logo img {
+      height: 100%;
+      width: auto;
+    }
+    
+    .hero {
+      background: linear-gradient(135deg, #0a0f2c 0%, #1a2650 100%);
+      padding: 80px 20px;
+      text-align: center;
+    }
+    
+    .hero h1 {
+      font-size: 56px;
+      font-weight: 600;
+      color: #FFFFFF;
+      margin-bottom: 20px;
+      letter-spacing: -2px;
+      line-height: 1.1;
+    }
+    
+    .hero h1 .italic {
+      font-style: italic;
+      font-weight: 300;
+    }
+    
+    .hero .subtitle {
+      font-size: 22px;
+      color: #e0e0e0;
+      margin-bottom: 40px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.5;
+    }
+    
+    .hero-stats {
+      display: flex;
+      justify-content: center;
+      gap: 60px;
+      margin-top: 50px;
+      flex-wrap: wrap;
+    }
+    
+    .stat {
+      text-align: center;
+    }
+    
+    .stat-number {
+      font-size: 48px;
+      font-weight: 700;
+      color: #FFFFFF;
+      display: block;
+      margin-bottom: 8px;
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: #b0b0b0;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* --- QUIZ STYLES START --- */
+    #financingSlider {
+        -webkit-appearance: none;
+        appearance: none;
+        background: rgba(255,255,255,0.2);
+        border-radius: 4px;
+        height: 8px;
+    }
+
+    #financingSlider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: white;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    #financingSlider::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: white;
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    input[type="radio"] {
+        -webkit-appearance: none;
+        appearance: none;
+        background-color: transparent;
+        margin: 0;
+        font: inherit;
+        color: white;
+        width: 20px;
+        height: 20px;
+        border: 2px solid white;
+        border-radius: 50%;
+        display: grid;
+        place-content: center;
+        flex-shrink: 0;
+    }
+
+    input[type="radio"]::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        transform: scale(0);
+        transition: 120ms transform ease-in-out;
+        box-shadow: inset 1em 1em white;
+    }
+
+    input[type="radio"]:checked::before {
+        transform: scale(1);
+    }
+
+    .radio-option:hover {
+        background: rgba(255,255,255,0.1) !important;
+    }
+
+    .radio-option:has(input:checked) {
+        background: rgba(255,255,255,0.15) !important;
+    }
+
+    .quiz-option:hover {
+        background: rgba(255,255,255,0.2) !important;
+        border-color: white !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .quiz-option.selected {
+        background: white !important;
+        color: #192F56 !important;
+        border-color: white !important;
+    }
+
+    .quiz-question {
+        text-align: center;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    input::placeholder {
+        color: rgba(255,255,255,0.7);
+    }
+
+    input:focus {
+        outline: none;
+        border-color: white;
+        background: rgba(255,255,255,0.15);
+    }
+
+    #submitQuiz:hover, #getQuoteBtn:hover, #continueAppBtn:hover {
+        background: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    #submitQuiz:disabled {
+        background: rgba(255,255,255,0.5);
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    label {
+        cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+        cursor: pointer;
+    }
+    /* --- QUIZ STYLES END --- */
+    
+    .benefits-section {
+      background-color: #f5f5f7;
+      padding: 80px 20px;
+    }
+    
+    .benefits-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .benefit-card {
+      background-color: #ffffff;
+      padding: 40px 32px;
+      border-radius: 16px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    
+    .benefit-icon {
+      font-size: 48px;
+      margin-bottom: 20px;
+    }
+    
+    .benefit-card h3 {
+      font-size: 22px;
+      color: #1d1d1f;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    
+    .benefit-card p {
+      font-size: 16px;
+      color: #6e6e73;
+      line-height: 1.6;
+    }
+    
+    .options-section {
+      background-color: #ffffff;
+      padding: 80px 20px;
+    }
+    
+    .section-header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    
+    .section-header h2 {
+      font-size: 42px;
+      color: #1d1d1f;
+      margin-bottom: 16px;
+      font-weight: 600;
+    }
+    
+    .section-header p {
+      font-size: 18px;
+      color: #6e6e73;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 30px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .option-card {
+      background-color: #f5f5f7;
+      border-radius: 16px;
+      overflow: hidden;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      border-left: 4px solid #5b4d8f;
+    }
+    
+    .option-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+    }
+    
+    .option-card-content {
+      padding: 40px 36px;
+    }
+    
+    .option-badge {
+      display: inline-block;
+      background-color: rgba(91, 77, 143, 0.1);
+      color: #5b4d8f;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+    
+    .option-card h3 {
+      font-size: 28px;
+      color: #1d1d1f;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    
+    .option-card .tagline {
+      font-size: 16px;
+      color: #5b4d8f;
+      margin-bottom: 20px;
+      font-weight: 500;
+    }
+    
+    .option-card p {
+      font-size: 15px;
+      color: #6e6e73;
+      margin-bottom: 24px;
+      line-height: 1.7;
+    }
+    
+    .option-features {
+      list-style: none;
+      margin-bottom: 28px;
+    }
+    
+    .option-features li {
+      font-size: 15px;
+      color: #1d1d1f;
+      padding: 8px 0;
+      padding-left: 28px;
+      position: relative;
+    }
+    
+    .option-features li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #5b4d8f;
+      font-weight: bold;
+      font-size: 18px;
+    }
+    
+    .option-cta {
+      display: inline-block;
+      padding: 14px 28px;
+      background-color: #0a0f2c;
+      color: #FFFFFF;
+      text-decoration: none;
+      font-weight: 600;
+      border-radius: 50px;
+      font-size: 15px;
+      transition: background-color 0.3s ease;
+    }
+    
+    .option-cta:hover {
+      background-color: #1a2650;
+    }
+    
+    .comparison-section {
+      background-color: #f5f5f7;
+      padding: 80px 20px;
+    }
+    
+    .comparison-table {
+      max-width: 1100px;
+      margin: 0 auto;
+      background-color: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    
+    .comparison-table table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    .comparison-table th {
+      background-color: #0a0f2c;
+      color: #FFFFFF;
+      padding: 20px 16px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .comparison-table td {
+      padding: 20px 16px;
+      border-bottom: 1px solid #e5e5e5;
+      font-size: 15px;
+      color: #1d1d1f;
+    }
+    
+    .comparison-table tr:last-child td {
+      border-bottom: none;
+    }
+    
+    .comparison-table tr:hover {
+      background-color: #fafafa;
+    }
+    
+    .comparison-table td:first-child {
+      font-weight: 600;
+      color: #5b4d8f;
+    }
+    
+    .process-section {
+      background-color: #ffffff;
+      padding: 80px 20px;
+    }
+    
+    .process-steps {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 40px;
+    }
+    
+    .process-step {
+      text-align: center;
+      position: relative;
+    }
+    
+    .process-step:not(:last-child):after {
+      content: "→";
+      position: absolute;
+      right: -30px;
+      top: 30px;
+      font-size: 32px;
+      color: #d2d2d7;
+      font-weight: 300;
+    }
+    
+    .step-number {
+      width: 60px;
+      height: 60px;
+      background: linear-gradient(135deg, #5b4d8f 0%, #7a6ba8 100%);
+      color: #FFFFFF;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 700;
+      margin: 0 auto 20px;
+    }
+    
+    .process-step h3 {
+      font-size: 18px;
+      color: #1d1d1f;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    
+    .process-step p {
+      font-size: 14px;
+      color: #6e6e73;
+      line-height: 1.6;
+    }
+    
+    .cta-section {
+      background: linear-gradient(135deg, #0a0f2c 0%, #1a2650 100%);
+      padding: 80px 20px;
+      text-align: center;
+    }
+    
+    .cta-section h2 {
+      font-size: 42px;
+      color: #FFFFFF;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+    
+    .cta-section p {
+      font-size: 18px;
+      color: #e0e0e0;
+      margin-bottom: 40px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    
+    .cta-button {
+      display: inline-block;
+      padding: 18px 40px;
+      background-color: #FFFFFF;
+      color: #0a0f2c;
+      text-decoration: none;
+      font-weight: 600;
+      border-radius: 50px;
+      font-size: 16px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      box-shadow: 0 4px 12px rgba(255,255,255,0.2);
+    }
+    
+    .cta-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(255,255,255,0.3);
+    }
+    
+    .footer {
+      background-color: #0a0f2c;
+      padding: 40px 20px;
+      text-align: center;
+      border-top: 1px solid #1a2650;
+    }
+    
+    .footer p {
+      color: #d2d2d7;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    
+    .footer .brand {
+      color: #FFFFFF;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    
+    @media (max-width: 968px) {
+      .hero h1 {
+        font-size: 42px;
+      }
+      
+      .hero .subtitle {
+        font-size: 18px;
+      }
+      
+      .hero-stats {
+        gap: 40px;
+      }
+      
+      .stat-number {
+        font-size: 36px;
+      }
+      
+      .benefits-grid,
+      .options-grid {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+      
+      .process-steps {
+        grid-template-columns: 1fr;
+        gap: 30px;
+      }
+      
+      .process-step:not(:last-child):after {
+        content: "↓";
+        right: auto;
+        left: 50%;
+        top: auto;
+        bottom: -40px;
+        transform: translateX(-50%);
+      }
+      
+      .comparison-table {
+        overflow-x: auto;
+      }
+      
+      /* Make form section single column on mobile */
+      .form-section .container > div {
+        grid-template-columns: 1fr !important;
+        gap: 40px !important;
+      }
+      
+      .form-section .container > div > div:last-child {
+        padding-top: 0 !important;
+      }
+      
+      #question1 h3 {
+        font-size: 2rem !important;
+        line-height: 1.3 !important;
+        margin-bottom: 1.25rem !important;
+      }
+      
+      #question1 p {
+        font-size: 1rem !important;
+        margin-bottom: 2rem !important;
+      }
+      
+      #amountDisplay {
+        font-size: 2.5rem !important;
+        margin-bottom: 1.5rem !important;
+      }
+      
+      #getQuoteBtn {
+        font-size: 1.1rem !important;
+        padding: 1rem 2rem !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="container">
+      <div class="logo">
+        <img src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c11dae8ddeadf0fc2ffa7_Group%2017.svg" alt="Today Capital Group">
+      </div>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="container">
+      <div style="margin-bottom: 40px; text-align: center;">
+        <img src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c11dae8ddeadf0fc2ffa7_Group%2017.svg" alt="Today Capital Group" style="height: 80px; width: auto;">
+      </div>
+      <h1>Funding that moves as fast<br>as your <span class="italic">business</span></h1>
+      <p class="subtitle">
+        We work with a network of national and local lenders so you can compare options, move quickly, and keep cash flow on your terms.
+      </p>
+      
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-number">1,000+</span>
+          <span class="stat-label">Satisfied Clients</span>
+        </div>
+        <div class="stat">
+          <span class="stat-number">24-48hrs</span>
+          <span class="stat-label">Funding Speed</span>
+        </div>
+        <div class="stat">
+          <span class="stat-number">$500M+</span>
+          <span class="stat-label">Funded to Date</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-section" style="background-color: #ffffff; padding: 80px 20px;">
+    <div class="container" style="max-width: 1200px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: start;">
+        
+        <div>
+          <div style="text-align: left; margin-bottom: 32px;">
+            <h2 style="font-size: 36px; color: #1d1d1f; margin-bottom: 16px; font-weight: 600;">Get Pre-Qualified</h2>
+            <p style="font-size: 16px; color: #6e6e73; line-height: 1.6;">
+              Complete this quick form to see your funding options. Takes just 2-3 minutes.
+            </p>
+          </div>
+          
+          <div id="premiumQuiz" style="background: linear-gradient(to bottom, #192F56 0%, #19112D 100%); color: white; padding: 3rem; margin: 2rem 0; border-radius: 15px; box-shadow: 0 12px 30px rgba(25, 47, 86, 0.3), 0 4px 15px rgba(0, 0, 0, 0.2); min-height: 500px; width: 100%; max-width: 600px; margin: 2rem auto; position: relative; overflow: hidden;">
+    
+            <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; margin-bottom: 2rem;">
+                <div id="progressBar" style="width: 0%; height: 100%; background: white; border-radius: 2px; transition: width 0.5s ease;"></div>
+            </div>
+            
+            <div id="question1" class="quiz-question" style="display: block; opacity: 1; transition: all 0.5s ease;">
+                <h3 style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 2.2rem; margin-bottom: 1.5rem; font-weight: 600; line-height: 1.2;">How much are you thinking about financing?</h3>
+                <p style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: rgba(255,255,255,0.8); margin-bottom: 2.5rem; font-size: 1.1rem;">Drag the slider to select your desired financing amount.</p>
+                <div style="max-width: 500px; margin: 0 auto; padding: 0 1rem;">
+                    <div style="margin-bottom: 3rem;">
+                        <div id="amountDisplay" style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 3rem; font-weight: 700; text-align: center; margin-bottom: 2rem;">$25,000</div>
+                        <input type="range" id="financingSlider" min="5000" max="2000000" value="25000" step="5000" style="width: 100%; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.2); outline: none; -webkit-appearance: none; cursor: pointer;">
+                        <div style="display: flex; justify-content: space-between; font-size: 1rem; color: rgba(255,255,255,0.7); margin-top: 0.75rem; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;">
+                            <span>$5K</span>
+                            <span>$2M</span>
+                        </div>
+                    </div>
+                    <button id="getQuoteBtn" style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; width: 100%; background: white; color: #192F56; padding: 1.25rem 2rem; border-radius: 8px; border: none; font-weight: 600; font-size: 1.2rem; cursor: pointer; transition: all 0.3s ease;">Get Your Quote</button>
+                </div>
+            </div>
+            
+            <div id="question2" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+                <h3 style="font-size: 2.5rem; margin-bottom: 2rem; font-weight: 600;">Business Operating Time</h3>
+                <div style="display: flex; flex-direction: column; gap: 1rem; max-width: 500px; margin: 0 auto; text-align: left;">
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="businessAge" value="Less than 3 months" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">Less than 3 months</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="businessAge" value="3-5 months" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">3-5 months</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="businessAge" value="6-12 months" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">6-12 months</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="businessAge" value="1-2 years" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">1-2 years</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="businessAge" value="2-5 years" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">2-5 years</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="businessAge" value="More than 5 years" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">More than 5 years</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="businessAge" value="No Business" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">I currently don't own a business.</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div id="question3" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+                <h3 style="font-size: 2.5rem; margin-bottom: 2rem; font-weight: 600;">Gross Monthly Revenue?</h3>
+                <div style="display: flex; flex-direction: column; gap: 1rem; max-width: 500px; margin: 0 auto; text-align: left;">
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="monthlyIncome" value="Less than $1,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">Less than $1,000</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="monthlyIncome" value="$1,000 – $5,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">$1,000 – $5,000</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="monthlyIncome" value="$5,000 – $15,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">$5,000 – $15,000</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="monthlyIncome" value="$15,000 – $20,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">$15,000 – $20,000</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="monthlyIncome" value="$20,000 – $30,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">$20,000 – $30,000</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="monthlyIncome" value="$30,000 – $50,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">$30,000 – $50,000</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="monthlyIncome" value="$50,000 – $100,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">$50,000 – $100,000</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="monthlyIncome" value="$100,000 – $200,000" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">$100,000 – $200,000</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="monthlyIncome" value="$200,000+" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">$200,000+</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div id="question4" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+                <h3 style="font-size: 2.5rem; margin-bottom: 1rem; font-weight: 600;">Personal Credit Score?</h3>
+                <p style="color: rgba(255,255,255,0.8); margin-bottom: 2rem; font-size: 1.1rem;">(Provide your best estimate)</p>
+                <div style="display: flex; flex-direction: column; gap: 1rem; max-width: 500px; margin: 0 auto; text-align: left;">
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="creditScore" value="500 and below" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">500 and below</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="creditScore" value="500-549" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">500-549</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="creditScore" value="550-599" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">550-599</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="creditScore" value="600-649" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">600-649</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="creditScore" value="650-719" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">650-719</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="creditScore" value="720 or above" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">720 or above</span>
+                    </label>
+                    <label class="radio-option" style="display: flex; align-items: center; cursor: pointer; padding: 1rem 1.5rem; background: transparent; border-radius: 8px; transition: all 0.3s ease;">
+                        <input type="radio" name="creditScore" value="Not sure" style="width: 20px; height: 20px; margin-right: 1rem; cursor: pointer;">
+                        <span style="color: white; font-size: 1.1rem;">Not sure</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div id="question5" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+                <h3 style="font-size: 1.8rem; margin-bottom: 1rem; font-weight: 600;">Get Your Personalized Financing Quote</h3>
+                <p style="color: rgba(255,255,255,0.8); margin-bottom: 2rem;">We'll connect you with the best financing options based on your business profile.</p>
+                <div style="max-width: 400px; margin: 0 auto;">
+                    <input type="text" id="firstName" placeholder="Your Full Name" style="width: 100%; padding: 1rem; margin-bottom: 1rem; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 8px; font-size: 1rem;" required>
+                    <input type="text" id="businessName" placeholder="Business Name" style="width: 100%; padding: 1rem; margin-bottom: 1rem; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 8px; font-size: 1rem;" required>
+                    <input type="email" id="email" placeholder="Email Address" style="width: 100%; padding: 1rem; margin-bottom: 1rem; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 8px; font-size: 1rem;" required>
+                    <input type="tel" id="phone" placeholder="Phone Number" style="width: 100%; padding: 1rem; margin-bottom: 1.5rem; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; border-radius: 8px; font-size: 1rem;" required>
+
+                    <div style="margin-bottom: 2rem;">
+                        <div style="display: flex; align-items: flex-start; text-align: left; gap: 0.75rem;">
+                            <input type="checkbox" id="consentCheck" style="width: 16px; height: 16px; margin-top: 3px; cursor: pointer; flex-shrink: 0;" required>
+                            <label for="consentCheck" style="color: rgba(255,255,255,0.6); font-size: 11px; line-height: 1.4; cursor: pointer; font-weight: 400;">
+                                By checking this box, I verify this is my number and I consent to receive automated marketing calls, texts, and emails from Today Capital Group at the phone number provided, even if verified on a state or federal Do Not Call list. Consent is not a condition of purchase. Msg & data rates may apply. Msg frequency varies. Reply HELP for help and STOP to cancel. I agree to the <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" style="text-decoration: underline; color: rgba(255,255,255,0.8);">Terms of Service</a> and <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" style="text-decoration: underline; color: rgba(255,255,255,0.8);">Privacy Policy</a>.
+                            </label>
+                        </div>
+                        <div id="consentError" style="display: none; margin-top: 0.5rem; padding: 0.5rem; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 4px;">
+                            <p style="color: #ef4444; font-size: 0.85rem; margin: 0;">Please accept the terms to continue</p>
+                        </div>
+                    </div>
+
+                    <button id="submitQuiz" style="width: 100%; background: white; color: #192F56; padding: 1rem 2rem; border-radius: 8px; border: none; font-weight: 600; font-size: 1.1rem; cursor: pointer; transition: all 0.3s ease;">Get My Free Quote</button>
+                    
+                    <div id="loadingState" style="display: none; text-align: center; margin-top: 1rem;">
+                        <p style="color: rgba(255,255,255,0.8);">Sending your information...</p>
+                    </div>
+                    
+                    <div id="errorMessage" style="display: none; background: rgba(239, 68, 68, 0.2); border: 2px solid rgba(239, 68, 68, 0.5); padding: 1rem; border-radius: 8px; margin-top: 1rem; text-align: center;">
+                        <p style="color: #ef4444; font-weight: 600;">There was an error submitting your information. Please try again.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="thankYouStep" class="quiz-question" style="display: none; opacity: 0; transition: all 0.5s ease;">
+                <div style="text-align: center; max-width: 500px; margin: 0 auto;">
+                    <div style="width: 80px; height: 80px; margin: 0 auto 2rem; background: rgba(34, 197, 94, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #22c55e;">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20,6 9,17 4,12"></polyline>
+                        </svg>
+                    </div>
+                    
+                    <h3 style="font-size: 2.2rem; margin-bottom: 1rem; font-weight: 600; color: #22c55e;">Received!</h3>
+                    
+                    <p style="color: rgba(255,255,255,0.9); font-size: 1.1rem; line-height: 1.6; margin-bottom: 1rem;">
+                        Your basic information has been secured.
+                    </p>
+                    
+                    <p style="color: rgba(255,255,255,0.8); font-size: 1rem; line-height: 1.5; margin-bottom: 2.5rem;">
+                       To fast-track your funding request, please click below to complete the full application immediately.
+                    </p>
+                    
+                    <button id="continueAppBtn" style="background: white; color: #192F56; padding: 1rem 2rem; border-radius: 8px; border: none; font-weight: 600; font-size: 1.1rem; cursor: pointer; transition: all 0.3s ease; min-width: 250px;">
+                        Continue Application &rarr;
+                    </button>
+                </div>
+            </div>
+          </div>
+          </div>
+        
+        <div style="padding-top: 80px;">
+          <h2 style="font-size: 36px; color: #1d1d1f; margin-bottom: 24px; font-weight: 600; line-height: 1.2;">
+            Traditional lending moves slow. Your revenue doesn't.
+          </h2>
+          <p style="font-size: 18px; color: #6e6e73; margin-bottom: 20px; line-height: 1.7;">
+            Our funding terms offer a faster, more flexible path—but finding the right one isn't always easy. That's where we come in.
+          </p>
+          <p style="font-size: 18px; color: #6e6e73; line-height: 1.7;">
+            We don't just offer one type of funding. We connect you with multiple lenders and funding options, so you can compare rates, terms, and approval times side-by-side. Whether you need working capital tomorrow or want the lowest rate over 10 years, we'll show you what's available and help you choose what works best for your business.
+          </p>
+        </div>
+        
+      </div>
+    </div>
+  </div>
+  
+  <div class="benefits-section">
+    <div class="container">
+      <div class="benefits-grid">
+        <div class="benefit-card">
+          <div class="benefit-icon">📋</div>
+          <h3>Multiple Offers, One Application</h3>
+          <p>Compare different options side-by-side and choose what works best for your business.</p>
+        </div>
+        
+        <div class="benefit-card">
+          <div class="benefit-icon">🎯</div>
+          <h3>Smarter Term Matching</h3>
+          <p>We provide you with terms that fit your industry, revenue model, and risk profile.</p>
+        </div>
+        
+        <div class="benefit-card">
+          <div class="benefit-icon">⚡</div>
+          <h3>Fully Funded Within 24-48 Hours</h3>
+          <p>Once you choose an offer, funding happens fast—usually within one to two business days.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="options-section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Choose Your Funding Path</h2>
+        <p>Each option is designed for different business needs, timelines, and growth stages.</p>
+      </div>
+      
+      <div class="options-grid">
+        <div class="option-card">
+          <div class="option-card-content">
+            <span class="option-badge">SBA Loans</span>
+            <h3>Lower Rates, Longer Terms</h3>
+            <p class="tagline">Best overall cost of capital</p>
+            <p>
+              SBA loans offer some of the lowest interest rates available for small business financing. With terms up to 25 years, you'll have lower monthly payments and more flexibility to manage your cash flow while you grow.
+            </p>
+            <ul class="option-features">
+              <li>Interest rates as low as 10%</li>
+              <li>Terms up to 25 years</li>
+              <li>Borrow up to $5 million</li>
+              <li>Fixed or variable rates available</li>
+            </ul>
+            <a href="#" class="option-cta" data-product="sba">Learn More & Apply →</a>
+          </div>
+        </div>
+
+        <div class="option-card">
+          <div class="option-card-content">
+            <span class="option-badge">Line of Credit</span>
+            <h3>Flexible Working Capital</h3>
+            <p class="tagline">Draw what you need, when you need it</p>
+            <p>
+              A business line of credit gives you ongoing access to funds. Draw what you need for inventory, payroll, or unexpected expenses, then pay it back. As you pay down your balance, that credit becomes available again.
+            </p>
+            <ul class="option-features">
+              <li>Only pay interest on what you use</li>
+              <li>Revolving credit structure</li>
+              <li>Lines from $10K to $500K+</li>
+              <li>Quick access when you need it</li>
+            </ul>
+            <a href="#" class="option-cta" data-product="loc">Learn More & Apply →</a>
+          </div>
+        </div>
+
+        <div class="option-card">
+          <div class="option-card-content">
+            <span class="option-badge">Merchant Cash Advance</span>
+            <h3>Fast Approval</h3>
+            <p class="tagline">Funding in as little as 24 hours</p>
+            <p>
+              When speed matters most, a merchant cash advance delivers. Based on your future sales, MCAs require minimal documentation and have the fastest approval process. Repayment is tied to your daily sales, so you pay more when business is good and less during slower periods.
+            </p>
+            <ul class="option-features">
+              <li>Approval within 24-48 hours</li>
+              <li>Minimal documentation required</li>
+              <li>No fixed monthly payments</li>
+              <li>Based on your sales volume</li>
+            </ul>
+            <a href="#" class="option-cta" data-product="mca">Learn More & Apply →</a>
+          </div>
+        </div>
+
+        <div class="option-card">
+          <div class="option-card-content">
+            <span class="option-badge">Equipment & Term Loans</span>
+            <h3>Predictable Payments</h3>
+            <p class="tagline">Fixed payments over a set term</p>
+            <p>
+              Equipment financing and term loans offer predictable fixed payments over a set period. The equipment itself often serves as collateral, which can result in better rates. Perfect for major purchases like machinery, vehicles, or technology upgrades.
+            </p>
+            <ul class="option-features">
+              <li>Fixed monthly payments</li>
+              <li>Terms from 1-7 years</li>
+              <li>Equipment serves as collateral</li>
+              <li>Preserve working capital</li>
+            </ul>
+            <a href="#" class="option-cta" data-product="equip">Learn More & Apply →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="comparison-section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Compare Your Options</h2>
+        <p>Not sure which option is right for you? Here's a quick comparison.</p>
+      </div>
+      
+      <div class="comparison-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>SBA Loans</th>
+              <th>Line of Credit</th>
+              <th>MCA</th>
+              <th>Equipment/Term</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Best For</td>
+              <td>Large investments, real estate</td>
+              <td>Managing cash flow</td>
+              <td>Urgent needs, fast cash</td>
+              <td>Equipment, vehicles</td>
+            </tr>
+            <tr>
+              <td>Approval Time</td>
+              <td>4-6 weeks</td>
+              <td>3-7 days</td>
+              <td>24-48 hours</td>
+              <td>3-10 days</td>
+            </tr>
+            <tr>
+              <td>Amount Range</td>
+              <td>$50K - $5M</td>
+              <td>$10K - $500K+</td>
+              <td>$10K - $500K</td>
+              <td>$10K - $2M</td>
+            </tr>
+            <tr>
+              <td>Term Length</td>
+              <td>Up to 25 years</td>
+              <td>Revolving</td>
+              <td>3-18 months</td>
+              <td>1-7 years</td>
+            </tr>
+            <tr>
+              <td>Documentation</td>
+              <td>Extensive</td>
+              <td>Moderate</td>
+              <td>Minimal</td>
+              <td>Moderate</td>
+            </tr>
+            <tr>
+              <td>Interest Rate</td>
+              <td>10%</td>
+              <td>8-25%</td>
+              <td>Factor rate 1.1-1.5</td>
+              <td>8-20%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="process-section">
+    <div class="container">
+      <div class="section-header">
+        <h2>How It Works</h2>
+        <p>Getting funded is simple and straightforward with Today Capital Group.</p>
+      </div>
+      
+      <div class="process-steps">
+        <div class="process-step">
+          <div class="step-number">1</div>
+          <h3>Choose Your Option</h3>
+          <p>Select the funding type that best fits your business needs and timeline.</p>
+        </div>
+        
+        <div class="process-step">
+          <div class="step-number">2</div>
+          <h3>Submit Application</h3>
+          <p>Complete a simple online form with your business details. Takes 2-3 minutes.</p>
+        </div>
+        
+        <div class="process-step">
+          <div class="step-number">3</div>
+          <h3>Review Offers</h3>
+          <p>We present you with multiple offers from our lending network to compare.</p>
+        </div>
+        
+        <div class="process-step">
+          <div class="step-number">4</div>
+          <h3>Get Funded</h3>
+          <p>Choose your preferred offer and receive funding within 24-48 hours.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<div class="cta-section">
+    <div class="container">
+      <h2>Ready to Find Funding That Fits Your Cash Flow?</h2>
+      <p>Compare your options and get pre-qualified in just 2-3 minutes. No impact to your credit score.</p>
+      <a href="https://api.leadconnectorhq.com/widget/form/skEi3CCraeXYgasHKDXT" class="cta-button">Get Pre-Qualified Now</a>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="container">
+      <p class="brand">TODAY CAPITAL GROUP</p>
+      <p>Business Funding Made Simple</p>
+      <p style="font-size: 12px; color: #86868b; margin-top: 16px;">
+        © 2025 Today Capital Group. All rights reserved.
+      </p>
+    </div>
+  </div>
+
+<script>
+let currentQuestion = 1;
+let quizData = {};
+const totalQuestions = 5;
+
+// ============================================================
+// 1. PASTE YOUR WEBHOOK URLS HERE
+// ============================================================
+
+// URL 1: GoHighLevel (Your Main CRM Connection)
+const ghlWebhookUrl = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2a9dd48e-792a-4bdb-8688-fddaf3141ae4'; 
+
+// URL 2: Google Sheets Backup (Make/Zapier/AppScript Webhook)
+const backupWebhookUrl = 'https://script.google.com/macros/s/AKfycbwqLajqFfao02IXUIQNPIJ1Ws26942pnPwIwdBcbntj6-ntvSelq2YKGrQnf6IzXSPC/exec'; 
+
+// ============================================================
+// 2. Detect lead source (Google Ads vs everything else)
+// ============================================================
+
+function detectLeadSource() {
+    const params = new URLSearchParams(window.location.search);
+
+    // Google Ads auto-tagging
+    const hasGclid = params.has('gclid');
+
+    // Manual UTM tagging
+    const utmSource = (params.get('utm_source') || '').toLowerCase();
+    const utmMedium = (params.get('utm_medium') || '').toLowerCase();
+
+    if (hasGclid || (utmSource === 'google' && utmMedium === 'cpc')) {
+        return 'Google Ads';
+    }
+
+    // Default if not clearly from Google Ads
+    return 'Website Lead Form';
+}
+
+// Compute once on page load
+const leadSource = detectLeadSource();
+
+// ============================================================
+
+function updateProgress() {
+    const progress = (currentQuestion / totalQuestions) * 100;
+    document.getElementById('progressBar').style.width = progress + '%';
+}
+
+function showQuestion(questionNum) {
+    // Hide all questions
+    document.querySelectorAll('.quiz-question').forEach(q => {
+        q.style.display = 'none';
+        q.style.opacity = '0';
+    });
+    
+    // Show current question with animation
+    setTimeout(() => {
+        const currentQ = document.getElementById('question' + questionNum);
+        currentQ.style.display = 'block';
+        setTimeout(() => {
+            currentQ.style.opacity = '1';
+        }, 50);
+    }, 250);
+    
+    updateProgress();
+}
+
+function showThankYou() {
+    document.getElementById('progressBar').style.width = '100%';
+    
+    document.querySelectorAll('.quiz-question').forEach(q => {
+        q.style.display = 'none';
+        q.style.opacity = '0';
+    });
+    
+    setTimeout(() => {
+        const thankYouElement = document.getElementById('thankYouStep');
+        thankYouElement.style.display = 'block';
+        setTimeout(() => {
+            thankYouElement.style.opacity = '1';
+        }, 50);
+    }, 250);
+}
+
+function nextQuestion() {
+    if (currentQuestion < totalQuestions) {
+        currentQuestion++;
+        showQuestion(currentQuestion);
+    }
+}
+
+function formatAmount(amount) {
+    if (amount >= 1000000) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 1,
+            notation: 'compact',
+            compactDisplay: 'short'
+        }).format(amount);
+    }
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount);
+}
+
+async function submitToWebhook(data) {
+    try {
+        console.log('Starting parallel submission...');
+        
+        const loadingState = document.getElementById('loadingState');
+        const errorMessage = document.getElementById('errorMessage');
+        const submitBtn = document.getElementById('submitQuiz');
+        
+        if (errorMessage) errorMessage.style.display = 'none';
+        if (loadingState) loadingState.style.display = 'block';
+        if (submitBtn) submitBtn.disabled = true;
+        
+        // Prepare requests
+        const requests = [];
+        
+        // 1. Main Request (GHL)
+        if (ghlWebhookUrl) {
+            requests.push(fetch(ghlWebhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(res => ({ destination: 'GHL', ok: res.ok, status: res.status })));
+        }
+        
+        // 2. Backup Request (Google Sheets)
+        if (backupWebhookUrl) {
+            requests.push(fetch(backupWebhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(res => ({ destination: 'Backup', ok: res.ok, status: res.status })));
+        }
+
+        // Send all requests in parallel
+        const results = await Promise.allSettled(requests);
+        
+        // Log results for debugging
+        results.forEach(result => {
+            if (result.status === 'fulfilled') {
+                console.log(`${result.value.destination} Status:`, result.value.ok ? 'Success' : 'Failed');
+            } else {
+                console.error('Network Error:', result.reason);
+            }
+        });
+
+        // Success condition: If AT LEAST ONE succeeded, we redirect
+        const anySuccess = results.some(r => r.status === 'fulfilled' && r.value.ok);
+
+        if (anySuccess) {
+            if (loadingState) loadingState.style.display = 'none';
+
+            // ============================================
+            // UPDATE: Prepare the Continue Button Link
+            // ============================================
+            const phoneForRedirect = data.phone ? encodeURIComponent(data.phone) : '';
+            const appUrl = phoneForRedirect
+                ? `https://app.todaycapitalgroup.com?phone=${phoneForRedirect}`
+                : 'https://app.todaycapitalgroup.com';
+            
+            // Assign this URL to the button on the thank you slide
+            const continueBtn = document.getElementById('continueAppBtn');
+            if(continueBtn) {
+                continueBtn.onclick = function() {
+                    window.location.href = appUrl;
+                };
+            }
+
+            // Show the Thank You slide instead of redirecting automatically
+            showThankYou();
+
+        } else {
+            throw new Error('All submission endpoints failed');
+        }
+
+    } catch (error) {
+        console.error('Critical Error:', error);
+        const loadingState = document.getElementById('loadingState');
+        const errorMessage = document.getElementById('errorMessage');
+        const submitBtn = document.getElementById('submitQuiz');
+        
+        if (loadingState) loadingState.style.display = 'none';
+        if (errorMessage) errorMessage.style.display = 'block';
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+// Financing slider
+const slider = document.getElementById('financingSlider');
+const amountDisplay = document.getElementById('amountDisplay');
+
+slider.addEventListener('input', function() {
+    const value = parseInt(this.value);
+    amountDisplay.textContent = formatAmount(value);
+    quizData.financingAmount = value;
+});
+
+document.getElementById('getQuoteBtn').addEventListener('click', function() {
+    if (!quizData.financingAmount) {
+        quizData.financingAmount = 25000;
+    }
+    nextQuestion();
+});
+
+document.querySelectorAll('input[name="businessAge"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            quizData.businessAge = this.value;
+            setTimeout(() => nextQuestion(), 500);
+        }
+    });
+});
+
+document.querySelectorAll('input[name="monthlyIncome"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            quizData.monthlyIncome = this.value;
+            setTimeout(() => nextQuestion(), 500);
+        }
+    });
+});
+
+document.querySelectorAll('input[name="creditScore"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            quizData.creditScore = this.value;
+            setTimeout(() => nextQuestion(), 500);
+        }
+    });
+});
+
+// Submit quiz
+document.getElementById('submitQuiz').addEventListener('click', async function() {
+    const firstNameInput = document.getElementById('firstName').value.trim();
+    const businessName = document.getElementById('businessName').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const consent = document.getElementById('consentCheck').checked;
+    
+    const consentError = document.getElementById('consentError');
+    if (consentError) consentError.style.display = 'none';
+    
+    if (!firstNameInput || !businessName || !email || !phone) {
+        alert('Please fill in all fields');
+        return;
+    }
+    
+    if (!consent) {
+        if (consentError) consentError.style.display = 'block';
+        document.getElementById('consentCheck').focus();
+        return;
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        alert('Please enter a valid email address');
+        return;
+    }
+
+    // Split name for GHL
+    const nameParts = firstNameInput.split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+    // Grab URL params once here so we can also send UTM data if we want
+    const params = new URLSearchParams(window.location.search);
+    
+    // Prepare data for Webhook
+    const webhookData = {
+        // Standard GHL Fields
+        first_name: firstName,
+        last_name: lastName,
+        email: email,
+        phone: phone,
+        company_name: businessName,
+        
+        // Mapped Custom Fields
+        requested_loan_amount: quizData.financingAmount,
+        years_in_business: quizData.businessAge,
+        monthly_revenue: quizData.monthlyIncome,
+        personal_credit_score_range: quizData.creditScore,
+        doing_business_as: businessName,
+        company_email: email,
+        
+        // Metadata / Attribution
+        submission_date: new Date().toISOString(),
+        source: leadSource,                // <-- maps to {{ contact.source }} in GHL
+        page_url: window.location.href,
+
+        // Optional: raw UTM values for deeper attribution (map to custom fields in GHL if desired)
+        utm_source: params.get('utm_source') || null,
+        utm_medium: params.get('utm_medium') || null,
+        utm_campaign: params.get('utm_campaign') || null,
+        utm_term: params.get('utm_term') || null,
+        utm_content: params.get('utm_content') || null
+    };
+    
+    await submitToWebhook(webhookData);
+});
+
+updateProgress();
+</script>
+</body>
+</html>

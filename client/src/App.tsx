@@ -5,6 +5,7 @@ import { GoogleReCaptchaProvider } from "react-google-recaptcha-v3";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import QuizIntake from "@/pages/QuizIntake";
+import IntakeLanding from "@/pages/IntakeLanding";
 import FullApplication from "@/pages/FullApplication";
 import AgentApplication from "@/pages/AgentApplication";
 import Success from "@/pages/Success";
@@ -24,7 +25,8 @@ function Router() {
       <Route path="/">
         {() => <FullApplication />}
       </Route>
-      <Route path="/intake" component={QuizIntake} />
+      <Route path="/intake" component={IntakeLanding} />
+      <Route path="/intake/quiz" component={QuizIntake} />
       <Route path="/funding-analysis" component={FundingAnalysis} />
       <Route path="/connect-bank" component={ConnectBank} />
       <Route path="/upload-statements" component={BankStatementsUpload} />
