@@ -45,10 +45,46 @@ const bankStatementUpload = multer({
 });
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Tcg1!tcg";
+const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
 
 const loginSchema = z.object({
   credential: z.string().min(1, "Credential is required"),
 });
+
+async function verifyRecaptcha(token: string): Promise<{ success: boolean; score?: number; error?: string }> {
+  if (!RECAPTCHA_SECRET_KEY) {
+    console.log("[RECAPTCHA] Secret key not configured, skipping verification");
+    return { success: true };
+  }
+
+  try {
+    const response = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        secret: RECAPTCHA_SECRET_KEY,
+        response: token,
+      }),
+    });
+
+    const data = await response.json();
+    console.log("[RECAPTCHA] Verification response:", data);
+
+    if (data.success) {
+      const score = data.score || 0;
+      if (score >= 0.5) {
+        return { success: true, score };
+      } else {
+        return { success: false, score, error: "Low reCAPTCHA score - possible bot" };
+      }
+    } else {
+      return { success: false, error: data["error-codes"]?.join(", ") || "Verification failed" };
+    }
+  } catch (error) {
+    console.error("[RECAPTCHA] Verification error:", error);
+    return { success: true };
+  }
+}
 
 // Validation schema for Plaid token exchange
 const plaidExchangeSchema = z.object({
@@ -64,10 +100,11 @@ const plaidExchangeSchema = z.object({
 });
 
 // Helper function to sanitize application data for database storage
-function sanitizeApplicationData(data: any): any {
-  const sanitized = { ...data };
+function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string } {
+  const { recaptchaToken, ...rest } = data;
+  const sanitized = { ...rest };
   
-  console.log('[SANITIZE] Input data:', JSON.stringify(data, null, 2));
+  console.log('[SANITIZE] Input data:', JSON.stringify(rest, null, 2));
   
   // Convert string numeric fields to proper numbers or null
   const numericFields = [
@@ -103,7 +140,7 @@ function sanitizeApplicationData(data: any): any {
     }
   }
   
-  return sanitized;
+  return { sanitized, recaptchaToken };
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -231,7 +268,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new loan application
   app.post("/api/applications", async (req, res) => {
     try {
-      const applicationData = sanitizeApplicationData(req.body);
+      const { sanitized: applicationData, recaptchaToken } = sanitizeApplicationData(req.body);
+      
+      // Verify reCAPTCHA if token provided (for final submissions)
+      if (recaptchaToken) {
+        const recaptchaResult = await verifyRecaptcha(recaptchaToken);
+        if (!recaptchaResult.success) {
+          console.error("[RECAPTCHA] Verification failed:", recaptchaResult.error);
+          return res.status(400).json({ error: "Security verification failed. Please try again." });
+        }
+        console.log("[RECAPTCHA] Verified successfully, score:", recaptchaResult.score);
+      }
       
       // Validate required email field
       if (!applicationData.email) {
@@ -295,7 +342,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/applications/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const updates = sanitizeApplicationData(req.body);
+      const { sanitized: updates, recaptchaToken } = sanitizeApplicationData(req.body);
+      
+      // Verify reCAPTCHA if token provided (for final submissions)
+      if (recaptchaToken) {
+        const recaptchaResult = await verifyRecaptcha(recaptchaToken);
+        if (!recaptchaResult.success) {
+          console.error("[RECAPTCHA] Verification failed:", recaptchaResult.error);
+          return res.status(400).json({ error: "Security verification failed. Please try again." });
+        }
+        console.log("[RECAPTCHA] Verified successfully, score:", recaptchaResult.score);
+      }
 
       // Always ensure agent view URL exists for all applications
       if (!updates.agentViewUrl) {

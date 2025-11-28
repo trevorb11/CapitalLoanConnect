@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
 
@@ -164,6 +165,7 @@ interface FullApplicationProps {
 export default function FullApplication(props?: FullApplicationProps) {
   const { agent } = props || {};
   const { toast } = useToast();
+  const { executeRecaptcha } = useGoogleReCaptcha();
 
   // State
   const [applicationId, setApplicationId] = useState<string | null>(null);
@@ -317,6 +319,15 @@ export default function FullApplication(props?: FullApplicationProps) {
         ? `${formData.owner_city}, ${formData.owner_state} ${formData.owner_zip}`
         : undefined;
 
+    let recaptchaToken: string | undefined;
+    if (isFinal && executeRecaptcha) {
+      try {
+        recaptchaToken = await executeRecaptcha("full_application_submit");
+      } catch (error) {
+        console.error("reCAPTCHA error:", error);
+      }
+    }
+
     const payload: any = {
       legalBusinessName: formData.legal_business_name,
       doingBusinessAs: formData.doing_business_as,
@@ -348,7 +359,10 @@ export default function FullApplication(props?: FullApplicationProps) {
 
     if (isFinal) {
         payload.isFullApplicationCompleted = true;
-        payload.applicantSignature = "SIGNED_VIA_CHECKBOX_CONSENT"; 
+        payload.applicantSignature = "SIGNED_VIA_CHECKBOX_CONSENT";
+        if (recaptchaToken) {
+          payload.recaptchaToken = recaptchaToken;
+        }
     }
 
     if (agent) {

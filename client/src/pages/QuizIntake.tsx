@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Loader2, CheckCircle } from "lucide-react";
+import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 
 const BUSINESS_AGE_OPTIONS = [
   "Less than 3 months",
@@ -76,6 +77,7 @@ function formatPhone(value: string): string {
 
 export default function QuizIntake() {
   const [, navigate] = useLocation();
+  const { executeRecaptcha } = useGoogleReCaptcha();
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showConsentError, setShowConsentError] = useState(false);
@@ -112,7 +114,7 @@ export default function QuizIntake() {
   };
 
   const submitMutation = useMutation({
-    mutationFn: async (data: QuizData) => {
+    mutationFn: async (data: QuizData & { recaptchaToken?: string }) => {
       const response = await apiRequest("POST", "/api/applications", {
         email: data.email,
         fullName: data.fullName,
@@ -125,6 +127,7 @@ export default function QuizIntake() {
         creditScore: data.creditScore,
         personalCreditScoreRange: data.creditScore,
         isCompleted: true,
+        recaptchaToken: data.recaptchaToken,
       });
       return response.json();
     },
@@ -160,7 +163,7 @@ export default function QuizIntake() {
     setTimeout(() => nextQuestion(), 400);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(async () => {
     setFormError("");
     setShowConsentError(false);
 
@@ -185,8 +188,17 @@ export default function QuizIntake() {
       return;
     }
 
-    submitMutation.mutate(quizData);
-  };
+    let recaptchaToken: string | undefined;
+    if (executeRecaptcha) {
+      try {
+        recaptchaToken = await executeRecaptcha("quiz_intake_submit");
+      } catch (error) {
+        console.error("reCAPTCHA error:", error);
+      }
+    }
+
+    submitMutation.mutate({ ...quizData, recaptchaToken });
+  }, [quizData, executeRecaptcha, submitMutation]);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)" }}>
