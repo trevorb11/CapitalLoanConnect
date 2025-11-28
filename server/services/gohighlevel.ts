@@ -192,18 +192,21 @@ export class GoHighLevelService {
       contactData.customFields = customFields;
     }
 
-    // Tags
-    const tags = ["MCA Application"];
+    // Tags - based on application completion status
+    const tags: string[] = [];
+    
     if (application.isFullApplicationCompleted) {
-      tags.push("Full Application Submitted");
-      tags.push("Application Complete");
+      // Full application completed - add "application complete" tag
+      tags.push("application complete");
     } else if (application.isCompleted) {
-      tags.push("Intake Complete");
-      tags.push("Application Complete");
-    } else {
-      tags.push("Application In Progress");
+      // Intake form completed - add website lead source tags
+      tags.push("lead-source-website");
+      tags.push("interest form");
     }
-    contactData.tags = tags;
+    
+    if (tags.length > 0) {
+      contactData.tags = tags;
+    }
 
     return contactData;
   }
