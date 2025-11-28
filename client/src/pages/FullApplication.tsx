@@ -635,8 +635,8 @@ export default function FullApplication(props?: FullApplicationProps) {
             flexDirection: 'column'
         }}>
 
-            {/* Welcome preface for users coming from intake form */}
-            {cameFromIntake && currentStepIndex === 0 && (
+            {/* Welcome preface on first slide */}
+            {currentStepIndex === 0 && (
               <div style={{ 
                 textAlign: 'center', 
                 marginBottom: '2rem',
