@@ -345,7 +345,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { sanitized: updates, recaptchaToken } = sanitizeApplicationData(req.body);
-      
+
+      // Authorization check for dashboard edits (when user is authenticated)
+      // Agents can only edit their own applications, admins can edit any
+      if (req.session.user?.isAuthenticated) {
+        if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+          const existingApp = await storage.getLoanApplication(id);
+          if (existingApp && existingApp.agentEmail &&
+              existingApp.agentEmail.toLowerCase() !== req.session.user.agentEmail.toLowerCase()) {
+            return res.status(403).json({ error: "You can only edit applications assigned to you" });
+          }
+        }
+      }
+
       // Verify reCAPTCHA if token provided (for final submissions)
       if (recaptchaToken) {
         const recaptchaResult = await verifyRecaptcha(recaptchaToken);

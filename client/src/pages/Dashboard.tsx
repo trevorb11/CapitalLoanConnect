@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 
 interface AuthState {
@@ -396,6 +398,20 @@ function ItemStatementsModal({
   );
 }
 
+const US_STATES = [
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"
+];
+
+const INDUSTRIES = [
+  "Automotive", "Construction", "Transportation", "Health Services",
+  "Utilities and Home Services", "Hospitality", "Entertainment and Recreation",
+  "Retail Stores", "Professional Services", "Restaurants & Food Services", "Other"
+];
+
 function BankStatementsTab() {
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
 
@@ -660,6 +676,8 @@ export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial">("all");
   const [selectedAppDetails, setSelectedAppDetails] = useState<LoanApplication | null>(null);
   const [selectedAppForStatements, setSelectedAppForStatements] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editFormData, setEditFormData] = useState<Partial<LoanApplication>>({});
 
   const { data: authData, isLoading: authLoading, refetch: refetchAuth } = useQuery<AuthState | null>({
     queryKey: ["/api/auth/check"],
@@ -710,8 +728,85 @@ export default function Dashboard() {
     },
   });
 
+  const saveApplicationMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<LoanApplication> }) => {
+      const res = await fetch(`/api/applications/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to save changes");
+      }
+      return res.json();
+    },
+    onSuccess: (updatedApp) => {
+      // Update the selected app details with new data
+      setSelectedAppDetails(updatedApp);
+      setIsEditMode(false);
+      // Refresh the applications list
+      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+    },
+  });
+
   const handleLogout = () => {
     logoutMutation.mutate();
+  };
+
+  const handleEditClick = () => {
+    if (selectedAppDetails) {
+      setEditFormData({
+        fullName: selectedAppDetails.fullName || "",
+        email: selectedAppDetails.email || "",
+        phone: selectedAppDetails.phone || "",
+        dateOfBirth: selectedAppDetails.dateOfBirth || "",
+        legalBusinessName: selectedAppDetails.legalBusinessName || selectedAppDetails.businessName || "",
+        doingBusinessAs: selectedAppDetails.doingBusinessAs || "",
+        industry: selectedAppDetails.industry || "",
+        ein: selectedAppDetails.ein || "",
+        businessStartDate: selectedAppDetails.businessStartDate || "",
+        stateOfIncorporation: selectedAppDetails.stateOfIncorporation || "",
+        companyEmail: selectedAppDetails.companyEmail || "",
+        companyWebsite: selectedAppDetails.companyWebsite || "",
+        businessAddress: selectedAppDetails.businessStreetAddress || selectedAppDetails.businessAddress || "",
+        city: selectedAppDetails.city || "",
+        state: selectedAppDetails.state || "",
+        zipCode: selectedAppDetails.zipCode || "",
+        ownerAddress1: selectedAppDetails.ownerAddress1 || "",
+        ownerAddress2: selectedAppDetails.ownerAddress2 || "",
+        ownerCity: selectedAppDetails.ownerCity || "",
+        ownerState: selectedAppDetails.ownerState || "",
+        ownerZip: selectedAppDetails.ownerZip || "",
+        requestedAmount: selectedAppDetails.requestedAmount || "",
+        doYouProcessCreditCards: selectedAppDetails.doYouProcessCreditCards || "",
+        ownership: selectedAppDetails.ownership || "",
+        mcaBalanceAmount: selectedAppDetails.mcaBalanceAmount || "",
+        mcaBalanceBankName: selectedAppDetails.mcaBalanceBankName || "",
+        ficoScoreExact: selectedAppDetails.ficoScoreExact || selectedAppDetails.personalCreditScoreRange || "",
+        socialSecurityNumber: selectedAppDetails.socialSecurityNumber || "",
+      });
+      setIsEditMode(true);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditMode(false);
+    setEditFormData({});
+  };
+
+  const handleSaveEdit = () => {
+    if (selectedAppDetails?.id) {
+      saveApplicationMutation.mutate({
+        id: selectedAppDetails.id,
+        data: editFormData,
+      });
+    }
+  };
+
+  const handleEditFieldChange = (field: string, value: string) => {
+    setEditFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleLoginSuccess = () => {
@@ -1080,11 +1175,11 @@ export default function Dashboard() {
       />
 
       {/* Application Details Dialog */}
-      <Dialog open={!!selectedAppDetails} onOpenChange={() => setSelectedAppDetails(null)}>
+      <Dialog open={!!selectedAppDetails} onOpenChange={(open) => { if (!open) { setSelectedAppDetails(null); setIsEditMode(false); setEditFormData({}); } }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 flex-wrap">
-              Application Details
+              {isEditMode ? "Edit Application" : "Application Details"}
               {selectedAppDetails?.isFullApplicationCompleted ? (
                 <Badge variant="default" className="bg-green-600">
                   <CheckCircle2 className="w-3 h-3 mr-1" />
@@ -1100,8 +1195,8 @@ export default function Dashboard() {
               )}
             </DialogTitle>
           </DialogHeader>
-          
-          {selectedAppDetails && (
+
+          {selectedAppDetails && !isEditMode && (
             <div className="space-y-6">
               {/* Contact Information */}
               <div>
@@ -1159,8 +1254,8 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                   <div><span className="font-medium">Requested Amount:</span> {selectedAppDetails.requestedAmount ? `$${Number(selectedAppDetails.requestedAmount).toLocaleString()}` : "N/A"}</div>
                   <div><span className="font-medium">Credit Cards:</span> {selectedAppDetails.doYouProcessCreditCards || "N/A"}</div>
-                  {selectedAppDetails.personalCreditScoreRange && (
-                    <div><span className="font-medium">Credit Score Range:</span> {selectedAppDetails.personalCreditScoreRange}</div>
+                  {(selectedAppDetails.personalCreditScoreRange || selectedAppDetails.ficoScoreExact) && (
+                    <div><span className="font-medium">Credit Score:</span> {selectedAppDetails.ficoScoreExact || selectedAppDetails.personalCreditScoreRange}</div>
                   )}
                   {selectedAppDetails.ownership && (
                     <div><span className="font-medium">Ownership %:</span> {selectedAppDetails.ownership}%</div>
@@ -1207,13 +1302,391 @@ export default function Dashboard() {
               </div>
 
               {/* Action Buttons - View Application available for all apps */}
-              <div className="flex gap-3 pt-4 border-t">
+              <div className="flex gap-3 pt-4 border-t flex-wrap">
+                <Button
+                  variant="outline"
+                  onClick={handleEditClick}
+                  data-testid="button-edit-application"
+                >
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Edit Application
+                </Button>
                 <Button
                   onClick={() => window.open(`/agent/application/${selectedAppDetails.id}`, "_blank")}
                   data-testid="button-view-application"
                 >
                   <ExternalLink className="w-4 h-4 mr-2" />
                   View Application
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Edit Mode Form */}
+          {selectedAppDetails && isEditMode && (
+            <div className="space-y-6">
+              {/* Error Display */}
+              {saveApplicationMutation.isError && (
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                  <p className="text-sm text-destructive">{(saveApplicationMutation.error as Error).message}</p>
+                </div>
+              )}
+
+              {/* Contact Information */}
+              <div>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Contact Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-fullName">Full Name</Label>
+                    <Input
+                      id="edit-fullName"
+                      value={editFormData.fullName || ""}
+                      onChange={(e) => handleEditFieldChange("fullName", e.target.value)}
+                      placeholder="Full Name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-email">Email</Label>
+                    <Input
+                      id="edit-email"
+                      type="email"
+                      value={editFormData.email || ""}
+                      onChange={(e) => handleEditFieldChange("email", e.target.value)}
+                      placeholder="Email"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-phone">Phone</Label>
+                    <Input
+                      id="edit-phone"
+                      value={editFormData.phone || ""}
+                      onChange={(e) => handleEditFieldChange("phone", e.target.value)}
+                      placeholder="Phone"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-dateOfBirth">Date of Birth</Label>
+                    <Input
+                      id="edit-dateOfBirth"
+                      type="date"
+                      value={editFormData.dateOfBirth || ""}
+                      onChange={(e) => handleEditFieldChange("dateOfBirth", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Business Information */}
+              <div>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Business Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-legalBusinessName">Legal Business Name</Label>
+                    <Input
+                      id="edit-legalBusinessName"
+                      value={editFormData.legalBusinessName || ""}
+                      onChange={(e) => handleEditFieldChange("legalBusinessName", e.target.value)}
+                      placeholder="Legal Business Name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-doingBusinessAs">DBA</Label>
+                    <Input
+                      id="edit-doingBusinessAs"
+                      value={editFormData.doingBusinessAs || ""}
+                      onChange={(e) => handleEditFieldChange("doingBusinessAs", e.target.value)}
+                      placeholder="Doing Business As"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-industry">Industry</Label>
+                    <Select
+                      value={editFormData.industry || ""}
+                      onValueChange={(value) => handleEditFieldChange("industry", value)}
+                    >
+                      <SelectTrigger id="edit-industry">
+                        <SelectValue placeholder="Select Industry" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {INDUSTRIES.map((ind) => (
+                          <SelectItem key={ind} value={ind}>{ind}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-ein">EIN</Label>
+                    <Input
+                      id="edit-ein"
+                      value={editFormData.ein || ""}
+                      onChange={(e) => handleEditFieldChange("ein", e.target.value)}
+                      placeholder="XX-XXXXXXX"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-businessStartDate">Business Start Date</Label>
+                    <Input
+                      id="edit-businessStartDate"
+                      type="date"
+                      value={editFormData.businessStartDate || ""}
+                      onChange={(e) => handleEditFieldChange("businessStartDate", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-stateOfIncorporation">State of Incorporation</Label>
+                    <Select
+                      value={editFormData.stateOfIncorporation || ""}
+                      onValueChange={(value) => handleEditFieldChange("stateOfIncorporation", value)}
+                    >
+                      <SelectTrigger id="edit-stateOfIncorporation">
+                        <SelectValue placeholder="Select State" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {US_STATES.map((state) => (
+                          <SelectItem key={state} value={state}>{state}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-companyEmail">Company Email</Label>
+                    <Input
+                      id="edit-companyEmail"
+                      type="email"
+                      value={editFormData.companyEmail || ""}
+                      onChange={(e) => handleEditFieldChange("companyEmail", e.target.value)}
+                      placeholder="Company Email"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-companyWebsite">Website</Label>
+                    <Input
+                      id="edit-companyWebsite"
+                      value={editFormData.companyWebsite || ""}
+                      onChange={(e) => handleEditFieldChange("companyWebsite", e.target.value)}
+                      placeholder="www.example.com"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Business Address */}
+              <div>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Business Address</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="edit-businessAddress">Street Address</Label>
+                    <Input
+                      id="edit-businessAddress"
+                      value={editFormData.businessAddress || ""}
+                      onChange={(e) => handleEditFieldChange("businessAddress", e.target.value)}
+                      placeholder="Street Address"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-city">City</Label>
+                    <Input
+                      id="edit-city"
+                      value={editFormData.city || ""}
+                      onChange={(e) => handleEditFieldChange("city", e.target.value)}
+                      placeholder="City"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-state">State</Label>
+                      <Select
+                        value={editFormData.state || ""}
+                        onValueChange={(value) => handleEditFieldChange("state", value)}
+                      >
+                        <SelectTrigger id="edit-state">
+                          <SelectValue placeholder="State" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {US_STATES.map((state) => (
+                            <SelectItem key={state} value={state}>{state}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-zipCode">ZIP Code</Label>
+                      <Input
+                        id="edit-zipCode"
+                        value={editFormData.zipCode || ""}
+                        onChange={(e) => handleEditFieldChange("zipCode", e.target.value)}
+                        placeholder="ZIP"
+                        maxLength={5}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Owner Address */}
+              <div>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Owner Address</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-ownerAddress1">Address Line 1</Label>
+                    <Input
+                      id="edit-ownerAddress1"
+                      value={editFormData.ownerAddress1 || ""}
+                      onChange={(e) => handleEditFieldChange("ownerAddress1", e.target.value)}
+                      placeholder="Street Address"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-ownerAddress2">Address Line 2</Label>
+                    <Input
+                      id="edit-ownerAddress2"
+                      value={editFormData.ownerAddress2 || ""}
+                      onChange={(e) => handleEditFieldChange("ownerAddress2", e.target.value)}
+                      placeholder="Apt, Suite, etc."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-ownerCity">City</Label>
+                    <Input
+                      id="edit-ownerCity"
+                      value={editFormData.ownerCity || ""}
+                      onChange={(e) => handleEditFieldChange("ownerCity", e.target.value)}
+                      placeholder="City"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-ownerState">State</Label>
+                      <Select
+                        value={editFormData.ownerState || ""}
+                        onValueChange={(value) => handleEditFieldChange("ownerState", value)}
+                      >
+                        <SelectTrigger id="edit-ownerState">
+                          <SelectValue placeholder="State" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {US_STATES.map((state) => (
+                            <SelectItem key={state} value={state}>{state}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-ownerZip">ZIP Code</Label>
+                      <Input
+                        id="edit-ownerZip"
+                        value={editFormData.ownerZip || ""}
+                        onChange={(e) => handleEditFieldChange("ownerZip", e.target.value)}
+                        placeholder="ZIP"
+                        maxLength={5}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Information */}
+              <div>
+                <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Financial Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-requestedAmount">Requested Amount</Label>
+                    <Input
+                      id="edit-requestedAmount"
+                      value={editFormData.requestedAmount || ""}
+                      onChange={(e) => handleEditFieldChange("requestedAmount", e.target.value)}
+                      placeholder="$0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-doYouProcessCreditCards">Process Credit Cards?</Label>
+                    <Select
+                      value={editFormData.doYouProcessCreditCards || ""}
+                      onValueChange={(value) => handleEditFieldChange("doYouProcessCreditCards", value)}
+                    >
+                      <SelectTrigger id="edit-doYouProcessCreditCards">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Yes">Yes</SelectItem>
+                        <SelectItem value="No">No</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-ficoScoreExact">FICO Score</Label>
+                    <Input
+                      id="edit-ficoScoreExact"
+                      value={editFormData.ficoScoreExact || ""}
+                      onChange={(e) => handleEditFieldChange("ficoScoreExact", e.target.value)}
+                      placeholder="e.g. 720"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-ownership">Ownership %</Label>
+                    <Input
+                      id="edit-ownership"
+                      value={editFormData.ownership || ""}
+                      onChange={(e) => handleEditFieldChange("ownership", e.target.value)}
+                      placeholder="100"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-mcaBalanceAmount">MCA Balance</Label>
+                    <Input
+                      id="edit-mcaBalanceAmount"
+                      value={editFormData.mcaBalanceAmount || ""}
+                      onChange={(e) => handleEditFieldChange("mcaBalanceAmount", e.target.value)}
+                      placeholder="$0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-mcaBalanceBankName">MCA Bank Name</Label>
+                    <Input
+                      id="edit-mcaBalanceBankName"
+                      value={editFormData.mcaBalanceBankName || ""}
+                      onChange={(e) => handleEditFieldChange("mcaBalanceBankName", e.target.value)}
+                      placeholder="Bank Name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-socialSecurityNumber">SSN</Label>
+                    <Input
+                      id="edit-socialSecurityNumber"
+                      value={editFormData.socialSecurityNumber || ""}
+                      onChange={(e) => handleEditFieldChange("socialSecurityNumber", e.target.value)}
+                      placeholder="XXX-XX-XXXX"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t">
+                <Button
+                  onClick={handleSaveEdit}
+                  disabled={saveApplicationMutation.isPending}
+                  data-testid="button-save-application"
+                >
+                  {saveApplicationMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  disabled={saveApplicationMutation.isPending}
+                  data-testid="button-cancel-edit"
+                >
+                  Cancel
                 </Button>
               </div>
             </div>
