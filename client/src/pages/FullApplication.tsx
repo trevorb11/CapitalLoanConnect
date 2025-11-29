@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
-import { trackApplicationSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
+import { trackApplicationSubmitted, trackFormStepCompleted, trackPageView, trackCloseConvertLead } from "@/lib/analytics";
 
 // --- CONSTANTS & DATA ---
 
@@ -188,11 +188,30 @@ export default function FullApplication(props?: FullApplicationProps) {
     // Check if user came from intake form (has applicationId in URL)
     const urlParams = new URLSearchParams(window.location.search);
     const urlAppId = urlParams.get("applicationId");
+    
+    // Determine traffic source for close_convert_lead event
+    let trafficSource = 'direct';
+    const referrer = document.referrer;
+    
     if (urlAppId) {
+      // User came from intake quiz with applicationId
+      trafficSource = 'intake_quiz';
       setCameFromIntake(true);
       // Clean up URL without reload
       window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (referrer) {
+      // Check referrer for known sources
+      if (referrer.includes('/intake/quiz') || referrer.includes('/intake')) {
+        trafficSource = 'intake_quiz';
+      } else if (referrer.includes('todaycapitalgroup.com/get-qualified')) {
+        trafficSource = 'get_qualified_page';
+      } else if (referrer.includes('todaycapitalgroup.com')) {
+        trafficSource = 'todaycapitalgroup_website';
+      }
     }
+    
+    // Track the close_convert_lead event
+    trackCloseConvertLead(trafficSource);
     
     setIsCheckingId(false);
   }, []);

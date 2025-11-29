@@ -91,6 +91,15 @@
           last_step: lastStep
         });
       };
+      
+      // Track close_convert_lead event (traffic from intake quiz or get-qualified page to main app)
+      window.trackCloseConvertLead = function(source) {
+        gtag('event', 'close_convert_lead', {
+          event_category: 'conversion',
+          event_label: source || 'direct',
+          traffic_source: source || 'direct'
+        });
+      };
     </script>
   </head>
   <body>

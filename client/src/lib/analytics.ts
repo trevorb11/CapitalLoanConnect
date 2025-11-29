@@ -9,6 +9,7 @@ declare global {
     trackBankConnected: (institutionName: string) => void;
     trackBankStatementUploaded: (fileCount: number) => void;
     trackFormAbandonment: (formType: string, lastStep: number) => void;
+    trackCloseConvertLead: (source?: string) => void;
   }
 }
 
@@ -71,6 +72,12 @@ export const trackBankStatementUploaded = (fileCount: number) => {
 export const trackFormAbandonment = (formType: string, lastStep: number) => {
   if (typeof window !== 'undefined' && window.trackFormAbandonment) {
     window.trackFormAbandonment(formType, lastStep);
+  }
+};
+
+export const trackCloseConvertLead = (source?: string) => {
+  if (typeof window !== 'undefined' && window.trackCloseConvertLead) {
+    window.trackCloseConvertLead(source);
   }
 };
 
