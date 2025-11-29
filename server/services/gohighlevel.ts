@@ -5,9 +5,19 @@ const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 
 interface GHLCustomField {
-  key: string;
+  id?: string;  // Custom field ID (preferred for V2 API)
+  key?: string; // Field key fallback (contact.field_name format)
   value: string;
 }
+
+// Mapping of field keys to GHL custom field IDs
+// These IDs can be found in GHL Settings > Custom Fields
+// Update these with actual field IDs from your GHL account
+const CUSTOM_FIELD_IDS: Record<string, string> = {
+  // Leave empty to use field keys, or populate with actual IDs like:
+  // "contact.amount_requested": "bZw2JzNt9t4YVpRXjB52",
+  // "contact.monthly_revenue": "cXy3KlMn7opQr8st9uvW",
+};
 
 interface GHLContact {
   locationId: string;
@@ -123,14 +133,24 @@ export class GoHighLevelService {
     const customFields: GHLCustomField[] = [];
 
     // Helper to push only if value exists
-    const pushField = (key: string, value: any) => {
+    // Uses custom field ID if available, otherwise uses field key
+    const pushField = (fieldKey: string, value: any) => {
       if (value !== undefined && value !== null && value !== "") {
         // Convert booleans to "Yes"/"No" for text fields
         let finalValue = value;
         if (typeof value === 'boolean') {
             finalValue = value ? "Yes" : "No";
         }
-        customFields.push({ key, value: finalValue.toString() });
+        
+        // Check if we have a custom field ID mapping for this key
+        const fieldId = CUSTOM_FIELD_IDS[fieldKey];
+        if (fieldId) {
+          // Use ID format (preferred for V2 API)
+          customFields.push({ id: fieldId, value: finalValue.toString() });
+        } else {
+          // Fall back to key format
+          customFields.push({ key: fieldKey, value: finalValue.toString() });
+        }
       }
     };
 
@@ -218,17 +238,31 @@ export class GoHighLevelService {
     }
 
     try {
+      // Log incoming application data for debugging
+      console.log("[GHL DEBUG] Application data received:", {
+        requestedAmount: application.requestedAmount,
+        monthlyRevenue: application.monthlyRevenue,
+        averageMonthlyRevenue: application.averageMonthlyRevenue,
+        email: application.email,
+        isCompleted: application.isCompleted
+      });
+
       const contactData = this.buildContactData(application);
+      
+      // Log the custom fields being sent
+      console.log("[GHL DEBUG] Custom fields being sent:", JSON.stringify(contactData.customFields, null, 2));
 
       // If we already have a contact ID, update it (do NOT include locationId)
       if (application.ghlContactId) {
         const updateData = this.buildContactData(application, false); // false = exclude locationId
+        console.log("[GHL DEBUG] Updating existing contact:", application.ghlContactId);
         await this.makeRequest(`/contacts/${application.ghlContactId}`, "PUT", updateData);
         return application.ghlContactId;
       }
 
       // Otherwise, create a new contact (DO include locationId)
       const createData = this.buildContactData(application, true); // true = include locationId
+      console.log("[GHL DEBUG] Creating new contact with data:", JSON.stringify(createData, null, 2));
       const response = await this.makeRequest("/contacts", "POST", createData);
       return response.contact?.id || response.id;
     } catch (error) {
