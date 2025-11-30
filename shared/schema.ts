@@ -78,6 +78,10 @@ export const loanApplications = pgTable("loan_applications", {
   isCompleted: boolean("is_completed").default(false),
   isFullApplicationCompleted: boolean("is_full_application_completed").default(false),
   ghlContactId: text("ghl_contact_id"),
+
+  // --- Bot Detection ---
+  isBotAttempt: boolean("is_bot_attempt").default(false), // Honeypot triggered
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -247,3 +251,23 @@ export const insertUserSchema = createInsertSchema(users).pick({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// Bot Attempts - Track honeypot triggers for monitoring
+export const botAttempts = pgTable("bot_attempts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  honeypotValue: text("honeypot_value"), // What they put in the fax field
+  formType: text("form_type"), // 'intake', 'full_application', 'quiz'
+  additionalData: jsonb("additional_data"), // Any other form data submitted
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBotAttemptSchema = createInsertSchema(botAttempts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertBotAttempt = z.infer<typeof insertBotAttemptSchema>;
+export type BotAttempt = typeof botAttempts.$inferSelect;

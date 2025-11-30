@@ -48,6 +48,7 @@ interface QuizData {
   email: string;
   phone: string;
   consent: boolean;
+  faxNumber: string; // Honeypot field - should always be empty
 }
 
 function formatAmount(amount: number): string {
@@ -94,6 +95,7 @@ export default function QuizIntake() {
     email: "",
     phone: "",
     consent: false,
+    faxNumber: "", // Honeypot - should remain empty
   });
 
   const totalQuestions = 5;
@@ -134,6 +136,7 @@ export default function QuizIntake() {
         personalCreditScoreRange: data.creditScore,
         isCompleted: true,
         recaptchaToken: data.recaptchaToken,
+        faxNumber: data.faxNumber, // Honeypot field
       });
       return response.json();
     },
@@ -448,6 +451,20 @@ export default function QuizIntake() {
                 className="w-full p-4 border-2 border-white/30 bg-white/10 text-white rounded-lg text-base placeholder:text-white/60 focus:outline-none focus:border-white focus:bg-white/15 transition-colors"
                 data-testid="input-phone"
               />
+
+              {/* Honeypot field - hidden from humans, visible to bots */}
+              <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0, overflow: 'hidden' }}>
+                <label htmlFor="faxNumber">Fax Number (leave blank)</label>
+                <input
+                  type="text"
+                  id="faxNumber"
+                  name="faxNumber"
+                  autoComplete="off"
+                  tabIndex={-1}
+                  value={quizData.faxNumber}
+                  onChange={(e) => setQuizData((prev) => ({ ...prev, faxNumber: e.target.value }))}
+                />
+              </div>
 
               {/* Consent Checkbox */}
               <div className="pt-2">

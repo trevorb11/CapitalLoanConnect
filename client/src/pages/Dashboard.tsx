@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -147,6 +147,17 @@ interface BankConnection {
     mca: { status: string; reason: string };
   };
   plaidItemId: string;
+  createdAt: string;
+}
+
+interface BotAttempt {
+  id: string;
+  email: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  honeypotValue: string | null;
+  formType: string | null;
+  additionalData: any;
   createdAt: string;
 }
 
@@ -671,6 +682,101 @@ function BankStatementsTab() {
   );
 }
 
+function BotAttemptsTab() {
+  const { data: botAttempts, isLoading } = useQuery<BotAttempt[]>({
+    queryKey: ['/api/bot-attempts'],
+    queryFn: async () => {
+      const res = await fetch('/api/bot-attempts', {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        if (res.status === 403) return [];
+        throw new Error('Failed to fetch bot attempts');
+      }
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="p-8">
+        <div className="flex items-center justify-center gap-2">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span>Loading bot attempts...</span>
+        </div>
+      </Card>
+    );
+  }
+
+  if (!botAttempts || botAttempts.length === 0) {
+    return (
+      <Card className="p-8">
+        <div className="text-center text-muted-foreground">
+          <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p className="text-lg font-medium">No Bot Attempts Detected</p>
+          <p className="text-sm mt-2">
+            The honeypot system is active. Any bots that fill out the hidden fax field will appear here.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center gap-3 mb-6">
+        <AlertTriangle className="w-5 h-5 text-amber-500" />
+        <h3 className="text-lg font-semibold">Bot Attempts Detected</h3>
+        <Badge variant="destructive">{botAttempts.length}</Badge>
+      </div>
+
+      <div className="space-y-4">
+        {botAttempts.map((attempt) => (
+          <div
+            key={attempt.id}
+            className="p-4 border rounded-lg bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="font-medium text-muted-foreground">Email:</span>{" "}
+                <span className="font-mono">{attempt.email || "N/A"}</span>
+              </div>
+              <div>
+                <span className="font-medium text-muted-foreground">Fax Value:</span>{" "}
+                <span className="font-mono text-red-600 dark:text-red-400">"{attempt.honeypotValue}"</span>
+              </div>
+              <div>
+                <span className="font-medium text-muted-foreground">Form Type:</span>{" "}
+                <Badge variant="outline">{attempt.formType || "unknown"}</Badge>
+              </div>
+              <div>
+                <span className="font-medium text-muted-foreground">Timestamp:</span>{" "}
+                {attempt.createdAt ? format(new Date(attempt.createdAt), "MMM d, yyyy h:mm a") : "N/A"}
+              </div>
+              <div className="md:col-span-2">
+                <span className="font-medium text-muted-foreground">IP Address:</span>{" "}
+                <span className="font-mono text-xs">{attempt.ipAddress || "N/A"}</span>
+              </div>
+              <div className="md:col-span-2">
+                <span className="font-medium text-muted-foreground">User Agent:</span>{" "}
+                <span className="font-mono text-xs truncate block">{attempt.userAgent || "N/A"}</span>
+              </div>
+              {attempt.additionalData && Object.keys(attempt.additionalData).length > 0 && (
+                <div className="md:col-span-2">
+                  <span className="font-medium text-muted-foreground">Additional Data:</span>{" "}
+                  <pre className="text-xs mt-1 bg-white/50 dark:bg-black/20 p-2 rounded overflow-x-auto">
+                    {JSON.stringify(attempt.additionalData, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial">("all");
@@ -971,6 +1077,12 @@ export default function Dashboard() {
                 <Landmark className="w-4 h-4 mr-2" />
                 Bank Statements
               </TabsTrigger>
+              {authData?.role === 'admin' && (
+                <TabsTrigger value="bot-attempts" data-testid="tab-bot-attempts">
+                  <Bot className="w-4 h-4 mr-2" />
+                  Bot Attempts
+                </TabsTrigger>
+              )}
             </TabsList>
             <div className="flex gap-2 w-full md:w-auto">
               <Button
@@ -1164,6 +1276,11 @@ export default function Dashboard() {
 
           <TabsContent value="bank-statements">
             <BankStatementsTab />
+          </TabsContent>
+
+          {/* Bot Attempts Tab - Admin only */}
+          <TabsContent value="bot-attempts">
+            <BotAttemptsTab />
           </TabsContent>
         </Tabs>
       </div>

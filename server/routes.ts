@@ -102,8 +102,8 @@ const plaidExchangeSchema = z.object({
 });
 
 // Helper function to sanitize application data for database storage
-function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string } {
-  const { recaptchaToken, ...rest } = data;
+function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string; faxNumber?: string } {
+  const { recaptchaToken, faxNumber, ...rest } = data;
   const sanitized = { ...rest };
   
   console.log('[SANITIZE] Input data:', JSON.stringify(rest, null, 2));
@@ -142,7 +142,7 @@ function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: 
     }
   }
   
-  return { sanitized, recaptchaToken };
+  return { sanitized, recaptchaToken, faxNumber };
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -270,8 +270,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new loan application
   app.post("/api/applications", async (req, res) => {
     try {
-      const { sanitized: applicationData, recaptchaToken } = sanitizeApplicationData(req.body);
-      
+      const { sanitized: applicationData, recaptchaToken, faxNumber } = sanitizeApplicationData(req.body);
+
+      // Honeypot detection - if faxNumber is filled, it's likely a bot
+      if (faxNumber && faxNumber.trim() !== "") {
+        console.warn("[HONEYPOT] Bot detected! Fax field was filled with:", faxNumber);
+
+        // Log the bot attempt
+        try {
+          await storage.createBotAttempt({
+            email: applicationData.email || null,
+            ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || null,
+            userAgent: req.headers['user-agent'] || null,
+            honeypotValue: faxNumber,
+            formType: 'application',
+            additionalData: { businessName: applicationData.businessName, phone: applicationData.phone }
+          });
+        } catch (botLogError) {
+          console.error("[HONEYPOT] Failed to log bot attempt:", botLogError);
+        }
+
+        // Return a fake success response to not alert the bot
+        return res.json({
+          id: "bot-detected-" + Date.now(),
+          email: applicationData.email,
+          isBotAttempt: true
+        });
+      }
+
       // Verify reCAPTCHA if token provided (for final submissions)
       if (recaptchaToken) {
         const recaptchaResult = await verifyRecaptcha(recaptchaToken);
@@ -281,7 +307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         console.log("[RECAPTCHA] Verified successfully, score:", recaptchaResult.score);
       }
-      
+
       // Validate required email field
       if (!applicationData.email) {
         return res.status(400).json({ error: "Email is required" });
@@ -1023,6 +1049,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error exporting applications to CSV:", error);
       res.status(500).json({ error: "Failed to export applications" });
+    }
+  });
+
+  // ========================================
+  // BOT DETECTION ROUTES
+  // ========================================
+
+  // Get all bot attempts (admin only)
+  app.get("/api/bot-attempts", async (req, res) => {
+    try {
+      // Check authentication - admin only
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const attempts = await storage.getAllBotAttempts();
+      res.json(attempts);
+    } catch (error) {
+      console.error("Error fetching bot attempts:", error);
+      res.status(500).json({ error: "Failed to fetch bot attempts" });
+    }
+  });
+
+  // Get bot attempts count (for dashboard badge)
+  app.get("/api/bot-attempts/count", async (req, res) => {
+    try {
+      // Check authentication - admin only
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const count = await storage.getBotAttemptsCount();
+      res.json({ count });
+    } catch (error) {
+      console.error("Error fetching bot attempts count:", error);
+      res.status(500).json({ error: "Failed to fetch count" });
     }
   });
 

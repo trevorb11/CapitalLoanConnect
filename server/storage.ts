@@ -1,8 +1,9 @@
-import { 
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads,
+import {
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
-  type BankStatementUpload, type InsertBankStatementUpload
+  type BankStatementUpload, type InsertBankStatementUpload,
+  type BotAttempt, type InsertBotAttempt
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -32,6 +33,11 @@ export interface IStorage {
   getBankStatementUpload(id: string): Promise<BankStatementUpload | undefined>;
   getAllBankStatementUploads(): Promise<BankStatementUpload[]>;
   getBankStatementUploadsByEmail(email: string): Promise<BankStatementUpload[]>;
+
+  // Bot Attempts methods
+  createBotAttempt(attempt: InsertBotAttempt): Promise<BotAttempt>;
+  getAllBotAttempts(): Promise<BotAttempt[]>;
+  getBotAttemptsCount(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -194,6 +200,27 @@ export class DatabaseStorage implements IStorage {
       .from(bankStatementUploads)
       .where(eq(bankStatementUploads.email, email))
       .orderBy(desc(bankStatementUploads.createdAt));
+  }
+
+  // Bot Attempts methods
+  async createBotAttempt(attempt: InsertBotAttempt): Promise<BotAttempt> {
+    const [botAttempt] = await db
+      .insert(botAttempts)
+      .values(attempt)
+      .returning();
+    return botAttempt;
+  }
+
+  async getAllBotAttempts(): Promise<BotAttempt[]> {
+    return await db
+      .select()
+      .from(botAttempts)
+      .orderBy(desc(botAttempts.createdAt));
+  }
+
+  async getBotAttemptsCount(): Promise<number> {
+    const results = await db.select().from(botAttempts);
+    return results.length;
   }
 }
 
