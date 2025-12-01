@@ -28,7 +28,6 @@ import {
   Shield,
   Clock,
   Sparkles,
-  ExternalLink,
 } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 
@@ -408,6 +407,22 @@ const formatCurrency = (num: number): string => {
   }).format(num);
 };
 
+// --- GET SERVICE ACTION DESCRIPTION ---
+// Converts button text to a personalized follow-up message
+const getServiceActionDescription = (buttonText: string): string => {
+  const text = buttonText.toLowerCase();
+  if (text.includes("credit cards") || text.includes("credit card")) {
+    return "access 0% interest business credit cards to fund your business growth";
+  }
+  if (text.includes("credit repair") || text.includes("fix my credit")) {
+    return "improve your credit score and unlock better funding options";
+  }
+  if (text.includes("building credit") || text.includes("build credit")) {
+    return "start building your credit profile for future funding opportunities";
+  }
+  return "take the next steps toward building your business foundation";
+};
+
 // --- SLIDE COMPONENTS ---
 const ProgressIndicator = ({
   current,
@@ -439,6 +454,7 @@ export default function FundingReport() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showServiceOptions, setShowServiceOptions] = useState(false);
   const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [selectedServiceDescription, setSelectedServiceDescription] = useState<string | null>(null);
   const [interestSubmitted, setInterestSubmitted] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: "",
@@ -882,9 +898,10 @@ export default function FundingReport() {
               We've noted your interest in <strong className="text-white">{selectedService}</strong>.
             </p>
             <p className="text-gray-400 text-sm mb-8 max-w-sm">
-              We'll reach out soon with more information about how this service can help you build your foundation for funding.
+              We will follow up with more information on how you can {selectedServiceDescription || "get started with this service"}.
             </p>
             <button
+              data-testid="link-update-info-thankyou"
               className="text-sm text-gray-500 hover:text-gray-300 underline transition"
               onClick={() => {
                 const params = new URLSearchParams({
@@ -915,15 +932,18 @@ export default function FundingReport() {
               {profile.alternativeOptions.map((option, index) => (
                 <button
                   key={index}
+                  data-testid={`button-service-option-${index}`}
                   onClick={() => {
                     setSelectedService(option.name);
+                    setSelectedServiceDescription(option.description.toLowerCase());
                     setInterestSubmitted(true);
-                    // Here you could also send this to your backend/CRM
-                    console.log("Interest captured:", {
+                    trackEvent("partner_interest_captured", {
                       service: option.name,
-                      user: formData.name,
-                      email: formData.businessName,
+                      serviceDescription: option.description,
                       tier: profile.tier,
+                      creditScore: formData.creditScore,
+                      userName: formData.name,
+                      businessName: formData.businessName,
                     });
                   }}
                   className={`w-full p-4 rounded-xl border text-left transition-all hover:scale-[1.02] ${
@@ -981,18 +1001,23 @@ export default function FundingReport() {
                   data-testid="button-partner-cta"
                   className="w-full bg-white hover:bg-gray-100 text-gray-900 font-bold py-6 text-lg shadow-lg"
                   onClick={() => {
-                    trackEvent("partner_cta_clicked", {
-                      partner: profile.foundationCTA?.buttonText,
-                      url: profile.foundationCTA?.url,
+                    const serviceName = profile.foundationCTA?.buttonText || "this service";
+                    const serviceAction = getServiceActionDescription(serviceName);
+                    setSelectedService(serviceName);
+                    setSelectedServiceDescription(serviceAction);
+                    setInterestSubmitted(true);
+                    trackEvent("partner_interest_captured", {
+                      service: serviceName,
+                      serviceDescription: profile.foundationCTA?.description,
                       tier: profile.tier,
                       creditScore: formData.creditScore,
                       userName: formData.name,
+                      businessName: formData.businessName,
                     });
-                    window.open(profile.foundationCTA?.url, "_blank", "noopener,noreferrer");
                   }}
                 >
                   {profile.foundationCTA.buttonText}
-                  <ExternalLink className="ml-2 h-5 w-5" />
+                  <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </div>
             )}
