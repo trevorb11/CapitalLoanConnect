@@ -74,6 +74,7 @@ export const loanApplications = pgTable("loan_applications", {
 
   // --- System Fields ---
   agentViewUrl: text("agent_view_url"), // To store the generated PDF link
+  fundingReportUrl: text("funding_report_url"), // Custom funding report URL for this application
   currentStep: integer("current_step").default(1),
   isCompleted: boolean("is_completed").default(false),
   isFullApplicationCompleted: boolean("is_full_application_completed").default(false),

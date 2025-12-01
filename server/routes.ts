@@ -101,6 +101,58 @@ const plaidExchangeSchema = z.object({
   email: z.string().email("Valid email is required")
 });
 
+// Helper function to generate funding report URL from application data
+function generateFundingReportUrl(application: Partial<LoanApplication>): string {
+  const params = new URLSearchParams();
+
+  // Map application data to report URL parameters
+  if (application.fullName) params.set('name', application.fullName);
+  if (application.businessName) params.set('businessName', application.businessName);
+  if (application.industry) params.set('industry', application.industry);
+
+  // Convert time in business to months for the report
+  if (application.timeInBusiness) {
+    const timeMapping: Record<string, string> = {
+      'Less than 3 months': '2',
+      '3-5 months': '4',
+      '6-12 months': '9',
+      '1-2 years': '18',
+      '2-5 years': '42',
+      'More than 5 years': '72',
+    };
+    params.set('timeInBusiness', timeMapping[application.timeInBusiness] || '12');
+  }
+
+  // Monthly revenue (already numeric in database)
+  if (application.monthlyRevenue) {
+    params.set('monthlyRevenue', application.monthlyRevenue.toString());
+  } else if (application.averageMonthlyRevenue) {
+    params.set('monthlyRevenue', application.averageMonthlyRevenue.toString());
+  }
+
+  // Credit score - extract middle value from range if needed
+  if (application.personalCreditScoreRange || application.creditScore) {
+    const creditRange = application.personalCreditScoreRange || application.creditScore || '';
+    const creditMapping: Record<string, string> = {
+      '500 and below': '480',
+      '500-549': '525',
+      '550-599': '575',
+      '600-649': '625',
+      '650-719': '685',
+      '720 or above': '750',
+      'Not sure': '650',
+    };
+    params.set('creditScore', creditMapping[creditRange] || '650');
+  }
+
+  // Requested loan amount
+  if (application.requestedAmount) {
+    params.set('loanAmount', application.requestedAmount.toString());
+  }
+
+  return `/report?${params.toString()}`;
+}
+
 // Helper function to sanitize application data for database storage
 function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string } {
   const { recaptchaToken, ...rest } = data;
@@ -294,7 +346,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!existingApp.agentViewUrl) {
           applicationData.agentViewUrl = `/agent/application/${existingApp.id}`;
         }
-        
+
+        // Generate funding report URL if intake is being completed
+        if (applicationData.isCompleted && !existingApp.fundingReportUrl) {
+          const mergedData = { ...existingApp, ...applicationData };
+          applicationData.fundingReportUrl = generateFundingReportUrl(mergedData);
+          console.log('[FUNDING REPORT] Generated URL for existing app:', applicationData.fundingReportUrl);
+        }
+
         // Update existing application with new data instead of just returning old data
         const updatedApp = await storage.updateLoanApplication(existingApp.id, applicationData);
         
@@ -320,18 +379,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Always generate agent view URL for all applications (allows viewing incomplete apps too)
       const agentViewUrl = `/agent/application/${application.id}`;
 
+      // Generate funding report URL if intake is being completed
+      let fundingReportUrl: string | undefined;
+      if (applicationData.isCompleted) {
+        fundingReportUrl = generateFundingReportUrl(application);
+        console.log('[FUNDING REPORT] Generated URL for new app:', fundingReportUrl);
+      }
+
       // Sync to GoHighLevel
       try {
         const ghlContactId = await ghlService.createOrUpdateContact(application);
         const updatedApp = await storage.updateLoanApplication(application.id, {
           ghlContactId,
           agentViewUrl,
+          ...(fundingReportUrl && { fundingReportUrl }),
         });
         res.json(updatedApp || application);
       } catch (ghlError) {
         console.error("GHL sync error, but application saved:", ghlError);
-        // Still update the agentViewUrl even if GHL sync fails
-        const updatedApp = await storage.updateLoanApplication(application.id, { agentViewUrl });
+        // Still update the agentViewUrl and fundingReportUrl even if GHL sync fails
+        const updatedApp = await storage.updateLoanApplication(application.id, {
+          agentViewUrl,
+          ...(fundingReportUrl && { fundingReportUrl }),
+        });
         res.json(updatedApp || application);
       }
     } catch (error) {
@@ -399,6 +469,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating application:", error);
       res.status(500).json({ error: "Failed to update application" });
+    }
+  });
+
+  // Get funding report URL by email (for /see-report page)
+  app.post("/api/applications/funding-report", async (req, res) => {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      // Find application by email
+      const application = await storage.getLoanApplicationByEmail(email);
+
+      if (!application) {
+        return res.status(404).json({ error: "No application found for this email" });
+      }
+
+      if (!application.fundingReportUrl) {
+        // Generate the URL if it doesn't exist yet (for older applications)
+        const fundingReportUrl = generateFundingReportUrl(application);
+        await storage.updateLoanApplication(application.id, { fundingReportUrl });
+        return res.json({
+          fundingReportUrl,
+          name: application.fullName,
+          businessName: application.businessName,
+        });
+      }
+
+      return res.json({
+        fundingReportUrl: application.fundingReportUrl,
+        name: application.fullName,
+        businessName: application.businessName,
+      });
+    } catch (error) {
+      console.error("Error fetching funding report:", error);
+      res.status(500).json({ error: "Failed to fetch funding report" });
     }
   });
 

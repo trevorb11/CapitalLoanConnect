@@ -188,6 +188,11 @@ export class GoHighLevelService {
        pushField("contact.application_url", application.agentViewUrl);
     }
 
+    // 6. Funding Report URL - Custom report link for this lead
+    if (application.fundingReportUrl) {
+       pushField("contact.funding_report_url", application.fundingReportUrl);
+    }
+
     if (customFields.length > 0) {
       contactData.customFields = customFields;
     }
@@ -306,6 +311,8 @@ export class GoHighLevelService {
       source: "Full Application Form",
       company_name: application.legalBusinessName || application.businessName,
       years_in_business: getYearsFromDate(application.businessStartDate || undefined),
+      // Custom funding report URL
+      funding_report_url: application.fundingReportUrl,
     };
 
     // Send to both webhooks (non-blocking)
