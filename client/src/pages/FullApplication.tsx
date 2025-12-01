@@ -171,7 +171,7 @@ export default function FullApplication(props?: FullApplicationProps) {
   // State
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [formData, setFormData] = useState<any>({});
+  const [formData, setFormData] = useState<any>({ faxNumber: "" }); // faxNumber is honeypot
   const [isCheckingId, setIsCheckingId] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -402,6 +402,11 @@ export default function FullApplication(props?: FullApplicationProps) {
       payload.agentName = agent.name;
       payload.agentEmail = agent.email;
       payload.agentGhlId = agent.ghlId;
+    }
+
+    // Include honeypot field
+    if (formData.faxNumber) {
+      payload.faxNumber = formData.faxNumber;
     }
 
     try {
@@ -795,6 +800,20 @@ export default function FullApplication(props?: FullApplicationProps) {
                          )}
                     </div>
                 )}
+
+                {/* Honeypot field - hidden from humans, visible to bots */}
+                <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0, overflow: 'hidden' }}>
+                  <label htmlFor="faxNumber">Fax Number (leave blank)</label>
+                  <input
+                    type="text"
+                    id="faxNumber"
+                    name="faxNumber"
+                    autoComplete="off"
+                    tabIndex={-1}
+                    value={formData.faxNumber || ''}
+                    onChange={(e) => setFormData((prev: any) => ({ ...prev, faxNumber: e.target.value }))}
+                  />
+                </div>
             </div>
 
             {currentStep.type !== 'simple_signature' && (
