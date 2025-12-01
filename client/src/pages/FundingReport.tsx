@@ -435,6 +435,9 @@ export default function FundingReport() {
   const [, setLocation] = useLocation();
   const [mode, setMode] = useState<"input" | "presentation">("input");
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [showServiceOptions, setShowServiceOptions] = useState(false);
+  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [interestSubmitted, setInterestSubmitted] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: "",
     businessName: "",
@@ -860,48 +863,143 @@ export default function FundingReport() {
       </div>
     ),
 
-    // Slide 4: CTA (different for Foundation Building - uses affiliate links)
-    profile.isFoundationBuilding && profile.foundationCTA ? (
+    // Slide 4: CTA (different for Foundation Building - interest capture flow)
+    profile.isFoundationBuilding && profile.alternativeOptions ? (
       <div
         key="cta-foundation"
-        className={`h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-t ${profile.bgClass}`}
+        className={`h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-t ${profile.bgClass} overflow-y-auto`}
       >
-        <Sparkles className={`h-16 w-16 ${profile.colorClass} mb-6`} />
-        <h2 className="text-3xl md:text-4xl font-bold mb-4">
-          Your Next Step
-        </h2>
-        <p className="text-gray-300 mb-4 max-w-sm">
-          {profile.foundationCTA.description}
-        </p>
-        <p className="text-gray-500 text-sm mb-8 max-w-sm">
-          Once you've built your foundation, come back and we'll help you access real funding.
-        </p>
+        {interestSubmitted ? (
+          // Thank you state after selecting a service
+          <>
+            <CheckCircle className="h-16 w-16 text-green-400 mb-6" />
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Thank You!
+            </h2>
+            <p className="text-gray-300 mb-4 max-w-sm">
+              We've noted your interest in <strong className="text-white">{selectedService}</strong>.
+            </p>
+            <p className="text-gray-400 text-sm mb-8 max-w-sm">
+              We'll reach out soon with more information about how this service can help you build your foundation for funding.
+            </p>
+            <button
+              className="text-sm text-gray-500 hover:text-gray-300 underline transition"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  name: formData.name,
+                  businessName: formData.businessName,
+                  industry: formData.industry,
+                  timeInBusiness: formData.timeInBusiness,
+                  monthlyRevenue: formData.monthlyRevenue,
+                  creditScore: formData.creditScore,
+                  loanAmount: formData.loanAmount,
+                });
+                setLocation(`/update?${params.toString()}`);
+              }}
+            >
+              Update My Information
+            </button>
+          </>
+        ) : showServiceOptions ? (
+          // Service selection state
+          <>
+            <h2 className="text-2xl md:text-3xl font-bold mb-2">
+              Which service interests you?
+            </h2>
+            <p className="text-gray-400 text-sm mb-6 max-w-sm">
+              Select the option that best fits your needs
+            </p>
+            <div className="w-full max-w-sm space-y-3 mb-6">
+              {profile.alternativeOptions.map((option, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    setSelectedService(option.name);
+                    setInterestSubmitted(true);
+                    // Here you could also send this to your backend/CRM
+                    console.log("Interest captured:", {
+                      service: option.name,
+                      user: formData.name,
+                      email: formData.businessName,
+                      tier: profile.tier,
+                    });
+                  }}
+                  className={`w-full p-4 rounded-xl border text-left transition-all hover:scale-[1.02] ${
+                    option.highlight
+                      ? "bg-white/10 border-white/30 hover:bg-white/20"
+                      : "bg-gray-900/50 border-gray-700 hover:bg-gray-800/50"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`p-2 rounded-lg ${option.highlight ? "bg-white/20" : "bg-gray-800"}`}>
+                      {option.icon === "credit-card" && <CreditCard className={`h-5 w-5 ${profile.colorClass}`} />}
+                      {option.icon === "trending-up" && <TrendingUp className={`h-5 w-5 ${profile.colorClass}`} />}
+                      {option.icon === "shield" && <Shield className={`h-5 w-5 ${profile.colorClass}`} />}
+                      {option.icon === "clock" && <Clock className={`h-5 w-5 ${profile.colorClass}`} />}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-bold text-white flex items-center gap-2">
+                        {option.name}
+                        {option.highlight && (
+                          <span className="text-xs px-2 py-0.5 bg-white/20 rounded-full">
+                            Recommended
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-400 mt-1">{option.description}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button
+              className="text-sm text-gray-500 hover:text-gray-300 underline transition"
+              onClick={() => setShowServiceOptions(false)}
+            >
+              Go Back
+            </button>
+          </>
+        ) : (
+          // Initial interest question state
+          <>
+            <Sparkles className={`h-16 w-16 ${profile.colorClass} mb-6`} />
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Build Your Foundation
+            </h2>
+            <p className="text-gray-300 mb-4 max-w-sm">
+              While traditional funding isn't available yet, we have partner services that can help you build toward your goals.
+            </p>
+            <p className="text-gray-500 text-sm mb-8 max-w-sm">
+              Would you be interested in learning more about credit building, business credit cards, or other foundation services?
+            </p>
 
-        <Button
-          className={`w-full max-w-xs bg-white hover:bg-gray-100 text-gray-900 font-bold py-6 text-lg shadow-lg mb-4`}
-          onClick={() => window.open(profile.foundationCTA!.url, "_blank")}
-        >
-          <ArrowRight className="mr-2 h-5 w-5" />
-          {profile.foundationCTA.buttonText}
-        </Button>
+            <Button
+              className="w-full max-w-xs bg-white hover:bg-gray-100 text-gray-900 font-bold py-6 text-lg shadow-lg mb-4"
+              onClick={() => setShowServiceOptions(true)}
+            >
+              <CheckCircle className="mr-2 h-5 w-5" />
+              Yes, I'm Interested
+            </Button>
 
-        <button
-          className="text-sm text-gray-500 hover:text-gray-300 underline transition"
-          onClick={() => {
-            const params = new URLSearchParams({
-              name: formData.name,
-              businessName: formData.businessName,
-              industry: formData.industry,
-              timeInBusiness: formData.timeInBusiness,
-              monthlyRevenue: formData.monthlyRevenue,
-              creditScore: formData.creditScore,
-              loanAmount: formData.loanAmount,
-            });
-            setLocation(`/update?${params.toString()}`);
-          }}
-        >
-          Update My Information
-        </button>
+            <button
+              className="text-sm text-gray-500 hover:text-gray-300 underline transition"
+              onClick={() => {
+                const params = new URLSearchParams({
+                  name: formData.name,
+                  businessName: formData.businessName,
+                  industry: formData.industry,
+                  timeInBusiness: formData.timeInBusiness,
+                  monthlyRevenue: formData.monthlyRevenue,
+                  creditScore: formData.creditScore,
+                  loanAmount: formData.loanAmount,
+                });
+                setLocation(`/update?${params.toString()}`);
+              }}
+            >
+              Update My Information
+            </button>
+          </>
+        )}
       </div>
     ) : (
       <div
