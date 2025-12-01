@@ -928,25 +928,48 @@ export default function FundingReport() {
           onClick={handleNext}
         />
 
-        {/* Navigation Buttons (visible on larger screens) */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex gap-4 md:hidden">
+        {/* Navigation Buttons - Always visible */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3">
           <Button
             variant="outline"
             size="icon"
-            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            className={`h-12 w-12 rounded-full border-white/30 text-white transition-all ${
+              currentSlide === 0
+                ? "bg-white/5 opacity-50 cursor-not-allowed"
+                : "bg-white/10 hover:bg-white/20 hover:scale-105"
+            }`}
             onClick={handlePrev}
             disabled={currentSlide === 0}
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-5 w-5" />
           </Button>
+
+          <div className="flex items-center gap-2 px-4">
+            {Array.from({ length: slides.length }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrentSlide(i)}
+                className={`w-2 h-2 rounded-full transition-all ${
+                  i === currentSlide
+                    ? "bg-white w-4"
+                    : "bg-white/30 hover:bg-white/50"
+                }`}
+              />
+            ))}
+          </div>
+
           <Button
             variant="outline"
             size="icon"
-            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            className={`h-12 w-12 rounded-full border-white/30 text-white transition-all ${
+              currentSlide === slides.length - 1
+                ? "bg-white/5 opacity-50 cursor-not-allowed"
+                : "bg-white/10 hover:bg-white/20 hover:scale-105"
+            }`}
             onClick={handleNext}
             disabled={currentSlide === slides.length - 1}
           >
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className="h-5 w-5" />
           </Button>
         </div>
 
