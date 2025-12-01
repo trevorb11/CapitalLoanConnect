@@ -1,5 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
+import { Pool } from "@neondatabase/serverless";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -34,7 +36,25 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: false }));
 
 const isProduction = process.env.NODE_ENV === 'production';
+
+// Require SESSION_SECRET in production
+if (isProduction && !process.env.SESSION_SECRET) {
+  console.error("FATAL: SESSION_SECRET environment variable is required in production");
+  process.exit(1);
+}
+
+// Create PostgreSQL session store for production
+const PgSession = connectPgSimple(session);
+const sessionStore = isProduction 
+  ? new PgSession({
+      pool: new Pool({ connectionString: process.env.DATABASE_URL }),
+      tableName: 'user_sessions',
+      createTableIfMissing: true,
+    })
+  : undefined; // Use MemoryStore in development only
+
 app.use(session({
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'tcg-dashboard-secret-2024',
   resave: false,
   saveUninitialized: false,

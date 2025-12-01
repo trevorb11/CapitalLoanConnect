@@ -199,6 +199,13 @@ function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: 
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
+  // HEALTH CHECK ENDPOINT (for deployment)
+  // ========================================
+  app.get("/api/health", (_req, res) => {
+    res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // ========================================
   // AUTHENTICATION ROUTES
   // ========================================
   
