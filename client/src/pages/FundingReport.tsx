@@ -28,7 +28,9 @@ import {
   Shield,
   Clock,
   Sparkles,
+  ExternalLink,
 } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
 
 // --- TYPES ---
 interface FormData {
@@ -960,7 +962,7 @@ export default function FundingReport() {
             </button>
           </>
         ) : (
-          // Initial interest question state
+          // Initial state with partner CTA
           <>
             <Sparkles className={`h-16 w-16 ${profile.colorClass} mb-6`} />
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
@@ -969,19 +971,48 @@ export default function FundingReport() {
             <p className="text-gray-300 mb-4 max-w-sm">
               While traditional funding isn't available yet, we have partner services that can help you build toward your goals.
             </p>
-            <p className="text-gray-500 text-sm mb-8 max-w-sm">
-              Would you be interested in learning more about credit building, business credit cards, or other foundation services?
+            
+            {profile.foundationCTA && (
+              <div className="w-full max-w-sm mb-6">
+                <p className="text-gray-400 text-sm mb-4 text-center">
+                  {profile.foundationCTA.description}
+                </p>
+                <Button
+                  data-testid="button-partner-cta"
+                  className="w-full bg-white hover:bg-gray-100 text-gray-900 font-bold py-6 text-lg shadow-lg"
+                  onClick={() => {
+                    trackEvent("partner_cta_clicked", {
+                      partner: profile.foundationCTA?.buttonText,
+                      url: profile.foundationCTA?.url,
+                      tier: profile.tier,
+                      creditScore: formData.creditScore,
+                      userName: formData.name,
+                    });
+                    window.open(profile.foundationCTA?.url, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  {profile.foundationCTA.buttonText}
+                  <ExternalLink className="ml-2 h-5 w-5" />
+                </Button>
+              </div>
+            )}
+
+            <p className="text-gray-500 text-sm mb-4 max-w-sm text-center">
+              Or explore more options tailored to your situation
             </p>
 
             <Button
-              className="w-full max-w-xs bg-white hover:bg-gray-100 text-gray-900 font-bold py-6 text-lg shadow-lg mb-4"
+              data-testid="button-explore-options"
+              variant="outline"
+              className="w-full max-w-xs border-white/30 text-white hover:bg-white/10 font-medium py-6 text-lg mb-4"
               onClick={() => setShowServiceOptions(true)}
             >
               <CheckCircle className="mr-2 h-5 w-5" />
-              Yes, I'm Interested
+              Explore More Options
             </Button>
 
             <button
+              data-testid="link-update-info"
               className="text-sm text-gray-500 hover:text-gray-300 underline transition"
               onClick={() => {
                 const params = new URLSearchParams({
@@ -1016,8 +1047,18 @@ export default function FundingReport() {
         </p>
 
         <Button
+          data-testid="button-start-application"
           className="w-full max-w-xs bg-green-500 hover:bg-green-600 text-black font-bold py-6 text-lg shadow-lg shadow-green-900/50 mb-4"
-          onClick={() => window.open("https://app.todaycapitalgroup.com/", "_blank")}
+          onClick={() => {
+            trackEvent("funding_report_cta_clicked", {
+              action: "start_application",
+              tier: profile.tier,
+              product: profile.product,
+              maxAmount: profile.maxAmount,
+              userName: formData.name,
+            });
+            window.open("https://app.todaycapitalgroup.com/", "_blank", "noopener,noreferrer");
+          }}
         >
           <Phone className="mr-2 h-5 w-5" />
           Start My Application
