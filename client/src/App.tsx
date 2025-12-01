@@ -13,6 +13,7 @@ import Dashboard from "@/pages/Dashboard";
 import AgentSelector from "@/pages/AgentSelector";
 import FundingAnalysis from "@/pages/FundingAnalysis";
 import FundingReport from "@/pages/FundingReport";
+import UpdateInfo from "@/pages/UpdateInfo";
 import ConnectBank from "@/pages/ConnectBank";
 import BankStatementsUpload from "@/pages/BankStatementsUpload";
 import NotFound from "@/pages/not-found";
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/intake/quiz" component={QuizIntake} />
       <Route path="/funding-analysis" component={FundingAnalysis} />
       <Route path="/report" component={FundingReport} />
+      <Route path="/update" component={UpdateInfo} />
       <Route path="/connect-bank" component={ConnectBank} />
       <Route path="/upload-statements" component={BankStatementsUpload} />
       <Route path="/success" component={Success} />

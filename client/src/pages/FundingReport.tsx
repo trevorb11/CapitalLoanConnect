@@ -623,7 +623,7 @@ export default function FundingReport() {
 
       <Button
         className="w-full max-w-xs bg-green-500 hover:bg-green-600 text-black font-bold py-6 text-lg shadow-lg shadow-green-900/50 mb-4"
-        onClick={() => setLocation("/")}
+        onClick={() => window.open("https://app.todaycapitalgroup.com/", "_blank")}
       >
         <Phone className="mr-2 h-5 w-5" />
         Start My Application
@@ -632,11 +632,19 @@ export default function FundingReport() {
       <button
         className="text-sm text-gray-500 hover:text-gray-300 underline transition"
         onClick={() => {
-          setMode("input");
-          setCurrentSlide(0);
+          const params = new URLSearchParams({
+            name: formData.name,
+            businessName: formData.businessName,
+            industry: formData.industry,
+            timeInBusiness: formData.timeInBusiness,
+            monthlyRevenue: formData.monthlyRevenue,
+            creditScore: formData.creditScore,
+            loanAmount: formData.loanAmount,
+          });
+          setLocation(`/update?${params.toString()}`);
         }}
       >
-        Edit My Numbers
+        Update My Information
       </button>
     </div>,
   ];
