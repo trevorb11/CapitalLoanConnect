@@ -48,6 +48,12 @@ interface AlternativeOption {
   highlight?: boolean;
 }
 
+interface FoundationCTA {
+  buttonText: string;
+  url: string;
+  description: string;
+}
+
 interface FundingProfile {
   tier: string;
   product: string;
@@ -59,6 +65,7 @@ interface FundingProfile {
   isFoundationBuilding?: boolean;
   foundationReason?: string;
   alternativeOptions?: AlternativeOption[];
+  foundationCTA?: FoundationCTA;
 }
 
 // --- INDUSTRY OPTIONS ---
@@ -227,6 +234,11 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
           icon: "clock",
         },
       ],
+      foundationCTA: {
+        buttonText: "Get 0% Business Credit Cards",
+        url: "https://www.fundandgrow.com/partner/todaycapital",
+        description: "Fund&Grow specializes in helping entrepreneurs access $50K-$250K in 0% interest business credit.",
+      },
     };
   }
 
@@ -261,6 +273,11 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
           icon: "trending-up",
         },
       ],
+      foundationCTA: {
+        buttonText: "Start Credit Repair",
+        url: "https://www.creditsaint.com/?affiliate=todaycapital",
+        description: "Credit Saint has helped thousands improve their scores by 40-100+ points in 90 days.",
+      },
     };
   }
 
@@ -295,6 +312,11 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
           icon: "trending-up",
         },
       ],
+      foundationCTA: {
+        buttonText: "Fix My Credit Now",
+        url: "https://www.creditrepair.com/?affiliate=todaycapital",
+        description: "CreditRepair.com offers a free consultation and has repaired millions of credit reports.",
+      },
     };
   }
 
@@ -329,6 +351,11 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
           icon: "clock",
         },
       ],
+      foundationCTA: {
+        buttonText: "Get 0% Business Credit Cards",
+        url: "https://www.fundandgrow.com/partner/todaycapital",
+        description: "Fund&Grow helps you access $50K-$250K in 0% credit while you build revenue.",
+      },
     };
   }
 
@@ -357,11 +384,16 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
         icon: "credit-card",
       },
       {
-        name: "Free Consultation",
-        description: "Speak with a funding advisor to create a personalized roadmap to funding approval",
+        name: "Free Credit Score Check",
+        description: "Check your credit score for free and get personalized improvement recommendations",
         icon: "trending-up",
       },
     ],
+    foundationCTA: {
+      buttonText: "Start Building Credit",
+      url: "https://www.creditrepair.com/?affiliate=todaycapital",
+      description: "The first step is understanding and improving your credit. Get a free consultation.",
+    },
   };
 };
 
@@ -828,27 +860,29 @@ export default function FundingReport() {
       </div>
     ),
 
-    // Slide 4: CTA (different for Foundation Building)
-    profile.isFoundationBuilding ? (
+    // Slide 4: CTA (different for Foundation Building - uses affiliate links)
+    profile.isFoundationBuilding && profile.foundationCTA ? (
       <div
         key="cta-foundation"
         className={`h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-t ${profile.bgClass}`}
       >
         <Sparkles className={`h-16 w-16 ${profile.colorClass} mb-6`} />
         <h2 className="text-3xl md:text-4xl font-bold mb-4">
-          Let's Build Your Foundation
+          Your Next Step
         </h2>
-        <p className="text-gray-400 mb-8 max-w-sm">
-          While traditional funding isn't available yet, we can help you access{" "}
-          <strong className="text-white">{profile.product}</strong> to start building toward your goals.
+        <p className="text-gray-300 mb-4 max-w-sm">
+          {profile.foundationCTA.description}
+        </p>
+        <p className="text-gray-500 text-sm mb-8 max-w-sm">
+          Once you've built your foundation, come back and we'll help you access real funding.
         </p>
 
         <Button
           className={`w-full max-w-xs bg-white hover:bg-gray-100 text-gray-900 font-bold py-6 text-lg shadow-lg mb-4`}
-          onClick={() => window.open("https://app.todaycapitalgroup.com/", "_blank")}
+          onClick={() => window.open(profile.foundationCTA!.url, "_blank")}
         >
-          <Phone className="mr-2 h-5 w-5" />
-          Schedule Free Consultation
+          <ArrowRight className="mr-2 h-5 w-5" />
+          {profile.foundationCTA.buttonText}
         </Button>
 
         <button
