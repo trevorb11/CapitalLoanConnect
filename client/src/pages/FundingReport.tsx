@@ -25,6 +25,9 @@ import {
   CreditCard,
   Briefcase,
   Phone,
+  Shield,
+  Clock,
+  Sparkles,
 } from "lucide-react";
 
 // --- TYPES ---
@@ -38,6 +41,13 @@ interface FormData {
   loanAmount: string;
 }
 
+interface AlternativeOption {
+  name: string;
+  description: string;
+  icon: "credit-card" | "trending-up" | "shield" | "clock";
+  highlight?: boolean;
+}
+
 interface FundingProfile {
   tier: string;
   product: string;
@@ -46,6 +56,9 @@ interface FundingProfile {
   colorClass: string;
   bgClass: string;
   message: string;
+  isFoundationBuilding?: boolean;
+  foundationReason?: string;
+  alternativeOptions?: AlternativeOption[];
 }
 
 // --- INDUSTRY OPTIONS ---
@@ -72,18 +85,6 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
   const credit = parseInt(data.creditScore) || 0;
   const time = parseInt(data.timeInBusiness) || 0; // in months
 
-  // Default Profile
-  let profile: FundingProfile = {
-    tier: "Unqualified",
-    product: "Credit Repair / Secured Card",
-    maxAmount: 0,
-    rates: "N/A",
-    colorClass: "text-gray-400",
-    bgClass: "from-gray-800 to-gray-900",
-    message:
-      "Based on your current profile, standard financing is difficult. We recommend focusing on building your credit foundation first.",
-  };
-
   // Restricted Industries
   const restricted = [
     "Gambling",
@@ -95,9 +96,9 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
 
   // LOGIC GATES - Order matters (more specific first)
 
-  // 4. SBA / Bank Term (The Gold Standard) - Check first as it's most restrictive
+  // 1. SBA / Bank Term (The Gold Standard)
   if (time >= 24 && rev >= 40000 && credit >= 680 && !restricted) {
-    profile = {
+    return {
       tier: "Prime Borrower",
       product: "SBA 7(a) / Bank Term Loan",
       maxAmount: 5000000,
@@ -108,9 +109,10 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
         "You are in the top 10% of applicants. You qualify for the lowest rates and longest terms (10 years+) available on the market.",
     };
   }
-  // 3. Fintech / Line of Credit (Mid-Tier)
-  else if (time >= 12 && rev >= 25000 && credit >= 650 && !restricted) {
-    profile = {
+
+  // 2. Fintech / Line of Credit (Mid-Tier)
+  if (time >= 12 && rev >= 25000 && credit >= 650 && !restricted) {
+    return {
       tier: "Growth Capital",
       product: "Business Line of Credit",
       maxAmount: rev * 3,
@@ -121,35 +123,10 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
         "You've graduated from high-risk lending. You qualify for revolving credit lines that you only pay interest on what you use.",
     };
   }
-  // 2. MCA / Revenue Based (Cash Flow Logic)
-  else if (time >= 6 && rev >= 10000 && credit < 650) {
-    profile = {
-      tier: "Cash Flow Financing",
-      product: "Revenue Based Advance (MCA)",
-      maxAmount: rev * 1.5,
-      rates: "Factor Rate 1.20+",
-      colorClass: "text-yellow-400",
-      bgClass: "from-yellow-900 to-yellow-950",
-      message:
-        "Your consistent revenue is your biggest asset right now. We can lend against your cash flow, regardless of your credit score.",
-    };
-  }
-  // 1. Credit Stacking (Startup Logic)
-  else if (credit >= 680 && time < 12) {
-    profile = {
-      tier: "Startup Capital",
-      product: "0% Interest Credit Stacking",
-      maxAmount: 150000,
-      rates: "0% (12-21 Month Intro)",
-      colorClass: "text-blue-400",
-      bgClass: "from-blue-900 to-blue-950",
-      message:
-        "You are the perfect candidate for Credit Stacking. You can bypass the revenue requirements by leveraging your strong personal credit.",
-    };
-  }
-  // Also check MCA for those with higher credit but still need cash flow
-  else if (time >= 6 && rev >= 10000 && credit >= 650) {
-    profile = {
+
+  // 3. Working Capital (decent credit, established business)
+  if (time >= 6 && rev >= 10000 && credit >= 650) {
+    return {
       tier: "Working Capital",
       product: "Short-Term Business Loan",
       maxAmount: rev * 2,
@@ -161,10 +138,38 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
     };
   }
 
-  // Restricted Override
+  // 4. MCA / Revenue Based (Cash Flow Logic - lower credit but revenue)
+  if (time >= 6 && rev >= 10000 && credit < 650) {
+    return {
+      tier: "Cash Flow Financing",
+      product: "Revenue Based Advance (MCA)",
+      maxAmount: rev * 1.5,
+      rates: "Factor Rate 1.20+",
+      colorClass: "text-yellow-400",
+      bgClass: "from-yellow-900 to-yellow-950",
+      message:
+        "Your consistent revenue is your biggest asset right now. We can lend against your cash flow, regardless of your credit score.",
+    };
+  }
+
+  // 5. Credit Stacking (Startup Logic - good credit, new business)
+  if (credit >= 680 && time < 12) {
+    return {
+      tier: "Startup Capital",
+      product: "0% Interest Credit Stacking",
+      maxAmount: 150000,
+      rates: "0% (12-21 Month Intro)",
+      colorClass: "text-blue-400",
+      bgClass: "from-blue-900 to-blue-950",
+      message:
+        "You are the perfect candidate for Credit Stacking. You can bypass the revenue requirements by leveraging your strong personal credit.",
+    };
+  }
+
+  // Restricted Industry Overrides
   if (restricted) {
     if (credit >= 700) {
-      profile = {
+      return {
         tier: "Restricted Niche",
         product: "Unsecured Personal Term Loans",
         maxAmount: 100000,
@@ -175,7 +180,7 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
           "Your industry is restricted by most banks. We pivot to Personal Term Loans to get you funded without industry scrutiny.",
       };
     } else {
-      profile = {
+      return {
         tier: "High Risk",
         product: "High Risk MCA / Private Money",
         maxAmount: Math.max(rev * 0.5, 10000),
@@ -188,7 +193,176 @@ const calculateFundingProfile = (data: FormData): FundingProfile => {
     }
   }
 
-  return profile;
+  // --- FOUNDATION BUILDING PROFILES ---
+  // These are for users who don't qualify for traditional funding yet
+
+  // Good credit but too new and low revenue - Fund&Grow / Credit Stacking path
+  if (credit >= 650 && time < 6) {
+    return {
+      tier: "Foundation Building",
+      product: "Business Credit Cards & Credit Stacking",
+      maxAmount: 0,
+      rates: "0% Intro APR Available",
+      colorClass: "text-blue-400",
+      bgClass: "from-blue-900 to-blue-950",
+      message:
+        "Your credit is solid, but most lenders need to see at least 6 months in business. The good news? Your strong credit opens doors to business credit cards with 0% intro rates.",
+      isFoundationBuilding: true,
+      foundationReason: "Business is less than 6 months old",
+      alternativeOptions: [
+        {
+          name: "Fund&Grow Business Credit",
+          description: "Get $50K-$250K in 0% interest business credit cards based on your personal credit score",
+          icon: "credit-card",
+          highlight: true,
+        },
+        {
+          name: "Credit Stacking Program",
+          description: "Strategically open multiple business credit lines to build capital and business credit history",
+          icon: "trending-up",
+        },
+        {
+          name: "Business Credit Building",
+          description: "Establish trade lines and vendor credit to build your business credit profile for future funding",
+          icon: "clock",
+        },
+      ],
+    };
+  }
+
+  // Moderate credit (550-649) - Credit repair + secured options
+  if (credit >= 550 && credit < 650) {
+    return {
+      tier: "Credit Building",
+      product: "Credit Optimization & Secured Funding",
+      maxAmount: 0,
+      rates: "Varies by Program",
+      colorClass: "text-amber-400",
+      bgClass: "from-amber-900 to-amber-950",
+      message:
+        "Your credit score is close to where it needs to be for traditional funding. With some targeted credit optimization, you could qualify for significantly better options in 60-90 days.",
+      isFoundationBuilding: true,
+      foundationReason: "Credit score below 650",
+      alternativeOptions: [
+        {
+          name: "Credit Repair & Optimization",
+          description: "Professional credit repair to remove negative items and optimize your score for funding approval",
+          icon: "shield",
+          highlight: true,
+        },
+        {
+          name: "Secured Business Credit Card",
+          description: "Build business credit with a secured card that reports to business credit bureaus",
+          icon: "credit-card",
+        },
+        {
+          name: "Revenue-Based Micro Loans",
+          description: "If you have consistent revenue, some lenders will work with lower credit scores",
+          icon: "trending-up",
+        },
+      ],
+    };
+  }
+
+  // Low credit (below 550) - Credit repair focused
+  if (credit < 550 && credit > 0) {
+    return {
+      tier: "Credit Restoration",
+      product: "Credit Repair & Foundation Building",
+      maxAmount: 0,
+      rates: "N/A - Focus on Credit First",
+      colorClass: "text-rose-400",
+      bgClass: "from-rose-900 to-rose-950",
+      message:
+        "Let's be direct: most business funding requires a credit score above 550. The best path forward is to focus on rebuilding your credit first. This typically takes 3-6 months but sets you up for real funding options.",
+      isFoundationBuilding: true,
+      foundationReason: "Credit score needs improvement",
+      alternativeOptions: [
+        {
+          name: "Professional Credit Repair",
+          description: "Work with specialists to dispute errors and negotiate with creditors to boost your score",
+          icon: "shield",
+          highlight: true,
+        },
+        {
+          name: "Secured Credit Builder",
+          description: "Start with a secured card to establish positive payment history",
+          icon: "credit-card",
+        },
+        {
+          name: "Credit Monitoring & Coaching",
+          description: "Get personalized guidance on the fastest path to improve your credit score",
+          icon: "trending-up",
+        },
+      ],
+    };
+  }
+
+  // Low/No revenue but decent credit - Need to build revenue first
+  if (rev < 10000 && credit >= 600 && time >= 6) {
+    return {
+      tier: "Revenue Building",
+      product: "Business Credit Cards & Growth Capital",
+      maxAmount: 0,
+      rates: "0% Intro Available",
+      colorClass: "text-cyan-400",
+      bgClass: "from-cyan-900 to-cyan-950",
+      message:
+        "Your credit is in good shape, but most business lenders require at least $10K/month in revenue. Your best option right now is leveraging your personal credit for business credit cards while you grow revenue.",
+      isFoundationBuilding: true,
+      foundationReason: "Monthly revenue below $10,000",
+      alternativeOptions: [
+        {
+          name: "0% Business Credit Cards",
+          description: "Use your personal credit to access $25K-$150K in 0% intro APR business credit cards",
+          icon: "credit-card",
+          highlight: true,
+        },
+        {
+          name: "Microloans & Grants",
+          description: "SBA microloans and small business grants for businesses under $10K/month revenue",
+          icon: "trending-up",
+        },
+        {
+          name: "Invoice Factoring",
+          description: "If you have outstanding invoices, convert them to immediate cash flow",
+          icon: "clock",
+        },
+      ],
+    };
+  }
+
+  // Default fallback - very new with low credit
+  return {
+    tier: "Getting Started",
+    product: "Foundation Building Program",
+    maxAmount: 0,
+    rates: "Focus on Building First",
+    colorClass: "text-slate-400",
+    bgClass: "from-slate-800 to-slate-900",
+    message:
+      "Traditional business funding typically requires either established revenue (6+ months, $10K+/month) or strong personal credit (650+). Let's focus on building the foundation that will unlock real funding options.",
+    isFoundationBuilding: true,
+    foundationReason: "Building business and credit foundation",
+    alternativeOptions: [
+      {
+        name: "Credit Building Program",
+        description: "Start building or repairing your personal credit to unlock future funding options",
+        icon: "shield",
+        highlight: true,
+      },
+      {
+        name: "Business Credit Establishment",
+        description: "Set up your business credit profile with starter trade lines and vendor accounts",
+        icon: "credit-card",
+      },
+      {
+        name: "Free Consultation",
+        description: "Speak with a funding advisor to create a personalized roadmap to funding approval",
+        icon: "trending-up",
+      },
+    ],
+  };
 };
 
 // --- FORMAT CURRENCY ---
@@ -557,88 +731,185 @@ export default function FundingReport() {
       </div>
     </div>,
 
-    // Slide 3: The Offer
-    <div
-      key="offer"
-      className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-black"
-    >
-      <h3 className="text-gray-500 uppercase text-sm tracking-widest mb-2">
-        Funding Capacity
-      </h3>
+    // Slide 3: The Offer (or Alternative Options for Foundation Building)
+    profile.isFoundationBuilding ? (
+      <div
+        key="alternatives"
+        className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-black overflow-y-auto"
+      >
+        <h3 className="text-gray-500 uppercase text-sm tracking-widest mb-2">
+          Your Best Path Forward
+        </h3>
+        <p className="text-gray-400 text-sm mb-6 max-w-sm">
+          {profile.foundationReason}
+        </p>
 
-      <div className="text-5xl md:text-6xl font-black text-white mb-2">
-        {formatCurrency(profile.maxAmount)}
+        <div className="w-full max-w-sm space-y-3">
+          {profile.alternativeOptions?.map((option, index) => (
+            <div
+              key={index}
+              className={`p-4 rounded-xl border ${
+                option.highlight
+                  ? `bg-gradient-to-r ${profile.bgClass} border-white/20`
+                  : "bg-gray-900 border-gray-800"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className={`p-2 rounded-lg ${option.highlight ? "bg-white/20" : "bg-gray-800"}`}>
+                  {option.icon === "credit-card" && <CreditCard className={`h-5 w-5 ${profile.colorClass}`} />}
+                  {option.icon === "trending-up" && <TrendingUp className={`h-5 w-5 ${profile.colorClass}`} />}
+                  {option.icon === "shield" && <Shield className={`h-5 w-5 ${profile.colorClass}`} />}
+                  {option.icon === "clock" && <Clock className={`h-5 w-5 ${profile.colorClass}`} />}
+                </div>
+                <div className="text-left flex-1">
+                  <div className="font-bold text-white flex items-center gap-2">
+                    {option.name}
+                    {option.highlight && (
+                      <span className="text-xs px-2 py-0.5 bg-white/20 rounded-full">
+                        Recommended
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-400 mt-1">{option.description}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="text-gray-400 mb-10 text-sm">Estimated Approval Amount</div>
+    ) : (
+      <div
+        key="offer"
+        className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-black"
+      >
+        <h3 className="text-gray-500 uppercase text-sm tracking-widest mb-2">
+          Funding Capacity
+        </h3>
 
-      <div className="w-full max-w-sm bg-gray-900 rounded-xl p-6 border border-gray-800">
-        <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-4">
-          <span className="text-gray-400">Est. Rate</span>
-          <span className={`font-bold ${profile.colorClass}`}>
-            {profile.rates}
-          </span>
+        <div className="text-5xl md:text-6xl font-black text-white mb-2">
+          {formatCurrency(profile.maxAmount)}
         </div>
-        <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-4">
-          <span className="text-gray-400">Time to Fund</span>
-          <span className="font-bold text-white">24 - 72 Hours</span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-gray-400">You Requested</span>
-          <span
-            className={`font-bold ${
-              parseInt(formData.loanAmount) > profile.maxAmount
-                ? "text-gray-500 line-through"
-                : "text-white"
-            }`}
-          >
-            {formatCurrency(parseInt(formData.loanAmount) || 0)}
-          </span>
-        </div>
-        {parseInt(formData.loanAmount) > profile.maxAmount && (
-          <div className="mt-4 text-xs text-yellow-500 bg-yellow-900/20 p-3 rounded-lg flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            <span>
-              Market Reality: Lenders typically cap funding at{" "}
-              {profile.product.includes("MCA") ? "1.5x" : "2-3x"} monthly
-              revenue for your profile.
+        <div className="text-gray-400 mb-10 text-sm">Estimated Approval Amount</div>
+
+        <div className="w-full max-w-sm bg-gray-900 rounded-xl p-6 border border-gray-800">
+          <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-4">
+            <span className="text-gray-400">Est. Rate</span>
+            <span className={`font-bold ${profile.colorClass}`}>
+              {profile.rates}
             </span>
           </div>
-        )}
+          <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-4">
+            <span className="text-gray-400">Time to Fund</span>
+            <span className="font-bold text-white">24 - 72 Hours</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-400">You Requested</span>
+            <span
+              className={`font-bold ${
+                parseInt(formData.loanAmount) > profile.maxAmount
+                  ? "text-gray-500 line-through"
+                  : "text-white"
+              }`}
+            >
+              {formatCurrency(parseInt(formData.loanAmount) || 0)}
+            </span>
+          </div>
+          {parseInt(formData.loanAmount) > profile.maxAmount && (
+            <div className="mt-4 text-xs text-yellow-500 bg-yellow-900/20 p-3 rounded-lg flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <span>
+                Market Reality: Lenders typically cap funding at{" "}
+                {profile.product.includes("MCA") ? "1.5x" : "2-3x"} monthly
+                revenue for your profile.
+              </span>
+            </div>
+          )}
+        </div>
       </div>
-    </div>,
+    ),
 
-    // Slide 4: CTA
-    <div
-      key="cta"
-      className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-t from-green-900 to-black"
-    >
-      <Building2 className="h-16 w-16 text-green-400 mb-6" />
-      <h2 className="text-3xl md:text-4xl font-bold mb-4">
-        Unlock This Capital
-      </h2>
-      <p className="text-gray-400 mb-8 max-w-sm">
-        Your profile is pre-qualified for the{" "}
-        <strong className="text-white">{profile.product}</strong> program.
-      </p>
-
-      <Button
-        className="w-full max-w-xs bg-green-500 hover:bg-green-600 text-black font-bold py-6 text-lg shadow-lg shadow-green-900/50 mb-4"
-        onClick={() => setLocation("/")}
+    // Slide 4: CTA (different for Foundation Building)
+    profile.isFoundationBuilding ? (
+      <div
+        key="cta-foundation"
+        className={`h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-t ${profile.bgClass}`}
       >
-        <Phone className="mr-2 h-5 w-5" />
-        Start My Application
-      </Button>
+        <Sparkles className={`h-16 w-16 ${profile.colorClass} mb-6`} />
+        <h2 className="text-3xl md:text-4xl font-bold mb-4">
+          Let's Build Your Foundation
+        </h2>
+        <p className="text-gray-400 mb-8 max-w-sm">
+          While traditional funding isn't available yet, we can help you access{" "}
+          <strong className="text-white">{profile.product}</strong> to start building toward your goals.
+        </p>
 
-      <button
-        className="text-sm text-gray-500 hover:text-gray-300 underline transition"
-        onClick={() => {
-          setMode("input");
-          setCurrentSlide(0);
-        }}
+        <Button
+          className={`w-full max-w-xs bg-white hover:bg-gray-100 text-gray-900 font-bold py-6 text-lg shadow-lg mb-4`}
+          onClick={() => window.open("https://app.todaycapitalgroup.com/", "_blank")}
+        >
+          <Phone className="mr-2 h-5 w-5" />
+          Schedule Free Consultation
+        </Button>
+
+        <button
+          className="text-sm text-gray-500 hover:text-gray-300 underline transition"
+          onClick={() => {
+            const params = new URLSearchParams({
+              name: formData.name,
+              businessName: formData.businessName,
+              industry: formData.industry,
+              timeInBusiness: formData.timeInBusiness,
+              monthlyRevenue: formData.monthlyRevenue,
+              creditScore: formData.creditScore,
+              loanAmount: formData.loanAmount,
+            });
+            setLocation(`/update?${params.toString()}`);
+          }}
+        >
+          Update My Information
+        </button>
+      </div>
+    ) : (
+      <div
+        key="cta"
+        className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-t from-green-900 to-black"
       >
-        Edit My Numbers
-      </button>
-    </div>,
+        <Building2 className="h-16 w-16 text-green-400 mb-6" />
+        <h2 className="text-3xl md:text-4xl font-bold mb-4">
+          Unlock This Capital
+        </h2>
+        <p className="text-gray-400 mb-8 max-w-sm">
+          Your profile is pre-qualified for the{" "}
+          <strong className="text-white">{profile.product}</strong> program.
+        </p>
+
+        <Button
+          className="w-full max-w-xs bg-green-500 hover:bg-green-600 text-black font-bold py-6 text-lg shadow-lg shadow-green-900/50 mb-4"
+          onClick={() => window.open("https://app.todaycapitalgroup.com/", "_blank")}
+        >
+          <Phone className="mr-2 h-5 w-5" />
+          Start My Application
+        </Button>
+
+        <button
+          className="text-sm text-gray-500 hover:text-gray-300 underline transition"
+          onClick={() => {
+            const params = new URLSearchParams({
+              name: formData.name,
+              businessName: formData.businessName,
+              industry: formData.industry,
+              timeInBusiness: formData.timeInBusiness,
+              monthlyRevenue: formData.monthlyRevenue,
+              creditScore: formData.creditScore,
+              loanAmount: formData.loanAmount,
+            });
+            setLocation(`/update?${params.toString()}`);
+          }}
+        >
+          Update My Information
+        </button>
+      </div>
+    ),
   ];
 
   // --- PRESENTATION MODE RENDER ---
@@ -657,25 +928,48 @@ export default function FundingReport() {
           onClick={handleNext}
         />
 
-        {/* Navigation Buttons (visible on larger screens) */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex gap-4 md:hidden">
+        {/* Navigation Buttons - Always visible */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3">
           <Button
             variant="outline"
             size="icon"
-            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            className={`h-12 w-12 rounded-full border-white/30 text-white transition-all ${
+              currentSlide === 0
+                ? "bg-white/5 opacity-50 cursor-not-allowed"
+                : "bg-white/10 hover:bg-white/20 hover:scale-105"
+            }`}
             onClick={handlePrev}
             disabled={currentSlide === 0}
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-5 w-5" />
           </Button>
+
+          <div className="flex items-center gap-2 px-4">
+            {Array.from({ length: slides.length }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrentSlide(i)}
+                className={`w-2 h-2 rounded-full transition-all ${
+                  i === currentSlide
+                    ? "bg-white w-4"
+                    : "bg-white/30 hover:bg-white/50"
+                }`}
+              />
+            ))}
+          </div>
+
           <Button
             variant="outline"
             size="icon"
-            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            className={`h-12 w-12 rounded-full border-white/30 text-white transition-all ${
+              currentSlide === slides.length - 1
+                ? "bg-white/5 opacity-50 cursor-not-allowed"
+                : "bg-white/10 hover:bg-white/20 hover:scale-105"
+            }`}
             onClick={handleNext}
             disabled={currentSlide === slides.length - 1}
           >
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className="h-5 w-5" />
           </Button>
         </div>
 
