@@ -81,4 +81,30 @@ export const trackCloseConvertLead = (source?: string) => {
   }
 };
 
+// Track event with beacon transport for reliable delivery before navigation
+// Uses navigator.sendBeacon for best delivery reliability
+export const trackEventBeforeNavigation = (
+  eventName: string, 
+  eventParams: Record<string, unknown>,
+  navigateTo: string
+) => {
+  if (typeof window !== 'undefined' && window.gtag) {
+    // Use gtag with beacon transport for reliable delivery
+    window.gtag('event', eventName, {
+      ...eventParams,
+      transport_type: 'beacon',
+      event_callback: () => {
+        window.location.href = navigateTo;
+      }
+    });
+    // Fallback: navigate after 300ms if callback doesn't fire
+    setTimeout(() => {
+      window.location.href = navigateTo;
+    }, 300);
+  } else {
+    // No analytics, just navigate
+    window.location.href = navigateTo;
+  }
+};
+
 export {};

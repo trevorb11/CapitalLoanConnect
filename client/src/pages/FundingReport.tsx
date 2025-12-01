@@ -28,8 +28,9 @@ import {
   Shield,
   Clock,
   Sparkles,
+  Mail,
 } from "lucide-react";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, trackEventBeforeNavigation } from "@/lib/analytics";
 
 // --- TYPES ---
 interface FormData {
@@ -1066,31 +1067,80 @@ export default function FundingReport() {
         <h2 className="text-3xl md:text-4xl font-bold mb-4">
           Unlock This Capital
         </h2>
-        <p className="text-gray-400 mb-8 max-w-sm">
+        <p className="text-gray-400 mb-6 max-w-sm">
           Your profile is pre-qualified for the{" "}
           <strong className="text-white">{profile.product}</strong> program.
         </p>
 
-        <Button
-          data-testid="button-start-application"
-          className="w-full max-w-xs bg-green-500 hover:bg-green-600 text-black font-bold py-6 text-lg shadow-lg shadow-green-900/50 mb-4"
-          onClick={() => {
-            trackEvent("funding_report_cta_clicked", {
-              action: "start_application",
-              tier: profile.tier,
-              product: profile.product,
-              maxAmount: profile.maxAmount,
-              userName: formData.name,
-            });
-            window.open("https://app.todaycapitalgroup.com/", "_blank", "noopener,noreferrer");
-          }}
-        >
-          <Phone className="mr-2 h-5 w-5" />
-          Start My Application
-        </Button>
+        <div className="w-full max-w-xs space-y-3">
+          <Button
+            data-testid="button-complete-application"
+            className="w-full bg-green-500 hover:bg-green-600 text-black font-bold py-6 text-lg shadow-lg shadow-green-900/50"
+            onClick={() => {
+              trackEvent("funding_report_cta_clicked", {
+                action: "complete_application",
+                tier: profile.tier,
+                product: profile.product,
+                maxAmount: profile.maxAmount,
+                userName: formData.name,
+              });
+              window.open("https://app.todaycapitalgroup.com/", "_blank", "noopener,noreferrer");
+            }}
+          >
+            <ArrowRight className="mr-2 h-5 w-5" />
+            Complete Application
+          </Button>
+
+          <p className="text-gray-500 text-sm py-2">
+            Or contact our team directly
+          </p>
+
+          <Button
+            data-testid="button-call-team"
+            variant="outline"
+            className="w-full border-white/30 text-white hover:bg-white/10 font-medium py-5 text-base"
+            onClick={() => {
+              trackEventBeforeNavigation(
+                "funding_report_contact_clicked",
+                {
+                  action: "call",
+                  tier: profile.tier,
+                  product: profile.product,
+                  userName: formData.name,
+                },
+                "tel:+18183510225"
+              );
+            }}
+          >
+            <Phone className="mr-2 h-5 w-5" />
+            Call (818) 351-0225
+          </Button>
+
+          <Button
+            data-testid="button-email-team"
+            variant="outline"
+            className="w-full border-white/30 text-white hover:bg-white/10 font-medium py-5 text-base"
+            onClick={() => {
+              trackEventBeforeNavigation(
+                "funding_report_contact_clicked",
+                {
+                  action: "email",
+                  tier: profile.tier,
+                  product: profile.product,
+                  userName: formData.name,
+                },
+                "mailto:info@todaycapitalgroup.com"
+              );
+            }}
+          >
+            <Mail className="mr-2 h-5 w-5" />
+            Email Our Team
+          </Button>
+        </div>
 
         <button
-          className="text-sm text-gray-500 hover:text-gray-300 underline transition"
+          data-testid="link-update-info-qualified"
+          className="text-sm text-gray-500 hover:text-gray-300 underline transition mt-6"
           onClick={() => {
             const params = new URLSearchParams({
               name: formData.name,
