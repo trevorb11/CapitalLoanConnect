@@ -18,6 +18,7 @@ import {
   X
 } from "lucide-react";
 import { Link } from "wouter";
+import tcgLogo from "@assets/TCG_White_logo_1764664150165.png";
 
 interface UploadedFile {
   id: string;
@@ -231,7 +232,7 @@ export default function BankStatementsUpload() {
       <div className="container mx-auto px-4 py-8 max-w-2xl">
         <div className="text-center mb-8">
           <img 
-            src="/assets/tcg-logo.png" 
+            src={tcgLogo} 
             alt="Today Capital Group" 
             className="h-16 mx-auto mb-6"
             data-testid="img-logo"
