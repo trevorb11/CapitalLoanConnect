@@ -100,6 +100,12 @@ The application uses the Inter font from Google Fonts and a color system based o
 - `contact.business_csz` ← businessCsz (auto-built from city/state/zip)
 - `contact.owner_csz` ← ownerCsz (auto-built from ownerCity/ownerState/ownerZip)
 
+**GHL Duplicate Contact Handling:**
+- Before creating a new contact, the system searches for existing contacts by email
+- If found, updates the existing contact instead of creating a duplicate
+- Falls back to phone search if a duplicate error still occurs after email search
+- This handles GHL locations configured to reject duplicate contacts
+
 **GHL Tagging System (3-tier):**
 - "App Started" → Application started but not completed
 - "lead-source-website" + "interest form" → Intake form completed
