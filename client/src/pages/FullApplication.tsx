@@ -194,7 +194,9 @@ export default function FullApplication(props?: FullApplicationProps) {
     const referrer = document.referrer;
     
     if (urlAppId) {
-      // User came from intake quiz with applicationId
+      // User came from intake quiz with applicationId - save it and use it
+      setApplicationId(urlAppId);
+      localStorage.setItem("applicationId", urlAppId);
       trafficSource = 'intake_quiz';
       setCameFromIntake(true);
       // Clean up URL without reload
