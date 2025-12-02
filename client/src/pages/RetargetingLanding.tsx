@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "wouter";
-import { CheckCircle, Clock, Shield, FileText, ArrowRight, Phone, Mail, AlertCircle, TrendingUp, Banknote, Users, Lock } from "lucide-react";
+import { CheckCircle, Clock, Shield, FileText, ArrowRight, Phone, Mail, AlertCircle, TrendingUp, Banknote, Users, Lock, Building2, User, Landmark, DollarSign } from "lucide-react";
 import { trackPageView } from "@/lib/analytics";
 
 export default function RetargetingLanding() {
@@ -148,7 +148,7 @@ export default function RetargetingLanding() {
             </p>
           </div>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '30px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '30px', maxWidth: '900px', margin: '0 auto' }}>
             <div style={{ backgroundColor: '#ffffff', padding: '36px 28px', borderRadius: '16px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} data-testid="card-reason-offers">
               <div style={{ width: '64px', height: '64px', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
                 <TrendingUp size={32} color="#FFFFFF" />
@@ -204,13 +204,15 @@ export default function RetargetingLanding() {
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px' }}>
             {[
-              { icon: '🏢', title: 'Business Info', desc: 'Legal name, EIN, address' },
-              { icon: '👤', title: 'Owner Details', desc: 'SSN, date of birth' },
-              { icon: '🏦', title: 'Bank Info', desc: 'Bank name (no statements needed yet)' },
-              { icon: '💰', title: 'Funding Amount', desc: 'How much you need' },
-            ].map((item, idx) => (
+              { icon: Building2, title: 'Business Info', desc: 'Legal name, EIN, address', color: '#5b4d8f' },
+              { icon: User, title: 'Owner Details', desc: 'SSN, date of birth', color: '#0ea5e9' },
+              { icon: Landmark, title: 'Bank Info', desc: 'Bank name (no statements needed yet)', color: '#22c55e' },
+              { icon: DollarSign, title: 'Funding Amount', desc: 'How much you need', color: '#f59e0b' },
+            ].map((item, idx) => {
+              const IconComponent = item.icon;
+              return (
               <div 
                 key={idx} 
                 style={{ 
@@ -221,11 +223,14 @@ export default function RetargetingLanding() {
                 }}
                 data-testid={`card-need-${idx}`}
               >
-                <div style={{ fontSize: '32px', marginBottom: '12px' }}>{item.icon}</div>
+                <div style={{ width: '48px', height: '48px', backgroundColor: `${item.color}15`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                  <IconComponent size={24} color={item.color} />
+                </div>
                 <h3 style={{ fontSize: '16px', color: '#1d1d1f', marginBottom: '6px', fontWeight: 600 }}>{item.title}</h3>
                 <p style={{ fontSize: '14px', color: '#6e6e73', margin: 0 }}>{item.desc}</p>
               </div>
-            ))}
+            );
+            })}
           </div>
 
           <div style={{ textAlign: 'center', marginTop: '40px' }}>
