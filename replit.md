@@ -50,8 +50,60 @@ The application uses the Inter font from Google Fonts and a color system based o
 **GoHighLevel CRM Integration**:
 - Manages contact creation, updates, and webhook submissions.
 - Requires `GHL_API_KEY` and `GHL_LOCATION_ID` environment variables.
-- Syncs various loan application fields to standard and custom GHL contact fields (e.g., `businessName` to `company_name`, `ein` to `contact.ein`).
-- Supports both direct API integration and webhook-based workflow triggers.
+- Two-tier sync approach: Direct API (creates/updates contacts) + Webhooks (triggers workflows on completion).
+- Field sync occurs whenever contact information is captured or updated (intake form, full application, started but incomplete).
+- Comprehensive field mapping using exact "Unique Key" values from CRM_Field_Mapping Excel:
+
+**GHL Contact Field Mappings (by folder):**
+
+*Application Details Folder:*
+- `contact.doing_business_as` ← doingBusinessAs
+- `contact.company_email` ← companyEmail/businessEmail
+- `contact.primary_business_bank` ← bankName
+- `contact.personal_credit_score_range` ← ficoScoreExact/personalCreditScoreRange/creditScore
+- `contact.ownership_percentage` ← ownership/ownerPercentage
+- `contact.outstanding_business_loans_or_cash_advances` ← hasOutstandingLoans (Yes/No)
+- `contact.business_street_address` ← businessStreetAddress/businessAddress
+- `contact.mca_balance_amount` ← mcaBalanceAmount
+- `contact.mca_balance_bank_name` ← mcaBalanceBankName
+- `contact.do_you_process_credit_cards` ← doYouProcessCreditCards
+- `contact.application_url` ← agentViewUrl
+- `contact.agent_name` ← agentName
+- `contact.agent_email` ← agentEmail
+- `contact.agent_ghl_id` ← agentGhlId
+
+*Business Details Folder:*
+- `contact.website` ← companyWebsite
+- `contact.monthly_revenue` ← monthlyRevenue
+- `contact.years_in_business` ← timeInBusiness
+- `contact.industry_dropdown` ← industry
+- `contact.annual_revenue` ← averageMonthlyRevenue
+- `contact.ein` ← ein
+- `contact.business_start_date` ← businessStartDate
+- `contact.business_type` ← businessType
+
+*Survey Folder:*
+- `contact.amount_requested` ← requestedAmount
+- `contact.legal_business_name` ← legalBusinessName/businessName
+- `contact.preferred_email` ← businessEmail
+- `contact.loan_purpose` ← useOfFunds
+
+*Owner Info:*
+- `contact.social_security_` ← socialSecurityNumber
+- `contact.date_of_birth` ← dateOfBirth
+- `contact.address1` ← ownerAddress1
+
+*Additional:*
+- `contact.funding_report_url` ← fundingReportUrl
+- `contact.funding_time_frame` ← fundingUrgency
+- `contact.state_of_incorporation` ← stateOfIncorporation
+- `contact.business_csz` ← businessCsz (auto-built from city/state/zip)
+- `contact.owner_csz` ← ownerCsz (auto-built from ownerCity/ownerState/ownerZip)
+
+**GHL Tagging System (3-tier):**
+- "App Started" → Application started but not completed
+- "lead-source-website" + "interest form" → Intake form completed
+- "application complete" → Full application completed
 
 **Plaid Integration**:
 - Provides instant funding eligibility analysis by connecting to business bank accounts.

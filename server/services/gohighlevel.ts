@@ -12,11 +12,10 @@ interface GHLCustomField {
 
 // Mapping of field keys to GHL custom field IDs
 // These IDs can be found in GHL Settings > Custom Fields
-// Update these with actual field IDs from your GHL account
+// Update these with actual field IDs from your GHL account for best reliability
 const CUSTOM_FIELD_IDS: Record<string, string> = {
   // Leave empty to use field keys, or populate with actual IDs like:
   // "contact.amount_requested": "bZw2JzNt9t4YVpRXjB52",
-  // "contact.monthly_revenue": "cXy3KlMn7opQr8st9uvW",
 };
 
 interface GHLContact {
@@ -35,6 +34,57 @@ interface GHLContact {
   tags?: string[];
   source?: string;
 }
+
+// Field mapping configuration using exact Unique Keys from CRM_Field_Mapping Excel
+// These map application fields to GHL custom field keys
+const GHL_FIELD_KEYS = {
+  // ===== APPLICATION DETAILS FOLDER =====
+  DOING_BUSINESS_AS: "contact.doing_business_as",
+  COMPANY_EMAIL: "contact.company_email",
+  PRIMARY_BUSINESS_BANK: "contact.primary_business_bank",
+  PERSONAL_CREDIT_SCORE_RANGE: "contact.personal_credit_score_range",
+  OWNERSHIP_PERCENTAGE: "contact.ownership_percentage",
+  OUTSTANDING_LOANS: "contact.outstanding_business_loans_or_cash_advances",
+  BUSINESS_STREET_ADDRESS: "contact.business_street_address",
+  MCA_BALANCE_AMOUNT: "contact.mca_balance_amount",
+  MCA_BALANCE_BANK_NAME: "contact.mca_balance_bank_name",
+  DO_YOU_PROCESS_CREDIT_CARDS: "contact.do_you_process_credit_cards",
+  APPLICATION_URL: "contact.application_url",
+  AGENT_NAME: "contact.agent_name",
+  AGENT_EMAIL: "contact.agent_email",
+  AGENT_GHL_ID: "contact.agent_ghl_id",
+  
+  // ===== BUSINESS DETAILS FOLDER =====
+  WEBSITE: "contact.website",
+  MONTHLY_REVENUE: "contact.monthly_revenue",
+  YEARS_IN_BUSINESS: "contact.years_in_business",
+  INDUSTRY_DROPDOWN: "contact.industry_dropdown",
+  ANNUAL_REVENUE: "contact.annual_revenue",
+  EIN: "contact.ein",
+  BUSINESS_START_DATE: "contact.business_start_date",
+  BUSINESS_TYPE: "contact.business_type",
+  
+  // ===== SURVEY FOLDER =====
+  AMOUNT_REQUESTED: "contact.amount_requested",
+  LEGAL_BUSINESS_NAME: "contact.legal_business_name",
+  PREFERRED_EMAIL: "contact.preferred_email",
+  LOAN_PURPOSE: "contact.loan_purpose",
+  TIME_IN_BUSINESS_YEARS: "contact.time_in_business_years",
+  MONTHLY_REVENUE_APPROX: "contact.monthly_revenue_approx",
+  
+  // ===== OWNER INFO =====
+  SOCIAL_SECURITY: "contact.social_security_",
+  DATE_OF_BIRTH: "contact.date_of_birth",
+  OWNER_ADDRESS1: "contact.address1",
+  
+  // ===== ADDITIONAL MAPPINGS =====
+  FUNDING_REPORT_URL: "contact.funding_report_url",
+  FUNDING_TIME_FRAME: "contact.funding_time_frame",
+  STATE_OF_INCORPORATION: "contact.state_of_incorporation",
+  BUSINESS_CSZ: "contact.business_csz",
+  OWNER_CSZ: "contact.owner_csz",
+  CURRENT_POSITIONS_BALANCES: "contact.current_positions__balances",
+} as const;
 
 export class GoHighLevelService {
   private apiKey: string | null;
@@ -90,7 +140,7 @@ export class GoHighLevelService {
       contactData.locationId = this.locationId!;
     }
 
-    // --- Standard Fields ---
+    // --- Standard GHL Fields ---
     if (application.fullName) {
       const nameParts = application.fullName.trim().split(" ");
       contactData.firstName = nameParts[0] || "";
@@ -131,94 +181,193 @@ export class GoHighLevelService {
 
     // --- Custom Fields Mapping ---
     const customFields: GHLCustomField[] = [];
+    const processedKeys = new Set<string>(); // Prevent duplicate keys
 
-    // Helper to push only if value exists
-    // Uses custom field ID if available, otherwise uses field key
+    // Helper to push custom field with proper formatting
     const pushField = (fieldKey: string, value: any) => {
-      if (value !== undefined && value !== null && value !== "") {
-        // Convert booleans to "Yes"/"No" for text fields
-        let finalValue = value;
-        if (typeof value === 'boolean') {
-            finalValue = value ? "Yes" : "No";
-        }
-        
-        // Check if we have a custom field ID mapping for this key
-        const fieldId = CUSTOM_FIELD_IDS[fieldKey];
-        if (fieldId) {
-          // Use ID format (preferred for V2 API)
-          customFields.push({ id: fieldId, value: finalValue.toString() });
-        } else {
-          // Fall back to key format
-          customFields.push({ key: fieldKey, value: finalValue.toString() });
-        }
+      if (value === undefined || value === null || value === "") return;
+      if (processedKeys.has(fieldKey)) return; // Skip duplicates
+      
+      processedKeys.add(fieldKey);
+      
+      // Convert booleans to "Yes"/"No" for text fields
+      let finalValue = value;
+      if (typeof value === 'boolean') {
+        finalValue = value ? "Yes" : "No";
+      }
+      
+      // Check if we have a custom field ID mapping for this key
+      const fieldId = CUSTOM_FIELD_IDS[fieldKey];
+      if (fieldId) {
+        // Use ID format (preferred for V2 API)
+        customFields.push({ id: fieldId, value: finalValue.toString() });
+      } else {
+        // Fall back to key format
+        customFields.push({ key: fieldKey, value: finalValue.toString() });
       }
     };
 
-    // 1. Business Information
-    pushField("contact.legal_business_name", application.legalBusinessName || application.businessName);
-    pushField("contact.doing_business_as", application.doingBusinessAs);
-    pushField("contact.company_email", application.companyEmail || application.businessEmail);
-    pushField("contact.primary_business_bank", application.bankName);
-    pushField("contact.website", application.companyWebsite);
-    pushField("contact.business_start_date", application.businessStartDate);
-    pushField("contact.ein", application.ein);
-    pushField("contact.state_of_incorporation", application.stateOfIncorporation);
-    pushField("contact.do_you_process_credit_cards", application.doYouProcessCreditCards);
-    pushField("contact.industry_dropdown", application.industry);
-    pushField("contact.business_street_address", application.businessAddress || application.businessStreetAddress);
+    // ========================================
+    // APPLICATION DETAILS FOLDER
+    // ========================================
     
-    // 2. Financials & Loan Info
-    pushField("contact.amount_requested", application.requestedAmount);
-    pushField("contact.mca_balance_amount", application.mcaBalanceAmount);
-    pushField("contact.mca_balance_bank_name", application.mcaBalanceBankName);
-    pushField("contact.monthly_revenue", application.monthlyRevenue);
-    pushField("contact.time_in_business", application.timeInBusiness);
+    // Doing Business As
+    pushField(GHL_FIELD_KEYS.DOING_BUSINESS_AS, application.doingBusinessAs);
     
-    // Outstanding Loans (Yes/No)
-    if (application.hasOutstandingLoans !== undefined) {
-        pushField("contact.outstanding_business_loans_or_cash_advances", application.hasOutstandingLoans ? "Yes" : "No");
-    }
-
-    // 3. Owner Information
-    pushField("contact.social_security_", application.socialSecurityNumber);
+    // Company Email - prioritize companyEmail, fallback to businessEmail
+    pushField(GHL_FIELD_KEYS.COMPANY_EMAIL, application.companyEmail || application.businessEmail);
     
-    // FICO Score (Estimate) -> personal_credit_score_range
-    // Use exact FICO from full app if available, otherwise the range from intake
+    // Primary Business Bank
+    pushField(GHL_FIELD_KEYS.PRIMARY_BUSINESS_BANK, application.bankName);
+    
+    // Personal Credit Score Range - use exact FICO if available, otherwise range from intake
     const ficoValue = application.ficoScoreExact || application.personalCreditScoreRange || application.creditScore;
-    pushField("contact.personal_credit_score_range", ficoValue);
+    pushField(GHL_FIELD_KEYS.PERSONAL_CREDIT_SCORE_RANGE, ficoValue);
     
-    pushField("contact.date_of_birth", application.dateOfBirth);
-    pushField("contact.ownership_percentage", application.ownership);
+    // Ownership Percentage - check both fields with priority
+    const ownershipValue = application.ownership || application.ownerPercentage;
+    pushField(GHL_FIELD_KEYS.OWNERSHIP_PERCENTAGE, ownershipValue);
     
-    // Owner Address (separate from business address)
-    pushField("contact.address1", application.ownerAddress1);
+    // Outstanding Business Loans or Cash Advances
+    if (application.hasOutstandingLoans !== undefined) {
+      pushField(GHL_FIELD_KEYS.OUTSTANDING_LOANS, application.hasOutstandingLoans ? "Yes" : "No");
+    }
+    
+    // Business Street Address - prioritize businessStreetAddress, fallback to businessAddress
+    const businessAddrValue = application.businessStreetAddress || application.businessAddress;
+    pushField(GHL_FIELD_KEYS.BUSINESS_STREET_ADDRESS, businessAddrValue);
+    
+    // MCA Balance Amount
+    pushField(GHL_FIELD_KEYS.MCA_BALANCE_AMOUNT, application.mcaBalanceAmount);
+    
+    // MCA Balance Bank Name
+    pushField(GHL_FIELD_KEYS.MCA_BALANCE_BANK_NAME, application.mcaBalanceBankName);
+    
+    // Do You Process Credit Cards
+    pushField(GHL_FIELD_KEYS.DO_YOU_PROCESS_CREDIT_CARDS, application.doYouProcessCreditCards);
+    
+    // Application URL (Agent View URL)
+    pushField(GHL_FIELD_KEYS.APPLICATION_URL, application.agentViewUrl);
+    
+    // Agent Tracking Fields
+    pushField(GHL_FIELD_KEYS.AGENT_NAME, application.agentName);
+    pushField(GHL_FIELD_KEYS.AGENT_EMAIL, application.agentEmail);
+    pushField(GHL_FIELD_KEYS.AGENT_GHL_ID, application.agentGhlId);
 
-    // 4. Agent Tracking - Track which agent processed the application
-    if (application.agentName) {
-      pushField("contact.agent_name", application.agentName);
-    }
-    if (application.agentEmail) {
-      pushField("contact.agent_email", application.agentEmail);
-    }
-    if (application.agentGhlId) {
-      pushField("contact.agent_ghl_id", application.agentGhlId);
-    }
+    // ========================================
+    // BUSINESS DETAILS FOLDER
+    // ========================================
+    
+    // Website
+    pushField(GHL_FIELD_KEYS.WEBSITE, application.companyWebsite);
+    
+    // Monthly Revenue
+    pushField(GHL_FIELD_KEYS.MONTHLY_REVENUE, application.monthlyRevenue);
+    
+    // Time in Business / Years in Business - prioritize timeInBusiness, fallback to calculated years from businessStartDate
+    const yearsInBusinessValue = application.timeInBusiness || 
+      (application.businessStartDate ? (() => {
+        const start = new Date(application.businessStartDate);
+        const now = new Date();
+        const diff = now.getTime() - start.getTime();
+        const ageDate = new Date(diff);
+        return Math.abs(ageDate.getUTCFullYear() - 1970) + " years";
+      })() : undefined);
+    pushField(GHL_FIELD_KEYS.YEARS_IN_BUSINESS, yearsInBusinessValue);
+    
+    // Industry (using industry_dropdown key)
+    pushField(GHL_FIELD_KEYS.INDUSTRY_DROPDOWN, application.industry);
+    
+    // Average/Annual Revenue
+    pushField(GHL_FIELD_KEYS.ANNUAL_REVENUE, application.averageMonthlyRevenue);
+    
+    // EIN
+    pushField(GHL_FIELD_KEYS.EIN, application.ein);
+    
+    // Business Start Date
+    pushField(GHL_FIELD_KEYS.BUSINESS_START_DATE, application.businessStartDate);
+    
+    // Business Type
+    pushField(GHL_FIELD_KEYS.BUSINESS_TYPE, application.businessType);
 
-    // 5. Application URL - Maps to GHL custom field for agent access
-    if (application.agentViewUrl) {
-       pushField("contact.application_url", application.agentViewUrl);
-    }
+    // ========================================
+    // SURVEY FOLDER
+    // ========================================
+    
+    // Amount Requested
+    pushField(GHL_FIELD_KEYS.AMOUNT_REQUESTED, application.requestedAmount);
+    
+    // Legal Business Name - prioritize legalBusinessName, fallback to businessName
+    const legalNameValue = application.legalBusinessName || application.businessName;
+    pushField(GHL_FIELD_KEYS.LEGAL_BUSINESS_NAME, legalNameValue);
+    
+    // Preferred Email (business email)
+    pushField(GHL_FIELD_KEYS.PREFERRED_EMAIL, application.businessEmail || application.companyEmail);
+    
+    // Loan Purpose / Use of Funds
+    pushField(GHL_FIELD_KEYS.LOAN_PURPOSE, application.useOfFunds);
+    
+    // Time in Business (Years) - duplicate mapping for Survey folder
+    pushField(GHL_FIELD_KEYS.TIME_IN_BUSINESS_YEARS, application.timeInBusiness);
+    
+    // Monthly Revenue Approx - map from intake monthly revenue or average
+    pushField(GHL_FIELD_KEYS.MONTHLY_REVENUE_APPROX, application.monthlyRevenue || application.averageMonthlyRevenue);
 
-    // 6. Funding Report URL - Custom report link for this lead
-    if (application.fundingReportUrl) {
-       pushField("contact.funding_report_url", application.fundingReportUrl);
-    }
+    // ========================================
+    // OWNER INFO
+    // ========================================
+    
+    // Social Security Number
+    pushField(GHL_FIELD_KEYS.SOCIAL_SECURITY, application.socialSecurityNumber);
+    
+    // Date of Birth
+    pushField(GHL_FIELD_KEYS.DATE_OF_BIRTH, application.dateOfBirth);
+    
+    // Owner Address Line 1
+    pushField(GHL_FIELD_KEYS.OWNER_ADDRESS1, application.ownerAddress1);
 
+    // ========================================
+    // FUNDING & ADDITIONAL
+    // ========================================
+    
+    // Funding Report URL
+    pushField(GHL_FIELD_KEYS.FUNDING_REPORT_URL, application.fundingReportUrl);
+    
+    // Funding Urgency / Time Frame
+    pushField(GHL_FIELD_KEYS.FUNDING_TIME_FRAME, application.fundingUrgency);
+    
+    // State of Incorporation
+    pushField(GHL_FIELD_KEYS.STATE_OF_INCORPORATION, application.stateOfIncorporation);
+    
+    // Outstanding Loans Amount / Current Positions
+    pushField(GHL_FIELD_KEYS.CURRENT_POSITIONS_BALANCES, application.outstandingLoansAmount);
+
+    // ========================================
+    // COMBINED CSZ FIELDS
+    // ========================================
+    
+    // Business CSZ (City, State, Zip combined)
+    let businessCszValue = application.businessCsz;
+    if (!businessCszValue && application.city && application.state && application.zipCode) {
+      businessCszValue = `${application.city}, ${application.state} ${application.zipCode}`;
+    }
+    pushField(GHL_FIELD_KEYS.BUSINESS_CSZ, businessCszValue);
+    
+    // Owner CSZ
+    let ownerCszValue = application.ownerCsz;
+    if (!ownerCszValue && application.ownerCity && application.ownerState && application.ownerZip) {
+      ownerCszValue = `${application.ownerCity}, ${application.ownerState} ${application.ownerZip}`;
+    }
+    pushField(GHL_FIELD_KEYS.OWNER_CSZ, ownerCszValue);
+
+    // Apply custom fields to contact data
     if (customFields.length > 0) {
       contactData.customFields = customFields;
     }
 
-    // Tags - based on application completion status
+    // ========================================
+    // TAGS - Based on Application Status
+    // ========================================
     const tags: string[] = [];
     
     if (application.isFullApplicationCompleted) {
@@ -240,6 +389,30 @@ export class GoHighLevelService {
     return contactData;
   }
 
+  // Search for existing contact by email
+  private async findContactByEmail(email: string): Promise<string | null> {
+    if (!this.isEnabled || !email) return null;
+    
+    try {
+      const response = await this.makeRequest(
+        `/contacts/lookup?locationId=${this.locationId}&email=${encodeURIComponent(email)}`,
+        "GET"
+      );
+      
+      // API returns { contacts: [...] } or { contact: {...} }
+      const contacts = response.contacts || (response.contact ? [response.contact] : []);
+      if (contacts.length > 0) {
+        console.log("[GHL DEBUG] Found existing contact by email:", contacts[0].id);
+        return contacts[0].id;
+      }
+      return null;
+    } catch (error) {
+      // Contact not found is not an error - just means we need to create
+      console.log("[GHL DEBUG] No existing contact found for email:", email);
+      return null;
+    }
+  }
+
   async createOrUpdateContact(application: LoanApplication): Promise<string> {
     if (!this.isEnabled) {
       console.log("GoHighLevel sync skipped: service not enabled");
@@ -249,31 +422,74 @@ export class GoHighLevelService {
     try {
       // Log incoming application data for debugging
       console.log("[GHL DEBUG] Application data received:", {
+        id: application.id,
+        email: application.email,
+        businessName: application.businessName || application.legalBusinessName,
         requestedAmount: application.requestedAmount,
         monthlyRevenue: application.monthlyRevenue,
-        averageMonthlyRevenue: application.averageMonthlyRevenue,
-        email: application.email,
-        isCompleted: application.isCompleted
+        timeInBusiness: application.timeInBusiness,
+        creditScore: application.creditScore,
+        isCompleted: application.isCompleted,
+        isFullApplicationCompleted: application.isFullApplicationCompleted
       });
-
-      const contactData = this.buildContactData(application);
-      
-      // Log the custom fields being sent
-      console.log("[GHL DEBUG] Custom fields being sent:", JSON.stringify(contactData.customFields, null, 2));
 
       // If we already have a contact ID, update it (do NOT include locationId)
       if (application.ghlContactId) {
         const updateData = this.buildContactData(application, false); // false = exclude locationId
-        console.log("[GHL DEBUG] Updating existing contact:", application.ghlContactId);
+        console.log("[GHL DEBUG] Updating existing contact by stored ID:", application.ghlContactId);
+        console.log("[GHL DEBUG] Custom fields count:", updateData.customFields?.length || 0);
         await this.makeRequest(`/contacts/${application.ghlContactId}`, "PUT", updateData);
         return application.ghlContactId;
       }
 
-      // Otherwise, create a new contact (DO include locationId)
+      // Search for existing contact by email first (handles duplicate prevention)
+      const contactEmail = application.companyEmail || application.businessEmail || application.email;
+      const existingContactId = await this.findContactByEmail(contactEmail || "");
+      
+      if (existingContactId) {
+        // Update existing contact instead of creating duplicate
+        const updateData = this.buildContactData(application, false);
+        console.log("[GHL DEBUG] Updating existing contact found by email:", existingContactId);
+        console.log("[GHL DEBUG] Custom fields count:", updateData.customFields?.length || 0);
+        await this.makeRequest(`/contacts/${existingContactId}`, "PUT", updateData);
+        return existingContactId;
+      }
+
+      // Create a new contact (DO include locationId)
       const createData = this.buildContactData(application, true); // true = include locationId
-      console.log("[GHL DEBUG] Creating new contact with data:", JSON.stringify(createData, null, 2));
-      const response = await this.makeRequest("/contacts", "POST", createData);
-      return response.contact?.id || response.id;
+      console.log("[GHL DEBUG] Creating new contact with email:", createData.email);
+      console.log("[GHL DEBUG] Custom fields count:", createData.customFields?.length || 0);
+      console.log("[GHL DEBUG] Custom fields being sent:", JSON.stringify(createData.customFields, null, 2));
+      
+      try {
+        const response = await this.makeRequest("/contacts", "POST", createData);
+        return response.contact?.id || response.id;
+      } catch (createError: any) {
+        // Handle duplicate contact error (400 with "duplicated contacts" message)
+        if (createError.message?.includes("400")) {
+          console.log("[GHL DEBUG] Duplicate contact detected, searching by phone...");
+          // Try searching by phone if email search didn't find it
+          if (application.phone) {
+            try {
+              const phoneResponse = await this.makeRequest(
+                `/contacts/lookup?locationId=${this.locationId}&phone=${encodeURIComponent(application.phone)}`,
+                "GET"
+              );
+              const phoneContacts = phoneResponse.contacts || (phoneResponse.contact ? [phoneResponse.contact] : []);
+              if (phoneContacts.length > 0) {
+                const phoneContactId = phoneContacts[0].id;
+                console.log("[GHL DEBUG] Found existing contact by phone:", phoneContactId);
+                const updateData = this.buildContactData(application, false);
+                await this.makeRequest(`/contacts/${phoneContactId}`, "PUT", updateData);
+                return phoneContactId;
+              }
+            } catch (phoneError) {
+              console.error("[GHL DEBUG] Phone lookup failed:", phoneError);
+            }
+          }
+        }
+        throw createError;
+      }
     } catch (error) {
       console.error("Error syncing to GoHighLevel:", error);
       throw error;
@@ -288,6 +504,8 @@ export class GoHighLevelService {
 
     try {
       const updateData = this.buildContactData(application, false); // false = exclude locationId for PUT
+      console.log("[GHL DEBUG] Updating contact:", contactId);
+      console.log("[GHL DEBUG] Update custom fields count:", updateData.customFields?.length || 0);
       await this.makeRequest(`/contacts/${contactId}`, "PUT", updateData);
     } catch (error) {
       console.error("Error updating GoHighLevel contact:", error);
@@ -315,42 +533,87 @@ export class GoHighLevelService {
       return Math.abs(ageDate.getUTCFullYear() - 1970) + " years";
     };
 
-    // Prepare webhook payload
+    // Build CSZ values with fallback logic
+    const businessCszValue = application.businessCsz || 
+      (application.city && application.state && application.zipCode 
+        ? `${application.city}, ${application.state} ${application.zipCode}` 
+        : "");
+    
+    const ownerCszValue = application.ownerCsz ||
+      (application.ownerCity && application.ownerState && application.ownerZip
+        ? `${application.ownerCity}, ${application.ownerState} ${application.ownerZip}`
+        : "");
+
+    // Prepare webhook payload with ALL fields matching GHL_FIELD_KEYS
     const webhookPayload = {
-      // Use snake_case fields to match HTML form
-      legal_business_name: application.legalBusinessName || application.businessName,
+      // ===== APPLICATION DETAILS FOLDER =====
       doing_business_as: application.doingBusinessAs || application.businessName,
-      company_website: application.companyWebsite,
-      business_start_date: application.businessStartDate,
-      ein: application.ein,
       company_email: application.companyEmail || application.businessEmail || application.email,
-      state_of_incorporation: application.stateOfIncorporation,
-      do_you_process_credit_cards: application.doYouProcessCreditCards,
-      industry: application.industry,
+      primary_business_bank: application.bankName,
+      personal_credit_score_range: application.ficoScoreExact || application.personalCreditScoreRange || application.creditScore,
+      ownership_percentage: application.ownership || application.ownerPercentage,
+      outstanding_business_loans_or_cash_advances: application.hasOutstandingLoans !== undefined 
+        ? (application.hasOutstandingLoans ? "Yes" : "No") 
+        : undefined,
       business_street_address: application.businessStreetAddress || application.businessAddress,
-      business_csz: application.businessCsz,
-      requested_loan_amount: application.requestedAmount,
       mca_balance_amount: application.mcaBalanceAmount,
       mca_balance_bank_name: application.mcaBalanceBankName,
+      do_you_process_credit_cards: application.doYouProcessCreditCards,
+      application_url: application.agentViewUrl,
+      agent_name: application.agentName,
+      agent_email: application.agentEmail,
+      agent_ghl_id: application.agentGhlId,
+      
+      // ===== BUSINESS DETAILS FOLDER =====
+      website: application.companyWebsite,
+      monthly_revenue: application.monthlyRevenue,
+      years_in_business: application.timeInBusiness || getYearsFromDate(application.businessStartDate || undefined),
+      industry_dropdown: application.industry,
+      annual_revenue: application.averageMonthlyRevenue,
+      ein: application.ein,
+      business_start_date: application.businessStartDate,
+      business_type: application.businessType,
+      
+      // ===== SURVEY FOLDER =====
+      amount_requested: application.requestedAmount,
+      legal_business_name: application.legalBusinessName || application.businessName,
+      preferred_email: application.businessEmail || application.companyEmail,
+      loan_purpose: application.useOfFunds,
+      time_in_business_years: application.timeInBusiness,
+      monthly_revenue_approx: application.monthlyRevenue || application.averageMonthlyRevenue,
+      
+      // ===== OWNER INFO =====
+      social_security_: application.socialSecurityNumber,
+      date_of_birth: application.dateOfBirth,
+      address1: application.ownerAddress1,
+      
+      // ===== ADDITIONAL =====
+      funding_report_url: application.fundingReportUrl,
+      funding_time_frame: application.fundingUrgency,
+      state_of_incorporation: application.stateOfIncorporation,
+      business_csz: businessCszValue,
+      owner_csz: ownerCszValue,
+      current_positions__balances: application.outstandingLoansAmount,
+      
+      // ===== LEGACY/COMPATIBILITY FIELDS =====
       full_name: application.fullName,
       email: application.email,
-      social_security_: application.socialSecurityNumber,
       phone: application.phone,
-      personal_credit_score_range: application.personalCreditScoreRange || application.ficoScoreExact || application.creditScore,
-      address1: application.ownerAddress1,
+      company_name: application.legalBusinessName || application.businessName,
+      company_website: application.companyWebsite,
+      industry: application.industry,
+      requested_loan_amount: application.requestedAmount,
+      time_in_business: application.timeInBusiness,
+      use_of_funds: application.useOfFunds,
+      funding_urgency: application.fundingUrgency,
+      referral_source: application.referralSource,
       address2: application.ownerAddress2,
-      owner_csz: application.ownerCsz,
-      date_of_birth: application.dateOfBirth,
-      ownership_percentage: application.ownership,
-      // Calculated fields
+      
+      // ===== CALCULATED FIELDS =====
       first_name: firstName,
       last_name: lastName,
       submission_date: new Date().toISOString(),
       source: "Full Application Form",
-      company_name: application.legalBusinessName || application.businessName,
-      years_in_business: getYearsFromDate(application.businessStartDate || undefined),
-      // Custom funding report URL
-      funding_report_url: application.fundingReportUrl,
     };
 
     // Send to both webhooks (non-blocking)
@@ -379,7 +642,7 @@ export class GoHighLevelService {
 
       // Wait for webhooks (but don't fail if they error)
       await Promise.allSettled(webhookRequests);
-      console.log('Webhooks sent successfully');
+      console.log('[GHL] Webhooks sent successfully with', Object.keys(webhookPayload).filter(k => webhookPayload[k as keyof typeof webhookPayload]).length, 'fields');
     } catch (error) {
       console.error('Error sending webhooks:', error);
       // Don't throw - webhooks are nice-to-have, not critical
