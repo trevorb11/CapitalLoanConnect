@@ -228,6 +228,9 @@ export class GoHighLevelService {
       // Intake form completed - add website lead source tags
       tags.push("lead-source-website");
       tags.push("interest form");
+    } else {
+      // Application started but not completed
+      tags.push("App Started");
     }
     
     if (tags.length > 0) {
