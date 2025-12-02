@@ -159,6 +159,8 @@ function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: 
   const sanitized = { ...rest };
   
   console.log('[SANITIZE] Input data:', JSON.stringify(rest, null, 2));
+  console.log('[SANITIZE] timeInBusiness raw:', sanitized.timeInBusiness);
+  console.log('[SANITIZE] monthlyRevenue raw:', sanitized.monthlyRevenue);
   
   // Convert string numeric fields to proper numbers or null
   const numericFields = [

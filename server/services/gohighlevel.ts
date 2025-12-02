@@ -172,6 +172,7 @@ export class GoHighLevelService {
     pushField("contact.mca_balance_amount", application.mcaBalanceAmount);
     pushField("contact.mca_balance_bank_name", application.mcaBalanceBankName);
     pushField("contact.monthly_revenue", application.monthlyRevenue);
+    pushField("contact.time_in_business", application.timeInBusiness);
     
     // Outstanding Loans (Yes/No)
     if (application.hasOutstandingLoans !== undefined) {
