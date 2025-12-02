@@ -21,6 +21,7 @@ The frontend is built with React and TypeScript, using Vite for bundling. It lev
 **Additional Pages:**
 - **/intake**: Marketing landing page promoting financing solutions with hero section (stats), benefits cards, funding options comparison, 4-step process explanation, and CTAs directing users to the quiz form.
 - **/intake/quiz**: Quiz-style 5-step intake form with slider for financing amount, radio selections for business age/revenue/credit score, and contact info. Submits to GHL and redirects to full application page.
+- **/complete-application**: Retargeting landing page for leads who completed the intake form but haven't filled out the full application. Features progress indicator, benefits of completing, FAQ section, testimonials, and multiple CTAs directing to the full application.
 - **/upload-statements**: Standalone bank statement upload page (no Plaid integration) for manual PDF uploads while Plaid is in sandbox mode. Features drag-and-drop, multi-file support, and success confirmation.
 
 **Dashboard Stats:**
