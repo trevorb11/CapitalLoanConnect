@@ -32,7 +32,12 @@ function Router() {
       </Route>
       <Route path="/intake" component={IntakeLanding} />
       <Route path="/intake/quiz" component={QuizIntake} />
-      <Route path="/complete-application" component={RetargetingLanding} />
+      <Route path="/complete-application/:initials?">
+        {(params) => {
+          const agent = params.initials ? getAgentByInitials(params.initials.toLowerCase()) : undefined;
+          return <RetargetingLanding agent={agent} />;
+        }}
+      </Route>
       <Route path="/check-status" component={ProgressTracker} />
       <Route path="/funding-analysis" component={FundingAnalysis} />
       <Route path="/report" component={FundingReport} />

@@ -2,11 +2,19 @@ import { useEffect } from "react";
 import { Link } from "wouter";
 import { CheckCircle, Clock, Shield, FileText, ArrowRight, Phone, Mail, AlertCircle, TrendingUp, Banknote, Users, Lock, Building2, User, Landmark, DollarSign } from "lucide-react";
 import { trackPageView } from "@/lib/analytics";
+import type { Agent } from "@shared/agents";
 
-export default function RetargetingLanding() {
+interface RetargetingLandingProps {
+  agent?: Agent;
+}
+
+export default function RetargetingLanding({ agent }: RetargetingLandingProps) {
+  const targetPath = agent ? `/${agent.initials}` : "/";
+  
   useEffect(() => {
-    trackPageView('/complete-application', 'Retargeting Landing Page');
-  }, []);
+    const pagePath = agent ? `/complete-application/${agent.initials}` : '/complete-application';
+    trackPageView(pagePath, 'Retargeting Landing Page');
+  }, [agent]);
 
   return (
     <div style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", backgroundColor: '#f5f5f7', color: '#1d1d1f', lineHeight: 1.6 }}>
@@ -52,7 +60,7 @@ export default function RetargetingLanding() {
             You've already completed the hard part. Now complete your full application in just 5 minutes to unlock your personalized funding offers.
           </p>
 
-          <Link href="/">
+          <Link href={targetPath}>
             <button 
               style={{ 
                 display: 'inline-flex', alignItems: 'center', gap: '12px',
@@ -71,6 +79,13 @@ export default function RetargetingLanding() {
             <Lock size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '6px' }} />
             Your information is secure and encrypted
           </p>
+          
+          {agent && (
+            <p style={{ color: '#7dd3fc', fontSize: '14px', marginTop: '16px' }} data-testid="text-agent-attribution">
+              <User size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '6px' }} />
+              You're working with {agent.name}
+            </p>
+          )}
         </div>
       </section>
 
@@ -234,7 +249,7 @@ export default function RetargetingLanding() {
           </div>
 
           <div style={{ textAlign: 'center', marginTop: '40px' }}>
-            <Link href="/">
+            <Link href={targetPath}>
               <button 
                 style={{ 
                   display: 'inline-flex', alignItems: 'center', gap: '12px',
@@ -346,7 +361,7 @@ export default function RetargetingLanding() {
             You've already taken the first step. Complete your application now and see what funding options are available for your business.
           </p>
           
-          <Link href="/">
+          <Link href={targetPath}>
             <button 
               style={{ 
                 display: 'inline-flex', alignItems: 'center', gap: '12px',
