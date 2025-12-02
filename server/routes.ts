@@ -311,6 +311,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ isAuthenticated: false });
   });
 
+  // Lookup application progress by email or phone
+  app.post("/api/applications/progress", async (req, res) => {
+    try {
+      const { emailOrPhone } = req.body;
+      
+      if (!emailOrPhone || typeof emailOrPhone !== 'string' || emailOrPhone.trim().length < 3) {
+        return res.status(400).json({ error: "Please provide a valid email address or phone number" });
+      }
+      
+      const input = emailOrPhone.trim();
+      
+      // Find the most recent application by email or phone
+      const application = await storage.getLoanApplicationByEmailOrPhone(input);
+      
+      if (!application) {
+        return res.status(404).json({ error: "No application found with that email or phone number" });
+      }
+      
+      // Get bank statement uploads for this email
+      const bankStatements = await storage.getBankStatementUploadsByEmail(application.email);
+      
+      // Get Plaid connection status
+      let hasPlaidConnection = false;
+      if (application.plaidItemId) {
+        const plaidItem = await storage.getPlaidItemById(application.plaidItemId);
+        hasPlaidConnection = !!plaidItem;
+      }
+      
+      // Determine progress status
+      const progress = {
+        intakeCompleted: application.isCompleted || false,
+        applicationCompleted: application.isFullApplicationCompleted || false,
+        bankStatementsUploaded: bankStatements.length > 0 || hasPlaidConnection,
+        bankStatementCount: bankStatements.length,
+        hasPlaidConnection,
+        applicationId: application.id,
+        businessName: application.businessName || application.legalBusinessName || '',
+        email: application.email,
+      };
+      
+      res.json(progress);
+    } catch (error) {
+      console.error("Error looking up application progress:", error);
+      res.status(500).json({ error: "Failed to lookup progress" });
+    }
+  });
+
   // Get loan application by ID (for intake/application forms - no auth required for own app)
   app.get("/api/applications/:id", async (req, res) => {
     try {

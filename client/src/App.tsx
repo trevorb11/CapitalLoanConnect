@@ -18,6 +18,7 @@ import SeeReport from "@/pages/SeeReport";
 import ConnectBank from "@/pages/ConnectBank";
 import BankStatementsUpload from "@/pages/BankStatementsUpload";
 import RetargetingLanding from "@/pages/RetargetingLanding";
+import ProgressTracker from "@/pages/ProgressTracker";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/intake" component={IntakeLanding} />
       <Route path="/intake/quiz" component={QuizIntake} />
       <Route path="/complete-application" component={RetargetingLanding} />
+      <Route path="/check-status" component={ProgressTracker} />
       <Route path="/funding-analysis" component={FundingAnalysis} />
       <Route path="/report" component={FundingReport} />
       <Route path="/update" component={UpdateInfo} />

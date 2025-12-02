@@ -6,7 +6,7 @@ import {
   type BotAttempt, type InsertBotAttempt
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, or, desc } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -15,6 +15,7 @@ export interface IStorage {
   
   getLoanApplication(id: string): Promise<LoanApplication | undefined>;
   getLoanApplicationByEmail(email: string): Promise<LoanApplication | undefined>;
+  getLoanApplicationByEmailOrPhone(emailOrPhone: string): Promise<LoanApplication | undefined>;
   createLoanApplication(application: Partial<InsertLoanApplication>): Promise<LoanApplication>;
   updateLoanApplication(id: string, application: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined>;
   getAllLoanApplications(): Promise<LoanApplication[]>;
@@ -75,6 +76,25 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(loanApplications.email, email),
           eq(loanApplications.isCompleted, false)
+        )
+      )
+      .orderBy(desc(loanApplications.createdAt))
+      .limit(1);
+    return application || undefined;
+  }
+
+  async getLoanApplicationByEmailOrPhone(emailOrPhone: string): Promise<LoanApplication | undefined> {
+    // Normalize phone number by removing non-digits for comparison
+    const normalizedPhone = emailOrPhone.replace(/\D/g, '');
+    
+    const [application] = await db
+      .select()
+      .from(loanApplications)
+      .where(
+        or(
+          eq(loanApplications.email, emailOrPhone),
+          eq(loanApplications.phone, emailOrPhone),
+          eq(loanApplications.phone, normalizedPhone)
         )
       )
       .orderBy(desc(loanApplications.createdAt))
