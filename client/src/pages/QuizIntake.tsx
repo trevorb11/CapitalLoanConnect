@@ -128,15 +128,14 @@ export default function QuizIntake() {
         fullName: data.fullName,
         phone: data.phone,
         businessName: data.businessName,
-        requestedAmount: data.financingAmount.toString(),
+        amount_requested: data.financingAmount.toString(),  // ✅ Changed
         timeInBusiness: data.businessAge,
-        monthlyRevenue: parseRevenueToNumber(data.monthlyRevenue),
-        averageMonthlyRevenue: parseRevenueToNumber(data.monthlyRevenue),
+        monthly_revenue: parseRevenueToNumber(data.monthlyRevenue),  // ✅ Changed
         creditScore: data.creditScore,
-        personalCreditScoreRange: data.creditScore,
+        personal_credit_score_range: data.creditScore,  // ✅ Changed
         isCompleted: true,
         recaptchaToken: data.recaptchaToken,
-        faxNumber: data.faxNumber, // Honeypot field
+        faxNumber: data.faxNumber,
       });
       return response.json();
     },
