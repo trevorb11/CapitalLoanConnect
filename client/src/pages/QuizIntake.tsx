@@ -128,11 +128,12 @@ export default function QuizIntake() {
         fullName: data.fullName,
         phone: data.phone,
         businessName: data.businessName,
-        amount_requested: data.financingAmount.toString(),  // ✅ Changed
+        requestedAmount: data.financingAmount.toString(),
         timeInBusiness: data.businessAge,
-        monthly_revenue: parseRevenueToNumber(data.monthlyRevenue),  // ✅ Changed
+        monthlyRevenue: parseRevenueToNumber(data.monthlyRevenue),
+        averageMonthlyRevenue: parseRevenueToNumber(data.monthlyRevenue),
         creditScore: data.creditScore,
-        personal_credit_score_range: data.creditScore,  // ✅ Changed
+        personalCreditScoreRange: data.creditScore,
         isCompleted: true,
         recaptchaToken: data.recaptchaToken,
         faxNumber: data.faxNumber,
