@@ -112,6 +112,7 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         business_state: existingData.state || "",
         business_zip: existingData.zipCode || "",
         requested_loan_amount: existingData.requestedAmount ? formatCurrency(existingData.requestedAmount.toString()) : "",
+        monthly_revenue: existingData.monthlyRevenue ? formatCurrency(existingData.monthlyRevenue.toString()) : "",
         mca_balance_amount: existingData.mcaBalanceAmount ? formatCurrency(existingData.mcaBalanceAmount.toString()) : "",
         mca_balance_bank_name: existingData.mcaBalanceBankName || "",
         full_name: existingData.fullName || "",
@@ -140,7 +141,7 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
     if (name === 'ein') value = formatEin(value);
     if (name === 'social_security_') value = formatSsn(value);
     if (name === 'phone') value = formatPhone(value);
-    if (name === 'requested_loan_amount' || name === 'mca_balance_amount') {
+    if (name === 'requested_loan_amount' || name === 'mca_balance_amount' || name === 'monthly_revenue') {
       value = formatCurrency(value);
     }
     
@@ -149,10 +150,11 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
 
   const goToStep2 = () => {
     const requiredStep1 = [
-      'legal_business_name', 'doing_business_as', 'company_email', 
+      'legal_business_name', 'doing_business_as', 'company_email',
       'business_start_date', 'ein', 'industry', 'state_of_incorporation',
-      'do_you_process_credit_cards', 'business_street_address', 
-      'business_city', 'business_state', 'business_zip', 'requested_loan_amount'
+      'do_you_process_credit_cards', 'business_street_address',
+      'business_city', 'business_state', 'business_zip', 'requested_loan_amount',
+      'monthly_revenue'
     ];
     
     for (const field of requiredStep1) {
@@ -234,6 +236,8 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         zipCode: formData.business_zip,
         businessCsz: `${formData.business_city}, ${formData.business_state} ${formData.business_zip}`,
         requestedAmount: formData.requested_loan_amount.replace(/\D/g, ""),
+        monthlyRevenue: formData.monthly_revenue ? formData.monthly_revenue.replace(/\D/g, "") : "",
+        averageMonthlyRevenue: formData.monthly_revenue ? formData.monthly_revenue.replace(/\D/g, "") : "",
         mcaBalanceAmount: formData.mca_balance_amount ? formData.mca_balance_amount.replace(/\D/g, "") : "",
         mcaBalanceBankName: formData.mca_balance_bank_name,
         fullName: formData.full_name,
@@ -619,9 +623,9 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
               <div>
                 <label style={labelStyle}>Requested Amount *</label>
-                <input 
-                  name="requested_loan_amount" 
-                  value={formData.requested_loan_amount || ''} 
+                <input
+                  name="requested_loan_amount"
+                  value={formData.requested_loan_amount || ''}
                   onChange={handleInputChange}
                   placeholder="$0"
                   style={inputStyle}
@@ -630,10 +634,22 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
               </div>
 
               <div>
+                <label style={labelStyle}>Monthly Revenue *</label>
+                <input
+                  name="monthly_revenue"
+                  value={formData.monthly_revenue || ''}
+                  onChange={handleInputChange}
+                  placeholder="$0"
+                  style={inputStyle}
+                  data-testid="input-monthly_revenue"
+                />
+              </div>
+
+              <div>
                 <label style={labelStyle}>Current MCA Balance</label>
-                <input 
-                  name="mca_balance_amount" 
-                  value={formData.mca_balance_amount || ''} 
+                <input
+                  name="mca_balance_amount"
+                  value={formData.mca_balance_amount || ''}
                   onChange={handleInputChange}
                   placeholder="$0"
                   style={inputStyle}
@@ -643,9 +659,9 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
 
               <div>
                 <label style={labelStyle}>MCA Lender Name</label>
-                <input 
-                  name="mca_balance_bank_name" 
-                  value={formData.mca_balance_bank_name || ''} 
+                <input
+                  name="mca_balance_bank_name"
+                  value={formData.mca_balance_bank_name || ''}
                   onChange={handleInputChange}
                   placeholder="N/A"
                   style={inputStyle}

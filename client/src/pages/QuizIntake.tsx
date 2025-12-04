@@ -38,11 +38,39 @@ const CREDIT_SCORE_OPTIONS = [
   "Not sure",
 ];
 
+const INDUSTRY_OPTIONS = [
+  "Automotive",
+  "Construction",
+  "Transportation",
+  "Health Services",
+  "Utilities and Home Services",
+  "Hospitality",
+  "Entertainment and Recreation",
+  "Retail Stores",
+  "Professional Services",
+  "Restaurants & Food Services",
+  "Other",
+];
+
+const FUNDING_PURPOSE_OPTIONS = [
+  "Working Capital",
+  "Equipment Purchase",
+  "Inventory",
+  "Expansion",
+  "Payroll",
+  "Marketing & Advertising",
+  "Debt Consolidation",
+  "Emergency Expenses",
+  "Other",
+];
+
 interface QuizData {
   financingAmount: number;
   businessAge: string;
+  industry: string;
   monthlyRevenue: string;
   creditScore: string;
+  fundingPurpose: string;
   fullName: string;
   businessName: string;
   email: string;
@@ -88,8 +116,10 @@ export default function QuizIntake() {
   const [quizData, setQuizData] = useState<QuizData>({
     financingAmount: 25000,
     businessAge: "",
+    industry: "",
     monthlyRevenue: "",
     creditScore: "",
+    fundingPurpose: "",
     fullName: "",
     businessName: "",
     email: "",
@@ -98,7 +128,7 @@ export default function QuizIntake() {
     faxNumber: "", // Honeypot - should remain empty
   });
 
-  const totalQuestions = 5;
+  const totalQuestions = 7;
   const progress = (currentQuestion / totalQuestions) * 100;
 
   // Track page view on mount
@@ -130,10 +160,12 @@ export default function QuizIntake() {
         businessName: data.businessName,
         requestedAmount: data.financingAmount.toString(),
         timeInBusiness: data.businessAge,
+        industry: data.industry,
         monthlyRevenue: parseRevenueToNumber(data.monthlyRevenue),
         averageMonthlyRevenue: parseRevenueToNumber(data.monthlyRevenue),
         creditScore: data.creditScore,
         personalCreditScoreRange: data.creditScore,
+        useOfFunds: data.fundingPurpose,
         isCompleted: true,
         recaptchaToken: data.recaptchaToken,
         faxNumber: data.faxNumber,
@@ -147,6 +179,8 @@ export default function QuizIntake() {
         creditScore: quizData.creditScore,
         timeInBusiness: quizData.businessAge,
         monthlyRevenue: quizData.monthlyRevenue,
+        industry: quizData.industry,
+        useOfFunds: quizData.fundingPurpose,
       });
       
       if (data.id) {
@@ -172,7 +206,7 @@ export default function QuizIntake() {
   const nextQuestion = () => {
     if (currentQuestion < totalQuestions) {
       // Track step completion
-      const stepNames = ['Financing Amount', 'Business Age', 'Monthly Revenue', 'Credit Score', 'Contact Info'];
+      const stepNames = ['Financing Amount', 'Business Age', 'Industry', 'Monthly Revenue', 'Credit Score', 'Funding Purpose', 'Contact Info'];
       trackFormStepCompleted('intake_quiz', currentQuestion, stepNames[currentQuestion - 1]);
       goToQuestion(currentQuestion + 1);
     }
@@ -327,10 +361,47 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Question 3: Monthly Revenue */}
+        {/* Question 3: Industry */}
         <div
           className={`transition-all duration-300 ${currentQuestion === 3 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-3"
+        >
+          <div className="text-center">
+            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
+              What industry is your business in?
+            </h3>
+
+            <div className="flex flex-col gap-3 max-w-md mx-auto text-left max-h-[400px] overflow-y-auto pr-2">
+              {INDUSTRY_OPTIONS.map((option, idx) => (
+                <label
+                  key={option}
+                  className={`flex items-center cursor-pointer p-4 rounded-lg transition-all duration-200 ${
+                    quizData.industry === option ? "bg-white/20" : "bg-transparent hover:bg-white/10"
+                  }`}
+                  data-testid={`label-industry-${idx}`}
+                >
+                  <input
+                    type="radio"
+                    name="industry"
+                    value={option}
+                    checked={quizData.industry === option}
+                    onChange={() => handleRadioSelect("industry", option)}
+                    className="w-5 h-5 mr-4 appearance-none border-2 border-white rounded-full grid place-content-center cursor-pointer
+                      before:content-[''] before:w-2.5 before:h-2.5 before:rounded-full before:scale-0 before:transition-transform before:bg-white
+                      checked:before:scale-100"
+                    data-testid={`radio-industry-${idx}`}
+                  />
+                  <span className="text-white text-base md:text-lg">{option}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Question 4: Monthly Revenue */}
+        <div
+          className={`transition-all duration-300 ${currentQuestion === 4 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-4"
         >
           <div className="text-center">
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
@@ -364,10 +435,10 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Question 4: Credit Score */}
+        {/* Question 5: Credit Score */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 4 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-4"
+          className={`transition-all duration-300 ${currentQuestion === 5 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-5"
         >
           <div className="text-center">
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-2">
@@ -402,10 +473,47 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Question 5: Contact Info */}
+        {/* Question 6: Funding Purpose */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 5 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-5"
+          className={`transition-all duration-300 ${currentQuestion === 6 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-6"
+        >
+          <div className="text-center">
+            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
+              How do you plan to use the funds?
+            </h3>
+
+            <div className="flex flex-col gap-3 max-w-md mx-auto text-left">
+              {FUNDING_PURPOSE_OPTIONS.map((option, idx) => (
+                <label
+                  key={option}
+                  className={`flex items-center cursor-pointer p-4 rounded-lg transition-all duration-200 ${
+                    quizData.fundingPurpose === option ? "bg-white/20" : "bg-transparent hover:bg-white/10"
+                  }`}
+                  data-testid={`label-funding-purpose-${idx}`}
+                >
+                  <input
+                    type="radio"
+                    name="fundingPurpose"
+                    value={option}
+                    checked={quizData.fundingPurpose === option}
+                    onChange={() => handleRadioSelect("fundingPurpose", option)}
+                    className="w-5 h-5 mr-4 appearance-none border-2 border-white rounded-full grid place-content-center cursor-pointer
+                      before:content-[''] before:w-2.5 before:h-2.5 before:rounded-full before:scale-0 before:transition-transform before:bg-white
+                      checked:before:scale-100"
+                    data-testid={`radio-funding-purpose-${idx}`}
+                  />
+                  <span className="text-white text-base md:text-lg">{option}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Question 7: Contact Info */}
+        <div
+          className={`transition-all duration-300 ${currentQuestion === 7 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-7"
         >
           <div className="text-center">
             <h3 className="text-white text-xl md:text-2xl font-semibold mb-2">
