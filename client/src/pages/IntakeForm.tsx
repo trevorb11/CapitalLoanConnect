@@ -64,6 +64,7 @@ const step1Schema = z.object({
   businessStreetAddress: z.string().min(1, "Required"),
   businessCsz: z.string().min(1, "Required").refine(validateCsz, "Use format: City, ST 12345 (state must be 2 letters)"),
   requestedAmount: z.string().min(1, "Required"),
+  monthlyRevenue: z.string().min(1, "Required"),
   mcaBalanceAmount: z.string().optional(),
   mcaBalanceBankName: z.string().optional(),
 });
@@ -113,6 +114,7 @@ export default function IntakeForm() {
       businessStreetAddress: "",
       businessCsz: "",
       requestedAmount: "",
+      monthlyRevenue: "",
       mcaBalanceAmount: "",
       mcaBalanceBankName: "",
     },
@@ -152,6 +154,8 @@ export default function IntakeForm() {
         businessStreetAddress: data.businessStreetAddress,
         businessCsz: data.businessCsz,
         requestedAmount: data.requestedAmount.replace(/\D/g, ""),
+        monthlyRevenue: data.monthlyRevenue.replace(/\D/g, ""),
+        averageMonthlyRevenue: data.monthlyRevenue.replace(/\D/g, ""),
         mcaBalanceAmount: data.mcaBalanceAmount?.replace(/\D/g, "") || "",
         mcaBalanceBankName: data.mcaBalanceBankName || "",
         currentStep: 1,
@@ -404,6 +408,7 @@ export default function IntakeForm() {
                 <InputField label="Business Street Address" {...form1.register("businessStreetAddress")} required data-testid="input-business-street-address" />
                 <InputField label="City, State, Zip" {...form1.register("businessCsz")} placeholder="City, ST 12345" required data-testid="input-business-csz" />
                 <InputField label="Financing Amount ($)" type="number" {...form1.register("requestedAmount")} required data-testid="input-requested-amount" />
+                <InputField label="Monthly Revenue ($)" type="number" {...form1.register("monthlyRevenue")} required data-testid="input-monthly-revenue" />
                 <InputField label="MCA Balance Amount ($)" type="number" {...form1.register("mcaBalanceAmount")} placeholder="0 if none" data-testid="input-mca-balance-amount" />
                 <InputField label="MCA Balances Bank Name" {...form1.register("mcaBalanceBankName")} placeholder="N/A if none" data-testid="input-mca-bank-name" />
               </div>
