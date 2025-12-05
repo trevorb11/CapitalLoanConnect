@@ -1,9 +1,10 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
-  type BotAttempt, type InsertBotAttempt
+  type BotAttempt, type InsertBotAttempt,
+  type Partner, type InsertPartner
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc } from "drizzle-orm";
@@ -39,6 +40,15 @@ export interface IStorage {
   createBotAttempt(attempt: InsertBotAttempt): Promise<BotAttempt>;
   getAllBotAttempts(): Promise<BotAttempt[]>;
   getBotAttemptsCount(): Promise<number>;
+
+  // Partner methods
+  createPartner(partner: InsertPartner): Promise<Partner>;
+  getPartner(id: string): Promise<Partner | undefined>;
+  getPartnerByEmail(email: string): Promise<Partner | undefined>;
+  getPartnerByInviteCode(inviteCode: string): Promise<Partner | undefined>;
+  updatePartner(id: string, updates: Partial<InsertPartner>): Promise<Partner | undefined>;
+  getAllPartners(): Promise<Partner[]>;
+  getApplicationsByPartnerId(partnerId: string): Promise<LoanApplication[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -241,6 +251,66 @@ export class DatabaseStorage implements IStorage {
   async getBotAttemptsCount(): Promise<number> {
     const results = await db.select().from(botAttempts);
     return results.length;
+  }
+
+  // Partner methods
+  async createPartner(partner: InsertPartner): Promise<Partner> {
+    const [newPartner] = await db
+      .insert(partners)
+      .values(partner)
+      .returning();
+    return newPartner;
+  }
+
+  async getPartner(id: string): Promise<Partner | undefined> {
+    const [partner] = await db
+      .select()
+      .from(partners)
+      .where(eq(partners.id, id));
+    return partner || undefined;
+  }
+
+  async getPartnerByEmail(email: string): Promise<Partner | undefined> {
+    const [partner] = await db
+      .select()
+      .from(partners)
+      .where(eq(partners.email, email.toLowerCase()));
+    return partner || undefined;
+  }
+
+  async getPartnerByInviteCode(inviteCode: string): Promise<Partner | undefined> {
+    const [partner] = await db
+      .select()
+      .from(partners)
+      .where(eq(partners.inviteCode, inviteCode));
+    return partner || undefined;
+  }
+
+  async updatePartner(id: string, updates: Partial<InsertPartner>): Promise<Partner | undefined> {
+    const [updated] = await db
+      .update(partners)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(partners.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async getAllPartners(): Promise<Partner[]> {
+    return await db
+      .select()
+      .from(partners)
+      .orderBy(desc(partners.createdAt));
+  }
+
+  async getApplicationsByPartnerId(partnerId: string): Promise<LoanApplication[]> {
+    return await db
+      .select()
+      .from(loanApplications)
+      .where(eq(loanApplications.referralPartnerId, partnerId))
+      .orderBy(desc(loanApplications.createdAt));
   }
 }
 

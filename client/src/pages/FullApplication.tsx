@@ -411,6 +411,12 @@ export default function FullApplication(props?: FullApplicationProps) {
       payload.faxNumber = formData.faxNumber;
     }
 
+    // Include referral partner ID if from partner link
+    const referralPartnerId = localStorage.getItem("referralPartnerId");
+    if (referralPartnerId) {
+      payload.referralPartnerId = referralPartnerId;
+    }
+
     try {
       if (!applicationId) {
         const response = await apiRequest("POST", "/api/applications", payload);

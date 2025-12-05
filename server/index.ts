@@ -15,9 +15,14 @@ declare module 'express-session' {
   interface SessionData {
     user?: {
       isAuthenticated: boolean;
-      role: 'admin' | 'agent';
+      role: 'admin' | 'agent' | 'partner';
       agentEmail?: string;
       agentName?: string;
+      // Partner-specific fields
+      partnerId?: string;
+      partnerEmail?: string;
+      partnerName?: string;
+      companyName?: string;
     };
   }
 }
