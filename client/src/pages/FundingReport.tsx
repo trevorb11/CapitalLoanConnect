@@ -29,6 +29,15 @@ import {
   Clock,
   Sparkles,
   Mail,
+  Target,
+  FileText,
+  Lightbulb,
+  Calculator,
+  ChevronRight,
+  Circle,
+  CheckCircle2,
+  XCircle,
+  Info,
 } from "lucide-react";
 import { trackEvent, trackEventBeforeNavigation } from "@/lib/analytics";
 
@@ -69,6 +78,451 @@ interface FundingProfile {
   alternativeOptions?: AlternativeOption[];
   foundationCTA?: FoundationCTA;
 }
+
+// --- NEW TYPES FOR ENHANCED FEATURES ---
+interface FactorStatus {
+  name: string;
+  value: string;
+  status: "strong" | "moderate" | "needs-work";
+  points: number;
+  maxPoints: number;
+  icon: "credit" | "revenue" | "time" | "industry";
+  improvement?: string;
+}
+
+interface ImprovementStep {
+  factor: string;
+  current: string;
+  target: string;
+  timeframe: string;
+  impact: string;
+  isComplete: boolean;
+}
+
+interface CostBreakdown {
+  fundingAmount: number;
+  totalRepayment: number;
+  costOfCapital: number;
+  estimatedTerm: string;
+  monthlyPayment: number;
+  dailyPayment?: number;
+}
+
+interface IndustryInsight {
+  title: string;
+  description: string;
+  tip?: string;
+}
+
+interface DocumentItem {
+  name: string;
+  required: boolean;
+  description: string;
+}
+
+// --- FUNDABILITY SCORE CALCULATION ---
+const calculateFundabilityScore = (data: FormData): number => {
+  const rev = parseInt(data.monthlyRevenue) || 0;
+  const credit = parseInt(data.creditScore) || 0;
+  const time = parseInt(data.timeInBusiness) || 0;
+  const restricted = ["Gambling", "Adult", "Cannabis", "Non-Profit", "Financial Services"].includes(data.industry);
+
+  let score = 0;
+
+  // Credit Score (0-35 points)
+  if (credit >= 720) score += 35;
+  else if (credit >= 680) score += 30;
+  else if (credit >= 650) score += 25;
+  else if (credit >= 600) score += 18;
+  else if (credit >= 550) score += 10;
+  else if (credit > 0) score += 5;
+
+  // Monthly Revenue (0-30 points)
+  if (rev >= 50000) score += 30;
+  else if (rev >= 40000) score += 27;
+  else if (rev >= 25000) score += 22;
+  else if (rev >= 15000) score += 17;
+  else if (rev >= 10000) score += 12;
+  else if (rev >= 5000) score += 6;
+  else if (rev > 0) score += 2;
+
+  // Time in Business (0-25 points)
+  if (time >= 36) score += 25;
+  else if (time >= 24) score += 22;
+  else if (time >= 12) score += 17;
+  else if (time >= 6) score += 10;
+  else if (time >= 3) score += 5;
+  else if (time > 0) score += 2;
+
+  // Industry (0-10 points)
+  if (!restricted) score += 10;
+  else score += 2;
+
+  return Math.min(100, Math.max(0, score));
+};
+
+// --- FACTOR BREAKDOWN ---
+const getFactorBreakdown = (data: FormData): FactorStatus[] => {
+  const rev = parseInt(data.monthlyRevenue) || 0;
+  const credit = parseInt(data.creditScore) || 0;
+  const time = parseInt(data.timeInBusiness) || 0;
+  const restricted = ["Gambling", "Adult", "Cannabis", "Non-Profit", "Financial Services"].includes(data.industry);
+
+  const factors: FactorStatus[] = [];
+
+  // Credit Score Factor
+  let creditStatus: "strong" | "moderate" | "needs-work" = "needs-work";
+  let creditPoints = 5;
+  let creditImprovement = "Work on improving credit to 650+ for better options";
+  if (credit >= 680) { creditStatus = "strong"; creditPoints = 30; creditImprovement = undefined as any; }
+  else if (credit >= 650) { creditStatus = "moderate"; creditPoints = 25; creditImprovement = "Boost to 680+ to unlock SBA loans"; }
+  else if (credit >= 600) { creditStatus = "moderate"; creditPoints = 18; creditImprovement = "Improve to 650+ to access lines of credit"; }
+  else if (credit >= 550) { creditPoints = 10; creditImprovement = "Focus on credit repair to unlock more options"; }
+
+  factors.push({
+    name: "Credit Score",
+    value: credit > 0 ? `${credit} FICO` : "Not provided",
+    status: creditStatus,
+    points: creditPoints,
+    maxPoints: 35,
+    icon: "credit",
+    improvement: creditImprovement,
+  });
+
+  // Revenue Factor
+  let revStatus: "strong" | "moderate" | "needs-work" = "needs-work";
+  let revPoints = 2;
+  let revImprovement = "Grow revenue to $10K+/mo for funding eligibility";
+  if (rev >= 40000) { revStatus = "strong"; revPoints = 27; revImprovement = undefined as any; }
+  else if (rev >= 25000) { revStatus = "strong"; revPoints = 22; revImprovement = "At $40K+/mo, you'll qualify for SBA loans"; }
+  else if (rev >= 10000) { revStatus = "moderate"; revPoints = 12; revImprovement = "Grow to $25K+/mo for better rates"; }
+  else if (rev >= 5000) { revPoints = 6; revImprovement = "Reach $10K+/mo to unlock working capital"; }
+
+  factors.push({
+    name: "Monthly Revenue",
+    value: rev > 0 ? `$${rev.toLocaleString()}/mo` : "Not provided",
+    status: revStatus,
+    points: revPoints,
+    maxPoints: 30,
+    icon: "revenue",
+    improvement: revImprovement,
+  });
+
+  // Time in Business Factor
+  let timeStatus: "strong" | "moderate" | "needs-work" = "needs-work";
+  let timePoints = 2;
+  let timeImprovement = "Most lenders require 6+ months in business";
+  if (time >= 24) { timeStatus = "strong"; timePoints = 22; timeImprovement = undefined as any; }
+  else if (time >= 12) { timeStatus = "moderate"; timePoints = 17; timeImprovement = "At 24+ months, you'll unlock SBA options"; }
+  else if (time >= 6) { timeStatus = "moderate"; timePoints = 10; timeImprovement = "Continue building history for better terms"; }
+  else if (time >= 3) { timePoints = 5; timeImprovement = "Reach 6 months for working capital eligibility"; }
+
+  factors.push({
+    name: "Time in Business",
+    value: time > 0 ? `${time} months` : "Not provided",
+    status: timeStatus,
+    points: timePoints,
+    maxPoints: 25,
+    icon: "time",
+    improvement: timeImprovement,
+  });
+
+  // Industry Factor
+  factors.push({
+    name: "Industry",
+    value: data.industry || "Not selected",
+    status: restricted ? "needs-work" : "strong",
+    points: restricted ? 2 : 10,
+    maxPoints: 10,
+    icon: "industry",
+    improvement: restricted ? "Consider alternative funding structures for your industry" : undefined,
+  });
+
+  return factors;
+};
+
+// --- IMPROVEMENT ROADMAP ---
+const getImprovementRoadmap = (data: FormData, currentTier: string): ImprovementStep[] => {
+  const rev = parseInt(data.monthlyRevenue) || 0;
+  const credit = parseInt(data.creditScore) || 0;
+  const time = parseInt(data.timeInBusiness) || 0;
+  const steps: ImprovementStep[] = [];
+
+  // Credit improvements
+  if (credit < 650) {
+    steps.push({
+      factor: "Credit Score",
+      current: `${credit}`,
+      target: "650+",
+      timeframe: "60-90 days",
+      impact: "Unlock Lines of Credit & Working Capital",
+      isComplete: false,
+    });
+  } else if (credit < 680) {
+    steps.push({
+      factor: "Credit Score",
+      current: `${credit}`,
+      target: "680+",
+      timeframe: "30-60 days",
+      impact: "Qualify for SBA Loans & Best Rates",
+      isComplete: false,
+    });
+  } else {
+    steps.push({
+      factor: "Credit Score",
+      current: `${credit}`,
+      target: "680+",
+      timeframe: "Complete",
+      impact: "Qualified for best rates",
+      isComplete: true,
+    });
+  }
+
+  // Revenue improvements
+  if (rev < 10000) {
+    steps.push({
+      factor: "Monthly Revenue",
+      current: `$${rev.toLocaleString()}`,
+      target: "$10,000+",
+      timeframe: "Varies",
+      impact: "Become eligible for working capital",
+      isComplete: false,
+    });
+  } else if (rev < 25000) {
+    steps.push({
+      factor: "Monthly Revenue",
+      current: `$${rev.toLocaleString()}`,
+      target: "$25,000+",
+      timeframe: "Growth dependent",
+      impact: "Access Lines of Credit",
+      isComplete: false,
+    });
+  } else if (rev < 40000) {
+    steps.push({
+      factor: "Monthly Revenue",
+      current: `$${rev.toLocaleString()}`,
+      target: "$40,000+",
+      timeframe: "Growth dependent",
+      impact: "Qualify for SBA Loans",
+      isComplete: false,
+    });
+  } else {
+    steps.push({
+      factor: "Monthly Revenue",
+      current: `$${rev.toLocaleString()}`,
+      target: "$40,000+",
+      timeframe: "Complete",
+      impact: "SBA eligible revenue",
+      isComplete: true,
+    });
+  }
+
+  // Time in business improvements
+  if (time < 6) {
+    steps.push({
+      factor: "Time in Business",
+      current: `${time} months`,
+      target: "6+ months",
+      timeframe: `${6 - time} months`,
+      impact: "Basic funding eligibility",
+      isComplete: false,
+    });
+  } else if (time < 12) {
+    steps.push({
+      factor: "Time in Business",
+      current: `${time} months`,
+      target: "12+ months",
+      timeframe: `${12 - time} months`,
+      impact: "Unlock better rates & terms",
+      isComplete: false,
+    });
+  } else if (time < 24) {
+    steps.push({
+      factor: "Time in Business",
+      current: `${time} months`,
+      target: "24+ months",
+      timeframe: `${24 - time} months`,
+      impact: "SBA loan eligibility",
+      isComplete: false,
+    });
+  } else {
+    steps.push({
+      factor: "Time in Business",
+      current: `${time} months`,
+      target: "24+ months",
+      timeframe: "Complete",
+      impact: "SBA eligible history",
+      isComplete: true,
+    });
+  }
+
+  return steps;
+};
+
+// --- REAL COST CALCULATOR ---
+const calculateRealCost = (data: FormData, profile: FundingProfile): CostBreakdown => {
+  const requestedAmount = parseInt(data.loanAmount) || 0;
+  const fundingAmount = Math.min(requestedAmount, profile.maxAmount) || profile.maxAmount;
+
+  let totalRepayment = 0;
+  let estimatedTerm = "";
+  let monthlyPayment = 0;
+  let dailyPayment: number | undefined;
+
+  // Calculate based on product type
+  if (profile.product.includes("SBA") || profile.product.includes("Bank Term")) {
+    // SBA: ~8% APR, 10 year term
+    const rate = 0.08;
+    const termMonths = 120;
+    monthlyPayment = (fundingAmount * (rate/12) * Math.pow(1 + rate/12, termMonths)) / (Math.pow(1 + rate/12, termMonths) - 1);
+    totalRepayment = monthlyPayment * termMonths;
+    estimatedTerm = "10 years";
+  } else if (profile.product.includes("Line of Credit")) {
+    // LOC: ~18% APR, revolving
+    const rate = 0.18;
+    const termMonths = 24;
+    monthlyPayment = (fundingAmount * (rate/12) * Math.pow(1 + rate/12, termMonths)) / (Math.pow(1 + rate/12, termMonths) - 1);
+    totalRepayment = monthlyPayment * termMonths;
+    estimatedTerm = "24 months (revolving)";
+  } else if (profile.product.includes("Short-Term") || profile.product.includes("Working Capital")) {
+    // Short-term: ~25% APR, 12 months
+    const rate = 0.25;
+    const termMonths = 12;
+    monthlyPayment = (fundingAmount * (rate/12) * Math.pow(1 + rate/12, termMonths)) / (Math.pow(1 + rate/12, termMonths) - 1);
+    totalRepayment = monthlyPayment * termMonths;
+    estimatedTerm = "12 months";
+  } else if (profile.product.includes("MCA") || profile.product.includes("Revenue Based")) {
+    // MCA: Factor rate 1.25-1.40
+    const factorRate = profile.rates.includes("1.40") ? 1.40 : 1.25;
+    totalRepayment = fundingAmount * factorRate;
+    const termDays = 120; // ~4 months daily
+    dailyPayment = totalRepayment / termDays;
+    monthlyPayment = dailyPayment * 22; // ~22 business days
+    estimatedTerm = "4-6 months (daily)";
+  } else if (profile.product.includes("Credit Stacking") || profile.product.includes("0%")) {
+    // 0% intro credit cards
+    totalRepayment = fundingAmount; // 0% intro
+    estimatedTerm = "12-21 months (0% intro)";
+    monthlyPayment = fundingAmount / 18; // avg 18 month payoff
+  } else {
+    // Default/Foundation: estimate
+    totalRepayment = fundingAmount;
+    monthlyPayment = 0;
+    estimatedTerm = "N/A";
+  }
+
+  return {
+    fundingAmount,
+    totalRepayment: Math.round(totalRepayment),
+    costOfCapital: Math.round(totalRepayment - fundingAmount),
+    estimatedTerm,
+    monthlyPayment: Math.round(monthlyPayment),
+    dailyPayment: dailyPayment ? Math.round(dailyPayment) : undefined,
+  };
+};
+
+// --- INDUSTRY INSIGHTS ---
+const getIndustryInsights = (industry: string): IndustryInsight[] => {
+  const insights: Record<string, IndustryInsight[]> = {
+    Construction: [
+      { title: "Equipment Financing Available", description: "Construction businesses often qualify for equipment loans at lower rates than working capital.", tip: "Consider equipment financing for machinery purchases - rates can be 5-10% lower." },
+      { title: "Seasonal Revenue Consideration", description: "Lenders understand seasonal fluctuations in construction. Provide 12+ months of statements to show full cycles." },
+    ],
+    Retail: [
+      { title: "Inventory Financing Option", description: "Retail businesses can leverage inventory as collateral for better terms.", tip: "Inventory-backed loans often have 20-30% better rates than unsecured options." },
+      { title: "POS Integration Bonus", description: "Lenders favor businesses with established POS systems showing consistent sales data." },
+    ],
+    Restaurant: [
+      { title: "Daily Revenue Programs", description: "Restaurant-specific MCA programs base payments on daily credit card sales.", tip: "If 50%+ of revenue is card-based, you may qualify for revenue-based financing with flexible payments." },
+      { title: "Equipment Leasing", description: "Kitchen equipment can often be leased with minimal upfront cost." },
+    ],
+    Medical: [
+      { title: "Healthcare-Specific Lenders", description: "Medical practices often qualify for specialized healthcare financing with better terms.", tip: "Look into healthcare practice loans - they typically offer longer terms (7-10 years)." },
+      { title: "Accounts Receivable Financing", description: "Medical AR from insurance can be factored for immediate cash flow." },
+    ],
+    Trucking: [
+      { title: "Equipment Financing Preferred", description: "Trucks and trailers serve as excellent collateral, often securing better rates.", tip: "Equipment loans for trucks can be 40-50% cheaper than working capital loans." },
+      { title: "Fuel Card Programs", description: "Some lenders offer integrated fuel card advances tied to your loads." },
+    ],
+    Technology: [
+      { title: "Revenue-Based Financing", description: "SaaS and tech companies often qualify for revenue-based financing tied to MRR.", tip: "If you have recurring revenue, explore venture debt or revenue-based financing options." },
+      { title: "Startup-Friendly Options", description: "Tech startups with strong credit can access 0% credit stacking even without revenue." },
+    ],
+    Consulting: [
+      { title: "Invoice Factoring Available", description: "Consulting firms with outstanding invoices can factor them for immediate cash.", tip: "Invoice factoring can provide 80-90% of invoice value within 24 hours." },
+      { title: "Lower Documentation", description: "Service businesses often qualify with simplified documentation requirements." },
+    ],
+    "Real Estate": [
+      { title: "Asset-Based Lending", description: "Real estate investors can leverage property equity for business capital.", tip: "Consider a HELOC or commercial property loan for lower rates than business loans." },
+      { title: "Bridge Financing", description: "Short-term bridge loans available for property acquisitions and flips." },
+    ],
+    Manufacturing: [
+      { title: "Equipment & Inventory Financing", description: "Manufacturing equipment and raw materials can serve as collateral.", tip: "SBA 504 loans are excellent for manufacturing equipment purchases." },
+      { title: "Purchase Order Financing", description: "Large POs can be financed to fulfill orders without depleting cash." },
+    ],
+    default: [
+      { title: "Multiple Options Available", description: "Your industry qualifies for standard business financing products." },
+      { title: "Compare Offers", description: "We recommend comparing at least 3 offers to ensure the best terms for your situation." },
+    ],
+  };
+
+  return insights[industry] || insights.default;
+};
+
+// --- DOCUMENT CHECKLIST ---
+const getDocumentChecklist = (profile: FundingProfile): DocumentItem[] => {
+  const baseDocuments: DocumentItem[] = [
+    { name: "Government-Issued ID", required: true, description: "Driver's license or passport" },
+    { name: "Voided Business Check", required: true, description: "For funding deposit" },
+  ];
+
+  if (profile.isFoundationBuilding) {
+    return [
+      ...baseDocuments,
+      { name: "Personal Credit Report", required: true, description: "We'll do a soft pull - no impact to score" },
+      { name: "Proof of Business", required: false, description: "Business license, EIN letter, or incorporation docs" },
+    ];
+  }
+
+  if (profile.product.includes("SBA") || profile.product.includes("Bank Term")) {
+    return [
+      ...baseDocuments,
+      { name: "3 Years Business Tax Returns", required: true, description: "Complete returns with all schedules" },
+      { name: "3 Years Personal Tax Returns", required: true, description: "For all owners with 20%+ ownership" },
+      { name: "Year-to-Date P&L Statement", required: true, description: "Current year profit & loss" },
+      { name: "Balance Sheet", required: true, description: "Current business balance sheet" },
+      { name: "12 Months Bank Statements", required: true, description: "All business bank accounts" },
+      { name: "Business Debt Schedule", required: true, description: "List of all current business debts" },
+      { name: "Business Plan", required: false, description: "May be required for larger amounts" },
+    ];
+  }
+
+  if (profile.product.includes("Line of Credit")) {
+    return [
+      ...baseDocuments,
+      { name: "6 Months Bank Statements", required: true, description: "Primary business account" },
+      { name: "Business Tax Returns (1-2 years)", required: true, description: "Most recent returns" },
+      { name: "Personal Tax Returns", required: false, description: "May be required for larger amounts" },
+      { name: "Accounts Receivable Aging", required: false, description: "If applicable to your business" },
+    ];
+  }
+
+  if (profile.product.includes("MCA") || profile.product.includes("Revenue Based")) {
+    return [
+      ...baseDocuments,
+      { name: "4 Months Bank Statements", required: true, description: "Primary business account" },
+      { name: "Credit Card Processing Statements", required: false, description: "If you accept card payments" },
+    ];
+  }
+
+  // Default/Working Capital
+  return [
+    ...baseDocuments,
+    { name: "4-6 Months Bank Statements", required: true, description: "Primary business account" },
+    { name: "Business Tax Return", required: false, description: "Most recent year (may be required)" },
+    { name: "Business License", required: false, description: "Proof of business registration" },
+  ];
+};
 
 // --- INDUSTRY OPTIONS ---
 const INDUSTRIES = [
@@ -489,8 +943,42 @@ export default function FundingReport() {
     [formData]
   );
 
+  // New enhanced calculations
+  const fundabilityScore = useMemo(
+    () => calculateFundabilityScore(formData),
+    [formData]
+  );
+
+  const factors = useMemo(
+    () => getFactorBreakdown(formData),
+    [formData]
+  );
+
+  const roadmap = useMemo(
+    () => getImprovementRoadmap(formData, profile.tier),
+    [formData, profile.tier]
+  );
+
+  const costBreakdown = useMemo(
+    () => calculateRealCost(formData, profile),
+    [formData, profile]
+  );
+
+  const industryInsights = useMemo(
+    () => getIndustryInsights(formData.industry),
+    [formData.industry]
+  );
+
+  const documents = useMemo(
+    () => getDocumentChecklist(profile),
+    [profile]
+  );
+
+  // Total slides: 0-Intro, 1-Score, 2-Factors, 3-Diagnosis, 4-Cost/Alternatives, 5-Roadmap, 6-Industry, 7-Documents, 8-CTA
+  const totalSlides = 9;
+
   const handleNext = () => {
-    if (currentSlide < 4) setCurrentSlide((c) => c + 1);
+    if (currentSlide < totalSlides - 1) setCurrentSlide((c) => c + 1);
   };
 
   const handlePrev = () => {
@@ -685,83 +1173,125 @@ export default function FundingReport() {
       </div>
     </div>,
 
-    // Slide 1: Vitals
+    // Slide 1: Fundability Score
     <div
-      key="vitals"
-      className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-black"
+      key="score"
+      className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-br from-slate-900 to-black"
     >
-      <h3 className="text-2xl font-bold mb-8 text-gray-400 uppercase tracking-widest">
-        Your Vitals
+      <h3 className="text-sm font-bold mb-4 text-gray-400 uppercase tracking-widest">
+        Your Fundability Score
       </h3>
 
-      <div className="w-full max-w-sm space-y-4">
-        <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <DollarSign className="text-green-400 h-6 w-6" />
-            <div className="text-left">
-              <div className="text-xs text-gray-500">Revenue</div>
-              <div className="font-bold text-lg">
-                {formatCurrency(parseInt(formData.monthlyRevenue) || 0)}/mo
+      {/* Circular Score Display */}
+      <div className="relative w-48 h-48 mb-6">
+        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+          {/* Background circle */}
+          <circle
+            cx="50"
+            cy="50"
+            r="45"
+            fill="none"
+            stroke="rgba(255,255,255,0.1)"
+            strokeWidth="8"
+          />
+          {/* Score circle */}
+          <circle
+            cx="50"
+            cy="50"
+            r="45"
+            fill="none"
+            stroke={fundabilityScore >= 70 ? "#22c55e" : fundabilityScore >= 50 ? "#eab308" : fundabilityScore >= 35 ? "#f97316" : "#ef4444"}
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray={`${fundabilityScore * 2.83} 283`}
+            className="transition-all duration-1000"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className={`text-5xl font-black ${fundabilityScore >= 70 ? "text-green-400" : fundabilityScore >= 50 ? "text-yellow-400" : fundabilityScore >= 35 ? "text-orange-400" : "text-red-400"}`}>
+            {fundabilityScore}
+          </span>
+          <span className="text-gray-500 text-sm">out of 100</span>
+        </div>
+      </div>
+
+      {/* Score Label */}
+      <div className={`inline-block px-4 py-2 rounded-full text-sm font-bold mb-4 ${
+        fundabilityScore >= 70 ? "bg-green-500/20 text-green-400" :
+        fundabilityScore >= 50 ? "bg-yellow-500/20 text-yellow-400" :
+        fundabilityScore >= 35 ? "bg-orange-500/20 text-orange-400" :
+        "bg-red-500/20 text-red-400"
+      }`}>
+        {fundabilityScore >= 80 ? "Prime Borrower" :
+         fundabilityScore >= 65 ? "Strong Candidate" :
+         fundabilityScore >= 50 ? "Moderate Risk" :
+         fundabilityScore >= 35 ? "Needs Improvement" :
+         "Foundation Building"}
+      </div>
+
+      <p className="text-gray-400 text-sm max-w-xs">
+        {fundabilityScore >= 70
+          ? "Excellent! You qualify for the best rates and terms available."
+          : fundabilityScore >= 50
+          ? "Good standing. You have solid funding options available."
+          : fundabilityScore >= 35
+          ? "Some options available. See how to improve your score."
+          : "Focus on building your foundation first for better options."}
+      </p>
+    </div>,
+
+    // Slide 2: Factor Breakdown
+    <div
+      key="factors"
+      className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-black overflow-y-auto"
+    >
+      <h3 className="text-sm font-bold mb-2 text-gray-400 uppercase tracking-widest">
+        What's Impacting Your Score
+      </h3>
+      <p className="text-gray-500 text-xs mb-6">Your fundability breakdown by factor</p>
+
+      <div className="w-full max-w-sm space-y-3">
+        {factors.map((factor, idx) => (
+          <div key={idx} className="bg-gray-900 p-4 rounded-xl border border-gray-800">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                {factor.icon === "credit" && <CreditCard className="h-4 w-4 text-blue-400" />}
+                {factor.icon === "revenue" && <DollarSign className="h-4 w-4 text-green-400" />}
+                {factor.icon === "time" && <Calendar className="h-4 w-4 text-purple-400" />}
+                {factor.icon === "industry" && <Briefcase className="h-4 w-4 text-orange-400" />}
+                <span className="font-medium text-sm text-white">{factor.name}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">{factor.points}/{factor.maxPoints} pts</span>
+                {factor.status === "strong" && <CheckCircle className="h-4 w-4 text-green-500" />}
+                {factor.status === "moderate" && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
+                {factor.status === "needs-work" && <XCircle className="h-4 w-4 text-red-500" />}
               </div>
             </div>
-          </div>
-          {parseInt(formData.monthlyRevenue) >= 10000 ? (
-            <CheckCircle className="text-green-500 h-5 w-5" />
-          ) : (
-            <AlertTriangle className="text-yellow-500 h-5 w-5" />
-          )}
-        </div>
-
-        <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <TrendingUp className="text-blue-400 h-6 w-6" />
-            <div className="text-left">
-              <div className="text-xs text-gray-500">Credit Score</div>
-              <div className="font-bold text-lg">{formData.creditScore} FICO</div>
-            </div>
-          </div>
-          {parseInt(formData.creditScore) >= 650 ? (
-            <CheckCircle className="text-green-500 h-5 w-5" />
-          ) : (
-            <AlertTriangle className="text-yellow-500 h-5 w-5" />
-          )}
-        </div>
-
-        <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Calendar className="text-purple-400 h-6 w-6" />
-            <div className="text-left">
-              <div className="text-xs text-gray-500">Time in Business</div>
-              <div className="font-bold text-lg">
-                {formData.timeInBusiness} Months
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    factor.status === "strong" ? "bg-green-500" :
+                    factor.status === "moderate" ? "bg-yellow-500" :
+                    "bg-red-500"
+                  }`}
+                  style={{ width: `${(factor.points / factor.maxPoints) * 100}%` }}
+                />
               </div>
             </div>
-          </div>
-          {parseInt(formData.timeInBusiness) >= 12 ? (
-            <CheckCircle className="text-green-500 h-5 w-5" />
-          ) : (
-            <AlertTriangle className="text-yellow-500 h-5 w-5" />
-          )}
-        </div>
-
-        <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Briefcase className="text-orange-400 h-6 w-6" />
-            <div className="text-left">
-              <div className="text-xs text-gray-500">Industry</div>
-              <div className="font-bold text-lg">{formData.industry}</div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-400">{factor.value}</span>
+              {factor.improvement && (
+                <span className="text-xs text-blue-400">{factor.improvement}</span>
+              )}
             </div>
           </div>
-          {!["Gambling", "Adult", "Cannabis", "Non-Profit", "Financial Services"].includes(formData.industry) ? (
-            <CheckCircle className="text-green-500 h-5 w-5" />
-          ) : (
-            <AlertTriangle className="text-orange-500 h-5 w-5" />
-          )}
-        </div>
+        ))}
       </div>
     </div>,
 
-    // Slide 2: The Diagnosis
+    // Slide 3: The Diagnosis
     <div
       key="diagnosis"
       className={`h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-br ${profile.bgClass} relative`}
@@ -882,7 +1412,183 @@ export default function FundingReport() {
       </div>
     ),
 
-    // Slide 4: CTA (different for Foundation Building - interest capture flow)
+    // Slide 5: Cost Calculator (for qualified profiles) or Improvement Roadmap (for foundation building)
+    profile.isFoundationBuilding ? (
+      <div
+        key="roadmap"
+        className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-br from-indigo-900 to-black overflow-y-auto"
+      >
+        <Target className="h-10 w-10 text-indigo-400 mb-4" />
+        <h3 className="text-sm font-bold mb-2 text-gray-400 uppercase tracking-widest">
+          Your Path Forward
+        </h3>
+        <p className="text-gray-500 text-xs mb-6">Steps to unlock better funding options</p>
+
+        <div className="w-full max-w-sm space-y-3">
+          {roadmap.map((step, idx) => (
+            <div
+              key={idx}
+              className={`p-4 rounded-xl border ${
+                step.isComplete
+                  ? "bg-green-900/20 border-green-800"
+                  : "bg-gray-900 border-gray-800"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className={`mt-1 p-1 rounded-full ${step.isComplete ? "bg-green-500" : "bg-gray-700"}`}>
+                  {step.isComplete ? (
+                    <CheckCircle2 className="h-4 w-4 text-white" />
+                  ) : (
+                    <Circle className="h-4 w-4 text-gray-400" />
+                  )}
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="font-medium text-white text-sm">{step.factor}</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {step.current} → <span className="text-indigo-400">{step.target}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className={`text-xs ${step.isComplete ? "text-green-400" : "text-yellow-400"}`}>
+                      {step.timeframe}
+                    </span>
+                    <span className="text-xs text-gray-500">{step.impact}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ) : (
+      <div
+        key="cost"
+        className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-black"
+      >
+        <Calculator className="h-10 w-10 text-green-400 mb-4" />
+        <h3 className="text-sm font-bold mb-2 text-gray-400 uppercase tracking-widest">
+          Real Cost Breakdown
+        </h3>
+        <p className="text-gray-500 text-xs mb-6">What this funding will actually cost you</p>
+
+        <div className="w-full max-w-sm bg-gray-900 rounded-xl border border-gray-800 p-5">
+          <div className="text-center mb-6">
+            <div className="text-3xl font-black text-white mb-1">
+              {formatCurrency(costBreakdown.fundingAmount)}
+            </div>
+            <div className="text-xs text-gray-500">Funding Amount</div>
+          </div>
+
+          <div className="space-y-3 mb-6">
+            <div className="flex justify-between items-center py-2 border-b border-gray-800">
+              <span className="text-gray-400 text-sm">Total Repayment</span>
+              <span className="font-bold text-white">{formatCurrency(costBreakdown.totalRepayment)}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-800">
+              <span className="text-gray-400 text-sm">Cost of Capital</span>
+              <span className={`font-bold ${costBreakdown.costOfCapital === 0 ? "text-green-400" : "text-yellow-400"}`}>
+                {costBreakdown.costOfCapital === 0 ? "0% Intro" : formatCurrency(costBreakdown.costOfCapital)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-gray-800">
+              <span className="text-gray-400 text-sm">Est. Term</span>
+              <span className="font-bold text-white">{costBreakdown.estimatedTerm}</span>
+            </div>
+            <div className="flex justify-between items-center py-2">
+              <span className="text-gray-400 text-sm">
+                {costBreakdown.dailyPayment ? "Daily Payment" : "Monthly Payment"}
+              </span>
+              <span className="font-bold text-green-400">
+                ~{formatCurrency(costBreakdown.dailyPayment || costBreakdown.monthlyPayment)}
+              </span>
+            </div>
+          </div>
+
+          {costBreakdown.costOfCapital > 0 && (
+            <div className="text-xs text-gray-500 bg-gray-800 p-3 rounded-lg">
+              <Info className="h-3 w-3 inline mr-1" />
+              Estimates based on typical rates for {profile.product}. Actual terms may vary.
+            </div>
+          )}
+        </div>
+      </div>
+    ),
+
+    // Slide 6: Industry Insights
+    <div
+      key="industry"
+      className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-gradient-to-br from-cyan-900 to-black overflow-y-auto"
+    >
+      <Lightbulb className="h-10 w-10 text-cyan-400 mb-4" />
+      <h3 className="text-sm font-bold mb-2 text-gray-400 uppercase tracking-widest">
+        {formData.industry} Industry Insights
+      </h3>
+      <p className="text-gray-500 text-xs mb-6">Funding tips specific to your business type</p>
+
+      <div className="w-full max-w-sm space-y-4">
+        {industryInsights.map((insight, idx) => (
+          <div key={idx} className="bg-gray-900/80 p-4 rounded-xl border border-gray-800 text-left">
+            <div className="font-medium text-white text-sm mb-2">{insight.title}</div>
+            <p className="text-xs text-gray-400 mb-2">{insight.description}</p>
+            {insight.tip && (
+              <div className="text-xs text-cyan-400 bg-cyan-900/30 p-2 rounded-lg flex items-start gap-2">
+                <Lightbulb className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                <span>{insight.tip}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>,
+
+    // Slide 7: Document Checklist
+    <div
+      key="documents"
+      className="h-full w-full flex flex-col justify-center items-center p-6 text-center bg-black overflow-y-auto"
+    >
+      <FileText className="h-10 w-10 text-amber-400 mb-4" />
+      <h3 className="text-sm font-bold mb-2 text-gray-400 uppercase tracking-widest">
+        Documents You'll Need
+      </h3>
+      <p className="text-gray-500 text-xs mb-6">Prepare these for faster approval</p>
+
+      <div className="w-full max-w-sm space-y-2">
+        {documents.map((doc, idx) => (
+          <div
+            key={idx}
+            className={`p-3 rounded-lg border flex items-start gap-3 text-left ${
+              doc.required
+                ? "bg-amber-900/20 border-amber-800/50"
+                : "bg-gray-900 border-gray-800"
+            }`}
+          >
+            <div className={`mt-0.5 ${doc.required ? "text-amber-400" : "text-gray-600"}`}>
+              {doc.required ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <Circle className="h-4 w-4" />
+              )}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-white text-sm">{doc.name}</span>
+                {doc.required && (
+                  <span className="text-xs px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded">
+                    Required
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{doc.description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 text-xs text-gray-500 max-w-xs">
+        Having these ready can speed up your approval by 2-3 business days
+      </div>
+    </div>,
+
+    // Slide 8: CTA (different for Foundation Building - interest capture flow)
     profile.isFoundationBuilding && profile.alternativeOptions ? (
       <div
         key="cta-foundation"
