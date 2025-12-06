@@ -153,6 +153,9 @@ export default function QuizIntake() {
 
   const submitMutation = useMutation({
     mutationFn: async (data: QuizData & { recaptchaToken?: string }) => {
+      // Check for referral partner ID from localStorage (set when visiting /r/:code)
+      const referralPartnerId = localStorage.getItem("referralPartnerId");
+
       const response = await apiRequest("POST", "/api/applications", {
         email: data.email,
         fullName: data.fullName,
@@ -169,6 +172,8 @@ export default function QuizIntake() {
         isCompleted: true,
         recaptchaToken: data.recaptchaToken,
         faxNumber: data.faxNumber,
+        // Include referral partner ID if from partner link
+        ...(referralPartnerId && { referralPartnerId }),
       });
       return response.json();
     },

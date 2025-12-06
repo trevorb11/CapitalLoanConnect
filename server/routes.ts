@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import path from "path";
 import fs from "fs";
-import { randomUUID } from "crypto";
+import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import multer from "multer";
 import PDFDocument from "pdfkit";
 import { storage } from "./storage";
@@ -301,12 +301,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Check auth status
   app.get("/api/auth/check", (req, res) => {
     if (req.session.user?.isAuthenticated) {
-      return res.json({
+      const response: any = {
         isAuthenticated: true,
         role: req.session.user.role,
-        agentEmail: req.session.user.agentEmail,
-        agentName: req.session.user.agentName,
-      });
+      };
+
+      // Include role-specific fields
+      if (req.session.user.role === 'agent') {
+        response.agentEmail = req.session.user.agentEmail;
+        response.agentName = req.session.user.agentName;
+      } else if (req.session.user.role === 'partner') {
+        response.partnerId = req.session.user.partnerId;
+        response.partnerEmail = req.session.user.partnerEmail;
+        response.partnerName = req.session.user.partnerName;
+        response.companyName = req.session.user.companyName;
+      }
+
+      return res.json(response);
     }
     res.json({ isAuthenticated: false });
   });
@@ -1249,6 +1260,360 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching bot attempts count:", error);
       res.status(500).json({ error: "Failed to fetch count" });
+    }
+  });
+
+  // ========================================
+  // PARTNER PORTAL ROUTES
+  // ========================================
+
+  // Helper functions for password hashing
+  const hashPassword = (password: string): string => {
+    const salt = randomBytes(16).toString("hex");
+    const hash = scryptSync(password, salt, 64).toString("hex");
+    return `${salt}:${hash}`;
+  };
+
+  const verifyPassword = (password: string, storedHash: string): boolean => {
+    const [salt, hash] = storedHash.split(":");
+    const hashBuffer = Buffer.from(hash, "hex");
+    const suppliedHashBuffer = scryptSync(password, salt, 64);
+    return timingSafeEqual(hashBuffer, suppliedHashBuffer);
+  };
+
+  // Generate unique invite code for partners
+  const generateInviteCode = (): string => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let code = "";
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
+
+  // Partner Registration
+  app.post("/api/partner/register", async (req, res) => {
+    try {
+      const { email, password, companyName, contactName, phone, profession, clientBaseSize } = req.body;
+
+      // Validate required fields
+      if (!email || !password || !companyName || !contactName) {
+        return res.status(400).json({ error: "Email, password, company name, and contact name are required" });
+      }
+
+      // Check if partner already exists
+      const existingPartner = await storage.getPartnerByEmail(email.toLowerCase());
+      if (existingPartner) {
+        return res.status(409).json({ error: "A partner account with this email already exists" });
+      }
+
+      // Generate unique invite code
+      let inviteCode = generateInviteCode();
+      let existingCode = await storage.getPartnerByInviteCode(inviteCode);
+      while (existingCode) {
+        inviteCode = generateInviteCode();
+        existingCode = await storage.getPartnerByInviteCode(inviteCode);
+      }
+
+      // Hash password and create partner
+      const passwordHash = hashPassword(password);
+      const partner = await storage.createPartner({
+        email: email.toLowerCase(),
+        passwordHash,
+        companyName,
+        contactName,
+        phone: phone || null,
+        profession: profession || null,
+        clientBaseSize: clientBaseSize || null,
+        inviteCode,
+        isActive: true,
+      });
+
+      // Set session
+      req.session.user = {
+        isAuthenticated: true,
+        role: "partner",
+        partnerId: partner.id,
+        partnerEmail: partner.email,
+        partnerName: partner.contactName,
+        companyName: partner.companyName,
+      };
+
+      res.json({
+        success: true,
+        partner: {
+          id: partner.id,
+          email: partner.email,
+          companyName: partner.companyName,
+          contactName: partner.contactName,
+          inviteCode: partner.inviteCode,
+        },
+      });
+    } catch (error) {
+      console.error("Partner registration error:", error);
+      res.status(500).json({ error: "Failed to register partner" });
+    }
+  });
+
+  // Partner Login
+  app.post("/api/partner/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+
+      const partner = await storage.getPartnerByEmail(email.toLowerCase());
+      if (!partner) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      if (!partner.isActive) {
+        return res.status(403).json({ error: "Account is disabled. Please contact support." });
+      }
+
+      const isValidPassword = verifyPassword(password, partner.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      // Set session
+      req.session.user = {
+        isAuthenticated: true,
+        role: "partner",
+        partnerId: partner.id,
+        partnerEmail: partner.email,
+        partnerName: partner.contactName,
+        companyName: partner.companyName,
+      };
+
+      res.json({
+        success: true,
+        role: "partner",
+        partner: {
+          id: partner.id,
+          email: partner.email,
+          companyName: partner.companyName,
+          contactName: partner.contactName,
+          inviteCode: partner.inviteCode,
+          commissionRate: partner.commissionRate,
+        },
+      });
+    } catch (error) {
+      console.error("Partner login error:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // Get partner profile
+  app.get("/api/partner/profile", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== "partner" || !req.session.user.partnerId) {
+        return res.status(401).json({ error: "Partner authentication required" });
+      }
+
+      const partnerId = req.session.user.partnerId;
+      const partner = await storage.getPartner(partnerId);
+      if (!partner) {
+        return res.status(404).json({ error: "Partner not found" });
+      }
+
+      res.json({
+        id: partner.id,
+        email: partner.email,
+        companyName: partner.companyName,
+        contactName: partner.contactName,
+        phone: partner.phone,
+        profession: partner.profession,
+        clientBaseSize: partner.clientBaseSize,
+        logoUrl: partner.logoUrl,
+        inviteCode: partner.inviteCode,
+        commissionRate: partner.commissionRate,
+        createdAt: partner.createdAt,
+      });
+    } catch (error) {
+      console.error("Error fetching partner profile:", error);
+      res.status(500).json({ error: "Failed to fetch profile" });
+    }
+  });
+
+  // Get partner's referred applications (filtered and redacted)
+  app.get("/api/partner/applications", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== "partner" || !req.session.user.partnerId) {
+        return res.status(401).json({ error: "Partner authentication required" });
+      }
+
+      const partnerId = req.session.user.partnerId;
+      const applications = await storage.getApplicationsByPartnerId(partnerId);
+
+      // Redact sensitive fields - partners should only see status, not sensitive data
+      const redactedApplications = applications.map((app) => ({
+        id: app.id,
+        businessName: app.businessName || app.legalBusinessName,
+        contactName: app.fullName,
+        email: app.email, // Partners may need to know which client this is
+        phone: app.phone,
+        requestedAmount: app.requestedAmount,
+        status: getApplicationStatus(app),
+        createdAt: app.createdAt,
+        updatedAt: app.updatedAt,
+        // Business context (non-sensitive)
+        industry: app.industry,
+        timeInBusiness: app.timeInBusiness,
+        // Progress indicators
+        isCompleted: app.isCompleted,
+        isFullApplicationCompleted: app.isFullApplicationCompleted,
+        hasBankConnection: !!app.plaidItemId,
+      }));
+
+      res.json(redactedApplications);
+    } catch (error) {
+      console.error("Error fetching partner applications:", error);
+      res.status(500).json({ error: "Failed to fetch applications" });
+    }
+  });
+
+  // Helper function to determine application status for partners
+  function getApplicationStatus(app: LoanApplication): string {
+    if (!app.isCompleted) return "Intake Started";
+    if (!app.isFullApplicationCompleted) return "Pre-Qualified";
+    if (!app.plaidItemId) return "Application Submitted";
+    // Could add more statuses based on other fields in the future
+    return "Under Review";
+  }
+
+  // Get partner stats/dashboard summary
+  app.get("/api/partner/stats", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== "partner" || !req.session.user.partnerId) {
+        return res.status(401).json({ error: "Partner authentication required" });
+      }
+
+      const partnerId = req.session.user.partnerId;
+      const applications = await storage.getApplicationsByPartnerId(partnerId);
+      const partner = await storage.getPartner(partnerId);
+
+      const totalReferrals = applications.length;
+      const intakeCompleted = applications.filter((a) => a.isCompleted).length;
+      const fullAppsCompleted = applications.filter((a) => a.isFullApplicationCompleted).length;
+      const withBankConnection = applications.filter((a) => a.plaidItemId).length;
+
+      // Calculate total requested volume
+      const totalRequestedVolume = applications.reduce((sum, app) => {
+        const amount = parseFloat(app.requestedAmount?.toString() || "0");
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
+
+      // Estimated commission (based on requested amounts, not funded - placeholder)
+      const commissionRate = parseFloat(partner?.commissionRate?.toString() || "3") / 100;
+      const estimatedCommission = totalRequestedVolume * commissionRate;
+
+      res.json({
+        totalReferrals,
+        intakeCompleted,
+        fullAppsCompleted,
+        withBankConnection,
+        totalRequestedVolume,
+        estimatedCommission,
+        commissionRate: partner?.commissionRate || "3.00",
+      });
+    } catch (error) {
+      console.error("Error fetching partner stats:", error);
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  });
+
+  // Validate referral code (for /r/:code route)
+  app.get("/api/partner/validate-code/:code", async (req, res) => {
+    try {
+      const { code } = req.params;
+      const partner = await storage.getPartnerByInviteCode(code.toUpperCase());
+
+      if (!partner || !partner.isActive) {
+        return res.status(404).json({ valid: false, error: "Invalid referral code" });
+      }
+
+      res.json({
+        valid: true,
+        partnerId: partner.id,
+        companyName: partner.companyName,
+      });
+    } catch (error) {
+      console.error("Error validating referral code:", error);
+      res.status(500).json({ valid: false, error: "Failed to validate code" });
+    }
+  });
+
+  // Admin: Get all partners (admin only)
+  app.get("/api/admin/partners", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const partners = await storage.getAllPartners();
+
+      // Include application counts for each partner
+      const partnersWithStats = await Promise.all(
+        partners.map(async (partner) => {
+          const applications = await storage.getApplicationsByPartnerId(partner.id);
+          return {
+            id: partner.id,
+            email: partner.email,
+            companyName: partner.companyName,
+            contactName: partner.contactName,
+            phone: partner.phone,
+            profession: partner.profession,
+            inviteCode: partner.inviteCode,
+            commissionRate: partner.commissionRate,
+            isActive: partner.isActive,
+            totalReferrals: applications.length,
+            createdAt: partner.createdAt,
+          };
+        })
+      );
+
+      res.json(partnersWithStats);
+    } catch (error) {
+      console.error("Error fetching partners:", error);
+      res.status(500).json({ error: "Failed to fetch partners" });
+    }
+  });
+
+  // Admin: Update partner (enable/disable, change commission rate)
+  app.patch("/api/admin/partners/:id", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { id } = req.params;
+      const { isActive, commissionRate } = req.body;
+
+      const updates: any = {};
+      if (typeof isActive === "boolean") updates.isActive = isActive;
+      if (commissionRate !== undefined) updates.commissionRate = commissionRate.toString();
+
+      const partner = await storage.updatePartner(id, updates);
+      if (!partner) {
+        return res.status(404).json({ error: "Partner not found" });
+      }
+
+      res.json({
+        success: true,
+        partner: {
+          id: partner.id,
+          email: partner.email,
+          companyName: partner.companyName,
+          isActive: partner.isActive,
+          commissionRate: partner.commissionRate,
+        },
+      });
+    } catch (error) {
+      console.error("Error updating partner:", error);
+      res.status(500).json({ error: "Failed to update partner" });
     }
   });
 

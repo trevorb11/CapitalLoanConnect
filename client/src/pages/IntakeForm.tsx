@@ -138,6 +138,9 @@ export default function IntakeForm() {
   // Create application mutation
   const createMutation = useMutation({
     mutationFn: async (data: Step1Data) => {
+      // Check for referral partner ID from localStorage (set when visiting /r/:code)
+      const referralPartnerId = localStorage.getItem("referralPartnerId");
+
       const response = await apiRequest("POST", "/api/applications", {
         email: data.email,
         fullName: data.fullName,
@@ -159,6 +162,8 @@ export default function IntakeForm() {
         mcaBalanceAmount: data.mcaBalanceAmount?.replace(/\D/g, "") || "",
         mcaBalanceBankName: data.mcaBalanceBankName || "",
         currentStep: 1,
+        // Include referral partner ID if from partner link
+        ...(referralPartnerId && { referralPartnerId }),
       }) as Response;
       return response.json();
     },

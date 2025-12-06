@@ -3,9 +3,39 @@ import { pgTable, text, varchar, decimal, integer, timestamp, boolean, jsonb } f
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Partners table for referral partner portal
+export const partners = pgTable("partners", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  companyName: text("company_name").notNull(),
+  contactName: text("contact_name").notNull(),
+  phone: text("phone"),
+  profession: text("profession"), // 'cpa', 'realtor', 'vendor', 'consultant', 'other'
+  clientBaseSize: text("client_base_size"), // '1-10', '10-50', '50+'
+  logoUrl: text("logo_url"),
+  inviteCode: text("invite_code").notNull().unique(), // Unique code for referral links
+  commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).default("3.00"), // Default 3%
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPartnerSchema = createInsertSchema(partners).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPartner = z.infer<typeof insertPartnerSchema>;
+export type Partner = typeof partners.$inferSelect;
+
 export const loanApplications = pgTable("loan_applications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  
+
+  // --- Referral Partner Tracking ---
+  referralPartnerId: varchar("referral_partner_id").references(() => partners.id),
+
   // --- Existing Intake Fields ---
   email: text("email").notNull(),
   fullName: text("full_name"),
