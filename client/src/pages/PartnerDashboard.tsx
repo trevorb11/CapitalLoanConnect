@@ -223,12 +223,13 @@ function PartnerLoginForm({ onLoginSuccess }: { onLoginSuccess: () => void }) {
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700">Phone</label>
                 <Input
-                  type="tel"
+                  type="text"
+                  inputMode="tel"
                   value={registerData.phone}
                   onChange={(e) =>
                     setRegisterData({ ...registerData, phone: e.target.value })
                   }
-                  placeholder="(555) 123-4567"
+                  placeholder="555-123-4567"
                 />
               </div>
 
