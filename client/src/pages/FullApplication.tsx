@@ -146,13 +146,22 @@ const formatPhone = (value: string) => {
 };
 
 const formatCurrency = (value: string) => {
-  const digits = stripNonNumeric(value);
-  if (!digits) return "";
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0
-  }).format(Number(digits));
+  // Remove everything except digits and decimal point
+  const cleaned = value.replace(/[^0-9.]/g, '');
+  if (!cleaned) return "";
+
+  // Handle multiple decimal points - keep only the first one
+  const parts = cleaned.split('.');
+  const integerPart = parts[0] || '0';
+  const decimalPart = parts.length > 1 ? parts[1] : '';
+
+  // Format with commas but preserve decimals
+  const formattedInteger = parseInt(integerPart || '0', 10).toLocaleString('en-US');
+
+  if (parts.length > 1) {
+    return `$${formattedInteger}.${decimalPart}`;
+  }
+  return `$${formattedInteger}`;
 };
 
 const isValidEmail = (email: string) => {
