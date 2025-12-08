@@ -648,6 +648,59 @@ export class GoHighLevelService {
       // Don't throw - webhooks are nice-to-have, not critical
     }
   }
+
+  // Specific webhook for intake forms with simplified format
+  async sendIntakeWebhook(application: Partial<LoanApplication>, pageUrl?: string): Promise<void> {
+    const INTAKE_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2a9dd48e-792a-4bdb-8688-fddaf3141ae4';
+    
+    // Parse name for first/last
+    const nameParts = (application.fullName || '').trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // Build intake webhook payload matching the required format
+    const webhookPayload = {
+      first_name: firstName,
+      last_name: lastName,
+      email: application.email,
+      phone: application.phone?.replace(/\D/g, ''), // digits only
+      company_name: application.legalBusinessName || application.businessName,
+      requested_loan_amount: application.requestedAmount ? Number(application.requestedAmount) : null,
+      years_in_business: application.timeInBusiness,
+      monthly_revenue: application.monthlyRevenue, // Keep as original text/value
+      personal_credit_score_range: application.personalCreditScoreRange || application.creditScore,
+      doing_business_as: application.doingBusinessAs || application.businessName,
+      company_email: application.companyEmail || application.businessEmail || application.email,
+      submission_date: new Date().toISOString(),
+      source: "Website Lead Form",
+      page_url: pageUrl || "https://www.todaycapitalgroup.com/intake/quiz",
+      utm_source: null,
+      utm_medium: null,
+      utm_campaign: null,
+      utm_term: null,
+      utm_content: null,
+    };
+
+    try {
+      console.log('[GHL] Sending intake webhook to:', INTAKE_WEBHOOK_URL);
+      console.log('[GHL] Intake webhook payload:', JSON.stringify(webhookPayload, null, 2));
+      
+      const response = await fetch(INTAKE_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload),
+      });
+      
+      if (!response.ok) {
+        console.error('[GHL] Intake webhook failed:', response.status, await response.text());
+      } else {
+        console.log('[GHL] Intake webhook sent successfully');
+      }
+    } catch (error) {
+      console.error('[GHL] Intake webhook error:', error);
+      // Don't throw - webhooks are nice-to-have, not critical
+    }
+  }
 }
 
 export const ghlService = new GoHighLevelService();

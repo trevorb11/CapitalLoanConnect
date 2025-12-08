@@ -457,10 +457,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else if (updatedApp) {
             const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
             const finalApp = await storage.updateLoanApplication(existingApp.id, { ghlContactId });
+            
+            // Send intake webhook if intake form is completed
+            if (applicationData.isCompleted) {
+              try {
+                await ghlService.sendIntakeWebhook(finalApp || updatedApp);
+              } catch (webhookError) {
+                console.error("Intake webhook error (non-blocking):", webhookError);
+              }
+            }
+            
             return res.json(finalApp || updatedApp);
           }
         } catch (ghlError) {
           console.error("GHL sync error:", ghlError);
+        }
+        
+        // Send intake webhook if intake form is completed (even if GHL sync path wasn't taken)
+        if (applicationData.isCompleted && updatedApp) {
+          try {
+            await ghlService.sendIntakeWebhook(updatedApp);
+          } catch (webhookError) {
+            console.error("Intake webhook error (non-blocking):", webhookError);
+          }
         }
         
         return res.json(updatedApp || existingApp);
@@ -487,6 +506,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           agentViewUrl,
           ...(fundingReportUrl && { fundingReportUrl }),
         });
+        
+        // Send intake webhook if intake form is completed
+        if (applicationData.isCompleted) {
+          try {
+            await ghlService.sendIntakeWebhook(updatedApp || application);
+          } catch (webhookError) {
+            console.error("Intake webhook error (non-blocking):", webhookError);
+          }
+        }
+        
         res.json(updatedApp || application);
       } catch (ghlError) {
         console.error("GHL sync error, but application saved:", ghlError);
@@ -495,6 +524,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           agentViewUrl,
           ...(fundingReportUrl && { fundingReportUrl }),
         });
+        
+        // Send intake webhook if intake form is completed (even if GHL sync failed)
+        if (applicationData.isCompleted) {
+          try {
+            await ghlService.sendIntakeWebhook(updatedApp || application);
+          } catch (webhookError) {
+            console.error("Intake webhook error (non-blocking):", webhookError);
+          }
+        }
+        
         res.json(updatedApp || application);
       }
     } catch (error) {
