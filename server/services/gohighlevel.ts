@@ -658,16 +658,16 @@ export class GoHighLevelService {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    // Build intake webhook payload matching the required format
+    // Build intake webhook payload - pass data as-is without sanitizing to prevent data loss
     const webhookPayload = {
       first_name: firstName,
       last_name: lastName,
       email: application.email,
-      phone: application.phone?.replace(/\D/g, ''), // digits only
+      phone: application.phone,
       company_name: application.legalBusinessName || application.businessName,
-      requested_loan_amount: application.requestedAmount ? Number(application.requestedAmount) : null,
+      requested_loan_amount: application.requestedAmount,
       years_in_business: application.timeInBusiness,
-      monthly_revenue: application.monthlyRevenue, // Keep as original text/value
+      monthly_revenue: application.monthlyRevenue,
       personal_credit_score_range: application.personalCreditScoreRange || application.creditScore,
       doing_business_as: application.doingBusinessAs || application.businessName,
       company_email: application.companyEmail || application.businessEmail || application.email,
