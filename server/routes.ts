@@ -178,11 +178,11 @@ function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: 
       sanitized[field] = null;
       console.log(`[SANITIZE] ${field} → NULL (empty/undefined)`);
     } else if (typeof sanitized[field] === 'string') {
-      // Strip non-digit characters (like $ and ,) before parsing
-      const digitsOnly = sanitized[field].replace(/\D/g, '');
-      const num = parseFloat(digitsOnly);
-      sanitized[field] = (digitsOnly && !isNaN(num)) ? num : null;
-      console.log(`[SANITIZE] ${field}: "${sanitized[field]}" → digitsOnly: "${digitsOnly}" → num: ${num} → final: ${sanitized[field]}`);
+      // Strip non-digit characters EXCEPT decimal point (like $ and ,) before parsing
+      const cleanedValue = sanitized[field].replace(/[^0-9.]/g, '');
+      const num = parseFloat(cleanedValue);
+      sanitized[field] = (cleanedValue && !isNaN(num)) ? num : null;
+      console.log(`[SANITIZE] ${field}: "${sanitized[field]}" → cleaned: "${cleanedValue}" → num: ${num} → final: ${sanitized[field]}`);
     }
   });
   
