@@ -1370,6 +1370,7 @@ export default function Dashboard() {
                 <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Financial Information</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                   <div><span className="font-medium">Requested Amount:</span> {selectedAppDetails.requestedAmount ? `$${Number(selectedAppDetails.requestedAmount).toLocaleString()}` : "N/A"}</div>
+                  <div><span className="font-medium">Monthly Revenue:</span> {selectedAppDetails.monthlyRevenue || selectedAppDetails.averageMonthlyRevenue ? `$${Number(selectedAppDetails.monthlyRevenue || selectedAppDetails.averageMonthlyRevenue).toLocaleString()}` : "N/A"}</div>
                   <div><span className="font-medium">Credit Cards:</span> {selectedAppDetails.doYouProcessCreditCards || "N/A"}</div>
                   {(selectedAppDetails.personalCreditScoreRange || selectedAppDetails.ficoScoreExact) && (
                     <div><span className="font-medium">Credit Score:</span> {selectedAppDetails.ficoScoreExact || selectedAppDetails.personalCreditScoreRange}</div>
