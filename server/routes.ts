@@ -1162,6 +1162,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'GHL Contact ID',
         'Agent View URL',
         'Plaid Item ID',
+        'Traffic Source',
+        'UTM Source',
+        'UTM Medium',
+        'UTM Campaign',
         'Created At'
       ];
       
@@ -1212,6 +1216,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         escapeCSV(app.ghlContactId),
         escapeCSV(app.agentViewUrl),
         escapeCSV(app.plaidItemId),
+        escapeCSV(app.trafficSource),
+        escapeCSV(app.utmSource),
+        escapeCSV(app.utmMedium),
+        escapeCSV(app.utmCampaign),
         escapeCSV(app.createdAt)
       ].join(','));
       

@@ -79,6 +79,13 @@ interface QuizData {
   faxNumber: string; // Honeypot field - should always be empty
 }
 
+interface TrafficSource {
+  trafficSource: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+}
+
 function formatAmount(amount: number): string {
   if (amount >= 1000000) {
     return new Intl.NumberFormat("en-US", {
@@ -128,12 +135,29 @@ export default function QuizIntake() {
     faxNumber: "", // Honeypot - should remain empty
   });
 
+  // Traffic source tracking from URL parameters
+  const [trafficSource, setTrafficSource] = useState<TrafficSource>({
+    trafficSource: null,
+    utmSource: null,
+    utmMedium: null,
+    utmCampaign: null,
+  });
+
   const totalQuestions = 7;
   const progress = (currentQuestion / totalQuestions) * 100;
 
-  // Track page view on mount
+  // Track page view and capture URL parameters on mount
   useEffect(() => {
     trackPageView('/intake/quiz', 'Intake Quiz Form');
+
+    // Capture traffic source from URL parameters
+    const params = new URLSearchParams(window.location.search);
+    setTrafficSource({
+      trafficSource: params.get('source') || params.get('industry') || null,
+      utmSource: params.get('utm_source') || null,
+      utmMedium: params.get('utm_medium') || null,
+      utmCampaign: params.get('utm_campaign') || null,
+    });
   }, []);
 
   const parseRevenueToNumber = (revenueRange: string): string => {
@@ -174,11 +198,16 @@ export default function QuizIntake() {
         faxNumber: data.faxNumber,
         // Include referral partner ID if from partner link
         ...(referralPartnerId && { referralPartnerId }),
+        // Include traffic source tracking data
+        ...(trafficSource.trafficSource && { trafficSource: trafficSource.trafficSource }),
+        ...(trafficSource.utmSource && { utmSource: trafficSource.utmSource }),
+        ...(trafficSource.utmMedium && { utmMedium: trafficSource.utmMedium }),
+        ...(trafficSource.utmCampaign && { utmCampaign: trafficSource.utmCampaign }),
       });
       return response.json();
     },
     onSuccess: (data) => {
-      // Track intake form submission
+      // Track intake form submission with traffic source data
       trackIntakeFormSubmitted({
         requestedAmount: quizData.financingAmount.toString(),
         creditScore: quizData.creditScore,
@@ -186,6 +215,10 @@ export default function QuizIntake() {
         monthlyRevenue: quizData.monthlyRevenue,
         industry: quizData.industry,
         useOfFunds: quizData.fundingPurpose,
+        trafficSource: trafficSource.trafficSource || undefined,
+        utmSource: trafficSource.utmSource || undefined,
+        utmMedium: trafficSource.utmMedium || undefined,
+        utmCampaign: trafficSource.utmCampaign || undefined,
       });
       
       if (data.id) {

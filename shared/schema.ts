@@ -61,6 +61,12 @@ export const loanApplications = pgTable("loan_applications", {
   fundingUrgency: text("funding_urgency"),
   referralSource: text("referral_source"),
   bestTimeToContact: text("best_time_to_contact"),
+
+  // --- Traffic Source Tracking ---
+  trafficSource: text("traffic_source"), // e.g., 'trucking', 'construction', 'homepage'
+  utmSource: text("utm_source"), // e.g., 'google', 'facebook', 'linkedin'
+  utmMedium: text("utm_medium"), // e.g., 'cpc', 'email', 'organic'
+  utmCampaign: text("utm_campaign"), // e.g., 'summer-promo-2025'
   
   // --- NEW: Full Application Fields ---
   legalBusinessName: text("legal_business_name"),
