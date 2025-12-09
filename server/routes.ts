@@ -663,10 +663,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const allApplications = await storage.getAllLoanApplications();
+      console.log(`[DASHBOARD] Total applications in DB: ${allApplications.length}`);
+      console.log(`[DASHBOARD] User role: ${req.session.user.role}, email: ${req.session.user.agentEmail || 'N/A'}`);
       
       // Filter based on role
       if (req.session.user.role === 'admin') {
         // Admin sees all applications
+        console.log(`[DASHBOARD] Returning all ${allApplications.length} applications for admin`);
         return res.json(allApplications);
       } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
         // Agent sees only their applications
@@ -674,6 +677,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const filteredApplications = allApplications.filter(
           (app) => (app.agentEmail || '').toLowerCase() === agentEmail
         );
+        console.log(`[DASHBOARD] Returning ${filteredApplications.length} applications for agent ${agentEmail}`);
         return res.json(filteredApplications);
       }
       
