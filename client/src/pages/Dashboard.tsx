@@ -780,6 +780,7 @@ function BotAttemptsTab() {
 export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial">("all");
+  const [filterAgent, setFilterAgent] = useState<string>("all");
   const [selectedAppDetails, setSelectedAppDetails] = useState<LoanApplication | null>(null);
   const [selectedAppForStatements, setSelectedAppForStatements] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -932,6 +933,12 @@ export default function Dashboard() {
     return <LoginForm onLoginSuccess={handleLoginSuccess} />;
   }
 
+  // Get unique agent names for the filter dropdown (admin only)
+  const uniqueAgents = applications
+    ? Array.from(new Set(applications.map(app => app.agentName).filter(Boolean) as string[]))
+        .sort((a, b) => a.localeCompare(b))
+    : [];
+
   const filteredApplications = applications
     ? applications
         .filter((app) => {
@@ -947,7 +954,11 @@ export default function Dashboard() {
             (filterStatus === "full" && app.isFullApplicationCompleted) ||
             (filterStatus === "partial" && !app.isCompleted && !app.isFullApplicationCompleted);
 
-          return matchesSearch && matchesFilter;
+          const matchesAgent =
+            filterAgent === "all" ||
+            app.agentName === filterAgent;
+
+          return matchesSearch && matchesFilter && matchesAgent;
         })
         .sort((a, b) => {
           const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -1149,6 +1160,24 @@ export default function Dashboard() {
                 Partial
               </Button>
             </div>
+            {authData?.role === "admin" && uniqueAgents.length > 0 && (
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-muted-foreground" />
+                <Select value={filterAgent} onValueChange={setFilterAgent}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-filter-agent">
+                    <SelectValue placeholder="Filter by Agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" data-testid="select-agent-all">All Agents</SelectItem>
+                    {uniqueAgents.map((agent) => (
+                      <SelectItem key={agent} value={agent} data-testid={`select-agent-${agent.replace(/\s+/g, '-').toLowerCase()}`}>
+                        {agent}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         </Card>
 
