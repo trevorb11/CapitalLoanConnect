@@ -780,6 +780,7 @@ function BotAttemptsTab() {
 export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial">("all");
+  const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>("all");
   const [selectedAppDetails, setSelectedAppDetails] = useState<LoanApplication | null>(null);
   const [selectedAppForStatements, setSelectedAppForStatements] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -932,6 +933,12 @@ export default function Dashboard() {
     return <LoginForm onLoginSuccess={handleLoginSuccess} />;
   }
 
+  // Extract unique agent names for the filter dropdown (admin only)
+  const uniqueAgentNames = applications
+    ? Array.from(new Set(applications.map(app => app.agentName).filter(Boolean)))
+        .sort((a, b) => (a || "").localeCompare(b || ""))
+    : [];
+
   const filteredApplications = applications
     ? applications
         .filter((app) => {
@@ -947,7 +954,11 @@ export default function Dashboard() {
             (filterStatus === "full" && app.isFullApplicationCompleted) ||
             (filterStatus === "partial" && !app.isCompleted && !app.isFullApplicationCompleted);
 
-          return matchesSearch && matchesFilter;
+          // Agent filter (admin only feature)
+          const matchesAgentFilter =
+            selectedAgentFilter === "all" || app.agentName === selectedAgentFilter;
+
+          return matchesSearch && matchesFilter && matchesAgentFilter;
         })
         .sort((a, b) => {
           const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -1119,7 +1130,7 @@ export default function Dashboard() {
                 data-testid="input-search-applications"
               />
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
               <Button
                 variant={filterStatus === "all" ? "default" : "outline"}
                 onClick={() => setFilterStatus("all")}
@@ -1148,6 +1159,24 @@ export default function Dashboard() {
               >
                 Partial
               </Button>
+              {authData.role === "admin" && uniqueAgentNames.length > 0 && (
+                <Select
+                  value={selectedAgentFilter}
+                  onValueChange={setSelectedAgentFilter}
+                >
+                  <SelectTrigger className="w-[180px]" data-testid="select-agent-filter">
+                    <SelectValue placeholder="Filter by Agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Agents</SelectItem>
+                    {uniqueAgentNames.map((agentName) => (
+                      <SelectItem key={agentName} value={agentName || ""}>
+                        {agentName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
         </Card>
