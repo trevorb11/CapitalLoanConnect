@@ -1,0 +1,117 @@
+2025-12-09 12:13:31.15
+49496712
+User
+binary: false,
+2025-12-09 12:13:31.15
+49496712
+User
+0&&(o=t[0]),o instanceof Error)throw o;var u=new Error("Unhandled error."+(o?" ("+
+2025-12-09 12:13:31.15
+49496712
+User
+connectionParameters: ConnectionParameters {
+
+2025-12-09 12:13:31.15
+49496712
+User
+file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:395
+2025-12-09 12:13:31.15
+49496712
+User
+schema: undefined,
+2025-12-09 12:13:31.15
+49496712
+User
+client_encoding: '',
+2025-12-09 12:13:31.15
+49496712
+User
+^
+2025-12-09 12:13:31.15
+49496712
+User
+isDomainSocket: false,
+2025-12-09 12:13:31.15
+49496712
+User
+position: undefined,
+2025-12-09 12:13:31.15
+49496712
+User
+PATH: 602,
+2025-12-09 12:13:31.15
+49496712
+User
+_eventsCount: 1,
+2025-12-09 12:13:31.15
+49496712
+User
+hint: undefined,
+2025-12-09 12:13:31.15
+49496712
+User
+arrayParser: { create: [Function: create] },
+2025-12-09 12:13:31.15
+49496712
+User
+query_timeout: false,
+2025-12-09 12:13:31.15
+49496712
+User
+_maxListeners: undefined,
+2025-12-09 12:13:31.15
+49496712
+User
+INT2: 21,
+2025-12-09 12:13:31.15
+49496712
+User
+_Promise: [Function: Promise],
+2025-12-09 12:13:31.15
+49496712
+User
+table: undefined,
+2025-12-09 12:13:31.15
+49496712
+User
+ssl: {},
+2025-12-09 12:13:31.15
+49496712
+User
+internalPosition: undefined,
+2025-12-09 12:13:31.15
+49496712
+User
+constraint: undefined,
+2025-12-09 12:13:31.15
+49496712
+User
+port: 5432,
+2025-12-09 12:13:31.15
+49496712
+User
+at v. (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1190:16)
+2025-12-09 12:13:31.15
+49496712
+User
+at v.emit (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:397:12)
+2025-12-09 12:13:31.15
+49496712
+User
+at cn.parseErrorMessage (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1182:6)
+2025-12-09 12:13:31.15
+49496712
+User
+code: '57P01',
+2025-12-09 12:13:31.15
+49496712
+User
+idle_in_transaction_session_timeout: false,
+2025-12-09 12:13:31.15
+49496712
+User
+statement_timeout: false,
+2025-12-09 12:13:31.15
+49496712
+User
+where: undefined,
