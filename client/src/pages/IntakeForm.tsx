@@ -275,7 +275,7 @@ export default function IntakeForm() {
   const handleStep2Submit = async (data: Step2Data) => {
     setShowConsentError(false);
     setShowSignatureError(false);
-    
+
     if (!data.consent) {
       setShowConsentError(true);
       return;
@@ -290,11 +290,12 @@ export default function IntakeForm() {
     setIsSubmitting(true);
     try {
       await updateMutation.mutateAsync(data);
-      setShowSuccess(true);
-      window.scrollTo(0, 0);
+      // Redirect to upload-statements page with email and business name pre-filled
+      const email = encodeURIComponent(form1.getValues("email"));
+      const businessName = encodeURIComponent(form1.getValues("legalBusinessName"));
+      navigate(`/upload-statements?email=${email}&businessName=${businessName}&submitted=true`);
     } catch (error) {
       console.error("Error submitting application:", error);
-    } finally {
       setIsSubmitting(false);
     }
   };

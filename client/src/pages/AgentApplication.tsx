@@ -1,12 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { trackApplicationSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
+
+interface UploadedFile {
+  id: string;
+  originalFileName: string;
+  fileSize: number;
+}
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -79,6 +85,14 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
   const [agentViewUrl, setAgentViewUrl] = useState<string | null>(null);
   const [existingSignature, setExistingSignature] = useState<string | null>(null);
 
+  // Bank statement upload state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+
   useEffect(() => {
     // Track page view for agent application
     trackPageView(`/${agent.initials}`, `Agent Application - ${agent.name}`);
@@ -146,6 +160,116 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
     }
     
     setFormData({ ...formData, [name]: value });
+  };
+
+  // File upload functions
+  const validateFile = (file: File): string | null => {
+    if (file.type !== "application/pdf") {
+      return "Only PDF files are allowed";
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      return "File size must be under 25MB";
+    }
+    return null;
+  };
+
+  const addFiles = (files: File[]) => {
+    const validFiles: File[] = [];
+
+    for (const file of files) {
+      const error = validateFile(file);
+      if (error) {
+        toast({
+          title: "Invalid File",
+          description: `${file.name}: ${error}`,
+          variant: "destructive",
+        });
+      } else {
+        validFiles.push(file);
+      }
+    }
+
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    addFiles(files);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    addFiles(files);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const uploadBankStatements = async (appId: string, email: string, businessName: string) => {
+    if (selectedFiles.length === 0) return;
+
+    setIsUploading(true);
+    setUploadProgress(0);
+    const totalFiles = selectedFiles.length;
+
+    for (let i = 0; i < totalFiles; i++) {
+      const file = selectedFiles[i];
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("email", email);
+      formData.append("businessName", businessName);
+      formData.append("applicationId", appId);
+
+      try {
+        const response = await fetch("/api/bank-statements/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "Upload failed");
+        }
+
+        const data = await response.json();
+        setUploadedFiles((prev) => [...prev, data.upload]);
+      } catch (error) {
+        console.error("Upload error:", error);
+        toast({
+          title: "Upload Failed",
+          description: `Failed to upload ${file.name}`,
+          variant: "destructive",
+        });
+      }
+
+      setUploadProgress(((i + 1) / totalFiles) * 100);
+    }
+
+    setIsUploading(false);
+    setSelectedFiles([]);
   };
 
   const goToStep2 = () => {
@@ -274,6 +398,16 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
       
       if (data && data.agentViewUrl) {
         setAgentViewUrl(data.agentViewUrl);
+      }
+
+      // Upload bank statements if any were selected
+      const appIdToUse = data?.id?.toString() || applicationId;
+      if (appIdToUse && selectedFiles.length > 0) {
+        await uploadBankStatements(
+          appIdToUse,
+          formData.email,
+          formData.legal_business_name
+        );
       }
 
       // Track agent application submission
@@ -841,14 +975,191 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
 
               <div>
                 <label style={labelStyle}>ZIP Code *</label>
-                <input 
-                  name="owner_zip" 
-                  value={formData.owner_zip || ''} 
+                <input
+                  name="owner_zip"
+                  value={formData.owner_zip || ''}
                   onChange={handleInputChange}
                   style={inputStyle}
                   data-testid="input-owner_zip"
                 />
               </div>
+            </div>
+
+            {/* Bank Statements Upload Section */}
+            <div style={{ marginTop: '2.5rem', padding: '1.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '10px' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem', color: 'rgba(255,255,255,0.9)' }}>
+                Upload Bank Statements
+              </h3>
+              <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)', marginBottom: '1rem' }}>
+                Upload your last 3-6 months of business bank statements (PDF only, optional)
+              </p>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                multiple
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+                data-testid="input-bank-statements"
+              />
+
+              <div
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="dropzone-bank-statements"
+                style={{
+                  border: `2px dashed ${isDragging ? '#5FBFB8' : 'rgba(255,255,255,0.3)'}`,
+                  borderRadius: '10px',
+                  padding: '2rem',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  background: isDragging ? 'rgba(95, 191, 184, 0.1)' : 'transparent',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <div style={{ marginBottom: '1rem' }}>
+                  <svg
+                    width="40"
+                    height="40"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.5)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ margin: '0 auto' }}
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </div>
+                <p style={{ fontSize: '0.95rem', fontWeight: 500, color: 'rgba(255,255,255,0.9)', marginBottom: '0.5rem' }}>
+                  Drag & drop your bank statements here
+                </p>
+                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>
+                  or click to browse (PDF only, max 25MB per file)
+                </p>
+              </div>
+
+              {/* Selected Files List */}
+              {selectedFiles.length > 0 && (
+                <div style={{ marginTop: '1rem' }}>
+                  <h4 style={{ fontSize: '0.9rem', fontWeight: 500, color: 'rgba(255,255,255,0.8)', marginBottom: '0.5rem' }}>
+                    Selected Files ({selectedFiles.length})
+                  </h4>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {selectedFiles.map((file, index) => (
+                      <li
+                        key={`${file.name}-${index}`}
+                        data-testid={`selected-file-${index}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: 'rgba(255,255,255,0.1)',
+                          borderRadius: '6px',
+                          padding: '0.75rem 1rem',
+                          marginBottom: '0.5rem',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+                          <svg
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#5FBFB8"
+                            strokeWidth="2"
+                            style={{ flexShrink: 0 }}
+                          >
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                          </svg>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{
+                              fontSize: '0.9rem',
+                              fontWeight: 500,
+                              color: 'white',
+                              margin: 0,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}>
+                              {file.name}
+                            </p>
+                            <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', margin: 0 }}>
+                              {formatFileSize(file.size)}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFile(index);
+                          }}
+                          data-testid={`remove-file-${index}`}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '0.25rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="rgba(255,255,255,0.6)"
+                            strokeWidth="2"
+                          >
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Upload Progress */}
+              {isUploading && (
+                <div style={{ marginTop: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>
+                      Uploading statements...
+                    </span>
+                    <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>
+                      {Math.round(uploadProgress)}%
+                    </span>
+                  </div>
+                  <div style={{
+                    height: '6px',
+                    background: 'rgba(255,255,255,0.1)',
+                    borderRadius: '3px',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${uploadProgress}%`,
+                      background: '#5FBFB8',
+                      borderRadius: '3px',
+                      transition: 'width 0.3s ease',
+                    }} />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ marginTop: '2.5rem', padding: '1.5rem', background: 'rgba(255,255,255,0.05)', borderRadius: '10px' }}>
@@ -909,33 +1220,33 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
               
               <button
                 onClick={submitApplication}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isUploading}
                 data-testid="button-submit"
                 style={{
-                  background: isSubmitting ? 'rgba(95, 191, 184, 0.5)' : '#5FBFB8',
+                  background: (isSubmitting || isUploading) ? 'rgba(95, 191, 184, 0.5)' : '#5FBFB8',
                   color: 'white',
                   border: 'none',
                   padding: '1rem 3rem',
                   borderRadius: '8px',
                   fontSize: '1.1rem',
                   fontWeight: 600,
-                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  cursor: (isSubmitting || isUploading) ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem',
                 }}
               >
-                {isSubmitting ? (
+                {isSubmitting || isUploading ? (
                   <>
-                    <span style={{ 
-                      width: '20px', 
-                      height: '20px', 
-                      border: '2px solid white', 
-                      borderTopColor: 'transparent', 
-                      borderRadius: '50%', 
-                      animation: 'spin 1s linear infinite' 
+                    <span style={{
+                      width: '20px',
+                      height: '20px',
+                      border: '2px solid white',
+                      borderTopColor: 'transparent',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
                     }} />
-                    Submitting...
+                    {isUploading ? 'Uploading Statements...' : 'Submitting...'}
                   </>
                 ) : (
                   'Submit Application'
