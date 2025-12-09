@@ -413,6 +413,28 @@ export class GoHighLevelService {
     }
   }
 
+  // Get existing contact's tags by contact ID
+  private async getContactTags(contactId: string): Promise<string[]> {
+    if (!this.isEnabled || !contactId) return [];
+    
+    try {
+      const response = await this.makeRequest(`/contacts/${contactId}`, "GET");
+      const contact = response.contact || response;
+      const existingTags = contact?.tags || [];
+      console.log("[GHL DEBUG] Existing tags for contact:", contactId, existingTags);
+      return existingTags;
+    } catch (error) {
+      console.error("[GHL DEBUG] Failed to fetch contact tags:", error);
+      return [];
+    }
+  }
+
+  // Merge new tags with existing tags (no duplicates)
+  private mergeTags(existingTags: string[], newTags: string[]): string[] {
+    const tagSet = new Set([...existingTags, ...newTags]);
+    return Array.from(tagSet);
+  }
+
   async createOrUpdateContact(application: LoanApplication): Promise<string> {
     if (!this.isEnabled) {
       console.log("GoHighLevel sync skipped: service not enabled");
@@ -436,6 +458,14 @@ export class GoHighLevelService {
       // If we already have a contact ID, update it (do NOT include locationId)
       if (application.ghlContactId) {
         const updateData = this.buildContactData(application, false); // false = exclude locationId
+        
+        // Fetch existing tags and merge with new tags to preserve them
+        const existingTags = await this.getContactTags(application.ghlContactId);
+        if (updateData.tags && updateData.tags.length > 0) {
+          updateData.tags = this.mergeTags(existingTags, updateData.tags);
+          console.log("[GHL DEBUG] Merged tags:", updateData.tags);
+        }
+        
         console.log("[GHL DEBUG] Updating existing contact by stored ID:", application.ghlContactId);
         console.log("[GHL DEBUG] Custom fields count:", updateData.customFields?.length || 0);
         await this.makeRequest(`/contacts/${application.ghlContactId}`, "PUT", updateData);
@@ -449,6 +479,14 @@ export class GoHighLevelService {
       if (existingContactId) {
         // Update existing contact instead of creating duplicate
         const updateData = this.buildContactData(application, false);
+        
+        // Fetch existing tags and merge with new tags to preserve them
+        const existingTags = await this.getContactTags(existingContactId);
+        if (updateData.tags && updateData.tags.length > 0) {
+          updateData.tags = this.mergeTags(existingTags, updateData.tags);
+          console.log("[GHL DEBUG] Merged tags:", updateData.tags);
+        }
+        
         console.log("[GHL DEBUG] Updating existing contact found by email:", existingContactId);
         console.log("[GHL DEBUG] Custom fields count:", updateData.customFields?.length || 0);
         await this.makeRequest(`/contacts/${existingContactId}`, "PUT", updateData);
@@ -480,6 +518,14 @@ export class GoHighLevelService {
                 const phoneContactId = phoneContacts[0].id;
                 console.log("[GHL DEBUG] Found existing contact by phone:", phoneContactId);
                 const updateData = this.buildContactData(application, false);
+                
+                // Fetch existing tags and merge with new tags to preserve them
+                const existingTags = await this.getContactTags(phoneContactId);
+                if (updateData.tags && updateData.tags.length > 0) {
+                  updateData.tags = this.mergeTags(existingTags, updateData.tags);
+                  console.log("[GHL DEBUG] Merged tags:", updateData.tags);
+                }
+                
                 await this.makeRequest(`/contacts/${phoneContactId}`, "PUT", updateData);
                 return phoneContactId;
               }
@@ -504,6 +550,14 @@ export class GoHighLevelService {
 
     try {
       const updateData = this.buildContactData(application, false); // false = exclude locationId for PUT
+      
+      // Fetch existing tags and merge with new tags to preserve them
+      const existingTags = await this.getContactTags(contactId);
+      if (updateData.tags && updateData.tags.length > 0) {
+        updateData.tags = this.mergeTags(existingTags, updateData.tags);
+        console.log("[GHL DEBUG] Merged tags:", updateData.tags);
+      }
+      
       console.log("[GHL DEBUG] Updating contact:", contactId);
       console.log("[GHL DEBUG] Update custom fields count:", updateData.customFields?.length || 0);
       await this.makeRequest(`/contacts/${contactId}`, "PUT", updateData);
