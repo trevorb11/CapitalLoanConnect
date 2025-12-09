@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Upload, 
-  FileText, 
-  CheckCircle, 
+import {
+  Upload,
+  FileText,
+  CheckCircle,
   AlertCircle,
   Loader2,
   ArrowLeft,
@@ -17,7 +17,7 @@ import {
   Mail,
   X
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import tcgLogo from "@assets/TCG_White_logo_1764664150165.png";
 
 interface UploadedFile {
@@ -29,7 +29,8 @@ interface UploadedFile {
 export default function BankStatementsUpload() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+  const searchString = useSearch();
+
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -37,6 +38,25 @@ export default function BankStatementsUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [showApplicationSuccess, setShowApplicationSuccess] = useState(false);
+
+  // Read URL parameters and pre-fill form
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const emailParam = params.get("email");
+    const businessNameParam = params.get("businessName");
+    const submittedParam = params.get("submitted");
+
+    if (emailParam) {
+      setEmail(decodeURIComponent(emailParam));
+    }
+    if (businessNameParam) {
+      setBusinessName(decodeURIComponent(businessNameParam));
+    }
+    if (submittedParam === "true") {
+      setShowApplicationSuccess(true);
+    }
+  }, [searchString]);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -231,17 +251,33 @@ export default function BankStatementsUpload() {
     <div className="min-h-screen bg-gradient-to-b from-[#192F56] to-[#19112D]">
       <div className="container mx-auto px-4 py-8 max-w-2xl">
         <div className="text-center mb-8">
-          <img 
-            src={tcgLogo} 
-            alt="Today Capital Group" 
+          <img
+            src={tcgLogo}
+            alt="Today Capital Group"
             className="h-16 mx-auto mb-6"
             data-testid="img-logo"
           />
+
+          {/* Application Submitted Success Banner */}
+          {showApplicationSuccess && (
+            <div className="mb-6 p-4 rounded-lg bg-green-500/20 border border-green-500/40" data-testid="success-banner">
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <CheckCircle className="w-6 h-6 text-green-500" />
+                <h2 className="text-xl font-semibold text-green-400">Application Received!</h2>
+              </div>
+              <p className="text-white/80 text-sm">
+                Your funding application has been submitted successfully. Please upload your bank statements below to complete your application.
+              </p>
+            </div>
+          )}
+
           <h1 className="text-3xl font-bold text-white mb-2" data-testid="text-page-title">
             Upload Bank Statements
           </h1>
           <p className="text-white/70">
-            Securely upload your business bank statements for review
+            {showApplicationSuccess
+              ? "Upload your last 3-6 months of business bank statements to finalize your application"
+              : "Securely upload your business bank statements for review"}
           </p>
         </div>
 
