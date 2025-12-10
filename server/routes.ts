@@ -8,32 +8,26 @@ import PDFDocument from "pdfkit";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
+import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { AGENTS } from "../shared/agents";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
+
+// Initialize Object Storage service for persistent file storage
+const objectStorage = new ObjectStorageService();
 
 // Configure multer for bank statement uploads
 const UPLOAD_DIR = path.join(process.cwd(), "server/uploads/bank-statements");
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 
-// Ensure upload directory exists
+// Ensure upload directory exists (fallback for when Object Storage is not configured)
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-const bankStatementStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, UPLOAD_DIR);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const storedName = `${randomUUID()}${ext}`;
-    cb(null, storedName);
-  },
-});
-
+// Use memory storage to handle files in memory, then upload to Object Storage or disk
 const bankStatementUpload = multer({
-  storage: bankStatementStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype === "application/pdf") {
@@ -950,9 +944,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, businessName, applicationId } = req.body;
       
       if (!email) {
-        // Clean up uploaded file
-        fs.unlinkSync(file.path);
         return res.status(400).json({ error: "Email is required" });
+      }
+
+      let storedFileName: string;
+      let storageType: string = "local";
+
+      // Try to use Object Storage (persistent), fall back to local disk
+      if (objectStorage.isConfigured()) {
+        try {
+          storedFileName = await objectStorage.uploadFile(
+            file.buffer,
+            file.originalname,
+            file.mimetype
+          );
+          storageType = "object-storage";
+          console.log(`[UPLOAD] Bank statement uploaded to Object Storage: ${storedFileName}`);
+        } catch (objError) {
+          console.error("[UPLOAD] Object Storage failed, falling back to local:", objError);
+          // Fall back to local disk
+          const localFileName = `${randomUUID()}.pdf`;
+          const localPath = path.join(UPLOAD_DIR, localFileName);
+          fs.writeFileSync(localPath, file.buffer);
+          storedFileName = localFileName;
+          console.log(`[UPLOAD] Bank statement saved to local disk: ${storedFileName}`);
+        }
+      } else {
+        // No Object Storage configured, use local disk
+        const localFileName = `${randomUUID()}.pdf`;
+        const localPath = path.join(UPLOAD_DIR, localFileName);
+        fs.writeFileSync(localPath, file.buffer);
+        storedFileName = localFileName;
+        console.log(`[UPLOAD] Bank statement saved to local disk (Object Storage not configured): ${storedFileName}`);
       }
 
       // Save upload record to database
@@ -961,7 +984,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         businessName: businessName || null,
         loanApplicationId: applicationId || null,
         originalFileName: file.originalname,
-        storedFileName: file.filename,
+        storedFileName: storedFileName,
         mimeType: file.mimetype,
         fileSize: file.size,
       });
@@ -985,6 +1008,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           fileSize: upload.fileSize,
           createdAt: upload.createdAt,
           linkedApplicationId: linkedApplicationId || null,
+          storageType,
         },
       });
     } catch (error) {
@@ -1020,16 +1044,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Upload not found" });
       }
 
-      const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: "File not found on disk" });
-      }
-
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="${upload.originalFileName}"`
       );
+
+      // Check if file is in Object Storage (path contains "bank-statements/")
+      if (upload.storedFileName.includes("bank-statements/")) {
+        // File is in Object Storage
+        try {
+          await objectStorage.downloadFile(upload.storedFileName, res);
+          return;
+        } catch (objError) {
+          console.error("[DOWNLOAD] Object Storage download failed:", objError);
+          return res.status(404).json({ error: "File not found in storage" });
+        }
+      }
+
+      // Fallback: check local disk
+      const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found on disk" });
+      }
+
       res.sendFile(filePath);
     } catch (error) {
       console.error("Error downloading bank statement:", error);
