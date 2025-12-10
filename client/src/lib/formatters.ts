@@ -27,9 +27,14 @@ export function formatEIN(value: string): string {
 
 /**
  * Format currency input with commas
+ * Handles decimal inputs correctly by only using the integer portion
  */
 export function formatCurrency(value: string): string {
-  const digits = value.replace(/\D/g, '');
+  // Split on decimal point first to avoid merging cents with dollars
+  const [integerPart] = value.split('.');
+  
+  // Extract only digits from the integer portion
+  const digits = integerPart.replace(/\D/g, '');
   
   if (digits.length === 0) return '';
   
@@ -53,9 +58,14 @@ export function parseEIN(value: string): string {
 
 /**
  * Parse formatted currency to number string (digits only for backend)
+ * Handles decimal inputs correctly by only using the integer portion
  */
 export function parseCurrency(value: string): string {
-  return value.replace(/\D/g, '');
+  // Split on decimal point first to avoid merging cents with dollars
+  const [integerPart] = value.split('.');
+  
+  // Extract only digits from the integer portion
+  return integerPart.replace(/\D/g, '');
 }
 
 /**
