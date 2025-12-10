@@ -16,6 +16,13 @@ import type { LoanApplication } from "@shared/schema";
 // Initialize Object Storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
 
+// Log Object Storage status on startup
+if (objectStorage.isConfigured()) {
+  console.log("[OBJECT STORAGE] ✓ Configured and ready for bank statement uploads");
+} else {
+  console.warn("[OBJECT STORAGE] ⚠ NOT CONFIGURED - Files will be saved to local disk (ephemeral - will be lost on restart!)");
+}
+
 // Configure multer for bank statement uploads
 const UPLOAD_DIR = path.join(process.cwd(), "server/uploads/bank-statements");
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
@@ -950,7 +957,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let storedFileName: string;
       let storageType: string = "local";
 
-      // Try to use Object Storage (persistent), fall back to local disk
+      // ALWAYS use Object Storage for persistent file storage
+      // Files saved to local disk are EPHEMERAL and will be lost on restart!
       if (objectStorage.isConfigured()) {
         try {
           storedFileName = await objectStorage.uploadFile(
@@ -959,23 +967,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             file.mimetype
           );
           storageType = "object-storage";
-          console.log(`[UPLOAD] Bank statement uploaded to Object Storage: ${storedFileName}`);
+          console.log(`[UPLOAD] ✓ Bank statement uploaded to Object Storage: ${storedFileName}`);
         } catch (objError) {
-          console.error("[UPLOAD] Object Storage failed, falling back to local:", objError);
-          // Fall back to local disk
-          const localFileName = `${randomUUID()}.pdf`;
-          const localPath = path.join(UPLOAD_DIR, localFileName);
-          fs.writeFileSync(localPath, file.buffer);
-          storedFileName = localFileName;
-          console.log(`[UPLOAD] Bank statement saved to local disk: ${storedFileName}`);
+          // FAIL the upload rather than silently falling back to ephemeral local storage
+          console.error("[UPLOAD] ✗ Object Storage upload FAILED:", objError);
+          return res.status(500).json({ 
+            error: "Failed to save file to permanent storage. Please try again or contact support." 
+          });
         }
       } else {
-        // No Object Storage configured, use local disk
-        const localFileName = `${randomUUID()}.pdf`;
-        const localPath = path.join(UPLOAD_DIR, localFileName);
-        fs.writeFileSync(localPath, file.buffer);
-        storedFileName = localFileName;
-        console.log(`[UPLOAD] Bank statement saved to local disk (Object Storage not configured): ${storedFileName}`);
+        // Object Storage not configured - FAIL the upload rather than using ephemeral storage
+        console.error("[UPLOAD] ✗ Object Storage not configured - cannot accept uploads");
+        return res.status(500).json({ 
+          error: "File storage is not configured. Please contact support." 
+        });
       }
 
       // Save upload record to database
