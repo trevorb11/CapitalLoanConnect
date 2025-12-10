@@ -229,7 +229,12 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
   };
 
   const uploadBankStatements = async (appId: string, email: string, businessName: string) => {
-    if (selectedFiles.length === 0) return;
+    console.log('[AgentApp] uploadBankStatements called with:', { appId, email, businessName, fileCount: selectedFiles.length });
+    
+    if (selectedFiles.length === 0) {
+      console.log('[AgentApp] No files to upload, returning early');
+      return;
+    }
 
     setIsUploading(true);
     setUploadProgress(0);
@@ -237,6 +242,8 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
 
     for (let i = 0; i < totalFiles; i++) {
       const file = selectedFiles[i];
+      console.log(`[AgentApp] Uploading file ${i + 1}/${totalFiles}: ${file.name}`);
+      
       const formData = new FormData();
       formData.append("file", file);
       formData.append("email", email);
@@ -249,15 +256,18 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
           body: formData,
         });
 
+        console.log(`[AgentApp] Upload response status: ${response.status}`);
+
         if (!response.ok) {
           const data = await response.json();
           throw new Error(data.error || "Upload failed");
         }
 
         const data = await response.json();
+        console.log('[AgentApp] Upload success:', data);
         setUploadedFiles((prev) => [...prev, data.upload]);
       } catch (error) {
-        console.error("Upload error:", error);
+        console.error("[AgentApp] Upload error:", error);
         toast({
           title: "Upload Failed",
           description: `Failed to upload ${file.name}`,
@@ -402,12 +412,24 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
 
       // Upload bank statements if any were selected
       const appIdToUse = data?.id?.toString() || applicationId;
+      console.log('[AgentApp] Bank statement upload check:', {
+        appIdToUse,
+        selectedFilesCount: selectedFiles.length,
+        selectedFileNames: selectedFiles.map(f => f.name),
+        email: formData.email,
+        businessName: formData.legal_business_name,
+      });
+      
       if (appIdToUse && selectedFiles.length > 0) {
+        console.log('[AgentApp] Starting bank statement upload...');
         await uploadBankStatements(
           appIdToUse,
           formData.email,
           formData.legal_business_name
         );
+        console.log('[AgentApp] Bank statement upload completed');
+      } else {
+        console.log('[AgentApp] Skipping upload - no files or no appId');
       }
 
       // Track agent application submission
