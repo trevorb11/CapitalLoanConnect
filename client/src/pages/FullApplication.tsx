@@ -146,7 +146,10 @@ const formatPhone = (value: string) => {
 };
 
 const formatCurrency = (value: string) => {
-  const digits = stripNonNumeric(value);
+  // Split on decimal point first to avoid merging cents with dollars
+  // e.g., "25000.50" -> take "25000", not "2500050"
+  const [integerPart] = value.split('.');
+  const digits = stripNonNumeric(integerPart);
   if (!digits) return "";
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
