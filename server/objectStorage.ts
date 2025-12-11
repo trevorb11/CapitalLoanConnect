@@ -1,5 +1,5 @@
 // Object Storage Service for Replit App Storage
-// Used for persistent file storage (bank statements, etc.)
+// Uses Replit's sidecar API for bucket access
 import { Storage, File } from "@google-cloud/storage";
 import { Response } from "express";
 import { randomUUID } from "crypto";
@@ -33,6 +33,47 @@ export class ObjectNotFoundError extends Error {
   }
 }
 
+// Sign a URL using the Replit sidecar
+async function signObjectURL({
+  bucketName,
+  objectName,
+  method,
+  ttlSec,
+}: {
+  bucketName: string;
+  objectName: string;
+  method: "GET" | "PUT" | "DELETE" | "HEAD";
+  ttlSec: number;
+}): Promise<string> {
+  const request = {
+    bucket_name: bucketName,
+    object_name: objectName,
+    method,
+    expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
+  };
+  
+  const response = await fetch(
+    `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    }
+  );
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to sign object URL (${response.status}): ${errorText}`
+    );
+  }
+
+  const { signed_url: signedURL } = await response.json();
+  return signedURL;
+}
+
 // Parse object path in format /<bucket_name>/<object_path>
 function parseObjectPath(path: string): { bucketName: string; objectName: string } {
   if (!path.startsWith("/")) {
@@ -49,15 +90,14 @@ function parseObjectPath(path: string): { bucketName: string; objectName: string
   return { bucketName, objectName };
 }
 
-// The object storage service is used to interact with the object storage service.
+// The object storage service
 export class ObjectStorageService {
   private privateObjectDir: string;
 
   constructor() {
-    // Use PRIVATE_OBJECT_DIR for the new pattern, fallback to OBJECT_STORAGE_BUCKET for backwards compatibility
     this.privateObjectDir = process.env.PRIVATE_OBJECT_DIR || "";
     
-    // Backwards compatibility: if PRIVATE_OBJECT_DIR not set, try OBJECT_STORAGE_BUCKET
+    // Backwards compatibility
     if (!this.privateObjectDir && process.env.OBJECT_STORAGE_BUCKET) {
       this.privateObjectDir = `/${process.env.OBJECT_STORAGE_BUCKET}`;
     }
@@ -71,13 +111,12 @@ export class ObjectStorageService {
     return !!this.privateObjectDir;
   }
 
-  // Get bucket name and base path from privateObjectDir
   private getBucketAndPath(): { bucketName: string; basePath: string } {
     const { bucketName, objectName } = parseObjectPath(this.privateObjectDir);
     return { bucketName, basePath: objectName };
   }
 
-  // Upload a file buffer to object storage
+  // Upload a file buffer to object storage using signed URL
   async uploadFile(buffer: Buffer, fileName: string, contentType: string = "application/pdf"): Promise<string> {
     if (!this.privateObjectDir) {
       throw new Error(
@@ -89,20 +128,30 @@ export class ObjectStorageService {
     const { bucketName, basePath } = this.getBucketAndPath();
     const objectId = randomUUID();
     
-    // Build object path: basePath/bank-statements/uuid-filename
     const pathPrefix = basePath ? `${basePath}/` : "";
     const objectName = `${pathPrefix}bank-statements/${objectId}-${fileName}`;
 
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectName);
-
-    await file.save(buffer, {
-      contentType,
-      metadata: {
-        originalName: fileName,
-        uploadedAt: new Date().toISOString(),
-      },
+    // Get a signed URL for uploading
+    const signedUrl = await signObjectURL({
+      bucketName,
+      objectName,
+      method: "PUT",
+      ttlSec: 300, // 5 minutes
     });
+
+    // Upload the file using the signed URL
+    const uploadResponse = await fetch(signedUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body: buffer,
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      throw new Error(`Upload failed (${uploadResponse.status}): ${errorText}`);
+    }
 
     // Return full path for storage reference
     return `/${bucketName}/${objectName}`;
@@ -114,17 +163,14 @@ export class ObjectStorageService {
       throw new ObjectNotFoundError();
     }
 
-    // Handle both old format (just object name) and new format (full path)
     let bucketName: string;
     let objectName: string;
 
     if (objectPath.startsWith("/")) {
-      // New format: /bucket-name/path/to/file
       const parsed = parseObjectPath(objectPath);
       bucketName = parsed.bucketName;
       objectName = parsed.objectName;
     } else {
-      // Old format: just the object path, use bucket from privateObjectDir
       const { bucketName: defaultBucket } = this.getBucketAndPath();
       bucketName = defaultBucket;
       objectName = objectPath;
@@ -141,28 +187,63 @@ export class ObjectStorageService {
     return file;
   }
 
-  // Download a file to the response
+  // Download a file to the response using signed URL
   async downloadFile(objectPath: string, res: Response): Promise<void> {
     try {
-      const file = await this.getFile(objectPath);
-      const [metadata] = await file.getMetadata();
+      let bucketName: string;
+      let objectName: string;
+
+      if (objectPath.startsWith("/")) {
+        const parsed = parseObjectPath(objectPath);
+        bucketName = parsed.bucketName;
+        objectName = parsed.objectName;
+      } else {
+        const { bucketName: defaultBucket } = this.getBucketAndPath();
+        bucketName = defaultBucket;
+        objectName = objectPath;
+      }
+
+      // Get a signed URL for downloading
+      const signedUrl = await signObjectURL({
+        bucketName,
+        objectName,
+        method: "GET",
+        ttlSec: 3600, // 1 hour
+      });
+
+      // Fetch the file and pipe to response
+      const fileResponse = await fetch(signedUrl);
+      
+      if (!fileResponse.ok) {
+        if (fileResponse.status === 404) {
+          res.status(404).json({ error: "File not found" });
+          return;
+        }
+        throw new Error(`Failed to download: ${fileResponse.status}`);
+      }
 
       res.set({
-        "Content-Type": metadata.contentType || "application/pdf",
-        "Content-Length": metadata.size?.toString() || "",
+        "Content-Type": fileResponse.headers.get("content-type") || "application/pdf",
+        "Content-Length": fileResponse.headers.get("content-length") || "",
         "Cache-Control": "private, max-age=3600",
       });
 
-      const stream = file.createReadStream();
+      // Stream the response body
+      const reader = fileResponse.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
 
-      stream.on("error", (err) => {
-        console.error("Stream error:", err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Error streaming file" });
+      const pump = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
         }
-      });
+        res.end();
+      };
 
-      stream.pipe(res);
+      await pump();
     } catch (error) {
       console.error("Error downloading file:", error);
       if (error instanceof ObjectNotFoundError) {
@@ -179,19 +260,49 @@ export class ObjectStorageService {
       throw new Error("PRIVATE_OBJECT_DIR not set.");
     }
 
-    const file = await this.getFile(objectPath);
-    await file.delete({ ignoreNotFound: true });
+    let bucketName: string;
+    let objectName: string;
+
+    if (objectPath.startsWith("/")) {
+      const parsed = parseObjectPath(objectPath);
+      bucketName = parsed.bucketName;
+      objectName = parsed.objectName;
+    } else {
+      const { bucketName: defaultBucket } = this.getBucketAndPath();
+      bucketName = defaultBucket;
+      objectName = objectPath;
+    }
+
+    const signedUrl = await signObjectURL({
+      bucketName,
+      objectName,
+      method: "DELETE",
+      ttlSec: 300,
+    });
+
+    await fetch(signedUrl, { method: "DELETE" });
   }
 
   // Get a signed URL for downloading
   async getSignedDownloadUrl(objectPath: string, expiresInMinutes: number = 60): Promise<string> {
-    const file = await this.getFile(objectPath);
+    let bucketName: string;
+    let objectName: string;
 
-    const [url] = await file.getSignedUrl({
-      action: "read",
-      expires: Date.now() + expiresInMinutes * 60 * 1000,
+    if (objectPath.startsWith("/")) {
+      const parsed = parseObjectPath(objectPath);
+      bucketName = parsed.bucketName;
+      objectName = parsed.objectName;
+    } else {
+      const { bucketName: defaultBucket } = this.getBucketAndPath();
+      bucketName = defaultBucket;
+      objectName = objectPath;
+    }
+
+    return signObjectURL({
+      bucketName,
+      objectName,
+      method: "GET",
+      ttlSec: expiresInMinutes * 60,
     });
-
-    return url;
   }
 }
