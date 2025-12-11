@@ -8,7 +8,6 @@ import { setupVite, serveStatic, log } from "./vite";
 const app = express();
 
 // Trust proxy for production (Replit runs behind a proxy)
-// This is required for secure cookies to work correctly
 app.set('trust proxy', 1);
 
 declare module 'express-session' {
@@ -18,7 +17,6 @@ declare module 'express-session' {
       role: 'admin' | 'agent' | 'partner';
       agentEmail?: string;
       agentName?: string;
-      // Partner-specific fields
       partnerId?: string;
       partnerEmail?: string;
       partnerName?: string;
@@ -33,6 +31,21 @@ declare module 'http' {
   }
 }
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Log startup
+console.log(`[STARTUP] Starting server in ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
+console.log(`[STARTUP] DATABASE_URL: ${process.env.DATABASE_URL ? 'SET' : 'NOT SET'}`);
+console.log(`[STARTUP] SESSION_SECRET: ${process.env.SESSION_SECRET ? 'SET' : 'NOT SET'}`);
+
+// Early health check - BEFORE any middleware that might fail
+// This ensures the health check responds even if other things are broken
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+console.log('[STARTUP] Health check endpoint registered');
+
 app.use(express.json({
   verify: (req, _res, buf) => {
     req.rawBody = buf;
@@ -40,23 +53,35 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false }));
 
-const isProduction = process.env.NODE_ENV === 'production';
-
 // Require SESSION_SECRET in production
 if (isProduction && !process.env.SESSION_SECRET) {
   console.error("FATAL: SESSION_SECRET environment variable is required in production");
   process.exit(1);
 }
 
-// Create PostgreSQL session store for production
-const PgSession = connectPgSimple(session);
-const sessionStore = isProduction 
-  ? new PgSession({
-      pool: new Pool({ connectionString: process.env.DATABASE_URL }),
-      tableName: 'user_sessions',
-      createTableIfMissing: true,
-    })
-  : undefined; // Use MemoryStore in development only
+// Create PostgreSQL session store for production with error handling
+let sessionStore: any = undefined;
+
+if (isProduction) {
+  if (!process.env.DATABASE_URL) {
+    console.error("[STARTUP] WARNING: DATABASE_URL not set, using memory session store");
+  } else {
+    try {
+      console.log('[STARTUP] Creating PostgreSQL session store...');
+      const PgSession = connectPgSimple(session);
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      sessionStore = new PgSession({
+        pool,
+        tableName: 'user_sessions',
+        createTableIfMissing: true,
+      });
+      console.log('[STARTUP] PostgreSQL session store created successfully');
+    } catch (error) {
+      console.error('[STARTUP] Failed to create PostgreSQL session store:', error);
+      console.log('[STARTUP] Falling back to memory session store');
+    }
+  }
+}
 
 app.use(session({
   store: sessionStore,
@@ -70,6 +95,8 @@ app.use(session({
     sameSite: isProduction ? 'strict' : 'lax',
   }
 }));
+
+console.log('[STARTUP] Session middleware configured');
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -102,35 +129,35 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const server = await registerRoutes(app);
+  try {
+    console.log('[STARTUP] Registering routes...');
+    const server = await registerRoutes(app);
+    console.log('[STARTUP] Routes registered successfully');
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      console.error(`[ERROR] ${status}: ${message}`);
+      res.status(status).json({ message });
+    });
 
-    res.status(status).json({ message });
-    throw err;
-  });
+    if (app.get("env") === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
+    }
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+    const port = parseInt(process.env.PORT || '5000', 10);
+    server.listen({
+      port,
+      host: "0.0.0.0",
+      reusePort: true,
+    }, () => {
+      console.log(`[STARTUP] Server successfully started on port ${port}`);
+      log(`serving on port ${port}`);
+    });
+  } catch (error) {
+    console.error('[STARTUP] Failed to start server:', error);
+    process.exit(1);
   }
-
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
 })();
