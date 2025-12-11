@@ -1,5 +1,5 @@
 // Object Storage Service for Replit App Storage
-// Uses the official @replit/object-storage package
+// Uses the official @replit/object-storage package with base64 encoding for binary files
 import { Client } from "@replit/object-storage";
 import { Response } from "express";
 import { randomUUID } from "crypto";
@@ -29,17 +29,22 @@ export class ObjectStorageService {
   }
 
   // Upload a file buffer to object storage
+  // Uses base64 encoding since uploadFromBytes has issues with binary data
   async uploadFile(buffer: Buffer, fileName: string, _contentType: string = "application/pdf"): Promise<string> {
     const objectId = randomUUID();
     const objectName = `bank-statements/${objectId}-${fileName}`;
 
-    // Upload the buffer as bytes
-    const result = await this.client.uploadFromBytes(objectName, buffer);
+    // Encode buffer as base64 for storage (uploadFromBytes has issues with binary data)
+    const base64Content = buffer.toString("base64");
+    
+    // Upload as text (base64 encoded)
+    const result = await this.client.uploadFromText(objectName, base64Content);
 
     if (!result.ok) {
       throw new Error(`Upload failed: ${result.error?.message || "Unknown error"}`);
     }
 
+    console.log(`[OBJECT STORAGE] Uploaded ${objectName} (${buffer.length} bytes, ${base64Content.length} base64 chars)`);
     return objectName;
   }
 
@@ -59,23 +64,25 @@ export class ObjectStorageService {
         return;
       }
 
-      // Download the file as bytes
-      const result = await this.client.downloadAsBytes(objectName);
+      // Download as text (base64 encoded)
+      const result = await this.client.downloadAsText(objectName);
       
       if (!result.ok) {
         throw new Error(`Download failed: ${result.error?.message || "Unknown error"}`);
       }
 
+      // Decode from base64 back to binary
+      const binaryBuffer = Buffer.from(result.value, "base64");
+
       // Set headers
       res.set({
         "Content-Type": "application/pdf",
-        "Content-Length": result.value.length.toString(),
+        "Content-Length": binaryBuffer.length.toString(),
         "Cache-Control": "private, max-age=3600",
       });
 
-      // Send the buffer
-      const buf = result.value as unknown as Uint8Array;
-      res.send(Buffer.from(buf));
+      // Send the binary buffer
+      res.send(binaryBuffer);
     } catch (error) {
       console.error("Error downloading file:", error);
       if (error instanceof ObjectNotFoundError) {
