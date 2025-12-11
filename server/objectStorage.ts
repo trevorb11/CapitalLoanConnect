@@ -33,34 +33,67 @@ export class ObjectNotFoundError extends Error {
   }
 }
 
+// Parse object path in format /<bucket_name>/<object_path>
+function parseObjectPath(path: string): { bucketName: string; objectName: string } {
+  if (!path.startsWith("/")) {
+    path = `/${path}`;
+  }
+  const pathParts = path.split("/").filter(p => p.length > 0);
+  if (pathParts.length < 1) {
+    throw new Error("Invalid path: must contain at least a bucket name");
+  }
+
+  const bucketName = pathParts[0];
+  const objectName = pathParts.slice(1).join("/");
+
+  return { bucketName, objectName };
+}
+
 // The object storage service is used to interact with the object storage service.
 export class ObjectStorageService {
-  private bucketName: string;
+  private privateObjectDir: string;
 
   constructor() {
-    this.bucketName = process.env.OBJECT_STORAGE_BUCKET || "";
-    if (!this.bucketName) {
-      console.warn("OBJECT_STORAGE_BUCKET not set. Object storage will not work until configured.");
+    // Use PRIVATE_OBJECT_DIR for the new pattern, fallback to OBJECT_STORAGE_BUCKET for backwards compatibility
+    this.privateObjectDir = process.env.PRIVATE_OBJECT_DIR || "";
+    
+    // Backwards compatibility: if PRIVATE_OBJECT_DIR not set, try OBJECT_STORAGE_BUCKET
+    if (!this.privateObjectDir && process.env.OBJECT_STORAGE_BUCKET) {
+      this.privateObjectDir = `/${process.env.OBJECT_STORAGE_BUCKET}`;
+    }
+    
+    if (!this.privateObjectDir) {
+      console.warn("PRIVATE_OBJECT_DIR not set. Object storage will not work until configured.");
     }
   }
 
   isConfigured(): boolean {
-    return !!this.bucketName;
+    return !!this.privateObjectDir;
+  }
+
+  // Get bucket name and base path from privateObjectDir
+  private getBucketAndPath(): { bucketName: string; basePath: string } {
+    const { bucketName, objectName } = parseObjectPath(this.privateObjectDir);
+    return { bucketName, basePath: objectName };
   }
 
   // Upload a file buffer to object storage
   async uploadFile(buffer: Buffer, fileName: string, contentType: string = "application/pdf"): Promise<string> {
-    if (!this.bucketName) {
+    if (!this.privateObjectDir) {
       throw new Error(
-        "OBJECT_STORAGE_BUCKET not set. Create a bucket in 'Object Storage' " +
-          "tool and set OBJECT_STORAGE_BUCKET env var."
+        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
+          "tool and set PRIVATE_OBJECT_DIR env var (format: /bucket-name)."
       );
     }
 
+    const { bucketName, basePath } = this.getBucketAndPath();
     const objectId = randomUUID();
-    const objectName = `bank-statements/${objectId}-${fileName}`;
+    
+    // Build object path: basePath/bank-statements/uuid-filename
+    const pathPrefix = basePath ? `${basePath}/` : "";
+    const objectName = `${pathPrefix}bank-statements/${objectId}-${fileName}`;
 
-    const bucket = objectStorageClient.bucket(this.bucketName);
+    const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
 
     await file.save(buffer, {
@@ -71,16 +104,33 @@ export class ObjectStorageService {
       },
     });
 
-    return objectName;
+    // Return full path for storage reference
+    return `/${bucketName}/${objectName}`;
   }
 
   // Get a file from object storage
-  async getFile(objectName: string): Promise<File> {
-    if (!this.bucketName) {
+  async getFile(objectPath: string): Promise<File> {
+    if (!this.privateObjectDir) {
       throw new ObjectNotFoundError();
     }
 
-    const bucket = objectStorageClient.bucket(this.bucketName);
+    // Handle both old format (just object name) and new format (full path)
+    let bucketName: string;
+    let objectName: string;
+
+    if (objectPath.startsWith("/")) {
+      // New format: /bucket-name/path/to/file
+      const parsed = parseObjectPath(objectPath);
+      bucketName = parsed.bucketName;
+      objectName = parsed.objectName;
+    } else {
+      // Old format: just the object path, use bucket from privateObjectDir
+      const { bucketName: defaultBucket } = this.getBucketAndPath();
+      bucketName = defaultBucket;
+      objectName = objectPath;
+    }
+
+    const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
 
     const [exists] = await file.exists();
@@ -92,9 +142,9 @@ export class ObjectStorageService {
   }
 
   // Download a file to the response
-  async downloadFile(objectName: string, res: Response): Promise<void> {
+  async downloadFile(objectPath: string, res: Response): Promise<void> {
     try {
-      const file = await this.getFile(objectName);
+      const file = await this.getFile(objectPath);
       const [metadata] = await file.getMetadata();
 
       res.set({
@@ -124,20 +174,18 @@ export class ObjectStorageService {
   }
 
   // Delete a file from object storage
-  async deleteFile(objectName: string): Promise<void> {
-    if (!this.bucketName) {
-      throw new Error("OBJECT_STORAGE_BUCKET not set.");
+  async deleteFile(objectPath: string): Promise<void> {
+    if (!this.privateObjectDir) {
+      throw new Error("PRIVATE_OBJECT_DIR not set.");
     }
 
-    const bucket = objectStorageClient.bucket(this.bucketName);
-    const file = bucket.file(objectName);
-
+    const file = await this.getFile(objectPath);
     await file.delete({ ignoreNotFound: true });
   }
 
   // Get a signed URL for downloading
-  async getSignedDownloadUrl(objectName: string, expiresInMinutes: number = 60): Promise<string> {
-    const file = await this.getFile(objectName);
+  async getSignedDownloadUrl(objectPath: string, expiresInMinutes: number = 60): Promise<string> {
+    const file = await this.getFile(objectPath);
 
     const [url] = await file.getSignedUrl({
       action: "read",
