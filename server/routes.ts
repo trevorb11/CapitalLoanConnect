@@ -1049,21 +1049,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Upload not found" });
       }
 
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${upload.originalFileName}"`
-      );
-
       // Check if file is in Object Storage (path contains "bank-statements/")
       if (upload.storedFileName.includes("bank-statements/")) {
-        // File is in Object Storage
+        // File is in Object Storage - downloadFile handles all headers
         try {
-          await objectStorage.downloadFile(upload.storedFileName, res);
+          await objectStorage.downloadFile(upload.storedFileName, res, upload.originalFileName);
           return;
         } catch (objError) {
           console.error("[DOWNLOAD] Object Storage download failed:", objError);
-          return res.status(404).json({ error: "File not found in storage" });
+          if (!res.headersSent) {
+            return res.status(404).json({ error: "File not found in storage" });
+          }
+          return;
         }
       }
 
@@ -1073,10 +1070,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "File not found on disk" });
       }
 
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${upload.originalFileName}"`);
       res.sendFile(filePath);
     } catch (error) {
       console.error("Error downloading bank statement:", error);
-      res.status(500).json({ error: "Failed to download file" });
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to download file" });
+      }
     }
   });
 

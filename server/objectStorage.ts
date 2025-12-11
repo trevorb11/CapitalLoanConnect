@@ -55,12 +55,14 @@ export class ObjectStorageService {
   }
 
   // Download a file to the response
-  async downloadFile(objectName: string, res: Response): Promise<void> {
+  async downloadFile(objectName: string, res: Response, originalFileName?: string): Promise<void> {
     try {
       // Check if file exists first
       const exists = await this.fileExists(objectName);
       if (!exists) {
-        res.status(404).json({ error: "File not found" });
+        if (!res.headersSent) {
+          res.status(404).json({ error: "File not found" });
+        }
         return;
       }
 
@@ -74,20 +76,18 @@ export class ObjectStorageService {
       // Decode from base64 back to binary
       const binaryBuffer = Buffer.from(result.value, "base64");
 
-      // Set headers
-      res.set({
-        "Content-Type": "application/pdf",
-        "Content-Length": binaryBuffer.length.toString(),
-        "Cache-Control": "private, max-age=3600",
-      });
+      // Set all headers at once
+      const filename = originalFileName || objectName.split("/").pop() || "document.pdf";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Length", binaryBuffer.length.toString());
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Cache-Control", "private, max-age=3600");
 
-      // Send the binary buffer
-      res.send(binaryBuffer);
+      // Send the binary buffer and end
+      res.end(binaryBuffer);
     } catch (error) {
       console.error("Error downloading file:", error);
-      if (error instanceof ObjectNotFoundError) {
-        res.status(404).json({ error: "File not found" });
-      } else if (!res.headersSent) {
+      if (!res.headersSent) {
         res.status(500).json({ error: "Error downloading file" });
       }
     }
