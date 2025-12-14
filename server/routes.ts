@@ -8,6 +8,7 @@ import PDFDocument from "pdfkit";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
+import { aiAssistant, type MessageGenerationRequest } from "./services/ai-assistant";
 import { AGENTS } from "../shared/agents";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
@@ -1657,6 +1658,312 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating partner:", error);
       res.status(500).json({ error: "Failed to update partner" });
+    }
+  });
+
+  // ========================================
+  // AI ASSISTANT ROUTES
+  // ========================================
+
+  // Check AI service status
+  app.get("/api/ai/status", (_req, res) => {
+    res.json({
+      enabled: aiAssistant.isServiceEnabled(),
+      provider: aiAssistant.getProvider(),
+    });
+  });
+
+  // Enrich a single lead with AI analysis
+  app.post("/api/ai/enrich-lead", async (req, res) => {
+    try {
+      // Check authentication - admin or agent only
+      if (!req.session.user?.isAuthenticated) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { applicationId } = req.body;
+
+      if (!applicationId) {
+        return res.status(400).json({ error: "applicationId is required" });
+      }
+
+      const application = await storage.getLoanApplication(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+
+      // Check agent authorization
+      if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        if (application.agentEmail &&
+            application.agentEmail.toLowerCase() !== req.session.user.agentEmail.toLowerCase()) {
+          return res.status(403).json({ error: "Not authorized to access this application" });
+        }
+      }
+
+      const enrichment = await aiAssistant.enrichLead(application);
+      res.json({
+        applicationId,
+        enrichment,
+      });
+    } catch (error) {
+      console.error("AI lead enrichment error:", error);
+      res.status(500).json({ error: "Failed to enrich lead" });
+    }
+  });
+
+  // Bulk enrich multiple leads
+  app.post("/api/ai/enrich-leads", async (req, res) => {
+    try {
+      // Admin only for bulk operations
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { applicationIds } = req.body;
+
+      if (!applicationIds || !Array.isArray(applicationIds)) {
+        return res.status(400).json({ error: "applicationIds array is required" });
+      }
+
+      // Limit batch size
+      if (applicationIds.length > 50) {
+        return res.status(400).json({ error: "Maximum 50 applications per batch" });
+      }
+
+      const applications = await Promise.all(
+        applicationIds.map(id => storage.getLoanApplication(id))
+      );
+
+      const validApplications = applications.filter((app): app is LoanApplication => app !== null);
+      const enrichments = await aiAssistant.enrichLeads(validApplications);
+
+      const results = Array.from(enrichments.entries()).map(([id, enrichment]) => ({
+        applicationId: id,
+        enrichment,
+      }));
+
+      res.json({ results, total: results.length });
+    } catch (error) {
+      console.error("AI bulk enrichment error:", error);
+      res.status(500).json({ error: "Failed to enrich leads" });
+    }
+  });
+
+  // Generate personalized message for a lead
+  app.post("/api/ai/generate-message", async (req, res) => {
+    try {
+      // Check authentication
+      if (!req.session.user?.isAuthenticated) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { applicationId, channel, purpose, customContext } = req.body;
+
+      if (!applicationId) {
+        return res.status(400).json({ error: "applicationId is required" });
+      }
+      if (!channel || !['sms', 'email'].includes(channel)) {
+        return res.status(400).json({ error: "channel must be 'sms' or 'email'" });
+      }
+      if (!purpose) {
+        return res.status(400).json({ error: "purpose is required" });
+      }
+
+      const application = await storage.getLoanApplication(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+
+      // Check agent authorization
+      if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        if (application.agentEmail &&
+            application.agentEmail.toLowerCase() !== req.session.user.agentEmail.toLowerCase()) {
+          return res.status(403).json({ error: "Not authorized to access this application" });
+        }
+      }
+
+      // Get agent name for personalization
+      const agentName = req.session.user.role === 'agent'
+        ? req.session.user.agentName
+        : application.agentName || undefined;
+
+      const messageRequest: MessageGenerationRequest = {
+        application,
+        channel,
+        purpose,
+        customContext,
+        agentName,
+        companyName: 'Today Capital Group',
+      };
+
+      const message = await aiAssistant.generateMessage(messageRequest);
+      res.json({
+        applicationId,
+        message,
+      });
+    } catch (error) {
+      console.error("AI message generation error:", error);
+      res.status(500).json({ error: "Failed to generate message" });
+    }
+  });
+
+  // Webhook endpoint for GoHighLevel to trigger AI actions
+  app.post("/api/ai/webhook/ghl", async (req, res) => {
+    try {
+      const { action, contactId, email, data } = req.body;
+
+      console.log("[AI Webhook] Received GHL trigger:", { action, contactId, email });
+
+      // Find application by email or GHL contact ID
+      let application: LoanApplication | null = null;
+      if (email) {
+        application = await storage.getLoanApplicationByEmail(email);
+      }
+      if (!application && contactId) {
+        const allApps = await storage.getAllLoanApplications();
+        application = allApps.find(app => app.ghlContactId === contactId) || null;
+      }
+
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+
+      let result: any = {};
+
+      switch (action) {
+        case 'enrich':
+          result.enrichment = await aiAssistant.enrichLead(application);
+          break;
+
+        case 'generate_sms':
+          result.message = await aiAssistant.generateMessage({
+            application,
+            channel: 'sms',
+            purpose: data?.purpose || 'initial_followup',
+            customContext: data?.context,
+            agentName: data?.agentName,
+            companyName: 'Today Capital Group',
+          });
+          break;
+
+        case 'generate_email':
+          result.message = await aiAssistant.generateMessage({
+            application,
+            channel: 'email',
+            purpose: data?.purpose || 'initial_followup',
+            customContext: data?.context,
+            agentName: data?.agentName,
+            companyName: 'Today Capital Group',
+          });
+          break;
+
+        case 'full_analysis':
+          // Return both enrichment and suggested messages
+          result.enrichment = await aiAssistant.enrichLead(application);
+          result.suggestedSms = await aiAssistant.generateMessage({
+            application,
+            channel: 'sms',
+            purpose: data?.purpose || 'initial_followup',
+            agentName: data?.agentName,
+            companyName: 'Today Capital Group',
+          });
+          result.suggestedEmail = await aiAssistant.generateMessage({
+            application,
+            channel: 'email',
+            purpose: data?.purpose || 'initial_followup',
+            agentName: data?.agentName,
+            companyName: 'Today Capital Group',
+          });
+          break;
+
+        default:
+          return res.status(400).json({ error: `Unknown action: ${action}` });
+      }
+
+      res.json({
+        success: true,
+        applicationId: application.id,
+        ...result,
+      });
+    } catch (error) {
+      console.error("AI webhook error:", error);
+      res.status(500).json({ error: "AI processing failed" });
+    }
+  });
+
+  // Dashboard endpoint: Get AI insights for all applications
+  app.get("/api/ai/dashboard-insights", async (req, res) => {
+    try {
+      // Admin only
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      // Get recent applications (last 30 days)
+      const allApplications = await storage.getAllLoanApplications();
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const recentApps = allApplications.filter(app => {
+        const created = app.createdAt ? new Date(app.createdAt) : new Date();
+        return created >= thirtyDaysAgo;
+      });
+
+      // Enrich a sample for insights (limit to 20 to avoid overuse)
+      const sampleApps = recentApps.slice(0, 20);
+      const enrichments = await aiAssistant.enrichLeads(sampleApps);
+
+      // Calculate aggregate insights
+      let hotLeads = 0;
+      let warmLeads = 0;
+      let coldLeads = 0;
+      let totalScore = 0;
+      const productRecommendations: Record<string, number> = {};
+      const urgentLeads: Array<{ id: string; name: string; score: number; urgency: string }> = [];
+
+      enrichments.forEach((enrichment, appId) => {
+        totalScore += enrichment.leadScore;
+
+        if (enrichment.qualityTier === 'hot') hotLeads++;
+        else if (enrichment.qualityTier === 'warm') warmLeads++;
+        else coldLeads++;
+
+        enrichment.recommendedProducts.forEach(product => {
+          productRecommendations[product] = (productRecommendations[product] || 0) + 1;
+        });
+
+        if (enrichment.urgencyLevel === 'immediate' || enrichment.urgencyLevel === 'high') {
+          const app = sampleApps.find(a => a.id === appId);
+          if (app) {
+            urgentLeads.push({
+              id: appId,
+              name: app.fullName || 'Unknown',
+              score: enrichment.leadScore,
+              urgency: enrichment.urgencyLevel,
+            });
+          }
+        }
+      });
+
+      res.json({
+        summary: {
+          totalAnalyzed: sampleApps.length,
+          averageScore: Math.round(totalScore / Math.max(sampleApps.length, 1)),
+          hotLeads,
+          warmLeads,
+          coldLeads,
+        },
+        topProducts: Object.entries(productRecommendations)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([product, count]) => ({ product, count })),
+        urgentLeads: urgentLeads.sort((a, b) => b.score - a.score).slice(0, 10),
+        aiEnabled: aiAssistant.isServiceEnabled(),
+        provider: aiAssistant.getProvider(),
+      });
+    } catch (error) {
+      console.error("AI dashboard insights error:", error);
+      res.status(500).json({ error: "Failed to generate insights" });
     }
   });
 
