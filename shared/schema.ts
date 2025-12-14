@@ -113,6 +113,26 @@ export const loanApplications = pgTable("loan_applications", {
   // --- Bot Detection ---
   isBotAttempt: boolean("is_bot_attempt").default(false), // Honeypot triggered
 
+  // --- AI Enrichment Data ---
+  aiLeadScore: integer("ai_lead_score"), // 1-100
+  aiQualityTier: text("ai_quality_tier"), // 'hot', 'warm', 'cold'
+  aiInsights: jsonb("ai_insights"), // Array of insight strings
+  aiRiskFactors: jsonb("ai_risk_factors"), // Array of risk factor strings
+  aiRecommendedProducts: jsonb("ai_recommended_products"), // Array of product recommendations
+  aiUrgencyLevel: text("ai_urgency_level"), // 'immediate', 'high', 'medium', 'low'
+  aiNextBestAction: text("ai_next_best_action"), // Recommended next step
+  aiEnrichedAt: timestamp("ai_enriched_at"), // When AI enrichment was last run
+
+  // --- Follow-up Sequence Tracking ---
+  followUpSequence: text("follow_up_sequence"), // Current sequence: 'new_lead', 'stale_lead', 'incomplete_app', 'docs_needed', 'nurture'
+  followUpStage: integer("follow_up_stage").default(0), // Stage within sequence (0, 1, 2, etc.)
+  followUpStartedAt: timestamp("follow_up_started_at"), // When current sequence started
+  lastFollowUpAt: timestamp("last_follow_up_at"), // Last outreach timestamp
+  lastActivityAt: timestamp("last_activity_at"), // Last user interaction (form submit, doc upload, etc.)
+  followUpPausedUntil: timestamp("follow_up_paused_until"), // Pause follow-ups until this date
+  contactAttempts: integer("contact_attempts").default(0), // Total outreach attempts
+  lastContactResponse: text("last_contact_response"), // 'replied', 'no_response', 'opted_out', 'scheduled_callback'
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -9,6 +9,7 @@ import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { aiAssistant, type MessageGenerationRequest } from "./services/ai-assistant";
+import { followUpOrchestrator } from "./services/followup-orchestrator";
 import { AGENTS } from "../shared/agents";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
@@ -502,12 +503,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Sync to GoHighLevel
       try {
         const ghlContactId = await ghlService.createOrUpdateContact(application);
-        const updatedApp = await storage.updateLoanApplication(application.id, {
+        let updatedApp = await storage.updateLoanApplication(application.id, {
           ghlContactId,
           agentViewUrl,
           ...(fundingReportUrl && { fundingReportUrl }),
+          lastActivityAt: new Date(),
         });
-        
+
         // Send intake webhook if intake form is completed
         if (applicationData.isCompleted) {
           try {
@@ -516,16 +518,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("Intake webhook error (non-blocking):", webhookError);
           }
         }
-        
+
+        // AUTO-ENRICHMENT: Run AI analysis and trigger follow-up sequences
+        try {
+          const trigger = applicationData.isCompleted ? 'intake_completed' : 'new_application';
+          const { enrichment, ghlPayload } = await followUpOrchestrator.processApplication(
+            updatedApp || application,
+            trigger
+          );
+
+          // Save AI enrichment data to application
+          const aiUpdates = followUpOrchestrator.getApplicationUpdates(
+            enrichment,
+            followUpOrchestrator.determineSequence(updatedApp || application, trigger),
+            0,
+            true
+          );
+          updatedApp = await storage.updateLoanApplication(application.id, aiUpdates);
+
+          console.log(`[AUTO-ENRICH] Lead score: ${enrichment.leadScore} (${enrichment.qualityTier})`);
+
+          // Trigger appropriate GHL workflow with AI-enriched data
+          await followUpOrchestrator.triggerSequence(
+            updatedApp || application,
+            aiUpdates.followUpSequence || 'new_lead',
+            ghlPayload
+          );
+        } catch (aiError) {
+          console.error("AI enrichment error (non-blocking):", aiError);
+        }
+
         res.json(updatedApp || application);
       } catch (ghlError) {
         console.error("GHL sync error, but application saved:", ghlError);
         // Still update the agentViewUrl and fundingReportUrl even if GHL sync fails
-        const updatedApp = await storage.updateLoanApplication(application.id, {
+        let updatedApp = await storage.updateLoanApplication(application.id, {
           agentViewUrl,
           ...(fundingReportUrl && { fundingReportUrl }),
+          lastActivityAt: new Date(),
         });
-        
+
         // Send intake webhook if intake form is completed (even if GHL sync failed)
         if (applicationData.isCompleted) {
           try {
@@ -534,7 +566,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("Intake webhook error (non-blocking):", webhookError);
           }
         }
-        
+
+        // Still try AI enrichment even if GHL sync failed
+        try {
+          const trigger = applicationData.isCompleted ? 'intake_completed' : 'new_application';
+          const { enrichment } = await followUpOrchestrator.processApplication(
+            updatedApp || application,
+            trigger
+          );
+
+          const aiUpdates = followUpOrchestrator.getApplicationUpdates(
+            enrichment,
+            followUpOrchestrator.determineSequence(updatedApp || application, trigger),
+            0,
+            true
+          );
+          updatedApp = await storage.updateLoanApplication(application.id, aiUpdates);
+        } catch (aiError) {
+          console.error("AI enrichment error (non-blocking):", aiError);
+        }
+
         res.json(updatedApp || application);
       }
     } catch (error) {
@@ -576,10 +627,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.agentViewUrl = `/agent/application/${id}`;
       }
 
-      const updatedApp = await storage.updateLoanApplication(id, updates);
-      
+      // Track last activity
+      updates.lastActivityAt = new Date();
+
+      // Get the existing app to check state changes
+      const existingApp = await storage.getLoanApplication(id);
+
+      let updatedApp = await storage.updateLoanApplication(id, updates);
+
       if (!updatedApp) {
         return res.status(404).json({ error: "Application not found" });
+      }
+
+      // Determine what trigger type this is based on state changes
+      let aiTrigger: 'intake_completed' | 'full_app_completed' | 'bank_docs_uploaded' | 'activity' | null = null;
+
+      if (updates.isFullApplicationCompleted && !existingApp?.isFullApplicationCompleted) {
+        aiTrigger = 'full_app_completed';
+      } else if (updates.isCompleted && !existingApp?.isCompleted) {
+        aiTrigger = 'intake_completed';
+      } else if (updates.plaidItemId && !existingApp?.plaidItemId) {
+        aiTrigger = 'bank_docs_uploaded';
+      } else if (updates.isCompleted || updates.isFullApplicationCompleted) {
+        aiTrigger = 'activity';
       }
 
       // Sync to GoHighLevel
@@ -588,26 +658,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await ghlService.updateContact(updatedApp.ghlContactId, updatedApp);
         } else {
           const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
-          const finalApp = await storage.updateLoanApplication(id, { ghlContactId });
-          
-          // Send webhook if either form completed (fire-and-forget, non-blocking)
-          if (updatedApp.isCompleted || updatedApp.isFullApplicationCompleted) {
-            ghlService.sendWebhook(finalApp || updatedApp).catch(err => 
-              console.error("Webhook error (non-blocking):", err)
-            );
-          }
-          
-          return res.json(finalApp || updatedApp);
+          updatedApp = await storage.updateLoanApplication(id, { ghlContactId }) || updatedApp;
         }
-        
+
         // Send webhook if either form completed (fire-and-forget, non-blocking)
         if (updatedApp.isCompleted || updatedApp.isFullApplicationCompleted) {
-          ghlService.sendWebhook(updatedApp).catch(err => 
+          ghlService.sendWebhook(updatedApp).catch(err =>
             console.error("Webhook error (non-blocking):", err)
           );
         }
       } catch (ghlError) {
         console.error("GHL sync error, but application updated:", ghlError);
+      }
+
+      // AUTO-ENRICHMENT: Run AI analysis on significant state changes
+      if (aiTrigger) {
+        try {
+          const { enrichment, ghlPayload } = await followUpOrchestrator.processApplication(
+            updatedApp,
+            aiTrigger
+          );
+
+          // Determine if this is a new sequence or continuing one
+          const newSequence = followUpOrchestrator.determineSequence(updatedApp, aiTrigger);
+          const isNewSequence = newSequence !== existingApp?.followUpSequence;
+
+          const aiUpdates = followUpOrchestrator.getApplicationUpdates(
+            enrichment,
+            newSequence,
+            isNewSequence ? 0 : (updatedApp.followUpStage || 0),
+            isNewSequence
+          );
+          updatedApp = await storage.updateLoanApplication(id, aiUpdates) || updatedApp;
+
+          console.log(`[AUTO-ENRICH] Updated lead - Score: ${enrichment.leadScore} (${enrichment.qualityTier}), Trigger: ${aiTrigger}`);
+
+          // Trigger GHL workflow with enriched data
+          await followUpOrchestrator.triggerSequence(
+            updatedApp,
+            newSequence,
+            ghlPayload
+          );
+        } catch (aiError) {
+          console.error("AI enrichment error (non-blocking):", aiError);
+        }
       }
 
       res.json(updatedApp);
@@ -1964,6 +2058,359 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("AI dashboard insights error:", error);
       res.status(500).json({ error: "Failed to generate insights" });
+    }
+  });
+
+  // ========================================
+  // FOLLOW-UP ORCHESTRATION & ABANDONMENT RECOVERY
+  // ========================================
+
+  // Check for abandoned applications and trigger recovery sequences
+  app.post("/api/ai/process-abandonments", async (req, res) => {
+    try {
+      // Admin only - this is typically called by a cron job or scheduler
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const allApplications = await storage.getAllLoanApplications();
+
+      // Filter to applications that might be abandoned (not in nurture, not opted out)
+      const candidateApps = allApplications.filter(app =>
+        app.lastContactResponse !== 'opted_out' &&
+        !app.plaidItemId && // Don't process fully completed applications
+        !(app.followUpPausedUntil && new Date(app.followUpPausedUntil) > new Date())
+      );
+
+      const result = await followUpOrchestrator.processAbandonedApplications(candidateApps);
+
+      res.json({
+        success: true,
+        processed: result.processed,
+        recovered: result.recovered,
+        message: `Processed ${result.processed} applications, triggered recovery for ${result.recovered.length}`,
+      });
+    } catch (error) {
+      console.error("Abandonment processing error:", error);
+      res.status(500).json({ error: "Failed to process abandonments" });
+    }
+  });
+
+  // Get abandonment status for a specific application
+  app.get("/api/ai/abandonment-status/:id", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const application = await storage.getLoanApplication(req.params.id);
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+
+      const abandonment = followUpOrchestrator.detectAbandonment(application);
+
+      res.json({
+        applicationId: application.id,
+        ...abandonment,
+        currentSequence: application.followUpSequence,
+        currentStage: application.followUpStage,
+        contactAttempts: application.contactAttempts,
+        lastFollowUp: application.lastFollowUpAt,
+        lastActivity: application.lastActivityAt,
+      });
+    } catch (error) {
+      console.error("Abandonment status error:", error);
+      res.status(500).json({ error: "Failed to get abandonment status" });
+    }
+  });
+
+  // Manually trigger a follow-up sequence for an application
+  app.post("/api/ai/trigger-sequence", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { applicationId, sequence, stage } = req.body;
+
+      if (!applicationId) {
+        return res.status(400).json({ error: "applicationId is required" });
+      }
+
+      const application = await storage.getLoanApplication(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+
+      // Check agent authorization
+      if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        if (application.agentEmail &&
+            application.agentEmail.toLowerCase() !== req.session.user.agentEmail.toLowerCase()) {
+          return res.status(403).json({ error: "Not authorized to access this application" });
+        }
+      }
+
+      // Process the application with the orchestrator
+      const { enrichment, action, ghlPayload } = await followUpOrchestrator.processApplication(
+        application,
+        'scheduled_check'
+      );
+
+      // Override sequence if specified
+      const targetSequence = sequence || followUpOrchestrator.determineSequence(application, 'scheduled_check');
+      const targetStage = stage !== undefined ? stage : (application.followUpStage || 0);
+
+      // Build action for the specified stage
+      const followUpAction = await followUpOrchestrator.buildFollowUpAction(
+        application,
+        enrichment,
+        targetSequence,
+        targetStage
+      );
+
+      // Update application with new sequence data
+      const aiUpdates = followUpOrchestrator.getApplicationUpdates(
+        enrichment,
+        targetSequence,
+        targetStage,
+        targetSequence !== application.followUpSequence
+      );
+      aiUpdates.contactAttempts = (application.contactAttempts || 0) + 1;
+
+      await storage.updateLoanApplication(applicationId, aiUpdates);
+
+      // Trigger GHL workflow
+      await followUpOrchestrator.triggerSequence(application, targetSequence, ghlPayload);
+
+      res.json({
+        success: true,
+        applicationId,
+        sequence: targetSequence,
+        stage: targetStage,
+        action: followUpAction,
+        enrichment,
+      });
+    } catch (error) {
+      console.error("Trigger sequence error:", error);
+      res.status(500).json({ error: "Failed to trigger sequence" });
+    }
+  });
+
+  // Pause follow-ups for an application
+  app.post("/api/ai/pause-followups", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { applicationId, pauseDays, reason } = req.body;
+
+      if (!applicationId) {
+        return res.status(400).json({ error: "applicationId is required" });
+      }
+
+      const application = await storage.getLoanApplication(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+
+      // Check agent authorization
+      if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        if (application.agentEmail &&
+            application.agentEmail.toLowerCase() !== req.session.user.agentEmail.toLowerCase()) {
+          return res.status(403).json({ error: "Not authorized to access this application" });
+        }
+      }
+
+      const pauseUntil = new Date();
+      pauseUntil.setDate(pauseUntil.getDate() + (pauseDays || 7));
+
+      await storage.updateLoanApplication(applicationId, {
+        followUpPausedUntil: pauseUntil,
+        lastContactResponse: reason === 'scheduled_callback' ? 'scheduled_callback' : undefined,
+      });
+
+      res.json({
+        success: true,
+        applicationId,
+        pausedUntil: pauseUntil.toISOString(),
+        reason,
+      });
+    } catch (error) {
+      console.error("Pause followups error:", error);
+      res.status(500).json({ error: "Failed to pause follow-ups" });
+    }
+  });
+
+  // Mark lead response (replied, opted out, etc.)
+  app.post("/api/ai/mark-response", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { applicationId, response } = req.body;
+
+      if (!applicationId || !response) {
+        return res.status(400).json({ error: "applicationId and response are required" });
+      }
+
+      const validResponses = ['replied', 'no_response', 'opted_out', 'scheduled_callback', 'not_interested', 'funded'];
+      if (!validResponses.includes(response)) {
+        return res.status(400).json({ error: `Invalid response. Must be one of: ${validResponses.join(', ')}` });
+      }
+
+      const application = await storage.getLoanApplication(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+
+      const updates: any = {
+        lastContactResponse: response,
+        lastActivityAt: new Date(),
+      };
+
+      // If they replied or scheduled callback, pause automated follow-ups
+      if (response === 'replied' || response === 'scheduled_callback') {
+        const pauseUntil = new Date();
+        pauseUntil.setDate(pauseUntil.getDate() + 3); // Pause for 3 days
+        updates.followUpPausedUntil = pauseUntil;
+      }
+
+      // If opted out, permanently stop
+      if (response === 'opted_out') {
+        updates.followUpSequence = null;
+        updates.followUpStage = 0;
+      }
+
+      // If funded, move to nurture
+      if (response === 'funded') {
+        updates.followUpSequence = 'nurture';
+        updates.followUpStage = 0;
+      }
+
+      await storage.updateLoanApplication(applicationId, updates);
+
+      res.json({
+        success: true,
+        applicationId,
+        response,
+        updates,
+      });
+    } catch (error) {
+      console.error("Mark response error:", error);
+      res.status(500).json({ error: "Failed to mark response" });
+    }
+  });
+
+  // Get follow-up queue - applications needing attention
+  app.get("/api/ai/followup-queue", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const allApplications = await storage.getAllLoanApplications();
+
+      // Filter based on role
+      let applications = allApplications;
+      if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        applications = allApplications.filter(
+          app => (app.agentEmail || '').toLowerCase() === req.session.user!.agentEmail!.toLowerCase()
+        );
+      }
+
+      // Categorize applications
+      const hotLeads: any[] = [];
+      const needsFollowUp: any[] = [];
+      const abandoned: any[] = [];
+      const scheduled: any[] = [];
+
+      for (const app of applications) {
+        // Skip opted out
+        if (app.lastContactResponse === 'opted_out') continue;
+
+        // Skip paused
+        if (app.followUpPausedUntil && new Date(app.followUpPausedUntil) > new Date()) {
+          if (app.lastContactResponse === 'scheduled_callback') {
+            scheduled.push({
+              id: app.id,
+              name: app.fullName,
+              businessName: app.businessName || app.legalBusinessName,
+              email: app.email,
+              phone: app.phone,
+              scheduledUntil: app.followUpPausedUntil,
+              leadScore: app.aiLeadScore,
+            });
+          }
+          continue;
+        }
+
+        const abandonment = followUpOrchestrator.detectAbandonment(app);
+
+        // Hot leads (score >= 80)
+        if (app.aiLeadScore && app.aiLeadScore >= 80) {
+          hotLeads.push({
+            id: app.id,
+            name: app.fullName,
+            businessName: app.businessName || app.legalBusinessName,
+            email: app.email,
+            phone: app.phone,
+            leadScore: app.aiLeadScore,
+            qualityTier: app.aiQualityTier,
+            urgencyLevel: app.aiUrgencyLevel,
+            nextAction: app.aiNextBestAction,
+            sequence: app.followUpSequence,
+            stage: app.followUpStage,
+          });
+        }
+        // Abandoned
+        else if (abandonment.isAbandoned) {
+          abandoned.push({
+            id: app.id,
+            name: app.fullName,
+            businessName: app.businessName || app.legalBusinessName,
+            email: app.email,
+            phone: app.phone,
+            abandonmentType: abandonment.abandonmentType,
+            hoursSinceActivity: Math.round(abandonment.hoursSinceActivity),
+            recommendedAction: abandonment.recommendedAction,
+            leadScore: app.aiLeadScore,
+          });
+        }
+        // Needs follow-up (in active sequence)
+        else if (app.followUpSequence && app.followUpSequence !== 'nurture') {
+          needsFollowUp.push({
+            id: app.id,
+            name: app.fullName,
+            businessName: app.businessName || app.legalBusinessName,
+            email: app.email,
+            phone: app.phone,
+            sequence: app.followUpSequence,
+            stage: app.followUpStage,
+            lastFollowUp: app.lastFollowUpAt,
+            contactAttempts: app.contactAttempts,
+            leadScore: app.aiLeadScore,
+          });
+        }
+      }
+
+      res.json({
+        summary: {
+          hotLeads: hotLeads.length,
+          needsFollowUp: needsFollowUp.length,
+          abandoned: abandoned.length,
+          scheduled: scheduled.length,
+        },
+        hotLeads: hotLeads.sort((a, b) => (b.leadScore || 0) - (a.leadScore || 0)),
+        needsFollowUp: needsFollowUp.sort((a, b) => (b.leadScore || 0) - (a.leadScore || 0)),
+        abandoned: abandoned.sort((a, b) => a.hoursSinceActivity - b.hoursSinceActivity),
+        scheduled,
+      });
+    } catch (error) {
+      console.error("Follow-up queue error:", error);
+      res.status(500).json({ error: "Failed to get follow-up queue" });
     }
   });
 
