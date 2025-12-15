@@ -1,10 +1,11 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, analyticsEvents,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
   type BotAttempt, type InsertBotAttempt,
-  type Partner, type InsertPartner
+  type Partner, type InsertPartner,
+  type AnalyticsEvent, type InsertAnalyticsEvent
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc } from "drizzle-orm";
@@ -49,6 +50,11 @@ export interface IStorage {
   updatePartner(id: string, updates: Partial<InsertPartner>): Promise<Partner | undefined>;
   getAllPartners(): Promise<Partner[]>;
   getApplicationsByPartnerId(partnerId: string): Promise<LoanApplication[]>;
+
+  // Analytics methods
+  createAnalyticsEvent(event: InsertAnalyticsEvent): Promise<AnalyticsEvent>;
+  getAllAnalyticsEvents(): Promise<AnalyticsEvent[]>;
+  getAnalyticsEventsBySource(source: string): Promise<AnalyticsEvent[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -311,6 +317,30 @@ export class DatabaseStorage implements IStorage {
       .from(loanApplications)
       .where(eq(loanApplications.referralPartnerId, partnerId))
       .orderBy(desc(loanApplications.createdAt));
+  }
+
+  // Analytics methods
+  async createAnalyticsEvent(event: InsertAnalyticsEvent): Promise<AnalyticsEvent> {
+    const [analyticsEvent] = await db
+      .insert(analyticsEvents)
+      .values(event)
+      .returning();
+    return analyticsEvent;
+  }
+
+  async getAllAnalyticsEvents(): Promise<AnalyticsEvent[]> {
+    return await db
+      .select()
+      .from(analyticsEvents)
+      .orderBy(desc(analyticsEvents.createdAt));
+  }
+
+  async getAnalyticsEventsBySource(source: string): Promise<AnalyticsEvent[]> {
+    return await db
+      .select()
+      .from(analyticsEvents)
+      .where(eq(analyticsEvents.source, source))
+      .orderBy(desc(analyticsEvents.createdAt));
   }
 }
 

@@ -1660,6 +1660,135 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========================================
+  // ANALYTICS ROUTES
+  // ========================================
+
+  // Track analytics event (page view, form start, etc.)
+  app.post("/api/analytics/track", async (req, res) => {
+    try {
+      const { eventType, source, pagePath, sessionId, referrer } = req.body;
+
+      if (!eventType) {
+        return res.status(400).json({ error: "Event type is required" });
+      }
+
+      const event = await storage.createAnalyticsEvent({
+        eventType,
+        source: source || null,
+        pagePath: pagePath || null,
+        sessionId: sessionId || null,
+        userAgent: req.headers["user-agent"] || null,
+        referrer: referrer || req.headers["referer"] || null,
+      });
+
+      res.json({ success: true, eventId: event.id });
+    } catch (error) {
+      console.error("Error tracking analytics event:", error);
+      res.status(500).json({ error: "Failed to track event" });
+    }
+  });
+
+  // Get analytics summary (admin only)
+  app.get("/api/analytics/summary", async (req, res) => {
+    try {
+      // Check authentication - admin only
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== "admin") {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      // Get all analytics events
+      const events = await storage.getAllAnalyticsEvents();
+
+      // Get all applications to calculate submissions and conversions
+      const applications = await storage.getAllLoanApplications();
+
+      // Define the sources we're tracking
+      const sources = [
+        { key: "google-ads", label: "Google Ads", shortUrl: "/gga" },
+        { key: "email", label: "Email", shortUrl: "/email" },
+        { key: "social-media", label: "Social Media", shortUrl: "/social" },
+        { key: "website", label: "Website", shortUrl: "/site" },
+        { key: "blog", label: "Blog", shortUrl: "/blog" },
+        { key: "referral", label: "Referral", shortUrl: "/ref" },
+        { key: "direct", label: "Direct", shortUrl: "/direct" },
+        { key: "reddit", label: "Reddit", shortUrl: "/rddt" },
+      ];
+
+      // Calculate metrics for each source
+      const sourceMetrics = sources.map((source) => {
+        // Page views for this source
+        const pageViews = events.filter(
+          (e) => e.eventType === "page_view" && e.source === source.key
+        ).length;
+
+        // Unique sessions (approximate)
+        const uniqueSessions = new Set(
+          events
+            .filter((e) => e.source === source.key && e.sessionId)
+            .map((e) => e.sessionId)
+        ).size;
+
+        // Applications from this source (intake submissions)
+        const submissions = applications.filter(
+          (app) => app.referralSource === source.key && app.isCompleted
+        ).length;
+
+        // Conversions (full applications completed)
+        const conversions = applications.filter(
+          (app) => app.referralSource === source.key && app.isFullApplicationCompleted
+        ).length;
+
+        // Conversion rate
+        const conversionRate = submissions > 0
+          ? ((conversions / submissions) * 100).toFixed(1)
+          : "0.0";
+
+        return {
+          source: source.key,
+          label: source.label,
+          shortUrl: source.shortUrl,
+          pageViews,
+          uniqueSessions,
+          submissions,
+          conversions,
+          conversionRate: parseFloat(conversionRate),
+        };
+      });
+
+      // Calculate totals
+      const totals = {
+        pageViews: sourceMetrics.reduce((sum, m) => sum + m.pageViews, 0),
+        uniqueSessions: sourceMetrics.reduce((sum, m) => sum + m.uniqueSessions, 0),
+        submissions: sourceMetrics.reduce((sum, m) => sum + m.submissions, 0),
+        conversions: sourceMetrics.reduce((sum, m) => sum + m.conversions, 0),
+        conversionRate: 0,
+      };
+      totals.conversionRate = totals.submissions > 0
+        ? parseFloat(((totals.conversions / totals.submissions) * 100).toFixed(1))
+        : 0;
+
+      // Get recent events for activity feed
+      const recentEvents = events.slice(0, 50).map((e) => ({
+        id: e.id,
+        eventType: e.eventType,
+        source: e.source,
+        pagePath: e.pagePath,
+        createdAt: e.createdAt,
+      }));
+
+      res.json({
+        sources: sourceMetrics,
+        totals,
+        recentEvents,
+        lastUpdated: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Error fetching analytics summary:", error);
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

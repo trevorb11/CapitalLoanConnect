@@ -136,9 +136,34 @@ export default function SourcedIntakeForm({ source, sourceLabel }: SourcedIntake
   const totalQuestions = 7;
   const progress = (currentQuestion / totalQuestions) * 100;
 
+  // Generate or retrieve session ID for analytics
+  const getSessionId = () => {
+    let sessionId = sessionStorage.getItem("analyticsSessionId");
+    if (!sessionId) {
+      sessionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      sessionStorage.setItem("analyticsSessionId", sessionId);
+    }
+    return sessionId;
+  };
+
   // Track page view on mount
   useEffect(() => {
     trackPageView(`/intake/${source}`, `Intake Form - ${sourceLabel}`);
+
+    // Also track via server API for our analytics dashboard
+    fetch("/api/analytics/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventType: "page_view",
+        source: source,
+        pagePath: `/intake/${source}`,
+        sessionId: getSessionId(),
+        referrer: document.referrer || null,
+      }),
+    }).catch(() => {
+      // Silently fail - analytics shouldn't break the form
+    });
   }, [source, sourceLabel]);
 
   const parseRevenueToNumber = (revenueRange: string): string => {

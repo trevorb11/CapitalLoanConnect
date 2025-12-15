@@ -302,3 +302,23 @@ export const insertBotAttemptSchema = createInsertSchema(botAttempts).omit({
 
 export type InsertBotAttempt = z.infer<typeof insertBotAttemptSchema>;
 export type BotAttempt = typeof botAttempts.$inferSelect;
+
+// Analytics Events - Track page views and events for intake sources
+export const analyticsEvents = pgTable("analytics_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventType: text("event_type").notNull(), // 'page_view', 'form_start', 'form_submit'
+  source: text("source"), // 'google-ads', 'email', 'social-media', etc.
+  pagePath: text("page_path"),
+  sessionId: text("session_id"), // For tracking unique sessions
+  userAgent: text("user_agent"),
+  referrer: text("referrer"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAnalyticsEventSchema = createInsertSchema(analyticsEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAnalyticsEvent = z.infer<typeof insertAnalyticsEventSchema>;
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
