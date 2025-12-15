@@ -29,6 +29,7 @@ import RetargetingLanding from "@/pages/RetargetingLanding";
 import ProgressTracker from "@/pages/ProgressTracker";
 import PartnerDashboard from "@/pages/PartnerDashboard";
 import ReferralLanding from "@/pages/ReferralLanding";
+import AnalyticsDashboard from "@/pages/AnalyticsDashboard";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -77,6 +78,7 @@ function Router() {
       <Route path="/upload-statements" component={BankStatementsUpload} />
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
+      <Route path="/analytics" component={AnalyticsDashboard} />
       <Route path="/agents" component={AgentSelector} />
 
       {/* Partner Portal Routes */}
