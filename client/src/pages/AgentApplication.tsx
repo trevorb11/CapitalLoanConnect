@@ -7,6 +7,7 @@ import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { trackApplicationSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
+import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 
 interface UploadedFile {
   id: string;
@@ -97,8 +98,9 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
   const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
-    // Track page view for agent application
+    // Track page view for agent application and capture UTM params
     trackPageView(`/${agent.initials}`, `Agent Application - ${agent.name}`);
+    initUTMTracking();
     
     const savedId = localStorage.getItem("applicationId");
     if (savedId) {
@@ -386,6 +388,8 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         agentEmail: agent.email,
         agentGhlId: agent.ghlId,
         ...(recaptchaToken && { recaptchaToken }),
+        // Include UTM tracking parameters
+        ...getStoredUTMParams(),
       };
 
       let data: any;

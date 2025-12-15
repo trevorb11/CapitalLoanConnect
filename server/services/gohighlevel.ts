@@ -84,6 +84,14 @@ const GHL_FIELD_KEYS = {
   BUSINESS_CSZ: "contact.business_csz",
   OWNER_CSZ: "contact.owner_csz",
   CURRENT_POSITIONS_BALANCES: "contact.current_positions__balances",
+  
+  // ===== UTM TRACKING =====
+  UTM_SOURCE: "contact.utm_source",
+  UTM_MEDIUM: "contact.utm_medium",
+  UTM_CAMPAIGN: "contact.utm_campaign",
+  UTM_TERM: "contact.utm_term",
+  UTM_CONTENT: "contact.utm_content",
+  REFERRER_URL: "contact.referrer_url",
 } as const;
 
 export class GoHighLevelService {
@@ -359,6 +367,16 @@ export class GoHighLevelService {
       ownerCszValue = `${application.ownerCity}, ${application.ownerState} ${application.ownerZip}`;
     }
     pushField(GHL_FIELD_KEYS.OWNER_CSZ, ownerCszValue);
+
+    // ========================================
+    // UTM TRACKING PARAMETERS
+    // ========================================
+    pushField(GHL_FIELD_KEYS.UTM_SOURCE, application.utmSource);
+    pushField(GHL_FIELD_KEYS.UTM_MEDIUM, application.utmMedium);
+    pushField(GHL_FIELD_KEYS.UTM_CAMPAIGN, application.utmCampaign);
+    pushField(GHL_FIELD_KEYS.UTM_TERM, application.utmTerm);
+    pushField(GHL_FIELD_KEYS.UTM_CONTENT, application.utmContent);
+    pushField(GHL_FIELD_KEYS.REFERRER_URL, application.referrerUrl);
 
     // Apply custom fields to contact data
     if (customFields.length > 0) {
@@ -649,6 +667,14 @@ export class GoHighLevelService {
       owner_csz: ownerCszValue,
       current_positions__balances: application.outstandingLoansAmount,
       
+      // ===== UTM TRACKING =====
+      utm_source: application.utmSource,
+      utm_medium: application.utmMedium,
+      utm_campaign: application.utmCampaign,
+      utm_term: application.utmTerm,
+      utm_content: application.utmContent,
+      referrer_url: application.referrerUrl,
+      
       // ===== LEGACY/COMPATIBILITY FIELDS =====
       full_name: application.fullName,
       email: application.email,
@@ -728,11 +754,12 @@ export class GoHighLevelService {
       submission_date: new Date().toISOString(),
       source: "Website Lead Form",
       page_url: pageUrl || "https://www.todaycapitalgroup.com/intake/quiz",
-      utm_source: null,
-      utm_medium: null,
-      utm_campaign: null,
-      utm_term: null,
-      utm_content: null,
+      utm_source: application.utmSource || null,
+      utm_medium: application.utmMedium || null,
+      utm_campaign: application.utmCampaign || null,
+      utm_term: application.utmTerm || null,
+      utm_content: application.utmContent || null,
+      referrer_url: application.referrerUrl || null,
     };
 
     try {

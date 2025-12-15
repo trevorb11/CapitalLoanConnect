@@ -6,6 +6,7 @@ import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
 import { trackApplicationSubmitted, trackFormStepCompleted, trackPageView, trackCloseConvertLead } from "@/lib/analytics";
+import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 
 // --- CONSTANTS & DATA ---
 
@@ -184,6 +185,7 @@ export default function FullApplication(props?: FullApplicationProps) {
   // Track page view and check for existing ID on mount
   useEffect(() => {
     trackPageView('/', 'Full Application');
+    initUTMTracking();
     
     const savedId = localStorage.getItem("applicationId");
     if (savedId) setApplicationId(savedId);
@@ -392,7 +394,9 @@ export default function FullApplication(props?: FullApplicationProps) {
       dateOfBirth: formData.date_of_birth,
       ownership: formData.ownership_percentage,
       // Rough approximation of progress for backend
-      currentStep: currentStepIndex >= 4 ? 2 : 1 
+      currentStep: currentStepIndex >= 4 ? 2 : 1,
+      // Include UTM tracking parameters
+      ...getStoredUTMParams()
     };
 
     if (isFinal) {

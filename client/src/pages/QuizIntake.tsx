@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import { Loader2, CheckCircle } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
+import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 
 const BUSINESS_AGE_OPTIONS = [
   "Less than 3 months",
@@ -131,9 +132,10 @@ export default function QuizIntake() {
   const totalQuestions = 7;
   const progress = (currentQuestion / totalQuestions) * 100;
 
-  // Track page view on mount
+  // Track page view and capture UTM params on mount
   useEffect(() => {
     trackPageView('/intake/quiz', 'Intake Quiz Form');
+    initUTMTracking();
   }, []);
 
   const parseRevenueToNumber = (revenueRange: string): string => {
@@ -155,6 +157,9 @@ export default function QuizIntake() {
     mutationFn: async (data: QuizData & { recaptchaToken?: string }) => {
       // Check for referral partner ID from localStorage (set when visiting /r/:code)
       const referralPartnerId = localStorage.getItem("referralPartnerId");
+      
+      // Get stored UTM parameters
+      const utmParams = getStoredUTMParams();
 
       const response = await apiRequest("POST", "/api/applications", {
         email: data.email,
@@ -174,6 +179,8 @@ export default function QuizIntake() {
         faxNumber: data.faxNumber,
         // Include referral partner ID if from partner link
         ...(referralPartnerId && { referralPartnerId }),
+        // Include UTM tracking parameters
+        ...utmParams,
       });
       return response.json();
     },

@@ -113,6 +113,14 @@ export const loanApplications = pgTable("loan_applications", {
   // --- Bot Detection ---
   isBotAttempt: boolean("is_bot_attempt").default(false), // Honeypot triggered
 
+  // --- UTM Tracking Parameters ---
+  utmSource: text("utm_source"),      // e.g., google, facebook, newsletter
+  utmMedium: text("utm_medium"),      // e.g., cpc, email, social
+  utmCampaign: text("utm_campaign"),  // e.g., spring_sale, product_launch
+  utmTerm: text("utm_term"),          // Paid search keywords
+  utmContent: text("utm_content"),    // A/B test or ad variation identifier
+  referrerUrl: text("referrer_url"),  // The full referring URL
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -121,6 +129,13 @@ export const insertLoanApplicationSchema = createInsertSchema(loanApplications).
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  utmSource: z.string().optional(),
+  utmMedium: z.string().optional(),
+  utmCampaign: z.string().optional(),
+  utmTerm: z.string().optional(),
+  utmContent: z.string().optional(),
+  referrerUrl: z.string().optional(),
 });
 
 export type InsertLoanApplication = z.infer<typeof insertLoanApplicationSchema>;

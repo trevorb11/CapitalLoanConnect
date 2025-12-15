@@ -102,6 +102,22 @@ The application uses the Inter font from Google Fonts and a color system based o
 - `contact.business_csz` ← businessCsz (auto-built from city/state/zip)
 - `contact.owner_csz` ← ownerCsz (auto-built from ownerCity/ownerState/ownerZip)
 
+*UTM Tracking:*
+- `contact.utm_source` ← utmSource (e.g., google, facebook, newsletter)
+- `contact.utm_medium` ← utmMedium (e.g., cpc, email, social)
+- `contact.utm_campaign` ← utmCampaign (e.g., spring_sale, product_launch)
+- `contact.utm_term` ← utmTerm (paid search keywords)
+- `contact.utm_content` ← utmContent (A/B test or ad variation identifier)
+- `contact.referrer_url` ← referrerUrl (the full referring URL)
+
+**UTM Parameter Tracking:**
+- UTM parameters are automatically captured from URL query strings when users visit any form page.
+- Captured parameters are stored in localStorage and persist across page navigation.
+- Parameters are included in all form submissions (QuizIntake, FullApplication, AgentApplication).
+- All UTM data is synced to GHL via both the Contact API and webhook payloads.
+- Utility functions in `client/src/lib/utm.ts` handle capture, storage, and retrieval.
+- Database columns: `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `referrer_url`.
+
 **GHL Duplicate Contact Handling:**
 - Before creating a new contact, the system searches for existing contacts by email
 - If found, updates the existing contact instead of creating a duplicate
