@@ -1022,14 +1022,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 2. Get all bank statement uploads (for dashboard)
+  // 2. Get all bank statement uploads (for dashboard) - role-based filtering
   app.get("/api/bank-statements/uploads", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
 
     try {
-      const uploads = await storage.getAllBankStatementUploads();
+      let uploads;
+      
+      // Admin sees all uploads, agents see only uploads from their applications
+      if (req.session.user.role === 'admin') {
+        uploads = await storage.getAllBankStatementUploads();
+        console.log(`[BANK STATEMENTS] Admin fetching all ${uploads.length} uploads`);
+      } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        uploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
+        console.log(`[BANK STATEMENTS] Agent ${req.session.user.agentName} fetching ${uploads.length} uploads`);
+      } else {
+        // Partners and other roles don't have access to bank statements
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
       res.json(uploads);
     } catch (error) {
       console.error("Error fetching bank statement uploads:", error);
@@ -1037,7 +1050,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 3. Download bank statement PDF (admin only)
+  // 3. Download bank statement PDF - role-based access control
   app.get("/api/bank-statements/download/:id", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
@@ -1047,6 +1060,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const upload = await storage.getBankStatementUpload(req.params.id);
       if (!upload) {
         return res.status(404).json({ error: "Upload not found" });
+      }
+
+      // Role-based access check for agents
+      if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        // Verify this agent has access to this bank statement
+        const agentUploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
+        const hasAccess = agentUploads.some(u => u.id === upload.id);
+        if (!hasAccess) {
+          console.log(`[BANK STATEMENTS] Agent ${req.session.user.agentName} denied access to upload ${upload.id}`);
+          return res.status(403).json({ error: "Access denied - this statement is not from your applications" });
+        }
+      } else if (req.session.user.role !== 'admin') {
+        // Only admins and agents can download
+        return res.status(403).json({ error: "Access denied" });
       }
 
       // Check if file is in Object Storage (path contains "bank-statements/")

@@ -7,7 +7,7 @@ import {
   type Partner, type InsertPartner
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, desc } from "drizzle-orm";
+import { eq, and, or, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -35,6 +35,7 @@ export interface IStorage {
   getBankStatementUpload(id: string): Promise<BankStatementUpload | undefined>;
   getAllBankStatementUploads(): Promise<BankStatementUpload[]>;
   getBankStatementUploadsByEmail(email: string): Promise<BankStatementUpload[]>;
+  getBankStatementUploadsByAgentEmail(agentEmail: string): Promise<BankStatementUpload[]>;
 
   // Bot Attempts methods
   createBotAttempt(attempt: InsertBotAttempt): Promise<BotAttempt>;
@@ -230,6 +231,35 @@ export class DatabaseStorage implements IStorage {
       .from(bankStatementUploads)
       .where(eq(bankStatementUploads.email, email))
       .orderBy(desc(bankStatementUploads.createdAt));
+  }
+
+  async getBankStatementUploadsByAgentEmail(agentEmail: string): Promise<BankStatementUpload[]> {
+    // Get all applications for this agent
+    const agentApplications = await db
+      .select({ id: loanApplications.id, email: loanApplications.email })
+      .from(loanApplications)
+      .where(sql`LOWER(${loanApplications.agentEmail}) = LOWER(${agentEmail})`);
+    
+    if (agentApplications.length === 0) {
+      return [];
+    }
+
+    // Get uploads that match either:
+    // 1. Have a loanApplicationId that belongs to this agent
+    // 2. Have an email that matches any of the agent's application emails
+    const applicationIds = agentApplications.map(app => app.id);
+    const applicationEmails = agentApplications.map(app => app.email?.toLowerCase()).filter(Boolean) as string[];
+    
+    // Fetch all uploads and filter in JavaScript (more flexible for complex OR conditions)
+    const allUploads = await db
+      .select()
+      .from(bankStatementUploads)
+      .orderBy(desc(bankStatementUploads.createdAt));
+    
+    return allUploads.filter(upload => 
+      applicationIds.includes(upload.loanApplicationId || '') ||
+      applicationEmails.includes(upload.email?.toLowerCase() || '')
+    );
   }
 
   // Bot Attempts methods
