@@ -6,6 +6,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import QuizIntake from "@/pages/QuizIntake";
 import IntakeLanding from "@/pages/IntakeLanding";
+import IntakeGoogleAds from "@/pages/IntakeGoogleAds";
+import IntakeEmail from "@/pages/IntakeEmail";
+import IntakeSocialMedia from "@/pages/IntakeSocialMedia";
+import IntakeWebsite from "@/pages/IntakeWebsite";
+import IntakeBlog from "@/pages/IntakeBlog";
+import IntakeReferral from "@/pages/IntakeReferral";
+import IntakeDirect from "@/pages/IntakeDirect";
+import IntakeReddit from "@/pages/IntakeReddit";
 import FullApplication from "@/pages/FullApplication";
 import AgentApplication from "@/pages/AgentApplication";
 import Success from "@/pages/Success";
@@ -34,6 +42,16 @@ function Router() {
       </Route>
       <Route path="/intake" component={IntakeLanding} />
       <Route path="/intake/quiz" component={QuizIntake} />
+
+      {/* Source-specific intake forms for tracking */}
+      <Route path="/intake/google-ads" component={IntakeGoogleAds} />
+      <Route path="/intake/email" component={IntakeEmail} />
+      <Route path="/intake/social-media" component={IntakeSocialMedia} />
+      <Route path="/intake/website" component={IntakeWebsite} />
+      <Route path="/intake/blog" component={IntakeBlog} />
+      <Route path="/intake/referral" component={IntakeReferral} />
+      <Route path="/intake/direct" component={IntakeDirect} />
+      <Route path="/intake/reddit" component={IntakeReddit} />
       <Route path="/complete-application/:initials?">
         {(params) => {
           const agent = params.initials ? getAgentByInitials(params.initials.toLowerCase()) : undefined;
