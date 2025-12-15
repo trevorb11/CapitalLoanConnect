@@ -643,6 +643,13 @@ export default function QuizIntake() {
             </div>
           </div>
         </div>
+
+        {/* Business Loans Disclaimer */}
+        <div className="mt-8 pt-6 border-t border-white/10">
+          <p className="text-white/50 text-xs text-center">
+            We specialize in business loans and financing only. We do not offer personal loans or consumer financing.
+          </p>
+        </div>
       </div>
 
       {/* Custom slider styles */}
