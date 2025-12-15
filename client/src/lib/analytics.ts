@@ -25,6 +25,9 @@ interface IntakeFormSubmittedParams {
   creditScore?: string;
   timeInBusiness?: string;
   monthlyRevenue?: string;
+  industry?: string;
+  useOfFunds?: string;
+  source?: string;
 }
 
 export const trackEvent = (eventName: string, eventParams?: Record<string, unknown>) => {

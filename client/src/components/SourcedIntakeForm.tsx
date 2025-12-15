@@ -81,7 +81,6 @@ interface QuizData {
 
 interface SourcedIntakeFormProps {
   source: string;
-  sourceLabel: string;
 }
 
 function formatAmount(amount: number): string {
@@ -110,7 +109,7 @@ function formatPhone(value: string): string {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
-export default function SourcedIntakeForm({ source, sourceLabel }: SourcedIntakeFormProps) {
+export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
   const [, navigate] = useLocation();
   const { executeRecaptcha } = useGoogleReCaptcha();
   const [currentQuestion, setCurrentQuestion] = useState(1);
@@ -138,8 +137,8 @@ export default function SourcedIntakeForm({ source, sourceLabel }: SourcedIntake
 
   // Track page view on mount
   useEffect(() => {
-    trackPageView(`/intake/${source}`, `Intake Form - ${sourceLabel}`);
-  }, [source, sourceLabel]);
+    trackPageView(`/intake/${source}`, `Intake Form - ${source}`);
+  }, [source]);
 
   const parseRevenueToNumber = (revenueRange: string): string => {
     const rangeMap: Record<string, string> = {
@@ -278,13 +277,6 @@ export default function SourcedIntakeForm({ source, sourceLabel }: SourcedIntake
         }}
         data-testid="quiz-container"
       >
-        {/* Source Badge */}
-        <div className="absolute top-4 right-4">
-          <span className="bg-white/10 text-white/70 text-xs px-3 py-1 rounded-full">
-            via {sourceLabel}
-          </span>
-        </div>
-
         {/* Progress Bar */}
         <div className="w-full h-1 bg-white/20 rounded-full mb-8">
           <div

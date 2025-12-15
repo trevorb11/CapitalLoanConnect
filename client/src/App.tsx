@@ -53,6 +53,16 @@ function Router() {
       <Route path="/intake/referral" component={IntakeReferral} />
       <Route path="/intake/direct" component={IntakeDirect} />
       <Route path="/intake/reddit" component={IntakeReddit} />
+
+      {/* Short URL redirects to source-tracked intake forms */}
+      <Route path="/gga" component={IntakeGoogleAds} />
+      <Route path="/email" component={IntakeEmail} />
+      <Route path="/social" component={IntakeSocialMedia} />
+      <Route path="/site" component={IntakeWebsite} />
+      <Route path="/blog" component={IntakeBlog} />
+      <Route path="/ref" component={IntakeReferral} />
+      <Route path="/direct" component={IntakeDirect} />
+      <Route path="/rddt" component={IntakeReddit} />
       <Route path="/complete-application/:initials?">
         {(params) => {
           const agent = params.initials ? getAgentByInitials(params.initials.toLowerCase()) : undefined;
