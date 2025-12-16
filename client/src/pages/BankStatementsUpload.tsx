@@ -463,7 +463,7 @@ export default function BankStatementsUpload() {
             Your Information is Protected
           </h3>
           <p className="text-white/70 text-sm leading-relaxed">
-            We take your privacy seriously. All uploaded documents are encrypted using bank-level 256-bit SSL encryption and stored on secure servers. Your financial information is never shared with third parties without your explicit consent and is only used to process your funding application.
+            We take your privacy seriously. All uploaded documents are encrypted using bank-level 256-bit SSL encryption and stored on secure servers.
           </p>
         </div>
 
