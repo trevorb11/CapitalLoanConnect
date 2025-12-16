@@ -274,11 +274,46 @@ export default function BankStatementsUpload() {
           <h1 className="text-3xl font-bold text-white mb-2" data-testid="text-page-title">
             Upload Bank Statements
           </h1>
-          <p className="text-white/70">
+          <p className="text-white/70 mb-6">
             {showApplicationSuccess
               ? "Upload your last 3-6 months of business bank statements to finalize your application"
               : "Securely upload your business bank statements for review"}
           </p>
+
+          {/* Why We Need Bank Statements Section */}
+          <div className="bg-white/5 backdrop-blur rounded-xl p-5 text-left border border-white/10 mb-6">
+            <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-400" />
+              Why We Need Your Bank Statements
+            </h2>
+            <p className="text-white/80 text-sm leading-relaxed mb-4">
+              Bank statements help us quickly assess your business's financial health and determine the best funding options available to you. By reviewing your recent transaction history, we can:
+            </p>
+            <ul className="text-white/70 text-sm space-y-2 ml-4 mb-4">
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                <span>Verify your monthly revenue and cash flow patterns</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                <span>Match you with the right funding product for your needs</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                <span>Speed up the approval process — often within 24-48 hours</span>
+              </li>
+            </ul>
+            
+            <div className="border-t border-white/10 pt-4 mt-4">
+              <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-blue-400" />
+                Your Information is Protected
+              </h3>
+              <p className="text-white/70 text-sm leading-relaxed">
+                We take your privacy seriously. All uploaded documents are encrypted using bank-level 256-bit SSL encryption and stored on secure servers. Your financial information is never shared with third parties without your explicit consent and is only used to process your funding application.
+              </p>
+            </div>
+          </div>
         </div>
 
         <Card className="p-6 bg-card/95 backdrop-blur">

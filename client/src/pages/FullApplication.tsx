@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -171,6 +172,7 @@ export default function FullApplication(props?: FullApplicationProps) {
   const { agent } = props || {};
   const { toast } = useToast();
   const { executeRecaptcha } = useGoogleReCaptcha();
+  const [, navigate] = useLocation();
 
   // State
   const [applicationId, setApplicationId] = useState<string | null>(null);
@@ -531,7 +533,11 @@ export default function FullApplication(props?: FullApplicationProps) {
         });
         
         setIsSubmitting(false);
-        setShowSuccess(true);
+        
+        // Redirect to upload-statements page with email and business name pre-filled
+        const email = encodeURIComponent(formData.company_email || '');
+        const businessName = encodeURIComponent(formData.legal_business_name || '');
+        navigate(`/upload-statements?email=${email}&businessName=${businessName}&submitted=true`);
         return;
     }
 
