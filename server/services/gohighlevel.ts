@@ -586,8 +586,8 @@ export class GoHighLevelService {
   }
 
   async sendWebhook(application: Partial<LoanApplication>): Promise<void> {
-    // Webhook URLs (from user-provided HTML form)
-    const GHL_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/b21b2392-b82b-49c9-a697-fa2d0c8bddd5';
+    // Application webhook URL - for full and partial application submissions
+    const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
     const BACKUP_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbynygRwYHpg4joyMLY-IC_B_7cqrNlNl92HjHduc5OvUtrUgig7_aHG69CdSTKZ562w/exec';
     
     // Parse name for first/last
@@ -700,13 +700,13 @@ export class GoHighLevelService {
     const webhookRequests = [];
     
     try {
-      if (GHL_WEBHOOK_URL) {
+      if (APPLICATION_WEBHOOK_URL) {
         webhookRequests.push(
-          fetch(GHL_WEBHOOK_URL, {
+          fetch(APPLICATION_WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(webhookPayload),
-          }).catch(err => console.error('GHL webhook error:', err))
+          }).catch(err => console.error('Application webhook error:', err))
         );
       }
       
@@ -725,6 +725,139 @@ export class GoHighLevelService {
       console.log('[GHL] Webhooks sent successfully with', Object.keys(webhookPayload).filter(k => webhookPayload[k as keyof typeof webhookPayload]).length, 'fields');
     } catch (error) {
       console.error('Error sending webhooks:', error);
+      // Don't throw - webhooks are nice-to-have, not critical
+    }
+  }
+
+  // Send partial application data to the application webhook (for incomplete applications)
+  async sendPartialApplicationWebhook(application: Partial<LoanApplication>): Promise<void> {
+    const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
+    
+    // Parse name for first/last
+    const nameParts = (application.fullName || '').trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // Calculate years in business
+    const getYearsFromDate = (dateString?: string) => {
+      if (!dateString) return "";
+      const start = new Date(dateString);
+      const now = new Date();
+      const diff = now.getTime() - start.getTime();
+      const ageDate = new Date(diff);
+      return Math.abs(ageDate.getUTCFullYear() - 1970) + " years";
+    };
+
+    // Build CSZ values with fallback logic
+    const businessCszValue = application.businessCsz || 
+      (application.city && application.state && application.zipCode 
+        ? `${application.city}, ${application.state} ${application.zipCode}` 
+        : "");
+    
+    const ownerCszValue = application.ownerCsz ||
+      (application.ownerCity && application.ownerState && application.ownerZip
+        ? `${application.ownerCity}, ${application.ownerState} ${application.ownerZip}`
+        : "");
+
+    // Build partial application webhook payload - same structure as full application but marked as partial
+    const webhookPayload = {
+      // ===== APPLICATION DETAILS FOLDER =====
+      doing_business_as: application.doingBusinessAs || application.businessName,
+      company_email: application.companyEmail || application.businessEmail || application.email,
+      primary_business_bank: application.bankName,
+      personal_credit_score_range: application.ficoScoreExact || application.personalCreditScoreRange || application.creditScore,
+      ownership_percentage: application.ownership || application.ownerPercentage,
+      outstanding_business_loans_or_cash_advances: application.hasOutstandingLoans !== undefined 
+        ? (application.hasOutstandingLoans ? "Yes" : "No") 
+        : undefined,
+      business_street_address: application.businessStreetAddress || application.businessAddress,
+      mca_balance_amount: application.mcaBalanceAmount,
+      mca_balance_bank_name: application.mcaBalanceBankName,
+      do_you_process_credit_cards: application.doYouProcessCreditCards,
+      application_url: application.agentViewUrl,
+      agent_name: application.agentName,
+      agent_email: application.agentEmail,
+      agent_ghl_id: application.agentGhlId,
+      
+      // ===== BUSINESS DETAILS FOLDER =====
+      website: application.companyWebsite,
+      monthly_revenue: application.monthlyRevenue,
+      years_in_business: application.timeInBusiness || getYearsFromDate(application.businessStartDate || undefined),
+      industry_dropdown: application.industry,
+      annual_revenue: application.averageMonthlyRevenue,
+      ein: application.ein,
+      business_start_date: application.businessStartDate,
+      business_type: application.businessType,
+      
+      // ===== SURVEY FOLDER =====
+      amount_requested: application.requestedAmount,
+      legal_business_name: application.legalBusinessName || application.businessName,
+      preferred_email: application.businessEmail || application.companyEmail,
+      loan_purpose: application.useOfFunds,
+      time_in_business_years: application.timeInBusiness,
+      monthly_revenue_approx: application.monthlyRevenue || application.averageMonthlyRevenue,
+      
+      // ===== OWNER INFO =====
+      social_security_: application.socialSecurityNumber,
+      date_of_birth: application.dateOfBirth,
+      address1: application.ownerAddress1,
+      
+      // ===== ADDITIONAL =====
+      funding_report_url: application.fundingReportUrl,
+      funding_time_frame: application.fundingUrgency,
+      state_of_incorporation: application.stateOfIncorporation,
+      business_csz: businessCszValue,
+      owner_csz: ownerCszValue,
+      current_positions__balances: application.outstandingLoansAmount,
+      
+      // ===== UTM TRACKING =====
+      utm_source: application.utmSource,
+      utm_medium: application.utmMedium,
+      utm_campaign: application.utmCampaign,
+      utm_term: application.utmTerm,
+      utm_content: application.utmContent,
+      referrer_url: application.referrerUrl,
+      
+      // ===== LEGACY/COMPATIBILITY FIELDS =====
+      full_name: application.fullName,
+      email: application.email,
+      phone: application.phone,
+      company_name: application.legalBusinessName || application.businessName,
+      company_website: application.companyWebsite,
+      industry: application.industry,
+      requested_loan_amount: application.requestedAmount,
+      time_in_business: application.timeInBusiness,
+      use_of_funds: application.useOfFunds,
+      funding_urgency: application.fundingUrgency,
+      referral_source: application.referralSource,
+      address2: application.ownerAddress2,
+      
+      // ===== CALCULATED FIELDS =====
+      first_name: firstName,
+      last_name: lastName,
+      submission_date: new Date().toISOString(),
+      source: "Partial Application Form",
+      is_complete: application.isComplete ? "Yes" : "No",
+      current_step: application.currentStep,
+    };
+
+    try {
+      console.log('[GHL] Sending partial application webhook to:', APPLICATION_WEBHOOK_URL);
+      console.log('[GHL] Partial application webhook fields count:', Object.keys(webhookPayload).filter(k => webhookPayload[k as keyof typeof webhookPayload]).length);
+      
+      const response = await fetch(APPLICATION_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload),
+      });
+      
+      if (!response.ok) {
+        console.error('[GHL] Partial application webhook failed:', response.status, await response.text());
+      } else {
+        console.log('[GHL] Partial application webhook sent successfully');
+      }
+    } catch (error) {
+      console.error('[GHL] Partial application webhook error:', error);
       // Don't throw - webhooks are nice-to-have, not critical
     }
   }
