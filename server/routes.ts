@@ -9,6 +9,8 @@ import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+import { analyzeBankStatements, isOpenAIConfigured } from "./services/openai";
+import pdfParse from "pdf-parse";
 import { AGENTS } from "../shared/agents";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
@@ -1730,6 +1732,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to update partner" });
     }
   });
+
+  // ========================================
+  // FUNDING CHECK / PRE-QUALIFICATION ROUTES
+  // ========================================
+
+  // Configure multer for funding check uploads (memory storage for immediate processing)
+  const fundingCheckUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype === "application/pdf") {
+        cb(null, true);
+      } else {
+        cb(new Error("Only PDF files are allowed"));
+      }
+    },
+  });
+
+  // Check if OpenAI is configured
+  app.get("/api/funding-check/status", (_req, res) => {
+    res.json({
+      available: isOpenAIConfigured(),
+      message: isOpenAIConfigured()
+        ? "Funding check service is available"
+        : "Funding check service is not configured. Please set OPENAI_API_KEY.",
+    });
+  });
+
+  // Analyze bank statements for funding eligibility
+  app.post(
+    "/api/funding-check/analyze",
+    fundingCheckUpload.array("statements", 6), // Allow up to 6 statements
+    async (req, res) => {
+      try {
+        // Check if OpenAI is configured
+        if (!isOpenAIConfigured()) {
+          return res.status(503).json({
+            error: "Funding check service is not available",
+            message: "Please contact support to enable this feature.",
+          });
+        }
+
+        const files = req.files as Express.Multer.File[];
+
+        if (!files || files.length === 0) {
+          return res.status(400).json({
+            error: "No files uploaded",
+            message: "Please upload at least one bank statement PDF.",
+          });
+        }
+
+        console.log(`[FUNDING CHECK] Processing ${files.length} PDF file(s)`);
+
+        // Extract text from all PDFs
+        const extractedTexts: string[] = [];
+
+        for (const file of files) {
+          try {
+            const pdfData = await pdfParse(file.buffer);
+            extractedTexts.push(
+              `--- Statement: ${file.originalname} ---\n${pdfData.text}\n`
+            );
+            console.log(
+              `[FUNDING CHECK] Extracted ${pdfData.text.length} characters from ${file.originalname}`
+            );
+          } catch (pdfError) {
+            console.error(
+              `[FUNDING CHECK] Error parsing ${file.originalname}:`,
+              pdfError
+            );
+            extractedTexts.push(
+              `--- Statement: ${file.originalname} ---\n[Error: Could not extract text from this PDF. It may be scanned/image-based.]\n`
+            );
+          }
+        }
+
+        const combinedText = extractedTexts.join("\n\n");
+
+        // Get additional info from request body
+        const additionalInfo = {
+          creditScoreRange: req.body.creditScoreRange,
+          timeInBusiness: req.body.timeInBusiness,
+          industry: req.body.industry,
+        };
+
+        console.log("[FUNDING CHECK] Sending to OpenAI for analysis...");
+
+        // Analyze with OpenAI
+        const analysis = await analyzeBankStatements(combinedText, additionalInfo);
+
+        console.log(
+          `[FUNDING CHECK] Analysis complete. Score: ${analysis.overallScore}, Tier: ${analysis.qualificationTier}`
+        );
+
+        res.json({
+          success: true,
+          analysis,
+          filesProcessed: files.length,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("[FUNDING CHECK] Analysis error:", error);
+        res.status(500).json({
+          error: "Analysis failed",
+          message:
+            error instanceof Error
+              ? error.message
+              : "An unexpected error occurred during analysis.",
+        });
+      }
+    }
+  );
 
   const httpServer = createServer(app);
 
