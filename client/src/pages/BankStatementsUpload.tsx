@@ -303,16 +303,6 @@ export default function BankStatementsUpload() {
                 <span>Speed up the approval process — often within 24-48 hours</span>
               </li>
             </ul>
-            
-            <div className="border-t border-white/10 pt-4 mt-4">
-              <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-blue-400" />
-                Your Information is Protected
-              </h3>
-              <p className="text-white/70 text-sm leading-relaxed">
-                We take your privacy seriously. All uploaded documents are encrypted using bank-level 256-bit SSL encryption and stored on secure servers. Your financial information is never shared with third parties without your explicit consent and is only used to process your funding application.
-              </p>
-            </div>
           </div>
         </div>
 
@@ -465,6 +455,17 @@ export default function BankStatementsUpload() {
             </div>
           </div>
         </Card>
+
+        {/* Your Information is Protected Section */}
+        <div className="mt-6 bg-white/5 backdrop-blur rounded-xl p-5 text-left border border-white/10">
+          <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-blue-400" />
+            Your Information is Protected
+          </h3>
+          <p className="text-white/70 text-sm leading-relaxed">
+            We take your privacy seriously. All uploaded documents are encrypted using bank-level 256-bit SSL encryption and stored on secure servers. Your financial information is never shared with third parties without your explicit consent and is only used to process your funding application.
+          </p>
+        </div>
 
         <div className="mt-6 text-center">
           <p className="text-sm text-white/50">
