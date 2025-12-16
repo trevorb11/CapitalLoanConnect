@@ -1,7 +1,9 @@
 import OpenAI from "openai";
 
+// Use Replit AI Integrations env vars if available, otherwise fall back to standard OpenAI
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
 });
 
 // Lender criteria for funding qualification analysis
@@ -206,5 +208,5 @@ Respond ONLY with the JSON object, no additional text.`;
 }
 
 export function isOpenAIConfigured(): boolean {
-  return !!process.env.OPENAI_API_KEY;
+  return !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
 }

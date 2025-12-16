@@ -10,7 +10,7 @@ import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured } from "./services/openai";
-import pdfParse from "pdf-parse";
+import * as pdfParse from "pdf-parse";
 import { AGENTS } from "../shared/agents";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
