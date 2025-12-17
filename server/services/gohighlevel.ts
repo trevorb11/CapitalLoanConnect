@@ -694,6 +694,9 @@ export class GoHighLevelService {
       last_name: lastName,
       submission_date: new Date().toISOString(),
       source: "Full Application Form",
+      
+      // ===== TAGS FOR GHL =====
+      tags: ["application complete"],
     };
 
     // Send to both webhooks (non-blocking)
@@ -839,6 +842,9 @@ export class GoHighLevelService {
       source: "Partial Application Form",
       is_complete: application.isComplete ? "Yes" : "No",
       current_step: application.currentStep,
+      
+      // ===== TAGS FOR GHL =====
+      tags: ["App Started"],
     };
 
     try {
@@ -893,6 +899,9 @@ export class GoHighLevelService {
       utm_term: application.utmTerm || null,
       utm_content: application.utmContent || null,
       referrer_url: application.referrerUrl || null,
+      
+      // ===== TAGS FOR GHL =====
+      tags: ["lead-source-website", "interest form"],
     };
 
     try {
