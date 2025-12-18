@@ -272,6 +272,7 @@ export const bankStatementUploads = pgTable("bank_statement_uploads", {
   storedFileName: text("stored_file_name").notNull(),
   mimeType: text("mime_type").notNull(),
   fileSize: integer("file_size").notNull(),
+  source: text("source").default("Upload"), // "Upload" for regular uploads, "Checker" for funding check
   createdAt: timestamp("created_at").defaultNow(),
 });
 
