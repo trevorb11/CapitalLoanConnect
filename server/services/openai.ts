@@ -189,8 +189,20 @@ Respond ONLY with the JSON object, no additional text.`;
       throw new Error("No response from OpenAI");
     }
 
+    // Strip markdown code blocks if present (```json...```)
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith("```json")) {
+      cleanContent = cleanContent.slice(7);
+    } else if (cleanContent.startsWith("```")) {
+      cleanContent = cleanContent.slice(3);
+    }
+    if (cleanContent.endsWith("```")) {
+      cleanContent = cleanContent.slice(0, -3);
+    }
+    cleanContent = cleanContent.trim();
+
     // Parse the JSON response
-    const analysis = JSON.parse(content) as BankStatementAnalysis;
+    const analysis = JSON.parse(cleanContent) as BankStatementAnalysis;
 
     return analysis;
   } catch (error) {
