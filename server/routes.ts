@@ -1827,7 +1827,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         console.log(`[FUNDING CHECK] Processing ${files.length} PDF file(s)`);
 
-        // Extract text from all PDFs
+        // Get email from request body for saving statements
+        const email = req.body.email;
+
+        // Extract text from all PDFs and save them to storage
         const extractedTexts: string[] = [];
 
         for (const file of files) {
@@ -1842,6 +1845,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
               `[FUNDING CHECK] Extracted ${text.length} characters from ${file.originalname}`
             );
             await parser.destroy();
+
+            // Save to object storage with "Checker" source tag if email provided
+            if (email && objectStorage.isConfigured()) {
+              try {
+                const storedFileName = await objectStorage.uploadFile(
+                  file.buffer,
+                  file.originalname,
+                  file.mimetype
+                );
+                await storage.createBankStatementUpload({
+                  email,
+                  businessName: req.body.businessName || null,
+                  loanApplicationId: null,
+                  originalFileName: file.originalname,
+                  storedFileName: storedFileName,
+                  mimeType: file.mimetype,
+                  fileSize: file.size,
+                  source: "Checker",
+                });
+                console.log(`[FUNDING CHECK] Saved ${file.originalname} to storage with Checker tag`);
+              } catch (saveError) {
+                console.error(`[FUNDING CHECK] Failed to save ${file.originalname}:`, saveError);
+              }
+            }
           } catch (pdfError) {
             console.error(
               `[FUNDING CHECK] Error parsing ${file.originalname}:`,

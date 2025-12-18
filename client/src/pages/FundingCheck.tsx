@@ -79,6 +79,7 @@ export default function FundingCheck() {
   const [creditScoreRange, setCreditScoreRange] = useState<string>("");
   const [timeInBusiness, setTimeInBusiness] = useState<string>("");
   const [industry, setIndustry] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
   const [analysisResult, setAnalysisResult] =
     useState<BankStatementAnalysis | null>(null);
 
@@ -100,6 +101,7 @@ export default function FundingCheck() {
       if (creditScoreRange) formData.append("creditScoreRange", creditScoreRange);
       if (timeInBusiness) formData.append("timeInBusiness", timeInBusiness);
       if (industry) formData.append("industry", industry);
+      if (email) formData.append("email", email);
 
       const response = await fetch("/api/funding-check/analyze", {
         method: "POST",
@@ -449,6 +451,46 @@ export default function FundingCheck() {
   }
 
   // Upload form view
+  // Full-screen loading overlay during analysis
+  if (analyzeMutation.isPending) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-[#192F56] to-[#19112D] flex items-center justify-center">
+        <div className="text-center">
+          <img
+            src={tcgLogo}
+            alt="Today Capital Group"
+            className="h-16 mx-auto mb-8"
+          />
+          <div className="bg-card/95 backdrop-blur rounded-xl p-8 max-w-md mx-auto">
+            <div className="relative mb-6">
+              <div className="w-20 h-20 mx-auto">
+                <Loader2 className="w-20 h-20 animate-spin text-primary" />
+              </div>
+            </div>
+            <h2 className="text-2xl font-bold mb-3">Analyzing Your Statements</h2>
+            <p className="text-muted-foreground mb-6">
+              Our AI is reviewing your bank statements to determine your funding eligibility. This usually takes 10-30 seconds.
+            </p>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <div className="flex items-center justify-center gap-2">
+                <BarChart3 className="w-4 h-4 text-primary" />
+                <span>Analyzing cash flow patterns...</span>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <DollarSign className="w-4 h-4 text-primary" />
+                <span>Calculating average balances...</span>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <TrendingUp className="w-4 h-4 text-primary" />
+                <span>Determining funding eligibility...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#192F56] to-[#19112D]">
       <div className="container mx-auto px-4 py-8 max-w-2xl">
@@ -482,6 +524,21 @@ export default function FundingCheck() {
 
         <Card className="p-6 bg-card/95 backdrop-blur">
           <div className="space-y-6">
+            {/* Email for saving statements */}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email (to save statements to your dashboard)</Label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                data-testid="input-email"
+              />
+              <p className="text-xs text-muted-foreground">Optional - if provided, your statements will be saved for later reference</p>
+            </div>
+
             {/* Optional Information */}
             <div className="space-y-4">
               <h3 className="font-medium text-sm text-muted-foreground">

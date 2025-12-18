@@ -627,6 +627,12 @@ function BankStatementsTab() {
                           <Upload className="w-3 h-3" />
                           PDF Upload
                         </Badge>
+                        {upload.source === "Checker" && (
+                          <Badge variant="outline" className="flex items-center gap-1 bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">
+                            <TrendingUp className="w-3 h-3" />
+                            Checker
+                          </Badge>
+                        )}
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
