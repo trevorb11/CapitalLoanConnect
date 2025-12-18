@@ -1783,7 +1783,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        console.log(`[FUNDING CHECK] Processing ${files.length} PDF file(s)`);
+        const { email, businessName, creditScoreRange, timeInBusiness, industry } = req.body;
+
+        console.log(`[FUNDING CHECK] Processing ${files.length} PDF file(s) for ${email || 'anonymous'}`);
+
+        // Save statements to storage and database (if email provided)
+        const savedUploads: Array<{ id: string; originalFileName: string }> = [];
+
+        if (email && objectStorage.isConfigured()) {
+          for (const file of files) {
+            try {
+              const storedFileName = await objectStorage.uploadFile(
+                file.buffer,
+                file.originalname,
+                file.mimetype
+              );
+
+              const upload = await storage.createBankStatementUpload({
+                email,
+                businessName: businessName || null,
+                loanApplicationId: null,
+                originalFileName: file.originalname,
+                storedFileName,
+                mimeType: file.mimetype,
+                fileSize: file.size,
+              });
+
+              savedUploads.push({ id: upload.id, originalFileName: file.originalname });
+              console.log(`[FUNDING CHECK] ✓ Saved statement to storage: ${file.originalname}`);
+            } catch (saveError) {
+              console.error(`[FUNDING CHECK] Failed to save ${file.originalname}:`, saveError);
+              // Continue with analysis even if save fails
+            }
+          }
+        }
 
         // Extract text from all PDFs
         const extractedTexts: string[] = [];
@@ -1812,9 +1845,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Get additional info from request body
         const additionalInfo = {
-          creditScoreRange: req.body.creditScoreRange,
-          timeInBusiness: req.body.timeInBusiness,
-          industry: req.body.industry,
+          creditScoreRange,
+          timeInBusiness,
+          industry,
         };
 
         console.log("[FUNDING CHECK] Sending to OpenAI for analysis...");
@@ -1830,6 +1863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           success: true,
           analysis,
           filesProcessed: files.length,
+          savedStatements: savedUploads,
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
