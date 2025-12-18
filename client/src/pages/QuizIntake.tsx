@@ -601,7 +601,7 @@ export default function QuizIntake() {
                     data-testid="checkbox-consent"
                   />
                   <label htmlFor="consent" className="text-white/60 text-[11px] leading-relaxed cursor-pointer">
-                    By checking this box, I verify this is my number and I consent to receive automated marketing calls, texts, and emails from Today Capital Group at the phone number provided, even if verified on a state or federal Do Not Call list. Consent is not a condition of purchase. Msg & data rates may apply. Msg frequency varies. Reply HELP for help and STOP to cancel. I agree to the{" "}
+                    I Consent to Receive SMS Notifications, Alerts & Occasional Marketing Communication from Today Capital Group LLC. Message frequency varies. Message & data rates may apply. Text HELP to 818-351-0225 for help. You can reply STOP to unsubscribe at any time. I agree to the{" "}
                     <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline text-white/80 hover:text-white">
                       Terms of Service
                     </a>{" "}
