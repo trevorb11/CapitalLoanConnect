@@ -890,6 +890,7 @@ export class GoHighLevelService {
       personal_credit_score_range: application.personalCreditScoreRange || application.creditScore,
       doing_business_as: application.doingBusinessAs || application.businessName,
       company_email: application.companyEmail || application.businessEmail || application.email,
+      use_of_funds: application.useOfFunds || null,
       submission_date: new Date().toISOString(),
       source: "Website Lead Form",
       page_url: pageUrl || "https://www.todaycapitalgroup.com/intake/quiz",
