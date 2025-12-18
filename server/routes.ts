@@ -12,7 +12,8 @@ import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured } from "./services/openai";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse");
+const pdfParseModule = require("pdf-parse");
+const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS } from "../shared/agents";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
@@ -1831,13 +1832,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         for (const file of files) {
           try {
-            const pdfData = await pdfParse(file.buffer);
+            const parser = new PDFParse({ data: file.buffer });
+            const result = await parser.getText();
+            const text = result.text || "";
             extractedTexts.push(
-              `--- Statement: ${file.originalname} ---\n${pdfData.text}\n`
+              `--- Statement: ${file.originalname} ---\n${text}\n`
             );
             console.log(
-              `[FUNDING CHECK] Extracted ${pdfData.text.length} characters from ${file.originalname}`
+              `[FUNDING CHECK] Extracted ${text.length} characters from ${file.originalname}`
             );
+            await parser.destroy();
           } catch (pdfError) {
             console.error(
               `[FUNDING CHECK] Error parsing ${file.originalname}:`,
