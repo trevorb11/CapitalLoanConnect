@@ -660,7 +660,7 @@ export default function FullApplication(props?: FullApplicationProps) {
                     style={{ width: '24px', height: '24px', marginTop: '4px', flexShrink: 0, accentColor: 'black', cursor: 'pointer' }} 
                   />
                   <label htmlFor="consentCheck" style={{ fontSize: '0.95rem', lineHeight: 1.5, color: '#374151', cursor: 'pointer' }}>
-                    I agree to the <strong>Today Capital Group Application Agreement</strong> and <strong>eSign Consent Agreement</strong> and understand that I may receive communications to the phone number provided; I agree that this consent applies even if the phone number provided is on any state, federal, or corporate do-not-call registry. Consent may be revoked at any time.
+                    I agree to the <strong>Today Capital Group Application Agreement</strong> and <strong>eSign Consent Agreement</strong> and consent to receive SMS text messages from Today Capital Group regarding my application and related updates at the phone number provided. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Consent is not a condition of purchase and may be revoked at any time.
                   </label>
               </div>
               <button 
