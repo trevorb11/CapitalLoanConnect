@@ -627,6 +627,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Mark application as abandoned (called when user leaves page without completing)
+  app.post("/api/applications/:id/abandon", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Get the application
+      const application = await storage.getLoanApplication(id);
+      
+      if (!application) {
+        return res.status(404).json({ error: "Application not found" });
+      }
+      
+      // Only send abandoned webhook if application was NOT completed
+      if (!application.isFullApplicationCompleted && !application.isCompleted) {
+        console.log(`[ABANDON] Sending abandoned webhook for application ${id}`);
+        
+        // Send the partial application webhook with "App Started" tag
+        ghlService.sendPartialApplicationWebhook(application).catch(err => 
+          console.error("Abandoned application webhook error (non-blocking):", err)
+        );
+        
+        return res.json({ success: true, message: "Abandoned webhook sent" });
+      }
+      
+      // Application was already completed, no need to send abandoned webhook
+      return res.json({ success: true, message: "Application already completed, no abandoned webhook needed" });
+    } catch (error) {
+      console.error("Error marking application as abandoned:", error);
+      res.status(500).json({ error: "Failed to process abandonment" });
+    }
+  });
+
   // Get funding report URL by email (for /see-report page)
   app.post("/api/applications/funding-report", async (req, res) => {
     try {
