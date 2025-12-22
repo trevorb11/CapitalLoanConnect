@@ -460,41 +460,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           if (updatedApp && updatedApp.ghlContactId) {
             await ghlService.updateContact(updatedApp.ghlContactId, applicationData);
-            // Send webhooks for existing contact update
+            // Only send intake webhook when explicitly completed
             if (applicationData.isCompleted) {
               await ghlService.sendIntakeWebhook(updatedApp).catch(err => 
                 console.error("Intake webhook error (non-blocking):", err)
               );
-            } else {
-              ghlService.sendPartialApplicationWebhook(updatedApp).catch(err => 
-                console.error("Partial application webhook error (non-blocking):", err)
-              );
             }
+            // Note: Partial webhook is NOT sent on every update to avoid excessive triggers
           } else if (updatedApp) {
             const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
             const finalApp = await storage.updateLoanApplication(existingApp.id, { ghlContactId });
-            // Send webhooks for new contact creation
+            // Only send intake webhook when explicitly completed
             if (applicationData.isCompleted) {
               await ghlService.sendIntakeWebhook(finalApp || updatedApp).catch(err => 
                 console.error("Intake webhook error (non-blocking):", err)
               );
-            } else {
-              ghlService.sendPartialApplicationWebhook(finalApp || updatedApp).catch(err => 
-                console.error("Partial application webhook error (non-blocking):", err)
-              );
             }
+            // Note: Partial webhook is NOT sent on every update to avoid excessive triggers
             return res.json(finalApp || updatedApp);
           }
         } catch (ghlError) {
           console.error("GHL sync error:", ghlError);
-          // Still send webhooks even if GHL sync failed
+          // Still send intake webhook if completed even if GHL sync failed
           if (applicationData.isCompleted && updatedApp) {
             ghlService.sendIntakeWebhook(updatedApp).catch(err => 
               console.error("Intake webhook error (non-blocking):", err)
-            );
-          } else if (!applicationData.isCompleted && updatedApp) {
-            ghlService.sendPartialApplicationWebhook(updatedApp).catch(err => 
-              console.error("Partial application webhook error (non-blocking):", err)
             );
           }
         }
@@ -524,19 +514,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...(fundingReportUrl && { fundingReportUrl }),
         });
         
-        // Send intake webhook if intake form is completed
+        // Only send intake webhook when explicitly completed
         if (applicationData.isCompleted) {
           try {
             await ghlService.sendIntakeWebhook(updatedApp || application);
           } catch (webhookError) {
             console.error("Intake webhook error (non-blocking):", webhookError);
           }
-        } else {
-          // Send partial application webhook for incomplete applications
-          ghlService.sendPartialApplicationWebhook(updatedApp || application).catch(err => 
-            console.error("Partial application webhook error (non-blocking):", err)
-          );
         }
+        // Note: Partial webhook is NOT sent on every creation to avoid excessive triggers
         
         res.json(updatedApp || application);
       } catch (ghlError) {
@@ -547,19 +533,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...(fundingReportUrl && { fundingReportUrl }),
         });
         
-        // Send intake webhook if intake form is completed (even if GHL sync failed)
+        // Only send intake webhook when explicitly completed (even if GHL sync failed)
         if (applicationData.isCompleted) {
           try {
             await ghlService.sendIntakeWebhook(updatedApp || application);
           } catch (webhookError) {
             console.error("Intake webhook error (non-blocking):", webhookError);
           }
-        } else {
-          // Send partial application webhook for incomplete applications
-          ghlService.sendPartialApplicationWebhook(updatedApp || application).catch(err => 
-            console.error("Partial application webhook error (non-blocking):", err)
-          );
         }
+        // Note: Partial webhook is NOT sent on every creation to avoid excessive triggers
         
         res.json(updatedApp || application);
       }
@@ -616,40 +598,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
           const finalApp = await storage.updateLoanApplication(id, { ghlContactId });
           
-          // Send webhook if either form completed (fire-and-forget, non-blocking)
-          if (updatedApp.isCompleted || updatedApp.isFullApplicationCompleted) {
+          // Only send webhook when full application is explicitly completed (not on every auto-save)
+          if (updatedApp.isFullApplicationCompleted) {
             ghlService.sendWebhook(finalApp || updatedApp).catch(err => 
               console.error("Webhook error (non-blocking):", err)
             );
-          } else {
-            // Send partial application webhook for incomplete applications (fire-and-forget)
-            ghlService.sendPartialApplicationWebhook(finalApp || updatedApp).catch(err => 
-              console.error("Partial application webhook error (non-blocking):", err)
-            );
           }
+          // Note: Partial/abandoned webhook is NOT sent on auto-save to avoid excessive triggers
           
           return res.json(finalApp || updatedApp);
         }
         
-        // Send webhook if either form completed (fire-and-forget, non-blocking)
-        if (updatedApp.isCompleted || updatedApp.isFullApplicationCompleted) {
+        // Only send webhook when full application is explicitly completed (not on every auto-save)
+        if (updatedApp.isFullApplicationCompleted) {
           ghlService.sendWebhook(updatedApp).catch(err => 
             console.error("Webhook error (non-blocking):", err)
           );
-        } else {
-          // Send partial application webhook for incomplete applications (fire-and-forget)
-          ghlService.sendPartialApplicationWebhook(updatedApp).catch(err => 
-            console.error("Partial application webhook error (non-blocking):", err)
-          );
         }
+        // Note: Partial/abandoned webhook is NOT sent on auto-save to avoid excessive triggers
       } catch (ghlError) {
         console.error("GHL sync error, but application updated:", ghlError);
-        // Still try to send partial webhook even if GHL sync failed
-        if (!updatedApp.isCompleted && !updatedApp.isFullApplicationCompleted) {
-          ghlService.sendPartialApplicationWebhook(updatedApp).catch(err => 
-            console.error("Partial application webhook error (non-blocking):", err)
-          );
-        }
       }
 
       res.json(updatedApp);
