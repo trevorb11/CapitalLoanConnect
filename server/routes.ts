@@ -977,6 +977,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Add "bank statements uploaded" tag to GHL contact (non-blocking)
+      ghlService.addBankStatementsTag(email).catch((err) => {
+        console.error("Failed to add GHL bank statements tag:", err);
+      });
+
       res.json({
         success: true,
         upload: {

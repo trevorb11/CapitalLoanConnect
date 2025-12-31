@@ -706,7 +706,7 @@ export class GoHighLevelService {
   // Specific webhook for intake forms with simplified format
   async sendIntakeWebhook(application: Partial<LoanApplication>, pageUrl?: string): Promise<void> {
     const INTAKE_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2a9dd48e-792a-4bdb-8688-fddaf3141ae4';
-    
+
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
     const firstName = nameParts[0] || '';
@@ -738,13 +738,13 @@ export class GoHighLevelService {
     try {
       console.log('[GHL] Sending intake webhook to:', INTAKE_WEBHOOK_URL);
       console.log('[GHL] Intake webhook payload:', JSON.stringify(webhookPayload, null, 2));
-      
+
       const response = await fetch(INTAKE_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(webhookPayload),
       });
-      
+
       if (!response.ok) {
         console.error('[GHL] Intake webhook failed:', response.status, await response.text());
       } else {
@@ -753,6 +753,48 @@ export class GoHighLevelService {
     } catch (error) {
       console.error('[GHL] Intake webhook error:', error);
       // Don't throw - webhooks are nice-to-have, not critical
+    }
+  }
+
+  // Add "bank statements uploaded" tag to a contact by email
+  async addBankStatementsTag(email: string): Promise<boolean> {
+    if (!this.isEnabled || !email) {
+      console.log("[GHL] Bank statements tag skipped: service not enabled or no email");
+      return false;
+    }
+
+    try {
+      // Find the contact by email
+      const contactId = await this.findContactByEmail(email);
+
+      if (!contactId) {
+        console.log("[GHL] No contact found for email:", email, "- cannot add bank statements tag");
+        return false;
+      }
+
+      // Get existing tags and merge with new tag
+      const existingTags = await this.getContactTags(contactId);
+      const newTag = "bank statements uploaded";
+
+      // Check if tag already exists
+      if (existingTags.includes(newTag)) {
+        console.log("[GHL] Contact already has 'bank statements uploaded' tag:", contactId);
+        return true;
+      }
+
+      // Merge tags and update contact
+      const updatedTags = this.mergeTags(existingTags, [newTag]);
+
+      console.log("[GHL] Adding 'bank statements uploaded' tag to contact:", contactId);
+      await this.makeRequest(`/contacts/${contactId}`, "PUT", {
+        tags: updatedTags
+      });
+
+      console.log("[GHL] Successfully added 'bank statements uploaded' tag to contact:", contactId);
+      return true;
+    } catch (error) {
+      console.error("[GHL] Error adding bank statements tag:", error);
+      return false;
     }
   }
 }
