@@ -924,6 +924,57 @@ export class GoHighLevelService {
       // Don't throw - webhooks are nice-to-have, not critical
     }
   }
+
+  // Webhook for bank statement uploads - sends "Statements Uploaded" tag to GHL
+  async sendBankStatementWebhook(data: {
+    email: string;
+    businessName?: string;
+    fullName?: string;
+    phone?: string;
+    applicationId?: number;
+  }): Promise<void> {
+    // Use the same webhook URL as intake forms for consistency
+    const WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2a9dd48e-792a-4bdb-8688-fddaf3141ae4';
+
+    // Parse name for first/last if provided
+    const nameParts = (data.fullName || '').trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // Build webhook payload with contact info and tag
+    const webhookPayload = {
+      first_name: firstName,
+      last_name: lastName,
+      email: data.email,
+      phone: data.phone || '',
+      company_name: data.businessName || '',
+      submission_date: new Date().toISOString(),
+      source: "Bank Statement Upload",
+
+      // ===== TAGS FOR GHL =====
+      tags: ["Statements Uploaded"],
+    };
+
+    try {
+      console.log('[GHL] Sending bank statement webhook to:', WEBHOOK_URL);
+      console.log('[GHL] Bank statement webhook payload:', JSON.stringify(webhookPayload, null, 2));
+
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload),
+      });
+
+      if (!response.ok) {
+        console.error('[GHL] Bank statement webhook failed:', response.status, await response.text());
+      } else {
+        console.log('[GHL] Bank statement webhook sent successfully - "Statements Uploaded" tag applied');
+      }
+    } catch (error) {
+      console.error('[GHL] Bank statement webhook error:', error);
+      // Don't throw - webhooks are nice-to-have, not critical
+    }
+  }
 }
 
 export const ghlService = new GoHighLevelService();

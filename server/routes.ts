@@ -1034,15 +1034,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Check if there's a matching application by email
-      let linkedApplicationId = applicationId;
+      let linkedApplicationId: number | null = applicationId ? parseInt(applicationId) : null;
+      let matchingApplication: LoanApplication | undefined;
+
+      const applications = await storage.getAllLoanApplications();
+
       if (!linkedApplicationId) {
-        const applications = await storage.getAllLoanApplications();
-        const matchingApp = applications.find((app: LoanApplication) => app.email === email);
-        if (matchingApp) {
-          linkedApplicationId = matchingApp.id;
-          console.log(`Auto-linked bank statement upload ${upload.id} to application ${matchingApp.id}`);
+        matchingApplication = applications.find((app: LoanApplication) => app.email === email);
+        if (matchingApplication) {
+          linkedApplicationId = matchingApplication.id;
+          console.log(`Auto-linked bank statement upload ${upload.id} to application ${matchingApplication.id}`);
         }
+      } else {
+        // If applicationId was provided, fetch that application for contact info
+        matchingApplication = applications.find((app: LoanApplication) => app.id === linkedApplicationId);
       }
+
+      // Send webhook to GHL with "Statements Uploaded" tag
+      ghlService.sendBankStatementWebhook({
+        email,
+        businessName: businessName || matchingApplication?.businessName || matchingApplication?.legalBusinessName,
+        fullName: matchingApplication?.fullName,
+        phone: matchingApplication?.phone,
+        applicationId: linkedApplicationId || undefined,
+      }).catch(err => {
+        console.error('[UPLOAD] Bank statement webhook error (non-blocking):', err);
+      });
 
       res.json({
         success: true,
