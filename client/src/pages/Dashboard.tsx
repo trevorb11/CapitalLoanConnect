@@ -1200,7 +1200,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-3 mb-2 flex-wrap">
                       <h3 className="font-semibold text-lg flex items-center gap-1" data-testid={`text-applicant-name-${app.id}`}>
                         {app.fullName || "No name"}
-                        {Number(app.monthlyRevenue) >= 20000 && (
+                        {Number(app.monthlyRevenue || app.averageMonthlyRevenue) >= 20000 && (
                           <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" data-testid={`icon-high-revenue-${app.id}`} />
                         )}
                       </h3>
@@ -1260,13 +1260,13 @@ export default function Dashboard() {
                           <span data-testid={`value-industry-${app.id}`}>{app.industry}</span>
                         </div>
                       )}
-                      {app.monthlyRevenue && (
+                      {(app.monthlyRevenue || app.averageMonthlyRevenue) && Number(app.monthlyRevenue || app.averageMonthlyRevenue) > 0 && (
                         <div className="flex items-center gap-1">
                           <span className="font-medium">Revenue:</span>{" "}
                           <span data-testid={`value-revenue-${app.id}`}>
-                            ${Number(app.monthlyRevenue).toLocaleString()}/mo
+                            ${Number(app.monthlyRevenue || app.averageMonthlyRevenue).toLocaleString()}/mo
                           </span>
-                          {Number(app.monthlyRevenue) >= 20000 && (
+                          {Number(app.monthlyRevenue || app.averageMonthlyRevenue) >= 20000 && (
                             <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
                           )}
                         </div>
