@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -1198,8 +1198,11 @@ export default function Dashboard() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <h3 className="font-semibold text-lg" data-testid={`text-applicant-name-${app.id}`}>
+                      <h3 className="font-semibold text-lg flex items-center gap-1" data-testid={`text-applicant-name-${app.id}`}>
                         {app.fullName || "No name"}
+                        {Number(app.monthlyRevenue) >= 20000 && (
+                          <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" data-testid={`icon-high-revenue-${app.id}`} />
+                        )}
                       </h3>
                       {app.isFullApplicationCompleted ? (
                         <Badge variant="default" className="bg-green-600 hover:bg-green-700" data-testid={`badge-status-full-${app.id}`}>
@@ -1255,6 +1258,25 @@ export default function Dashboard() {
                         <div>
                           <span className="font-medium">Industry:</span>{" "}
                           <span data-testid={`value-industry-${app.id}`}>{app.industry}</span>
+                        </div>
+                      )}
+                      {app.monthlyRevenue && (
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium">Revenue:</span>{" "}
+                          <span data-testid={`value-revenue-${app.id}`}>
+                            ${Number(app.monthlyRevenue).toLocaleString()}/mo
+                          </span>
+                          {Number(app.monthlyRevenue) >= 20000 && (
+                            <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                          )}
+                        </div>
+                      )}
+                      {app.useOfFunds && (
+                        <div>
+                          <span className="font-medium">Use of Funds:</span>{" "}
+                          <span data-testid={`value-use-of-funds-${app.id}`} className="truncate max-w-[200px] inline-block align-bottom" title={app.useOfFunds}>
+                            {app.useOfFunds.length > 30 ? app.useOfFunds.slice(0, 30) + "..." : app.useOfFunds}
+                          </span>
                         </div>
                       )}
                     </div>
