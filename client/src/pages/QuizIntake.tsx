@@ -76,7 +76,8 @@ interface QuizData {
   businessName: string;
   email: string;
   phone: string;
-  consent: boolean;
+  consentTransactional: boolean;
+  consentMarketing: boolean;
   faxNumber: string; // Honeypot field - should always be empty
 }
 
@@ -125,7 +126,8 @@ export default function QuizIntake() {
     businessName: "",
     email: "",
     phone: "",
-    consent: false,
+    consentTransactional: false,
+    consentMarketing: false,
     faxNumber: "", // Honeypot - should remain empty
   });
 
@@ -249,7 +251,7 @@ export default function QuizIntake() {
       setFormError("Please enter a valid phone number");
       return;
     }
-    if (!quizData.consent) {
+    if (!quizData.consentTransactional) {
       setShowConsentError(true);
       return;
     }
@@ -586,35 +588,58 @@ export default function QuizIntake() {
                 />
               </div>
 
-              {/* Consent Checkbox */}
-              <div className="pt-2">
+              {/* Consent Checkboxes */}
+              <div className="pt-2 space-y-3">
+                {/* Transactional Consent */}
                 <div className="flex items-start text-left gap-3">
                   <input
                     type="checkbox"
-                    id="consent"
-                    checked={quizData.consent}
+                    id="consentTransactional"
+                    checked={quizData.consentTransactional}
                     onChange={(e) => {
-                      setQuizData((prev) => ({ ...prev, consent: e.target.checked }));
+                      setQuizData((prev) => ({ ...prev, consentTransactional: e.target.checked }));
                       setShowConsentError(false);
                     }}
                     className="w-4 h-4 mt-1 cursor-pointer flex-shrink-0"
-                    data-testid="checkbox-consent"
+                    data-testid="checkbox-consent-transactional"
                   />
-                  <label htmlFor="consent" className="text-white/60 text-[11px] leading-relaxed cursor-pointer">
-                    I Consent to Receive SMS Notifications, Alerts & Occasional Marketing Communication from Today Capital Group LLC. Message frequency varies. Message & data rates may apply. Text HELP to 818-351-0225 for help. You can reply STOP to unsubscribe at any time. I agree to the{" "}
-                    <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline text-white/80 hover:text-white">
-                      Terms of Service
-                    </a>{" "}
-                    and{" "}
-                    <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="underline text-white/80 hover:text-white">
-                      Privacy Policy
-                    </a>.
+                  <label htmlFor="consentTransactional" className="text-white/60 text-[11px] leading-relaxed cursor-pointer">
+                    By checking this box, I consent to receive transactional messages related to my account, orders, or services I have requested. These messages may include appointment reminders, order confirmations, and account notifications among others. Message frequency may vary. Message & Data rates may apply. Reply HELP for help or STOP to opt-out.
                   </label>
                 </div>
 
+                {/* Marketing Consent */}
+                <div className="flex items-start text-left gap-3">
+                  <input
+                    type="checkbox"
+                    id="consentMarketing"
+                    checked={quizData.consentMarketing}
+                    onChange={(e) => {
+                      setQuizData((prev) => ({ ...prev, consentMarketing: e.target.checked }));
+                    }}
+                    className="w-4 h-4 mt-1 cursor-pointer flex-shrink-0"
+                    data-testid="checkbox-consent-marketing"
+                  />
+                  <label htmlFor="consentMarketing" className="text-white/60 text-[11px] leading-relaxed cursor-pointer">
+                    By checking this box, I consent to receive marketing and promotional messages, including special offers, discounts, new product updates among others. Message frequency may vary. Message & Data rates may apply. Reply HELP for help or STOP to opt-out.
+                  </label>
+                </div>
+
+                {/* Terms and Privacy Policy */}
+                <p className="text-white/50 text-[10px] leading-relaxed">
+                  By submitting, I agree to the{" "}
+                  <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
+                    Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
+                    Privacy Policy
+                  </a>.
+                </p>
+
                 {showConsentError && (
                   <div className="mt-2 p-2 bg-red-500/20 border border-red-500/40 rounded" data-testid="consent-error">
-                    <p className="text-red-400 text-sm">Please accept the terms to continue</p>
+                    <p className="text-red-400 text-sm">Please accept the transactional messages consent to continue</p>
                   </div>
                 )}
               </div>
