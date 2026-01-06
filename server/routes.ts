@@ -5,6 +5,7 @@ import fs from "fs";
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
 import multer from "multer";
 import PDFDocument from "pdfkit";
+import archiver from "archiver";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
@@ -1146,6 +1147,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error downloading bank statement:", error);
       if (!res.headersSent) {
         res.status(500).json({ error: "Failed to download file" });
+      }
+    }
+  });
+
+  // 4. Bulk download all bank statements for a business as ZIP
+  app.get("/api/bank-statements/download-all/:businessName", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const businessName = decodeURIComponent(req.params.businessName);
+      console.log(`[BULK DOWNLOAD] Requesting all statements for business: "${businessName}"`);
+
+      // Get all uploads for this business
+      let uploads;
+      if (req.session.user.role === 'admin') {
+        uploads = await storage.getAllBankStatementUploads();
+      } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        uploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
+      } else {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Filter by business name
+      const businessUploads = uploads.filter(u =>
+        (u.businessName || 'Unknown Business') === businessName
+      );
+
+      if (businessUploads.length === 0) {
+        return res.status(404).json({ error: "No statements found for this business" });
+      }
+
+      console.log(`[BULK DOWNLOAD] Found ${businessUploads.length} statements for "${businessName}"`);
+
+      // Create ZIP archive
+      const archive = archiver('zip', { zlib: { level: 9 } });
+
+      // Sanitize business name for filename
+      const safeBusinessName = businessName.replace(/[^a-zA-Z0-9-_]/g, '_').substring(0, 50);
+      const zipFileName = `${safeBusinessName}_Bank_Statements.zip`;
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"`);
+
+      archive.pipe(res);
+
+      // Add each file to the archive
+      for (const upload of businessUploads) {
+        try {
+          let fileBuffer: Buffer;
+
+          // Check if file is in Object Storage
+          if (upload.storedFileName.includes("bank-statements/")) {
+            fileBuffer = await objectStorage.getFileBuffer(upload.storedFileName);
+          } else {
+            // Fallback: check local disk
+            const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+            if (fs.existsSync(filePath)) {
+              fileBuffer = fs.readFileSync(filePath);
+            } else {
+              console.warn(`[BULK DOWNLOAD] File not found: ${upload.storedFileName}`);
+              continue;
+            }
+          }
+
+          // Add to archive with original filename
+          archive.append(fileBuffer, { name: upload.originalFileName });
+          console.log(`[BULK DOWNLOAD] Added ${upload.originalFileName} to archive`);
+        } catch (fileError) {
+          console.error(`[BULK DOWNLOAD] Error adding file ${upload.originalFileName}:`, fileError);
+          // Continue with other files
+        }
+      }
+
+      await archive.finalize();
+      console.log(`[BULK DOWNLOAD] Archive created successfully for "${businessName}"`);
+    } catch (error) {
+      console.error("Error creating bulk download:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to create download" });
       }
     }
   });

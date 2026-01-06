@@ -93,6 +93,22 @@ export class ObjectStorageService {
     }
   }
 
+  // Get file buffer (for creating archives)
+  async getFileBuffer(objectName: string): Promise<Buffer> {
+    const exists = await this.fileExists(objectName);
+    if (!exists) {
+      throw new ObjectNotFoundError();
+    }
+
+    const result = await this.client.downloadAsText(objectName);
+    if (!result.ok) {
+      throw new Error(`Download failed: ${result.error?.message || "Unknown error"}`);
+    }
+
+    // Decode from base64 back to binary
+    return Buffer.from(result.value, "base64");
+  }
+
   // Delete a file from object storage
   async deleteFile(objectName: string): Promise<void> {
     const result = await this.client.delete(objectName);
