@@ -1194,6 +1194,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       archive.pipe(res);
 
+      // Track filenames to handle duplicates and track success/failures
+      const usedFilenames = new Map<string, number>();
+      const successfulFiles: string[] = [];
+      const failedFiles: { name: string; reason: string }[] = [];
+
+      // Helper to get unique filename
+      const getUniqueFilename = (originalName: string): string => {
+        const count = usedFilenames.get(originalName) || 0;
+        usedFilenames.set(originalName, count + 1);
+
+        if (count === 0) {
+          return originalName;
+        }
+
+        // Add suffix before extension for duplicates
+        const lastDot = originalName.lastIndexOf('.');
+        if (lastDot > 0) {
+          const name = originalName.substring(0, lastDot);
+          const ext = originalName.substring(lastDot);
+          return `${name}_${count}${ext}`;
+        }
+        return `${originalName}_${count}`;
+      };
+
       // Add each file to the archive
       for (const upload of businessUploads) {
         try {
@@ -1209,21 +1233,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
               fileBuffer = fs.readFileSync(filePath);
             } else {
               console.warn(`[BULK DOWNLOAD] File not found: ${upload.storedFileName}`);
+              failedFiles.push({ name: upload.originalFileName, reason: 'File not found in storage' });
               continue;
             }
           }
 
-          // Add to archive with original filename
-          archive.append(fileBuffer, { name: upload.originalFileName });
-          console.log(`[BULK DOWNLOAD] Added ${upload.originalFileName} to archive`);
+          // Add to archive with unique filename to prevent overwrites
+          const uniqueFilename = getUniqueFilename(upload.originalFileName);
+          archive.append(fileBuffer, { name: uniqueFilename });
+          successfulFiles.push(uniqueFilename);
+          console.log(`[BULK DOWNLOAD] Added ${uniqueFilename} to archive`);
         } catch (fileError) {
+          const errorMessage = fileError instanceof Error ? fileError.message : 'Unknown error';
           console.error(`[BULK DOWNLOAD] Error adding file ${upload.originalFileName}:`, fileError);
-          // Continue with other files
+          failedFiles.push({ name: upload.originalFileName, reason: errorMessage });
         }
       }
 
+      // Add manifest file to the archive
+      const manifestContent = [
+        `Bank Statements Download Manifest`,
+        `Business: ${businessName}`,
+        `Downloaded: ${new Date().toISOString()}`,
+        ``,
+        `=== Successfully Included (${successfulFiles.length} files) ===`,
+        ...successfulFiles.map(f => `  ✓ ${f}`),
+      ];
+
+      if (failedFiles.length > 0) {
+        manifestContent.push(
+          ``,
+          `=== Failed to Include (${failedFiles.length} files) ===`,
+          ...failedFiles.map(f => `  ✗ ${f.name}: ${f.reason}`)
+        );
+      }
+
+      manifestContent.push(
+        ``,
+        `Total: ${successfulFiles.length} of ${businessUploads.length} files included`
+      );
+
+      archive.append(manifestContent.join('\n'), { name: '_manifest.txt' });
+
       await archive.finalize();
-      console.log(`[BULK DOWNLOAD] Archive created successfully for "${businessName}"`);
+      console.log(`[BULK DOWNLOAD] Archive created for "${businessName}": ${successfulFiles.length}/${businessUploads.length} files included`);
     } catch (error) {
       console.error("Error creating bulk download:", error);
       if (!res.headersSent) {
