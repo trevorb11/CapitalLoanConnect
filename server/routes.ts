@@ -1182,22 +1182,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[BULK DOWNLOAD] Found ${businessUploads.length} statements for "${businessName}"`);
 
-      // Create ZIP archive
-      const archive = archiver('zip', { zlib: { level: 9 } });
-
-      // Sanitize business name for filename
-      const safeBusinessName = businessName.replace(/[^a-zA-Z0-9-_]/g, '_').substring(0, 50);
-      const zipFileName = `${safeBusinessName}_Bank_Statements.zip`;
-
-      res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"`);
-
-      archive.pipe(res);
-
       // Track filenames to handle duplicates and track success/failures
       const usedFilenames = new Map<string, number>();
       const successfulFiles: string[] = [];
       const failedFiles: { name: string; reason: string }[] = [];
+      const fileBuffers: { name: string; buffer: Buffer }[] = [];
 
       // Helper to get unique filename
       const getUniqueFilename = (originalName: string): string => {
@@ -1218,18 +1207,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return `${originalName}_${count}`;
       };
 
-      // Add each file to the archive
+      // First, collect all file buffers before creating the archive
       for (const upload of businessUploads) {
         try {
           let fileBuffer: Buffer;
 
-          // Check if file is in Object Storage
-          if (upload.storedFileName.includes("bank-statements/")) {
+          // Check if file is in Object Storage (has bank-statements/ prefix)
+          if (upload.storedFileName && upload.storedFileName.includes("bank-statements/")) {
+            console.log(`[BULK DOWNLOAD] Fetching from Object Storage: ${upload.storedFileName}`);
             fileBuffer = await objectStorage.getFileBuffer(upload.storedFileName);
           } else {
             // Fallback: check local disk
             const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
             if (fs.existsSync(filePath)) {
+              console.log(`[BULK DOWNLOAD] Reading from local disk: ${filePath}`);
               fileBuffer = fs.readFileSync(filePath);
             } else {
               console.warn(`[BULK DOWNLOAD] File not found: ${upload.storedFileName}`);
@@ -1238,33 +1229,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
-          // Add to archive with unique filename to prevent overwrites
+          // Store the buffer for later
           const uniqueFilename = getUniqueFilename(upload.originalFileName);
-          archive.append(fileBuffer, { name: uniqueFilename });
+          fileBuffers.push({ name: uniqueFilename, buffer: fileBuffer });
           successfulFiles.push(uniqueFilename);
-          console.log(`[BULK DOWNLOAD] Added ${uniqueFilename} to archive`);
+          console.log(`[BULK DOWNLOAD] Prepared ${uniqueFilename} (${fileBuffer.length} bytes)`);
         } catch (fileError) {
           const errorMessage = fileError instanceof Error ? fileError.message : 'Unknown error';
-          console.error(`[BULK DOWNLOAD] Error adding file ${upload.originalFileName}:`, fileError);
+          console.error(`[BULK DOWNLOAD] Error fetching file ${upload.originalFileName}:`, fileError);
           failedFiles.push({ name: upload.originalFileName, reason: errorMessage });
         }
       }
 
-      // Add manifest file to the archive
+      // Create manifest content
       const manifestContent = [
         `Bank Statements Download Manifest`,
         `Business: ${businessName}`,
         `Downloaded: ${new Date().toISOString()}`,
         ``,
         `=== Successfully Included (${successfulFiles.length} files) ===`,
-        ...successfulFiles.map(f => `  ✓ ${f}`),
+        ...successfulFiles.map(f => `  - ${f}`),
       ];
 
       if (failedFiles.length > 0) {
         manifestContent.push(
           ``,
           `=== Failed to Include (${failedFiles.length} files) ===`,
-          ...failedFiles.map(f => `  ✗ ${f.name}: ${f.reason}`)
+          ...failedFiles.map(f => `  x ${f.name}: ${f.reason}`)
         );
       }
 
@@ -1273,8 +1264,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `Total: ${successfulFiles.length} of ${businessUploads.length} files included`
       );
 
+      // Now create the archive with all collected buffers
+      const archive = archiver('zip', { zlib: { level: 5 } });
+
+      // Sanitize business name for filename
+      const safeBusinessName = businessName.replace(/[^a-zA-Z0-9-_]/g, '_').substring(0, 50);
+      const zipFileName = `${safeBusinessName}_Bank_Statements.zip`;
+
+      // Set up error handling for archive
+      archive.on('error', (err: Error) => {
+        console.error('[BULK DOWNLOAD] Archive error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to create archive' });
+        }
+      });
+
+      archive.on('warning', (err: Error) => {
+        console.warn('[BULK DOWNLOAD] Archive warning:', err);
+      });
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"`);
+
+      archive.pipe(res);
+
+      // Add all files to archive
+      for (const file of fileBuffers) {
+        archive.append(file.buffer, { name: file.name });
+        console.log(`[BULK DOWNLOAD] Added ${file.name} to archive`);
+      }
+
+      // Add manifest
       archive.append(manifestContent.join('\n'), { name: '_manifest.txt' });
 
+      // Finalize the archive
       await archive.finalize();
       console.log(`[BULK DOWNLOAD] Archive created for "${businessName}": ${successfulFiles.length}/${businessUploads.length} files included`);
     } catch (error) {
