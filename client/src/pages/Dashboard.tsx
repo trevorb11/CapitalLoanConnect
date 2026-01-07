@@ -1178,14 +1178,6 @@ function BankStatementsTab() {
 
                     <div className="flex flex-col gap-2">
                       <Button
-                        onClick={() => setSelectedConnection(connection)}
-                        data-testid={`button-view-bank-statements-${connection.id}`}
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        View Statements
-                      </Button>
-                      <Button
-                        variant="outline"
                         onClick={() => setSelectedAssetReport(connection)}
                         data-testid={`button-view-asset-report-${connection.id}`}
                       >
