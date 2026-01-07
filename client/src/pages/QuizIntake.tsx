@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { Loader2, CheckCircle } from "lucide-react";
+import { Loader2, CheckCircle, ArrowLeft } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
@@ -14,13 +14,15 @@ const BUSINESS_AGE_OPTIONS = [
   "1-2 years",
   "2-5 years",
   "More than 5 years",
-  "I currently don't own a business",
+];
+
+const OWN_BUSINESS_OPTIONS = [
+  "Yes",
+  "No",
 ];
 
 const MONTHLY_REVENUE_OPTIONS = [
-  "Less than $1,000",
-  "$1,000 – $5,000",
-  "$5,000 – $15,000",
+  "Less than $15,000",
   "$15,000 – $20,000",
   "$20,000 – $30,000",
   "$30,000 – $50,000",
@@ -30,13 +32,10 @@ const MONTHLY_REVENUE_OPTIONS = [
 ];
 
 const CREDIT_SCORE_OPTIONS = [
-  "500 and below",
-  "500-549",
-  "550-599",
-  "600-649",
-  "650-719",
-  "720 or above",
-  "Not sure",
+  "550 and below",
+  "550 - 650",
+  "650 - 750",
+  "750+",
 ];
 
 const INDUSTRY_OPTIONS = [
@@ -67,6 +66,7 @@ const FUNDING_PURPOSE_OPTIONS = [
 
 interface QuizData {
   financingAmount: number;
+  ownBusiness: string;
   businessAge: string;
   industry: string;
   monthlyRevenue: string;
@@ -117,6 +117,7 @@ export default function QuizIntake() {
 
   const [quizData, setQuizData] = useState<QuizData>({
     financingAmount: 25000,
+    ownBusiness: "",
     businessAge: "",
     industry: "",
     monthlyRevenue: "",
@@ -131,7 +132,7 @@ export default function QuizIntake() {
     faxNumber: "", // Honeypot - should remain empty
   });
 
-  const totalQuestions = 7;
+  const totalQuestions = 8;
   const progress = (currentQuestion / totalQuestions) * 100;
 
   // Track page view and capture UTM params on mount
@@ -142,9 +143,7 @@ export default function QuizIntake() {
 
   const parseRevenueToNumber = (revenueRange: string): string => {
     const rangeMap: Record<string, string> = {
-      "Less than $1,000": "500",
-      "$1,000 – $5,000": "3000",
-      "$5,000 – $15,000": "10000",
+      "Less than $15,000": "7500",
       "$15,000 – $20,000": "17500",
       "$20,000 – $30,000": "25000",
       "$30,000 – $50,000": "40000",
@@ -220,9 +219,15 @@ export default function QuizIntake() {
   const nextQuestion = () => {
     if (currentQuestion < totalQuestions) {
       // Track step completion
-      const stepNames = ['Financing Amount', 'Business Age', 'Industry', 'Monthly Revenue', 'Credit Score', 'Funding Purpose', 'Contact Info'];
+      const stepNames = ['Financing Amount', 'Own Business', 'Business Age', 'Industry', 'Monthly Revenue', 'Credit Score', 'Funding Purpose', 'Contact Info'];
       trackFormStepCompleted('intake_quiz', currentQuestion, stepNames[currentQuestion - 1]);
       goToQuestion(currentQuestion + 1);
+    }
+  };
+
+  const prevQuestion = () => {
+    if (currentQuestion > 1) {
+      goToQuestion(currentQuestion - 1);
     }
   };
 
@@ -310,13 +315,13 @@ export default function QuizIntake() {
                 <input
                   type="range"
                   min="5000"
-                  max="2000000"
+                  max="1000000"
                   step="1000"
                   value={quizData.financingAmount}
                   onChange={(e) => setQuizData((prev) => ({ ...prev, financingAmount: parseInt(e.target.value) }))}
                   className="financing-slider w-full h-3 rounded-full appearance-none cursor-pointer mb-3"
                   style={{
-                    background: `linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.9) ${((quizData.financingAmount - 5000) / (2000000 - 5000)) * 100}%, rgba(255,255,255,0.2) ${((quizData.financingAmount - 5000) / (2000000 - 5000)) * 100}%, rgba(255,255,255,0.2) 100%)`,
+                    background: `linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.9) ${((quizData.financingAmount - 5000) / (1000000 - 5000)) * 100}%, rgba(255,255,255,0.2) ${((quizData.financingAmount - 5000) / (1000000 - 5000)) * 100}%, rgba(255,255,255,0.2) 100%)`,
                   }}
                   data-testid="financing-slider"
                 />
@@ -324,7 +329,7 @@ export default function QuizIntake() {
 
               <div className="flex justify-between text-white/60 text-sm mb-8">
                 <span>$5K</span>
-                <span>$2M</span>
+                <span>$1M+</span>
               </div>
 
               <button
@@ -338,12 +343,65 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Question 2: Business Operating Time */}
+        {/* Question 2: Do you own a business? */}
         <div
           className={`transition-all duration-300 ${currentQuestion === 2 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-2"
         >
           <div className="text-center">
+            <button
+              onClick={prevQuestion}
+              className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
+              data-testid="back-button-2"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
+            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
+              Do you own a business?
+            </h3>
+
+            <div className="flex flex-col gap-3 max-w-md mx-auto text-left">
+              {OWN_BUSINESS_OPTIONS.map((option, idx) => (
+                <label
+                  key={option}
+                  className={`flex items-center cursor-pointer p-4 rounded-lg transition-all duration-200 ${
+                    quizData.ownBusiness === option ? "bg-white/20" : "bg-transparent hover:bg-white/10"
+                  }`}
+                  data-testid={`label-own-business-${idx}`}
+                >
+                  <input
+                    type="radio"
+                    name="ownBusiness"
+                    value={option}
+                    checked={quizData.ownBusiness === option}
+                    onChange={() => handleRadioSelect("ownBusiness", option)}
+                    className="w-5 h-5 mr-4 appearance-none border-2 border-white rounded-full grid place-content-center cursor-pointer
+                      before:content-[''] before:w-2.5 before:h-2.5 before:rounded-full before:scale-0 before:transition-transform before:bg-white
+                      checked:before:scale-100"
+                    data-testid={`radio-own-business-${idx}`}
+                  />
+                  <span className="text-white text-base md:text-lg">{option}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Question 3: Business Operating Time */}
+        <div
+          className={`transition-all duration-300 ${currentQuestion === 3 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-3"
+        >
+          <div className="text-center">
+            <button
+              onClick={prevQuestion}
+              className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
+              data-testid="back-button-3"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
               Business Operating Time
             </h3>
@@ -375,12 +433,20 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Question 3: Industry */}
+        {/* Question 4: Industry */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 3 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-3"
+          className={`transition-all duration-300 ${currentQuestion === 4 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-4"
         >
           <div className="text-center">
+            <button
+              onClick={prevQuestion}
+              className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
+              data-testid="back-button-4"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
               What industry is your business in?
             </h3>
@@ -412,12 +478,20 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Question 4: Monthly Revenue */}
+        {/* Question 5: Monthly Revenue */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 4 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-4"
+          className={`transition-all duration-300 ${currentQuestion === 5 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-5"
         >
           <div className="text-center">
+            <button
+              onClick={prevQuestion}
+              className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
+              data-testid="back-button-5"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
               Gross Monthly Revenue?
             </h3>
@@ -449,12 +523,20 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Question 5: Credit Score */}
+        {/* Question 6: Credit Score */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 5 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-5"
+          className={`transition-all duration-300 ${currentQuestion === 6 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-6"
         >
           <div className="text-center">
+            <button
+              onClick={prevQuestion}
+              className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
+              data-testid="back-button-6"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-2">
               Personal Credit Score?
             </h3>
@@ -487,12 +569,20 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Question 6: Funding Purpose */}
+        {/* Question 7: Funding Purpose */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 6 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-6"
+          className={`transition-all duration-300 ${currentQuestion === 7 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-7"
         >
           <div className="text-center">
+            <button
+              onClick={prevQuestion}
+              className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
+              data-testid="back-button-7"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
               How do you plan to use the funds?
             </h3>
@@ -524,12 +614,20 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Question 7: Contact Info */}
+        {/* Question 8: Contact Info */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 7 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-7"
+          className={`transition-all duration-300 ${currentQuestion === 8 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-8"
         >
           <div className="text-center">
+            <button
+              onClick={prevQuestion}
+              className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
+              data-testid="back-button-8"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
             <h3 className="text-white text-xl md:text-2xl font-semibold mb-2">
               Get Your Personalized Financing Quote
             </h3>

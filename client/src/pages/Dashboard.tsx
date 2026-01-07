@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -425,6 +425,7 @@ const INDUSTRIES = [
 
 function BankStatementsTab() {
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
+  const [expandedBusinesses, setExpandedBusinesses] = useState<Set<string>>(new Set());
 
   const { data: bankConnections, isLoading: connectionsLoading } = useQuery<BankConnection[]>({
     queryKey: ['/api/plaid/all'],
@@ -476,7 +477,7 @@ function BankStatementsTab() {
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Download failed');
-      
+
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -490,6 +491,50 @@ function BankStatementsTab() {
       console.error('Download error:', error);
     }
   };
+
+  const handleBulkDownload = async (businessName: string) => {
+    try {
+      const res = await fetch(`/api/bank-statements/download-all/${encodeURIComponent(businessName)}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Bulk download failed');
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeBusinessName = businessName.replace(/[^a-zA-Z0-9-_]/g, '_').substring(0, 50);
+      a.download = `${safeBusinessName}_Bank_Statements.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Bulk download error:', error);
+    }
+  };
+
+  const toggleBusinessExpanded = (businessName: string) => {
+    setExpandedBusinesses(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(businessName)) {
+        newSet.delete(businessName);
+      } else {
+        newSet.add(businessName);
+      }
+      return newSet;
+    });
+  };
+
+  // Group uploads by business name
+  const uploadsByBusiness = bankUploads?.reduce((acc, upload) => {
+    const businessName = upload.businessName || 'Unknown Business';
+    if (!acc[businessName]) {
+      acc[businessName] = [];
+    }
+    acc[businessName].push(upload);
+    return acc;
+  }, {} as Record<string, BankStatementUpload[]>) || {};
 
   const isLoading = connectionsLoading || uploadsLoading;
   const hasConnections = bankConnections && bankConnections.length > 0;
@@ -606,7 +651,7 @@ function BankStatementsTab() {
           </div>
         )}
 
-        {/* PDF Uploads Section */}
+        {/* PDF Uploads Section - Grouped by Business */}
         {hasUploads && (
           <div>
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -614,61 +659,79 @@ function BankStatementsTab() {
               Uploaded Statements
             </h3>
             <div className="space-y-4">
-              {bankUploads.map((upload) => (
-                <Card key={upload.id} className="p-6 hover-elevate" data-testid={`card-bank-upload-${upload.id}`}>
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3 flex-wrap">
-                        <h3 className="font-semibold text-lg flex items-center gap-2">
-                          <FileText className="w-5 h-5 text-primary" />
-                          {upload.businessName || 'Unknown Business'}
-                        </h3>
-                        <Badge variant="secondary" className="flex items-center gap-1">
-                          <Upload className="w-3 h-3" />
-                          PDF Upload
-                        </Badge>
-                        {upload.source === "Checker" && (
-                          <Badge variant="outline" className="flex items-center gap-1 bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">
-                            <TrendingUp className="w-3 h-3" />
-                            Checker
-                          </Badge>
-                        )}
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        <div className="flex items-center gap-2 text-sm">
-                          <FileText className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">File:</span>
-                          <span className="font-medium truncate max-w-[200px]">{upload.originalFileName}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <DollarSign className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">Size:</span>
-                          <span className="font-medium">{formatFileSize(upload.fileSize)}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Calendar className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">Uploaded:</span>
-                          <span className="font-medium">{upload.createdAt ? format(new Date(upload.createdAt), 'MMM d, yyyy') : 'N/A'}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-sm">
-                        <User className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">{upload.email}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        onClick={() => handleDownload(upload.id, upload.originalFileName)}
-                        data-testid={`button-download-statement-${upload.id}`}
+              {Object.entries(uploadsByBusiness).map(([businessName, uploads]) => (
+                <Card key={businessName} className="p-6 hover-elevate" data-testid={`card-business-${businessName}`}>
+                  {/* Business Header */}
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => toggleBusinessExpanded(businessName)}
+                        className="flex items-center gap-2 hover:opacity-70 transition-opacity"
+                        data-testid={`button-toggle-${businessName}`}
                       >
-                        <Download className="w-4 h-4 mr-2" />
-                        Download PDF
-                      </Button>
+                        {expandedBusinesses.has(businessName) ? (
+                          <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                        )}
+                        <Building2 className="w-5 h-5 text-primary" />
+                        <h4 className="font-semibold text-lg">{businessName}</h4>
+                      </button>
+                      <Badge variant="secondary" className="flex items-center gap-1">
+                        <FileText className="w-3 h-3" />
+                        {uploads.length} {uploads.length === 1 ? 'Statement' : 'Statements'}
+                      </Badge>
                     </div>
+                    <Button
+                      onClick={() => handleBulkDownload(businessName)}
+                      className="bg-primary hover:bg-primary/90"
+                      data-testid={`button-download-all-${businessName}`}
+                    >
+                      <FolderArchive className="w-4 h-4 mr-2" />
+                      Download All ({uploads.length})
+                    </Button>
                   </div>
+
+                  {/* Individual Files - Collapsible */}
+                  {expandedBusinesses.has(businessName) && (
+                    <div className="space-y-3 pt-4 border-t">
+                      {uploads.map((upload) => (
+                        <div key={upload.id} className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 bg-muted/50 rounded-lg" data-testid={`card-bank-upload-${upload.id}`}>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2 flex-wrap">
+                              <span className="font-medium flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-primary" />
+                                {upload.originalFileName}
+                              </span>
+                              {upload.source === "Checker" && (
+                                <Badge variant="outline" className="flex items-center gap-1 bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 text-xs">
+                                  <TrendingUp className="w-3 h-3" />
+                                  Checker
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                              <span>{formatFileSize(upload.fileSize)}</span>
+                              <span>{upload.createdAt ? format(new Date(upload.createdAt), 'MMM d, yyyy') : 'N/A'}</span>
+                              <span className="flex items-center gap-1">
+                                <User className="w-3 h-3" />
+                                {upload.email}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDownload(upload.id, upload.originalFileName)}
+                            data-testid={`button-download-statement-${upload.id}`}
+                          >
+                            <Download className="w-4 h-4 mr-1" />
+                            Download
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </Card>
               ))}
             </div>
