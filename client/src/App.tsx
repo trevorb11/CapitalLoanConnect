@@ -25,6 +25,7 @@ import UpdateInfo from "@/pages/UpdateInfo";
 import SeeReport from "@/pages/SeeReport";
 import ConnectBank from "@/pages/ConnectBank";
 import BankStatementsUpload from "@/pages/BankStatementsUpload";
+import Statements from "@/pages/Statements";
 import FundingCheck from "@/pages/FundingCheck";
 import RetargetingLanding from "@/pages/RetargetingLanding";
 import ProgressTracker from "@/pages/ProgressTracker";
@@ -76,6 +77,7 @@ function Router() {
       <Route path="/see-report" component={SeeReport} />
       <Route path="/connect-bank" component={ConnectBank} />
       <Route path="/upload-statements" component={BankStatementsUpload} />
+      <Route path="/statements" component={Statements} />
       <Route path="/funding-check" component={FundingCheck} />
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
