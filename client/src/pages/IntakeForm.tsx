@@ -290,10 +290,10 @@ export default function IntakeForm() {
     setIsSubmitting(true);
     try {
       await updateMutation.mutateAsync(data);
-      // Redirect to upload-statements page with email and business name pre-filled
+      // Redirect to statements page with email and business name pre-filled
       const email = encodeURIComponent(form1.getValues("email"));
       const businessName = encodeURIComponent(form1.getValues("legalBusinessName"));
-      navigate(`/upload-statements?email=${email}&businessName=${businessName}&submitted=true`);
+      navigate(`/statements?email=${email}&businessName=${businessName}&submitted=true`);
     } catch (error) {
       console.error("Error submitting application:", error);
       setIsSubmitting(false);

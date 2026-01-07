@@ -534,10 +534,10 @@ export default function FullApplication(props?: FullApplicationProps) {
         
         setIsSubmitting(false);
         
-        // Redirect to upload-statements page with email and business name pre-filled
+        // Redirect to statements page with email and business name pre-filled
         const email = encodeURIComponent(formData.company_email || '');
         const businessName = encodeURIComponent(formData.legal_business_name || '');
-        navigate(`/upload-statements?email=${email}&businessName=${businessName}&submitted=true`);
+        navigate(`/statements?email=${email}&businessName=${businessName}&submitted=true`);
         return;
     }
 

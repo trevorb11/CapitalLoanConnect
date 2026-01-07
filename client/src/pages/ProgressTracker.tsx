@@ -339,7 +339,7 @@ export default function ProgressTracker() {
                   </div>
                 </div>
                 {!progress.bankStatementsUploaded && (
-                  <Link href="/upload-statements">
+                  <Link href="/statements">
                     <button style={{
                       padding: '10px 20px',
                       backgroundColor: '#22c55e',
