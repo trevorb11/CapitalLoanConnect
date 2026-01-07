@@ -316,11 +316,46 @@ export class PlaidService {
   }
 
   // Asset Report Methods
-  async createAssetReport(accessToken: string, daysRequested: number = 90): Promise<{ assetReportToken: string; assetReportId: string }> {
-    const response = await plaidClient.assetReportCreate({
+  async createAssetReport(
+    accessToken: string, 
+    daysRequested: number = 90,
+    userInfo?: {
+      firstName?: string;
+      middleName?: string;
+      lastName?: string;
+      ssn?: string;
+      phoneNumber?: string;
+      email?: string;
+    }
+  ): Promise<{ assetReportToken: string; assetReportId: string }> {
+    // Build request with optional user info for borrower details
+    const request: any = {
       access_tokens: [accessToken],
       days_requested: daysRequested,
-    });
+    };
+
+    // Add user info if provided (this populates the Borrower Information section in the report)
+    if (userInfo && (userInfo.firstName || userInfo.lastName || userInfo.email)) {
+      request.options = {
+        user: {
+          ...(userInfo.firstName && { first_name: userInfo.firstName }),
+          ...(userInfo.middleName && { middle_name: userInfo.middleName }),
+          ...(userInfo.lastName && { last_name: userInfo.lastName }),
+          ...(userInfo.ssn && { ssn: userInfo.ssn }), // Format: ddd-dd-dddd
+          ...(userInfo.phoneNumber && { phone_number: userInfo.phoneNumber }), // E.164 format preferred
+          ...(userInfo.email && { email: userInfo.email }),
+        }
+      };
+      console.log('[PLAID] Creating asset report with borrower info:', {
+        firstName: userInfo.firstName,
+        lastName: userInfo.lastName,
+        email: userInfo.email,
+        hasSSN: !!userInfo.ssn,
+        hasPhone: !!userInfo.phoneNumber
+      });
+    }
+
+    const response = await plaidClient.assetReportCreate(request);
     
     return {
       assetReportToken: response.data.asset_report_token,
@@ -366,9 +401,20 @@ export class PlaidService {
   }
 
   // Combined method: Create and fetch asset report
-  async createAndGetAssetReport(accessToken: string, daysRequested: number = 90): Promise<any> {
+  async createAndGetAssetReport(
+    accessToken: string, 
+    daysRequested: number = 90,
+    userInfo?: {
+      firstName?: string;
+      middleName?: string;
+      lastName?: string;
+      ssn?: string;
+      phoneNumber?: string;
+      email?: string;
+    }
+  ): Promise<any> {
     console.log('Creating asset report...');
-    const { assetReportToken } = await this.createAssetReport(accessToken, daysRequested);
+    const { assetReportToken } = await this.createAssetReport(accessToken, daysRequested, userInfo);
     
     console.log('Fetching asset report (this may take a moment)...');
     const report = await this.getAssetReport(assetReportToken);

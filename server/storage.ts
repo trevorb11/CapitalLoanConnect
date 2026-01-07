@@ -201,6 +201,24 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(fundingAnalyses.createdAt));
   }
 
+  async getFundingAnalysisByPlaidItemId(plaidItemId: string): Promise<FundingAnalysis | undefined> {
+    const [analysis] = await db
+      .select()
+      .from(fundingAnalyses)
+      .where(eq(fundingAnalyses.plaidItemId, plaidItemId))
+      .orderBy(desc(fundingAnalyses.createdAt));
+    return analysis || undefined;
+  }
+
+  async getApplicationByEmail(email: string): Promise<LoanApplication | undefined> {
+    const [application] = await db
+      .select()
+      .from(loanApplications)
+      .where(eq(loanApplications.email, email))
+      .orderBy(desc(loanApplications.createdAt));
+    return application || undefined;
+  }
+
   // Bank Statement Upload methods
   async createBankStatementUpload(upload: InsertBankStatementUpload): Promise<BankStatementUpload> {
     const [bankUpload] = await db

@@ -957,8 +957,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Bank connection not found" });
       }
 
+      // Look up the funding analysis to get the email, then find the application
+      let userInfo: any = undefined;
+      const fundingAnalysis = await storage.getFundingAnalysisByPlaidItemId(plaidItemId);
+      if (fundingAnalysis?.email) {
+        const application = await storage.getApplicationByEmail(fundingAnalysis.email);
+        if (application) {
+          // Format SSN with dashes if provided (ddd-dd-dddd format required by Plaid)
+          let formattedSSN: string | undefined;
+          if (application.socialSecurityNumber) {
+            const ssnDigits = application.socialSecurityNumber.replace(/\D/g, '');
+            if (ssnDigits.length === 9) {
+              formattedSSN = `${ssnDigits.slice(0,3)}-${ssnDigits.slice(3,5)}-${ssnDigits.slice(5)}`;
+            }
+          }
+          
+          // Format phone number to E.164 if possible
+          let formattedPhone: string | undefined;
+          if (application.phone) {
+            const phoneDigits = application.phone.replace(/\D/g, '');
+            if (phoneDigits.length === 10) {
+              formattedPhone = `+1${phoneDigits}`;
+            } else if (phoneDigits.length === 11 && phoneDigits.startsWith('1')) {
+              formattedPhone = `+${phoneDigits}`;
+            }
+          }
+
+          // Parse full name into first and last name
+          let firstName: string | undefined;
+          let lastName: string | undefined;
+          if (application.fullName) {
+            const nameParts = application.fullName.trim().split(/\s+/);
+            firstName = nameParts[0];
+            lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
+          }
+
+          userInfo = {
+            firstName,
+            lastName,
+            email: application.email,
+            ssn: formattedSSN,
+            phoneNumber: formattedPhone,
+          };
+          console.log(`[ASSET REPORT] Found application for ${application.email}, including borrower info`);
+        }
+      }
+
       console.log(`Creating asset report for Plaid item ${plaidItemId} (${days} days)...`);
-      const assetReport = await plaidService.createAndGetAssetReport(plaidItem.accessToken, days);
+      const assetReport = await plaidService.createAndGetAssetReport(plaidItem.accessToken, days, userInfo);
       
       res.json(assetReport);
     } catch (error: any) {
@@ -993,9 +1039,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Bank connection not found" });
       }
 
+      // Look up the funding analysis to get the email, then find the application
+      let userInfo: any = undefined;
+      const fundingAnalysis = await storage.getFundingAnalysisByPlaidItemId(plaidItemId);
+      if (fundingAnalysis?.email) {
+        const application = await storage.getApplicationByEmail(fundingAnalysis.email);
+        if (application) {
+          // Format SSN with dashes if provided (ddd-dd-dddd format required by Plaid)
+          let formattedSSN: string | undefined;
+          if (application.socialSecurityNumber) {
+            const ssnDigits = application.socialSecurityNumber.replace(/\D/g, '');
+            if (ssnDigits.length === 9) {
+              formattedSSN = `${ssnDigits.slice(0,3)}-${ssnDigits.slice(3,5)}-${ssnDigits.slice(5)}`;
+            }
+          }
+          
+          // Format phone number to E.164 if possible
+          let formattedPhone: string | undefined;
+          if (application.phone) {
+            const phoneDigits = application.phone.replace(/\D/g, '');
+            if (phoneDigits.length === 10) {
+              formattedPhone = `+1${phoneDigits}`;
+            } else if (phoneDigits.length === 11 && phoneDigits.startsWith('1')) {
+              formattedPhone = `+${phoneDigits}`;
+            }
+          }
+
+          // Parse full name into first and last name
+          let firstName: string | undefined;
+          let lastName: string | undefined;
+          if (application.fullName) {
+            const nameParts = application.fullName.trim().split(/\s+/);
+            firstName = nameParts[0];
+            lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined;
+          }
+
+          userInfo = {
+            firstName,
+            lastName,
+            email: application.email,
+            ssn: formattedSSN,
+            phoneNumber: formattedPhone,
+          };
+          console.log(`[ASSET REPORT PDF] Found application for ${application.email}, including borrower info`);
+        }
+      }
+
       // First create the asset report to get the token
       console.log(`Creating asset report for PDF download...`);
-      const { assetReportToken } = await plaidService.createAssetReport(plaidItem.accessToken, days);
+      const { assetReportToken } = await plaidService.createAssetReport(plaidItem.accessToken, days, userInfo);
       
       // Wait for the report to be ready
       await plaidService.getAssetReport(assetReportToken);
