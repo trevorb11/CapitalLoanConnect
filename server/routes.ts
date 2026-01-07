@@ -942,6 +942,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 6b. Get Asset Report by Plaid item ID (comprehensive financial report)
+  app.get("/api/plaid/asset-report/:plaidItemId", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { plaidItemId } = req.params;
+      const days = parseInt(req.query.days as string) || 90;
+      
+      const plaidItem = await storage.getPlaidItem(plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Bank connection not found" });
+      }
+
+      console.log(`Creating asset report for Plaid item ${plaidItemId} (${days} days)...`);
+      const assetReport = await plaidService.createAndGetAssetReport(plaidItem.accessToken, days);
+      
+      res.json(assetReport);
+    } catch (error: any) {
+      console.error("Error fetching asset report:", error);
+      
+      // Handle specific Plaid errors
+      if (error?.response?.data?.error_code) {
+        const plaidError = error.response.data;
+        return res.status(400).json({ 
+          error: "Plaid error", 
+          errorCode: plaidError.error_code,
+          message: plaidError.error_message || "Failed to generate asset report"
+        });
+      }
+      
+      res.status(500).json({ error: "Failed to generate asset report" });
+    }
+  });
+
+  // 6c. Get Asset Report PDF by Plaid item ID
+  app.get("/api/plaid/asset-report-pdf/:plaidItemId", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { plaidItemId } = req.params;
+      const days = parseInt(req.query.days as string) || 90;
+      
+      const plaidItem = await storage.getPlaidItem(plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Bank connection not found" });
+      }
+
+      // First create the asset report to get the token
+      console.log(`Creating asset report for PDF download...`);
+      const { assetReportToken } = await plaidService.createAssetReport(plaidItem.accessToken, days);
+      
+      // Wait for the report to be ready
+      await plaidService.getAssetReport(assetReportToken);
+      
+      // Get the PDF
+      console.log(`Downloading asset report PDF...`);
+      const pdfBuffer = await plaidService.getAssetReportPdf(assetReportToken);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="asset_report_${plaidItemId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("Error generating asset report PDF:", error);
+      
+      if (error?.response?.data?.error_code) {
+        const plaidError = error.response.data;
+        return res.status(400).json({ 
+          error: "Plaid error", 
+          errorCode: plaidError.error_code,
+          message: plaidError.error_message || "Failed to generate asset report PDF"
+        });
+      }
+      
+      res.status(500).json({ error: "Failed to generate asset report PDF" });
+    }
+  });
+
   // 7. Link Plaid data to an existing application by email
   app.post("/api/plaid/link-to-application", async (req, res) => {
     try {

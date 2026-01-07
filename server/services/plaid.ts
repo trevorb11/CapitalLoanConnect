@@ -314,6 +314,83 @@ export class PlaidService {
 
     return { sba, loc, mca };
   }
+
+  // Asset Report Methods
+  async createAssetReport(accessToken: string, daysRequested: number = 90): Promise<{ assetReportToken: string; assetReportId: string }> {
+    const response = await plaidClient.assetReportCreate({
+      access_tokens: [accessToken],
+      days_requested: daysRequested,
+      options: {
+        client_report_id: `tcg_${Date.now()}`,
+        webhook: undefined,
+        user: {
+          client_user_id: `user_${Date.now()}`,
+          first_name: '',
+          middle_name: '',
+          last_name: '',
+          ssn: '',
+          phone_number: '',
+          email: '',
+        }
+      }
+    });
+    
+    return {
+      assetReportToken: response.data.asset_report_token,
+      assetReportId: response.data.asset_report_id
+    };
+  }
+
+  async getAssetReport(assetReportToken: string): Promise<any> {
+    // Poll for the asset report - it may take a few seconds to generate
+    const maxRetries = 20;
+    const retryDelay = 2000; // 2 seconds
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await plaidClient.assetReportGet({
+          asset_report_token: assetReportToken,
+          include_insights: true
+        });
+        
+        return response.data;
+      } catch (error: any) {
+        // Check if the report is still being generated
+        if (error?.response?.data?.error_code === 'PRODUCT_NOT_READY') {
+          console.log(`Asset report not ready, retrying in ${retryDelay/1000}s... (attempt ${i + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error('Asset report generation timed out after multiple retries');
+  }
+
+  async getAssetReportPdf(assetReportToken: string): Promise<Buffer> {
+    const response = await plaidClient.assetReportPdfGet({
+      asset_report_token: assetReportToken
+    }, {
+      responseType: 'arraybuffer'
+    });
+    
+    return Buffer.from(response.data as any);
+  }
+
+  // Combined method: Create and fetch asset report
+  async createAndGetAssetReport(accessToken: string, daysRequested: number = 90): Promise<any> {
+    console.log('Creating asset report...');
+    const { assetReportToken } = await this.createAssetReport(accessToken, daysRequested);
+    
+    console.log('Fetching asset report (this may take a moment)...');
+    const report = await this.getAssetReport(assetReportToken);
+    
+    return {
+      ...report,
+      assetReportToken // Include token for PDF download
+    };
+  }
 }
 
 export const plaidService = new PlaidService();
