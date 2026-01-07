@@ -19,7 +19,8 @@ import {
   Mail,
   X,
   Lock,
-  Landmark
+  Landmark,
+  ExternalLink
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import tcgLogo from "@assets/TCG_White_logo_1764664150165.png";
@@ -304,22 +305,26 @@ export default function Statements() {
           </p>
 
           <div className="flex flex-col gap-3">
-            <Button 
-              onClick={() => {
-                setPlaidSuccess(false);
-              }}
-              data-testid="button-connect-another"
-            >
-              <Landmark className="w-4 h-4 mr-2" />
-              Connect Another Bank
-            </Button>
-            
             <Link href="/">
-              <Button variant="outline" className="w-full" data-testid="button-back-home">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Home
+              <Button className="w-full" data-testid="button-go-to-application">
+                <FileText className="w-4 h-4 mr-2" />
+                Go to Application
               </Button>
             </Link>
+            
+            <a href="https://www.todaycapitalgroup.com/#contact-us" target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" className="w-full" data-testid="button-contact-team">
+                <Mail className="w-4 h-4 mr-2" />
+                Get in Touch with Our Team
+              </Button>
+            </a>
+            
+            <a href="https://fund.todaycapitalgroup.com" target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" className="w-full" data-testid="button-view-offerings">
+                <ExternalLink className="w-4 h-4 mr-2" />
+                View Offerings
+              </Button>
+            </a>
           </div>
         </Card>
       </div>

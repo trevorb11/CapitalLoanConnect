@@ -18,7 +18,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Loader2, CheckCircle2, Lock, AlertCircle, Upload, Building2, FileText } from "lucide-react";
+import { Loader2, CheckCircle2, Lock, AlertCircle, Upload, Building2, FileText, Mail, ExternalLink } from "lucide-react";
 
 const formSchema = z.object({
   businessName: z.string().min(2, "Business name must be at least 2 characters"),
@@ -274,22 +274,30 @@ export default function ConnectBank() {
               <Button 
                 className="w-full bg-[#192F56] hover:bg-[#2a4575] text-white"
                 onClick={() => setLocation("/")}
-                data-testid="button-continue-application"
+                data-testid="button-go-to-application"
               >
-                Continue to Application
+                Go to Application
               </Button>
-              <Button 
-                variant="outline"
-                className="w-full"
-                onClick={() => {
-                  setStep('input');
-                  setSelectedFile(null);
-                  setConnectionMethod(null);
-                }}
-                data-testid="button-connect-another"
-              >
-                Connect Another Account
-              </Button>
+              <a href="https://www.todaycapitalgroup.com/#contact-us" target="_blank" rel="noopener noreferrer" className="block">
+                <Button 
+                  variant="outline"
+                  className="w-full"
+                  data-testid="button-contact-team"
+                >
+                  <Mail className="w-4 h-4 mr-2" />
+                  Get in Touch with Our Team
+                </Button>
+              </a>
+              <a href="https://fund.todaycapitalgroup.com" target="_blank" rel="noopener noreferrer" className="block">
+                <Button 
+                  variant="outline"
+                  className="w-full"
+                  data-testid="button-view-offerings"
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  View Offerings
+                </Button>
+              </a>
             </div>
           </CardContent>
         </Card>
