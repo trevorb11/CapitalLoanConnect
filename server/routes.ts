@@ -1139,7 +1139,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 8. Analyze Plaid connection for fundability insights
+  // 8. Analyze Plaid connection for fundability insights (using Asset Report)
   app.post("/api/plaid/analyze/:plaidItemId", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
@@ -1162,41 +1162,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Plaid connection not found" });
       }
 
-      // Use existing getBankStatements method which handles transactions and fallback
-      const bankData = await plaidService.getBankStatements(plaidItem.accessToken, 3);
-
-      // Format data for OpenAI analysis
-      let transactionText = "=== ACCOUNT SUMMARY ===\n";
-      for (const account of bankData.accounts) {
-        transactionText += `Account: ${account.name} (${account.subtype})\n`;
-        transactionText += `Current Balance: $${account.currentBalance?.toFixed(2) || 'N/A'}\n`;
-        transactionText += `Available Balance: $${account.availableBalance?.toFixed(2) || 'N/A'}\n\n`;
-      }
-
-      if (bankData.transactions.length > 0) {
-        transactionText += `\n=== TRANSACTIONS (${bankData.dateRange.startDate} to ${bankData.dateRange.endDate}) ===\n`;
-        for (const txn of bankData.transactions.slice(0, 200)) {
-          const amount = txn.amount < 0 ? `+$${Math.abs(txn.amount).toFixed(2)}` : `-$${txn.amount.toFixed(2)}`;
-          transactionText += `${txn.date} | ${amount} | ${txn.name}\n`;
+      console.log(`[PLAID ANALYZE] Generating Asset Report for analysis...`);
+      
+      // Generate Asset Report for comprehensive financial data
+      const assetReport = await plaidService.createAndGetAssetReport(plaidItem.accessToken, 90);
+      
+      // Format Asset Report data for OpenAI analysis
+      let analysisText = "=== PLAID ASSET REPORT ===\n";
+      analysisText += `Report Generated: ${assetReport.report?.date_generated || 'N/A'}\n`;
+      analysisText += `Days Requested: ${assetReport.report?.days_requested || 90}\n\n`;
+      
+      // Process each item in the report
+      if (assetReport.report?.items) {
+        for (const item of assetReport.report.items) {
+          analysisText += `=== INSTITUTION: ${item.institution_name || 'Unknown'} ===\n\n`;
+          
+          // Process each account
+          if (item.accounts) {
+            for (const account of item.accounts) {
+              analysisText += `--- ACCOUNT: ${account.name} (${account.subtype || account.type}) ---\n`;
+              analysisText += `Account Mask: ****${account.mask || 'N/A'}\n`;
+              analysisText += `Current Balance: $${account.balances?.current?.toFixed(2) || 'N/A'}\n`;
+              analysisText += `Available Balance: $${account.balances?.available?.toFixed(2) || 'N/A'}\n`;
+              
+              // Historical balances (very valuable for analysis)
+              if (account.historical_balances && account.historical_balances.length > 0) {
+                analysisText += `\nHistorical Daily Balances (${account.historical_balances.length} days):\n`;
+                const balances = account.historical_balances.slice(0, 90); // Last 90 days
+                let totalBalance = 0;
+                let minBalance = Infinity;
+                let maxBalance = -Infinity;
+                let negativeDays = 0;
+                
+                for (const bal of balances) {
+                  const current = bal.current || 0;
+                  totalBalance += current;
+                  minBalance = Math.min(minBalance, current);
+                  maxBalance = Math.max(maxBalance, current);
+                  if (current < 0) negativeDays++;
+                }
+                
+                const avgBalance = balances.length > 0 ? totalBalance / balances.length : 0;
+                analysisText += `  Average Daily Balance: $${avgBalance.toFixed(2)}\n`;
+                analysisText += `  Minimum Balance: $${minBalance === Infinity ? 'N/A' : minBalance.toFixed(2)}\n`;
+                analysisText += `  Maximum Balance: $${maxBalance === -Infinity ? 'N/A' : maxBalance.toFixed(2)}\n`;
+                analysisText += `  Days with Negative Balance: ${negativeDays}\n`;
+                
+                // Show sample of recent balances
+                analysisText += `\n  Recent Balance History:\n`;
+                for (const bal of balances.slice(0, 30)) {
+                  analysisText += `    ${bal.date}: $${bal.current?.toFixed(2) || '0.00'}\n`;
+                }
+              }
+              
+              // Transactions from asset report
+              if (account.transactions && account.transactions.length > 0) {
+                analysisText += `\nTransactions (${account.transactions.length} total):\n`;
+                
+                // Calculate deposits and withdrawals
+                let totalDeposits = 0;
+                let totalWithdrawals = 0;
+                let depositCount = 0;
+                let withdrawalCount = 0;
+                
+                for (const txn of account.transactions) {
+                  const amount = txn.amount || 0;
+                  if (amount < 0) {
+                    totalDeposits += Math.abs(amount);
+                    depositCount++;
+                  } else {
+                    totalWithdrawals += amount;
+                    withdrawalCount++;
+                  }
+                }
+                
+                analysisText += `  Total Deposits: $${totalDeposits.toFixed(2)} (${depositCount} transactions)\n`;
+                analysisText += `  Total Withdrawals: $${totalWithdrawals.toFixed(2)} (${withdrawalCount} transactions)\n`;
+                analysisText += `  Estimated Monthly Revenue: $${(totalDeposits / 3).toFixed(2)}\n`;
+                
+                // Show recent transactions
+                analysisText += `\n  Recent Transactions:\n`;
+                for (const txn of account.transactions.slice(0, 50)) {
+                  const amount = txn.amount < 0 ? `+$${Math.abs(txn.amount).toFixed(2)}` : `-$${txn.amount.toFixed(2)}`;
+                  analysisText += `    ${txn.date} | ${amount} | ${txn.original_description || txn.name || 'N/A'}\n`;
+                }
+              }
+              
+              // Days available (how long account has been open)
+              if (account.days_available !== undefined) {
+                analysisText += `\nAccount History: ${account.days_available} days of data available\n`;
+              }
+              
+              // Ownership info if available
+              if (account.owners && account.owners.length > 0) {
+                analysisText += `\nAccount Owners:\n`;
+                for (const owner of account.owners) {
+                  if (owner.names) {
+                    analysisText += `  Name: ${owner.names.join(', ')}\n`;
+                  }
+                }
+              }
+              
+              analysisText += `\n`;
+            }
+          }
         }
-      } else {
-        transactionText += "\n(Note: Transaction history not available, analysis based on current balances only)\n";
       }
 
-      console.log(`[PLAID ANALYZE] Analyzing ${transactionText.length} chars of data for ${bankData.institutionName}`);
+      console.log(`[PLAID ANALYZE] Analyzing ${analysisText.length} chars of Asset Report data`);
 
       // Analyze with OpenAI
-      const analysis = await analyzeBankStatements(transactionText, {
+      const analysis = await analyzeBankStatements(analysisText, {
         creditScoreRange,
         timeInBusiness,
         industry,
       });
 
+      // Get institution name from report
+      const institutionName = assetReport.report?.items?.[0]?.institution_name || 'Unknown Bank';
+
       res.json({
         success: true,
         analysis,
-        source: "plaid",
-        institutionName: bankData.institutionName,
+        source: "plaid_asset_report",
+        institutionName,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
