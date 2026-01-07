@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail } from "lucide-react";
+import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -1663,15 +1664,25 @@ export default function Dashboard() {
                   : `Viewing applications for ${authData.agentName}`}
               </p>
             </div>
-            <Button
-              variant="outline"
-              onClick={handleLogout}
-              disabled={logoutMutation.isPending}
-              data-testid="button-logout"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              {logoutMutation.isPending ? "Logging out..." : "Logout"}
-            </Button>
+            <div className="flex items-center gap-3">
+              {authData.role === "admin" && (
+                <Link href="/approvals">
+                  <Button variant="outline" data-testid="button-approvals">
+                    <Mail className="w-4 h-4 mr-2" />
+                    Approvals
+                  </Button>
+                </Link>
+              )}
+              <Button
+                variant="outline"
+                onClick={handleLogout}
+                disabled={logoutMutation.isPending}
+                data-testid="button-logout"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                {logoutMutation.isPending ? "Logging out..." : "Logout"}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

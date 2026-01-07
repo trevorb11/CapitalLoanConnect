@@ -222,3 +222,130 @@ Respond ONLY with the JSON object, no additional text.`;
 export function isOpenAIConfigured(): boolean {
   return !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
 }
+
+// Approval Email Parser Types
+export interface ParsedApproval {
+  isApproval: boolean;
+  confidence: number; // 0-100
+  businessName: string | null;
+  businessEmail: string | null;
+  lenderName: string | null;
+  approvedAmount: number | null;
+  termLength: string | null;
+  factorRate: string | null;
+  paybackAmount: number | null;
+  paymentFrequency: string | null;
+  paymentAmount: number | null;
+  interestRate: string | null;
+  productType: string | null;
+  expirationDate: string | null;
+  conditions: string | null;
+  notes: string | null;
+}
+
+export async function parseApprovalEmail(
+  emailSubject: string,
+  emailBody: string,
+  emailFrom: string
+): Promise<ParsedApproval> {
+  const prompt = `You are an expert at parsing funding/loan approval emails from lenders. Analyze the following email and extract approval details.
+
+EMAIL FROM: ${emailFrom}
+SUBJECT: ${emailSubject}
+
+EMAIL BODY:
+${emailBody}
+
+Determine if this is a funding approval email (lender approving a business for financing). If it is, extract all available information.
+
+Respond with a JSON object in this exact format:
+{
+  "isApproval": true/false,
+  "confidence": 0-100,
+  "businessName": "extracted business name or null",
+  "businessEmail": "extracted business email or null",
+  "lenderName": "name of the lender/funding company or null",
+  "approvedAmount": numeric amount or null (e.g., 50000 not "$50,000"),
+  "termLength": "term in text format or null (e.g., '6 months', '12 months')",
+  "factorRate": "factor rate as string or null (e.g., '1.25')",
+  "paybackAmount": numeric payback amount or null,
+  "paymentFrequency": "Daily/Weekly/Monthly or null",
+  "paymentAmount": numeric payment amount or null,
+  "interestRate": "interest rate as string or null (e.g., '15% APR')",
+  "productType": "MCA/LOC/Term Loan/SBA/Revenue Based or null",
+  "expirationDate": "offer expiration date or null",
+  "conditions": "any conditions or requirements mentioned or null",
+  "notes": "any other relevant details or null"
+}
+
+Guidelines:
+- isApproval should be TRUE if this is clearly a funding approval, pre-approval, or offer letter
+- isApproval should be FALSE for marketing emails, application confirmations, or rejections
+- confidence reflects how certain you are this is an approval (100 = definitely approval, 0 = definitely not)
+- Extract the BUSINESS name being approved, not the sender's name
+- Look for dollar amounts, terms, rates, and payment structures
+- Common lenders: OnDeck, BlueVine, Fundbox, Kabbage, Credibly, National Funding, etc.
+
+Respond ONLY with the JSON object.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert at parsing business funding approval emails. You extract structured data accurately. Always respond with valid JSON only."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: 1000
+    });
+
+    const content = response.choices[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error("No response from OpenAI");
+    }
+
+    // Strip markdown code blocks if present
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith("```json")) {
+      cleanContent = cleanContent.slice(7);
+    } else if (cleanContent.startsWith("```")) {
+      cleanContent = cleanContent.slice(3);
+    }
+    if (cleanContent.endsWith("```")) {
+      cleanContent = cleanContent.slice(0, -3);
+    }
+    cleanContent = cleanContent.trim();
+
+    return JSON.parse(cleanContent) as ParsedApproval;
+    
+  } catch (error) {
+    console.error("[OPENAI] Approval parsing error:", error);
+    
+    // Return a default non-approval response
+    return {
+      isApproval: false,
+      confidence: 0,
+      businessName: null,
+      businessEmail: null,
+      lenderName: null,
+      approvedAmount: null,
+      termLength: null,
+      factorRate: null,
+      paybackAmount: null,
+      paymentFrequency: null,
+      paymentAmount: null,
+      interestRate: null,
+      productType: null,
+      expirationDate: null,
+      conditions: null,
+      notes: null
+    };
+  }
+}

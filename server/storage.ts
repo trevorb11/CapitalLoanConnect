@@ -1,10 +1,11 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
   type BotAttempt, type InsertBotAttempt,
-  type Partner, type InsertPartner
+  type Partner, type InsertPartner,
+  type LenderApproval, type InsertLenderApproval
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -50,6 +51,15 @@ export interface IStorage {
   updatePartner(id: string, updates: Partial<InsertPartner>): Promise<Partner | undefined>;
   getAllPartners(): Promise<Partner[]>;
   getApplicationsByPartnerId(partnerId: string): Promise<LoanApplication[]>;
+
+  // Lender Approval methods
+  createLenderApproval(approval: InsertLenderApproval): Promise<LenderApproval>;
+  getLenderApproval(id: string): Promise<LenderApproval | undefined>;
+  getLenderApprovalByEmailId(emailId: string): Promise<LenderApproval | undefined>;
+  getAllLenderApprovals(): Promise<LenderApproval[]>;
+  getLenderApprovalsByBusinessName(businessName: string): Promise<LenderApproval[]>;
+  getLenderApprovalsByLender(lenderName: string): Promise<LenderApproval[]>;
+  updateLenderApproval(id: string, updates: Partial<InsertLenderApproval>): Promise<LenderApproval | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -359,6 +369,66 @@ export class DatabaseStorage implements IStorage {
       .from(loanApplications)
       .where(eq(loanApplications.referralPartnerId, partnerId))
       .orderBy(desc(loanApplications.createdAt));
+  }
+
+  // Lender Approval methods
+  async createLenderApproval(approval: InsertLenderApproval): Promise<LenderApproval> {
+    const [newApproval] = await db
+      .insert(lenderApprovals)
+      .values(approval)
+      .returning();
+    return newApproval;
+  }
+
+  async getLenderApproval(id: string): Promise<LenderApproval | undefined> {
+    const [approval] = await db
+      .select()
+      .from(lenderApprovals)
+      .where(eq(lenderApprovals.id, id));
+    return approval || undefined;
+  }
+
+  async getLenderApprovalByEmailId(emailId: string): Promise<LenderApproval | undefined> {
+    const [approval] = await db
+      .select()
+      .from(lenderApprovals)
+      .where(eq(lenderApprovals.emailId, emailId));
+    return approval || undefined;
+  }
+
+  async getAllLenderApprovals(): Promise<LenderApproval[]> {
+    return await db
+      .select()
+      .from(lenderApprovals)
+      .orderBy(desc(lenderApprovals.createdAt));
+  }
+
+  async getLenderApprovalsByBusinessName(businessName: string): Promise<LenderApproval[]> {
+    return await db
+      .select()
+      .from(lenderApprovals)
+      .where(eq(lenderApprovals.businessName, businessName))
+      .orderBy(desc(lenderApprovals.createdAt));
+  }
+
+  async getLenderApprovalsByLender(lenderName: string): Promise<LenderApproval[]> {
+    return await db
+      .select()
+      .from(lenderApprovals)
+      .where(eq(lenderApprovals.lenderName, lenderName))
+      .orderBy(desc(lenderApprovals.createdAt));
+  }
+
+  async updateLenderApproval(id: string, updates: Partial<InsertLenderApproval>): Promise<LenderApproval | undefined> {
+    const [updated] = await db
+      .update(lenderApprovals)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(lenderApprovals.id, id))
+      .returning();
+    return updated || undefined;
   }
 }
 

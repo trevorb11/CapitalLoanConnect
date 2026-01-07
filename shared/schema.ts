@@ -318,3 +318,51 @@ export const insertBotAttemptSchema = createInsertSchema(botAttempts).omit({
 
 export type InsertBotAttempt = z.infer<typeof insertBotAttemptSchema>;
 export type BotAttempt = typeof botAttempts.$inferSelect;
+
+// Lender Approvals - Track funding approvals from lender emails
+export const lenderApprovals = pgTable("lender_approvals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Business/Merchant Info
+  businessName: text("business_name").notNull(),
+  businessEmail: text("business_email"),
+  loanApplicationId: varchar("loan_application_id").references(() => loanApplications.id),
+  
+  // Lender Info
+  lenderName: text("lender_name").notNull(),
+  lenderEmail: text("lender_email"),
+  
+  // Approval Details
+  approvedAmount: decimal("approved_amount", { precision: 12, scale: 2 }),
+  termLength: text("term_length"), // e.g., "6 months", "12 months"
+  factorRate: text("factor_rate"), // e.g., "1.25"
+  paybackAmount: decimal("payback_amount", { precision: 12, scale: 2 }),
+  paymentFrequency: text("payment_frequency"), // "Daily", "Weekly", "Monthly"
+  paymentAmount: decimal("payment_amount", { precision: 12, scale: 2 }),
+  interestRate: text("interest_rate"), // e.g., "15% APR"
+  productType: text("product_type"), // "MCA", "LOC", "Term Loan", "SBA"
+  
+  // Status & Notes
+  status: text("status").default("pending"), // "pending", "accepted", "declined", "expired"
+  expirationDate: text("expiration_date"),
+  conditions: text("conditions"), // Any conditions/requirements
+  notes: text("notes"),
+  
+  // Email Metadata
+  emailId: text("email_id"), // Gmail message ID to prevent duplicates
+  emailSubject: text("email_subject"),
+  emailReceivedAt: timestamp("email_received_at"),
+  rawEmailContent: text("raw_email_content"), // Store original email for reference
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLenderApprovalSchema = createInsertSchema(lenderApprovals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLenderApproval = z.infer<typeof insertLenderApprovalSchema>;
+export type LenderApproval = typeof lenderApprovals.$inferSelect;

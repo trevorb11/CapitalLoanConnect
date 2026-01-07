@@ -10,7 +10,8 @@ import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { analyzeBankStatements, isOpenAIConfigured } from "./services/openai";
+import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail } from "./services/openai";
+import { gmailService, type EmailMessage } from "./services/gmail";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
@@ -2692,7 +2693,358 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  // ========================================
+  // APPROVAL EMAIL SCANNING ROUTES
+  // ========================================
+
+  // Check Gmail connection status (admin only)
+  app.get("/api/approvals/gmail-status", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (session.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    try {
+      const isConfigured = await gmailService.isConfigured();
+      res.json({ connected: isConfigured });
+    } catch (error) {
+      res.json({ connected: false, error: "Failed to check Gmail status" });
+    }
+  });
+
+  // Get all approvals (admin only)
+  app.get("/api/approvals", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (session.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    try {
+      const approvals = await storage.getAllLenderApprovals();
+      res.json(approvals);
+    } catch (error) {
+      console.error("[APPROVALS] Error fetching approvals:", error);
+      res.status(500).json({ error: "Failed to fetch approvals" });
+    }
+  });
+
+  // Get approvals grouped by business (admin only)
+  app.get("/api/approvals/by-business", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (session.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    try {
+      const approvals = await storage.getAllLenderApprovals();
+      
+      // Group by business name
+      const grouped: Record<string, typeof approvals> = {};
+      for (const approval of approvals) {
+        const key = approval.businessName || "Unknown Business";
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(approval);
+      }
+      
+      res.json(grouped);
+    } catch (error) {
+      console.error("[APPROVALS] Error fetching approvals by business:", error);
+      res.status(500).json({ error: "Failed to fetch approvals" });
+    }
+  });
+
+  // Get approvals grouped by lender (admin only)
+  app.get("/api/approvals/by-lender", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (session.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    try {
+      const approvals = await storage.getAllLenderApprovals();
+      
+      // Group by lender name
+      const grouped: Record<string, typeof approvals> = {};
+      for (const approval of approvals) {
+        const key = approval.lenderName || "Unknown Lender";
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(approval);
+      }
+      
+      res.json(grouped);
+    } catch (error) {
+      console.error("[APPROVALS] Error fetching approvals by lender:", error);
+      res.status(500).json({ error: "Failed to fetch approvals" });
+    }
+  });
+
+  // Manual scan trigger - scan for approval emails (admin only)
+  app.post("/api/approvals/scan", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (session.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    try {
+      const hoursBack = req.body.hoursBack || 24;
+      
+      console.log(`[APPROVAL SCAN] Starting manual scan for emails from last ${hoursBack} hours...`);
+      
+      // Check if Gmail is configured
+      const isGmailConfigured = await gmailService.isConfigured();
+      if (!isGmailConfigured) {
+        return res.status(400).json({ error: "Gmail is not connected. Please connect your Gmail account first." });
+      }
+      
+      // Check if OpenAI is configured
+      if (!isOpenAIConfigured()) {
+        return res.status(400).json({ error: "OpenAI is not configured. AI analysis is required to parse approval emails." });
+      }
+      
+      // Fetch recent emails
+      const emails = await gmailService.fetchRecentEmails(hoursBack, 50);
+      console.log(`[APPROVAL SCAN] Fetched ${emails.length} potential approval emails`);
+      
+      const results = {
+        scanned: emails.length,
+        newApprovals: 0,
+        skipped: 0,
+        errors: 0,
+        approvals: [] as any[]
+      };
+      
+      for (const email of emails) {
+        try {
+          // Check if we've already processed this email
+          const existing = await storage.getLenderApprovalByEmailId(email.id);
+          if (existing) {
+            console.log(`[APPROVAL SCAN] Skipping already processed email: ${email.subject}`);
+            results.skipped++;
+            continue;
+          }
+          
+          // Pre-filter: Check if likely an approval
+          if (!gmailService.isLikelyApprovalEmail(email)) {
+            console.log(`[APPROVAL SCAN] Skipping unlikely approval email: ${email.subject}`);
+            results.skipped++;
+            continue;
+          }
+          
+          // Parse with AI
+          console.log(`[APPROVAL SCAN] Parsing email: ${email.subject}`);
+          const parsed = await parseApprovalEmail(email.subject, email.body, email.from);
+          
+          if (parsed.isApproval && parsed.confidence >= 60) {
+            // Create approval record
+            const approval = await storage.createLenderApproval({
+              businessName: parsed.businessName || "Unknown Business",
+              businessEmail: parsed.businessEmail,
+              lenderName: parsed.lenderName || "Unknown Lender",
+              lenderEmail: email.from,
+              approvedAmount: parsed.approvedAmount?.toString() || null,
+              termLength: parsed.termLength,
+              factorRate: parsed.factorRate,
+              paybackAmount: parsed.paybackAmount?.toString() || null,
+              paymentFrequency: parsed.paymentFrequency,
+              paymentAmount: parsed.paymentAmount?.toString() || null,
+              interestRate: parsed.interestRate,
+              productType: parsed.productType,
+              status: "pending",
+              expirationDate: parsed.expirationDate,
+              conditions: parsed.conditions,
+              notes: parsed.notes,
+              emailId: email.id,
+              emailSubject: email.subject,
+              emailReceivedAt: email.date,
+              rawEmailContent: email.body.substring(0, 5000) // Limit storage size
+            });
+            
+            console.log(`[APPROVAL SCAN] Created approval: ${approval.businessName} - $${approval.approvedAmount} from ${approval.lenderName}`);
+            results.newApprovals++;
+            results.approvals.push({
+              id: approval.id,
+              businessName: approval.businessName,
+              lenderName: approval.lenderName,
+              approvedAmount: approval.approvedAmount,
+              confidence: parsed.confidence
+            });
+          } else {
+            console.log(`[APPROVAL SCAN] Email not a high-confidence approval (confidence: ${parsed.confidence}): ${email.subject}`);
+            results.skipped++;
+          }
+          
+        } catch (emailError) {
+          console.error(`[APPROVAL SCAN] Error processing email ${email.id}:`, emailError);
+          results.errors++;
+        }
+      }
+      
+      console.log(`[APPROVAL SCAN] Complete. New approvals: ${results.newApprovals}, Skipped: ${results.skipped}, Errors: ${results.errors}`);
+      
+      res.json(results);
+      
+    } catch (error) {
+      console.error("[APPROVAL SCAN] Error during scan:", error);
+      res.status(500).json({ error: "Failed to scan for approvals" });
+    }
+  });
+
+  // Update approval status (admin only)
+  app.patch("/api/approvals/:id", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (session.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const updated = await storage.updateLenderApproval(id, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Approval not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("[APPROVALS] Error updating approval:", error);
+      res.status(500).json({ error: "Failed to update approval" });
+    }
+  });
+
+  // Get approval statistics (admin only)
+  app.get("/api/approvals/stats", async (req, res) => {
+    const session = req.session as any;
+    if (!session?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (session.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    try {
+      const approvals = await storage.getAllLenderApprovals();
+      
+      // Calculate stats
+      const totalApprovals = approvals.length;
+      const pendingApprovals = approvals.filter(a => a.status === "pending").length;
+      const acceptedApprovals = approvals.filter(a => a.status === "accepted").length;
+      const totalApprovedAmount = approvals.reduce((sum, a) => sum + (parseFloat(a.approvedAmount?.toString() || "0") || 0), 0);
+      
+      // Unique businesses and lenders
+      const uniqueBusinesses = new Set(approvals.map(a => a.businessName)).size;
+      const uniqueLenders = new Set(approvals.map(a => a.lenderName)).size;
+      
+      res.json({
+        totalApprovals,
+        pendingApprovals,
+        acceptedApprovals,
+        totalApprovedAmount,
+        uniqueBusinesses,
+        uniqueLenders
+      });
+    } catch (error) {
+      console.error("[APPROVALS] Error fetching stats:", error);
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
+  });
+
   const httpServer = createServer(app);
+
+  // Schedule hourly approval scans
+  const SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  
+  async function runScheduledScan() {
+    console.log("[SCHEDULED SCAN] Running hourly approval email scan...");
+    
+    try {
+      const isGmailConfigured = await gmailService.isConfigured();
+      if (!isGmailConfigured) {
+        console.log("[SCHEDULED SCAN] Gmail not configured, skipping scan");
+        return;
+      }
+      
+      if (!isOpenAIConfigured()) {
+        console.log("[SCHEDULED SCAN] OpenAI not configured, skipping scan");
+        return;
+      }
+      
+      // Fetch emails from last 2 hours (with some overlap for safety)
+      const emails = await gmailService.fetchRecentEmails(2, 30);
+      console.log(`[SCHEDULED SCAN] Found ${emails.length} potential emails`);
+      
+      let newApprovals = 0;
+      
+      for (const email of emails) {
+        try {
+          // Check if already processed
+          const existing = await storage.getLenderApprovalByEmailId(email.id);
+          if (existing) continue;
+          
+          // Pre-filter
+          if (!gmailService.isLikelyApprovalEmail(email)) continue;
+          
+          // Parse with AI
+          const parsed = await parseApprovalEmail(email.subject, email.body, email.from);
+          
+          if (parsed.isApproval && parsed.confidence >= 60) {
+            await storage.createLenderApproval({
+              businessName: parsed.businessName || "Unknown Business",
+              businessEmail: parsed.businessEmail,
+              lenderName: parsed.lenderName || "Unknown Lender",
+              lenderEmail: email.from,
+              approvedAmount: parsed.approvedAmount?.toString() || null,
+              termLength: parsed.termLength,
+              factorRate: parsed.factorRate,
+              paybackAmount: parsed.paybackAmount?.toString() || null,
+              paymentFrequency: parsed.paymentFrequency,
+              paymentAmount: parsed.paymentAmount?.toString() || null,
+              interestRate: parsed.interestRate,
+              productType: parsed.productType,
+              status: "pending",
+              expirationDate: parsed.expirationDate,
+              conditions: parsed.conditions,
+              notes: parsed.notes,
+              emailId: email.id,
+              emailSubject: email.subject,
+              emailReceivedAt: email.date,
+              rawEmailContent: email.body.substring(0, 5000)
+            });
+            newApprovals++;
+          }
+        } catch (emailError) {
+          console.error(`[SCHEDULED SCAN] Error processing email:`, emailError);
+        }
+      }
+      
+      console.log(`[SCHEDULED SCAN] Complete. New approvals found: ${newApprovals}`);
+      
+    } catch (error) {
+      console.error("[SCHEDULED SCAN] Error during scheduled scan:", error);
+    }
+  }
+  
+  // Start the scheduled scan (runs every hour)
+  setInterval(runScheduledScan, SCAN_INTERVAL_MS);
+  console.log("[STARTUP] Hourly approval email scan scheduled");
 
   return httpServer;
 }

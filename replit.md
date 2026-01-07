@@ -129,6 +129,20 @@ The application uses the Inter font from Google Fonts and a color system based o
 - "lead-source-website" + "interest form" → Intake form completed
 - "application complete" → Full application completed
 
+**Gmail Integration (Approval Tracking)**:
+- Connects via Replit's Google Mail connector to scan for lender approval emails.
+- Uses AI (OpenAI) to parse approval emails and extract structured data (business name, lender, amount, terms, rates).
+- Automatic hourly scanning with manual "Scan for Approvals" button in dashboard.
+- Dashboard page at `/approvals` with two tabs:
+  - By Business: Groups all approvals by merchant/business name
+  - By Lender: Groups all approvals by funding company
+- Status tracking (pending, accepted, declined, expired) with inline status updates.
+- Database table: `lender_approvals` stores parsed approval data and email metadata.
+- Email deduplication via Gmail message ID prevents duplicate entries.
+- Confidence threshold of 60% filters out uncertain parsing results.
+- Services: `server/services/gmail.ts` (email fetching), `parseApprovalEmail` in openai.ts (AI parsing).
+- Access from Dashboard via "Approvals" button (admin only).
+
 **Plaid Integration**:
 - Provides instant funding eligibility analysis by connecting to business bank accounts.
 - Requires `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `PLAID_ENV` (sandbox/development/production) environment variables.
