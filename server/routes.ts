@@ -1047,6 +1047,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 8. Analyze Plaid connection for fundability insights
+  app.post("/api/plaid/analyze/:plaidItemId", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      if (!isOpenAIConfigured()) {
+        return res.status(503).json({
+          error: "Analysis service not available",
+          message: "OpenAI API is not configured.",
+        });
+      }
+
+      const { plaidItemId } = req.params;
+      const { creditScoreRange, timeInBusiness, industry } = req.body;
+
+      // Get the Plaid item using the correct method
+      const plaidItem = await storage.getPlaidItem(plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Plaid connection not found" });
+      }
+
+      // Use existing getBankStatements method which handles transactions and fallback
+      const bankData = await plaidService.getBankStatements(plaidItem.accessToken, 3);
+
+      // Format data for OpenAI analysis
+      let transactionText = "=== ACCOUNT SUMMARY ===\n";
+      for (const account of bankData.accounts) {
+        transactionText += `Account: ${account.name} (${account.subtype})\n`;
+        transactionText += `Current Balance: $${account.currentBalance?.toFixed(2) || 'N/A'}\n`;
+        transactionText += `Available Balance: $${account.availableBalance?.toFixed(2) || 'N/A'}\n\n`;
+      }
+
+      if (bankData.transactions.length > 0) {
+        transactionText += `\n=== TRANSACTIONS (${bankData.dateRange.startDate} to ${bankData.dateRange.endDate}) ===\n`;
+        for (const txn of bankData.transactions.slice(0, 200)) {
+          const amount = txn.amount < 0 ? `+$${Math.abs(txn.amount).toFixed(2)}` : `-$${txn.amount.toFixed(2)}`;
+          transactionText += `${txn.date} | ${amount} | ${txn.name}\n`;
+        }
+      } else {
+        transactionText += "\n(Note: Transaction history not available, analysis based on current balances only)\n";
+      }
+
+      console.log(`[PLAID ANALYZE] Analyzing ${transactionText.length} chars of data for ${bankData.institutionName}`);
+
+      // Analyze with OpenAI
+      const analysis = await analyzeBankStatements(transactionText, {
+        creditScoreRange,
+        timeInBusiness,
+        industry,
+      });
+
+      res.json({
+        success: true,
+        analysis,
+        source: "plaid",
+        institutionName: bankData.institutionName,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("[PLAID ANALYZE] Error:", error);
+      res.status(500).json({
+        error: "Analysis failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
   // ========================================
   // BANK STATEMENT UPLOAD ROUTES
   // ========================================
@@ -1386,6 +1455,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!res.headersSent) {
         res.status(500).json({ error: "Failed to create download" });
       }
+    }
+  });
+
+  // 5. Analyze uploaded PDF statements for a business
+  app.post("/api/bank-statements/analyze/:businessName", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      if (!isOpenAIConfigured()) {
+        return res.status(503).json({
+          error: "Analysis service not available",
+          message: "OpenAI API is not configured.",
+        });
+      }
+
+      const businessName = decodeURIComponent(req.params.businessName);
+      const { creditScoreRange, timeInBusiness, industry } = req.body;
+
+      console.log(`[PDF ANALYZE] Starting analysis for business: "${businessName}"`);
+
+      // Get all uploads for this business
+      let uploads;
+      if (req.session.user.role === 'admin') {
+        uploads = await storage.getAllBankStatementUploads();
+      } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        uploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
+      } else {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Filter by business name
+      const businessUploads = uploads.filter(u =>
+        (u.businessName || 'Unknown Business') === businessName
+      );
+
+      if (businessUploads.length === 0) {
+        return res.status(404).json({ error: "No statements found for this business" });
+      }
+
+      console.log(`[PDF ANALYZE] Found ${businessUploads.length} statements for "${businessName}"`);
+
+      // Extract text from all PDFs
+      const extractedTexts: string[] = [];
+
+      for (const upload of businessUploads.slice(0, 6)) { // Limit to 6 files
+        try {
+          let fileBuffer: Buffer;
+
+          // Get file from Object Storage or local disk
+          if (upload.storedFileName && upload.storedFileName.includes("bank-statements/")) {
+            fileBuffer = await objectStorage.getFileBuffer(upload.storedFileName);
+          } else {
+            const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+            if (fs.existsSync(filePath)) {
+              fileBuffer = fs.readFileSync(filePath);
+            } else {
+              console.warn(`[PDF ANALYZE] File not found: ${upload.storedFileName}`);
+              continue;
+            }
+          }
+
+          // Extract text from PDF
+          const parser = new PDFParse({ data: fileBuffer });
+          const result = await parser.getText();
+          const text = result.text || "";
+          extractedTexts.push(`--- Statement: ${upload.originalFileName} ---\n${text}\n`);
+          console.log(`[PDF ANALYZE] Extracted ${text.length} chars from ${upload.originalFileName}`);
+          await parser.destroy();
+        } catch (pdfError) {
+          console.error(`[PDF ANALYZE] Error parsing ${upload.originalFileName}:`, pdfError);
+          extractedTexts.push(`--- Statement: ${upload.originalFileName} ---\n[Error: Could not extract text from this PDF.]\n`);
+        }
+      }
+
+      if (extractedTexts.length === 0) {
+        return res.status(400).json({
+          error: "No readable content",
+          message: "Could not extract text from any of the uploaded PDFs.",
+        });
+      }
+
+      const combinedText = extractedTexts.join("\n\n");
+      console.log(`[PDF ANALYZE] Total text for analysis: ${combinedText.length} chars`);
+
+      // Analyze with OpenAI
+      const analysis = await analyzeBankStatements(combinedText, {
+        creditScoreRange,
+        timeInBusiness,
+        industry,
+      });
+
+      console.log(`[PDF ANALYZE] Analysis complete. Score: ${analysis.overallScore}, Tier: ${analysis.qualificationTier}`);
+
+      res.json({
+        success: true,
+        analysis,
+        source: "uploaded",
+        businessName,
+        filesProcessed: extractedTexts.length,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("[PDF ANALYZE] Error:", error);
+      res.status(500).json({
+        error: "Analysis failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   });
 

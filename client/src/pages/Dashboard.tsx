@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -639,6 +639,251 @@ function AssetReportModal({
   );
 }
 
+// Analysis Result Interface (matching OpenAI analysis response)
+interface AnalysisResult {
+  overallScore: number;
+  qualificationTier: string;
+  estimatedMonthlyRevenue: number;
+  averageDailyBalance: number;
+  redFlags: Array<{
+    issue: string;
+    severity: "low" | "medium" | "high";
+    details: string;
+  }>;
+  positiveIndicators: Array<{
+    indicator: string;
+    details: string;
+  }>;
+  fundingRecommendation: {
+    eligible: boolean;
+    maxAmount: number;
+    estimatedRates: string;
+    product: string;
+    message: string;
+  };
+  improvementSuggestions: string[];
+  summary: string;
+}
+
+interface AnalysisResponse {
+  success: boolean;
+  analysis: AnalysisResult;
+  source: "plaid" | "uploaded";
+  institutionName?: string;
+  businessName?: string;
+  filesProcessed?: number;
+  timestamp: string;
+}
+
+function AnalysisModal({ 
+  isOpen,
+  onClose,
+  analysisData,
+  isLoading,
+  error,
+  title
+}: { 
+  isOpen: boolean;
+  onClose: () => void;
+  analysisData: AnalysisResponse | null;
+  isLoading: boolean;
+  error: string | null;
+  title: string;
+}) {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 70) return 'text-green-600';
+    if (score >= 50) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getScoreLabel = (score: number) => {
+    if (score >= 80) return 'Excellent';
+    if (score >= 70) return 'Good';
+    if (score >= 50) return 'Fair';
+    if (score >= 30) return 'Poor';
+    return 'Very Poor';
+  };
+
+  const getSeverityColor = (severity: string) => {
+    if (severity === 'high') return 'text-red-600 bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800';
+    if (severity === 'medium') return 'text-yellow-600 bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800';
+    return 'text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800';
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" data-testid="dialog-analysis">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" />
+            AI Fundability Analysis - {title}
+          </DialogTitle>
+        </DialogHeader>
+        
+        <div className="flex-1 overflow-auto">
+          {isLoading ? (
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="font-medium">Analyzing bank statements...</p>
+              <p className="text-sm text-muted-foreground">This may take 15-30 seconds</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12">
+              <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+              <p className="text-destructive font-medium">Analysis Failed</p>
+              <p className="text-sm text-muted-foreground mt-2">{error}</p>
+              <Button variant="outline" onClick={onClose} className="mt-4">Close</Button>
+            </div>
+          ) : analysisData?.analysis ? (
+            <div className="space-y-6 p-2">
+              {/* Score Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card className="p-4 text-center col-span-1">
+                  <p className="text-sm text-muted-foreground mb-1">Fundability Score</p>
+                  <p className={`text-4xl font-bold ${getScoreColor(analysisData.analysis.overallScore)}`}>
+                    {analysisData.analysis.overallScore}
+                  </p>
+                  <p className={`text-sm font-medium ${getScoreColor(analysisData.analysis.overallScore)}`}>
+                    {getScoreLabel(analysisData.analysis.overallScore)}
+                  </p>
+                </Card>
+                
+                <Card className="p-4 text-center">
+                  <p className="text-sm text-muted-foreground mb-1">Qualification Tier</p>
+                  <p className="text-lg font-semibold">{analysisData.analysis.qualificationTier}</p>
+                </Card>
+                
+                <Card className="p-4 text-center">
+                  <p className="text-sm text-muted-foreground mb-1">Est. Monthly Revenue</p>
+                  <p className="text-lg font-semibold text-green-600">
+                    {formatCurrency(analysisData.analysis.estimatedMonthlyRevenue)}
+                  </p>
+                </Card>
+                
+                <Card className="p-4 text-center">
+                  <p className="text-sm text-muted-foreground mb-1">Avg Daily Balance</p>
+                  <p className="text-lg font-semibold">
+                    {formatCurrency(analysisData.analysis.averageDailyBalance)}
+                  </p>
+                </Card>
+              </div>
+
+              {/* Summary */}
+              <Card className="p-4">
+                <h3 className="font-semibold mb-2 flex items-center gap-2">
+                  <Target className="w-4 h-4" />
+                  Executive Summary
+                </h3>
+                <p className="text-sm text-muted-foreground">{analysisData.analysis.summary}</p>
+              </Card>
+
+              {/* Funding Recommendation */}
+              <Card className={`p-4 ${analysisData.analysis.fundingRecommendation.eligible ? 'border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-900/10' : 'border-yellow-200 bg-yellow-50/50 dark:border-yellow-800 dark:bg-yellow-900/10'}`}>
+                <h3 className="font-semibold mb-3 flex items-center gap-2">
+                  {analysisData.analysis.fundingRecommendation.eligible ? (
+                    <ThumbsUp className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <ThumbsDown className="w-4 h-4 text-yellow-600" />
+                  )}
+                  Funding Recommendation
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Product</p>
+                    <p className="font-medium">{analysisData.analysis.fundingRecommendation.product}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Max Amount</p>
+                    <p className="font-medium text-green-600">{formatCurrency(analysisData.analysis.fundingRecommendation.maxAmount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Est. Rates</p>
+                    <p className="font-medium">{analysisData.analysis.fundingRecommendation.estimatedRates}</p>
+                  </div>
+                </div>
+                <p className="text-sm">{analysisData.analysis.fundingRecommendation.message}</p>
+              </Card>
+
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Red Flags */}
+                <Card className="p-4">
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                    Red Flags ({analysisData.analysis.redFlags.length})
+                  </h3>
+                  {analysisData.analysis.redFlags.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No red flags detected</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {analysisData.analysis.redFlags.map((flag, idx) => (
+                        <div key={idx} className={`p-2 rounded border ${getSeverityColor(flag.severity)}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-sm">{flag.issue}</span>
+                            <Badge variant="outline" className="text-xs">{flag.severity}</Badge>
+                          </div>
+                          <p className="text-xs mt-1 opacity-80">{flag.details}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+
+                {/* Positive Indicators */}
+                <Card className="p-4">
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    Positive Indicators ({analysisData.analysis.positiveIndicators.length})
+                  </h3>
+                  {analysisData.analysis.positiveIndicators.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No positive indicators found</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {analysisData.analysis.positiveIndicators.map((indicator, idx) => (
+                        <div key={idx} className="p-2 rounded border border-green-200 bg-green-50 text-green-700 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400">
+                          <span className="font-medium text-sm">{indicator.indicator}</span>
+                          <p className="text-xs mt-1 opacity-80">{indicator.details}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </div>
+
+              {/* Improvement Suggestions */}
+              {analysisData.analysis.improvementSuggestions.length > 0 && (
+                <Card className="p-4">
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Improvement Suggestions
+                  </h3>
+                  <ul className="space-y-2">
+                    {analysisData.analysis.improvementSuggestions.map((suggestion, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>{suggestion}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+
+              {/* Timestamp */}
+              <p className="text-xs text-muted-foreground text-right">
+                Analysis generated: {format(new Date(analysisData.timestamp), 'MMM d, yyyy h:mm a')}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
   "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
@@ -657,6 +902,11 @@ function BankStatementsTab() {
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
   const [selectedAssetReport, setSelectedAssetReport] = useState<BankConnection | null>(null);
   const [expandedBusinesses, setExpandedBusinesses] = useState<Set<string>>(new Set());
+  const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
+  const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisTitle, setAnalysisTitle] = useState("");
 
   const { data: bankConnections, isLoading: connectionsLoading } = useQuery<BankConnection[]>({
     queryKey: ['/api/plaid/all'],
@@ -742,6 +992,66 @@ function BankStatementsTab() {
       document.body.removeChild(a);
     } catch (error) {
       console.error('Bulk download error:', error);
+    }
+  };
+
+  const handleAnalyzePlaid = async (connection: BankConnection) => {
+    setAnalysisTitle(connection.institutionName);
+    setAnalysisModalOpen(true);
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    setAnalysisData(null);
+
+    try {
+      const res = await fetch(`/api/plaid/analyze/${connection.plaidItemId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({}),
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || data.error || 'Analysis failed');
+      }
+      
+      const data = await res.json();
+      setAnalysisData(data);
+    } catch (error: any) {
+      console.error('Analysis error:', error);
+      setAnalysisError(error.message || 'Analysis failed');
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const handleAnalyzeUploads = async (businessName: string) => {
+    setAnalysisTitle(businessName);
+    setAnalysisModalOpen(true);
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    setAnalysisData(null);
+
+    try {
+      const res = await fetch(`/api/bank-statements/analyze/${encodeURIComponent(businessName)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({}),
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || data.error || 'Analysis failed');
+      }
+      
+      const data = await res.json();
+      setAnalysisData(data);
+    } catch (error: any) {
+      console.error('Analysis error:', error);
+      setAnalysisError(error.message || 'Analysis failed');
+    } finally {
+      setAnalysisLoading(false);
     }
   };
 
@@ -882,6 +1192,15 @@ function BankStatementsTab() {
                         <Landmark className="w-4 h-4 mr-2" />
                         Asset Report
                       </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleAnalyzePlaid(connection)}
+                        className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 border-purple-200 dark:border-purple-800"
+                        data-testid={`button-analyze-plaid-${connection.id}`}
+                      >
+                        <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
+                        Analyze
+                      </Button>
                     </div>
                   </div>
                 </Card>
@@ -921,14 +1240,25 @@ function BankStatementsTab() {
                         {uploads.length} {uploads.length === 1 ? 'Statement' : 'Statements'}
                       </Badge>
                     </div>
-                    <Button
-                      onClick={() => handleBulkDownload(businessName)}
-                      className="bg-primary hover:bg-primary/90"
-                      data-testid={`button-download-all-${businessName}`}
-                    >
-                      <FolderArchive className="w-4 h-4 mr-2" />
-                      Download All ({uploads.length})
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => handleAnalyzeUploads(businessName)}
+                        className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 border-purple-200 dark:border-purple-800"
+                        data-testid={`button-analyze-uploads-${businessName}`}
+                      >
+                        <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
+                        Analyze
+                      </Button>
+                      <Button
+                        onClick={() => handleBulkDownload(businessName)}
+                        className="bg-primary hover:bg-primary/90"
+                        data-testid={`button-download-all-${businessName}`}
+                      >
+                        <FolderArchive className="w-4 h-4 mr-2" />
+                        Download All ({uploads.length})
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Individual Files - Collapsible */}
@@ -995,6 +1325,19 @@ function BankStatementsTab() {
           onClose={() => setSelectedAssetReport(null)}
         />
       )}
+
+      <AnalysisModal
+        isOpen={analysisModalOpen}
+        onClose={() => {
+          setAnalysisModalOpen(false);
+          setAnalysisData(null);
+          setAnalysisError(null);
+        }}
+        analysisData={analysisData}
+        isLoading={analysisLoading}
+        error={analysisError}
+        title={analysisTitle}
+      />
     </>
   );
 }
