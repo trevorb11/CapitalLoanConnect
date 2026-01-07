@@ -49,3 +49,4 @@ defaultBucketID = "replit-objstore-e30ea7af-1167-43fe-aaea-ad41f28adbba"
 
 [userenv.shared]
 PRIVATE_OBJECT_DIR = "/tcg-statements"
+PLAID_ENV = "production"
