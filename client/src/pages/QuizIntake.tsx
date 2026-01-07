@@ -702,7 +702,7 @@ export default function QuizIntake() {
                     data-testid="checkbox-consent-transactional"
                   />
                   <label htmlFor="consentTransactional" className="text-white/60 text-[11px] leading-relaxed cursor-pointer">
-                    By checking this box, I consent to receive transactional messages related to my account, orders, or services I have requested. These messages may include appointment reminders, order confirmations, and account notifications among others. Message frequency may vary. Message & Data rates may apply. Reply HELP for help or STOP to opt-out.
+                    By checking this box, I consent to receive transactional messages from Today Capital Group related to my funding application and services I have requested. These messages may include application updates, document requests, and account notifications. Message frequency may vary. Message & Data rates may apply. Reply HELP for help or STOP to opt-out.
                   </label>
                 </div>
 
@@ -719,7 +719,7 @@ export default function QuizIntake() {
                     data-testid="checkbox-consent-marketing"
                   />
                   <label htmlFor="consentMarketing" className="text-white/60 text-[11px] leading-relaxed cursor-pointer">
-                    By checking this box, I consent to receive marketing and promotional messages, including special offers, discounts, new product updates among others. Message frequency may vary. Message & Data rates may apply. Reply HELP for help or STOP to opt-out.
+                    By checking this box, I consent to receive marketing and promotional messages from Today Capital Group, including special offers, financing updates, and new product announcements. Message frequency may vary. Message & Data rates may apply. Reply HELP for help or STOP to opt-out.
                   </label>
                 </div>
 
