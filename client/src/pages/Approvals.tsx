@@ -33,7 +33,9 @@ import {
   AlertCircle,
   Loader2,
   CalendarClock,
-  ShieldAlert
+  ShieldAlert,
+  ArrowLeft,
+  History
 } from "lucide-react";
 
 interface LenderApproval {
@@ -93,10 +95,10 @@ function formatDate(date: string | null): string {
 
 function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, { className: string; icon: React.ReactNode }> = {
-    pending: { className: "bg-yellow-100 text-yellow-800", icon: <Clock className="w-3 h-3" /> },
-    accepted: { className: "bg-green-100 text-green-800", icon: <CheckCircle2 className="w-3 h-3" /> },
-    declined: { className: "bg-red-100 text-red-800", icon: <XCircle className="w-3 h-3" /> },
-    expired: { className: "bg-gray-100 text-gray-800", icon: <AlertCircle className="w-3 h-3" /> },
+    pending: { className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100", icon: <Clock className="w-3 h-3" /> },
+    accepted: { className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100", icon: <CheckCircle2 className="w-3 h-3" /> },
+    declined: { className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100", icon: <XCircle className="w-3 h-3" /> },
+    expired: { className: "bg-muted text-muted-foreground", icon: <AlertCircle className="w-3 h-3" /> },
   };
   
   const variant = variants[status] || variants.pending;
@@ -121,17 +123,17 @@ function ApprovalCard({
   onStatusChange: (id: string, status: string) => void;
 }) {
   return (
-    <div className="border rounded-lg p-4 bg-white hover-elevate" data-testid={`card-approval-${approval.id}`}>
+    <div className="border rounded-lg p-4 bg-card hover-elevate" data-testid={`card-approval-${approval.id}`}>
       <div className="flex flex-wrap items-start justify-between gap-4 mb-3">
         <div>
           {showBusiness && (
             <div className="font-semibold text-lg flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-gray-500" />
+              <Building2 className="w-4 h-4 text-muted-foreground" />
               {approval.businessName}
             </div>
           )}
           {showLender && (
-            <div className="text-sm text-gray-600 flex items-center gap-2">
+            <div className="text-sm text-muted-foreground flex items-center gap-2">
               <Landmark className="w-4 h-4" />
               {approval.lenderName}
             </div>
@@ -158,21 +160,21 @@ function ApprovalCard({
       
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
-          <div className="text-gray-500">Approved Amount</div>
-          <div className="font-semibold text-green-600" data-testid={`text-amount-${approval.id}`}>
+          <div className="text-muted-foreground">Approved Amount</div>
+          <div className="font-semibold text-green-600 dark:text-green-400" data-testid={`text-amount-${approval.id}`}>
             {formatCurrency(approval.approvedAmount)}
           </div>
         </div>
         <div>
-          <div className="text-gray-500">Term</div>
+          <div className="text-muted-foreground">Term</div>
           <div className="font-medium">{approval.termLength || "N/A"}</div>
         </div>
         <div>
-          <div className="text-gray-500">Product</div>
+          <div className="text-muted-foreground">Product</div>
           <div className="font-medium">{approval.productType || "N/A"}</div>
         </div>
         <div>
-          <div className="text-gray-500">Rate</div>
+          <div className="text-muted-foreground">Rate</div>
           <div className="font-medium">
             {approval.factorRate ? `${approval.factorRate}x` : approval.interestRate || "N/A"}
           </div>
@@ -182,21 +184,21 @@ function ApprovalCard({
       {(approval.paymentAmount || approval.paybackAmount) && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3 pt-3 border-t">
           <div>
-            <div className="text-gray-500">Payment</div>
+            <div className="text-muted-foreground">Payment</div>
             <div className="font-medium">
               {formatCurrency(approval.paymentAmount)} {approval.paymentFrequency || ""}
             </div>
           </div>
           <div>
-            <div className="text-gray-500">Payback Amount</div>
+            <div className="text-muted-foreground">Payback Amount</div>
             <div className="font-medium">{formatCurrency(approval.paybackAmount)}</div>
           </div>
           <div>
-            <div className="text-gray-500">Expires</div>
+            <div className="text-muted-foreground">Expires</div>
             <div className="font-medium">{approval.expirationDate || "N/A"}</div>
           </div>
           <div>
-            <div className="text-gray-500">Received</div>
+            <div className="text-muted-foreground">Received</div>
             <div className="font-medium">{formatDate(approval.emailReceivedAt)}</div>
           </div>
         </div>
@@ -204,13 +206,13 @@ function ApprovalCard({
       
       {approval.conditions && (
         <div className="mt-3 pt-3 border-t text-sm">
-          <div className="text-gray-500 mb-1">Conditions</div>
-          <div className="text-gray-700">{approval.conditions}</div>
+          <div className="text-muted-foreground mb-1">Conditions</div>
+          <div>{approval.conditions}</div>
         </div>
       )}
       
       {approval.emailSubject && (
-        <div className="mt-3 pt-3 border-t text-xs text-gray-400 flex items-center gap-1">
+        <div className="mt-3 pt-3 border-t text-xs text-muted-foreground flex items-center gap-1">
           <Mail className="w-3 h-3" />
           {approval.emailSubject}
         </div>
@@ -252,7 +254,7 @@ function GroupedApprovals({
   
   if (sortedKeys.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
+      <div className="text-center py-12 text-muted-foreground">
         <Mail className="w-12 h-12 mx-auto mb-4 opacity-50" />
         <p>No approvals found</p>
         <p className="text-sm">Click "Scan for Approvals" to check your email</p>
@@ -270,7 +272,7 @@ function GroupedApprovals({
         return (
           <Collapsible key={key} open={isOpen} onOpenChange={() => toggleGroup(key)}>
             <CollapsibleTrigger className="w-full" data-testid={`trigger-group-${key}`}>
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
                 <div className="flex items-center gap-3">
                   {isOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                   <div className="flex items-center gap-2">
@@ -309,6 +311,8 @@ export default function Approvals() {
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("business");
   const [accessDenied, setAccessDenied] = useState(false);
+  const [hoursBack, setHoursBack] = useState("24");
+  const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
   
   // Fetch Gmail status
   const { data: gmailStatus, error: gmailError } = useQuery<{ connected: boolean }>({
@@ -348,11 +352,11 @@ export default function Approvals() {
   // Access denied view
   if (accessDenied) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center">
-          <ShieldAlert className="w-16 h-16 mx-auto text-red-500 mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
-          <p className="text-gray-500 mb-6">
+          <ShieldAlert className="w-16 h-16 mx-auto text-red-500 dark:text-red-400 mb-4" />
+          <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
+          <p className="text-muted-foreground mb-6">
             This page is only accessible to administrators. Please contact your admin if you need access.
           </p>
           <Button onClick={() => setLocation("/dashboard")} data-testid="button-back-dashboard">
@@ -365,11 +369,12 @@ export default function Approvals() {
   
   // Scan mutation
   const scanMutation = useMutation({
-    mutationFn: async (hoursBack: number) => {
-      const res = await apiRequest("POST", "/api/approvals/scan", { hoursBack });
+    mutationFn: async (hours: number) => {
+      const res = await apiRequest("POST", "/api/approvals/scan", { hoursBack: hours });
       return res.json();
     },
     onSuccess: (data) => {
+      setLastScanTime(new Date());
       queryClient.invalidateQueries({ queryKey: ["/api/approvals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/approvals/by-business"] });
       queryClient.invalidateQueries({ queryKey: ["/api/approvals/by-lender"] });
@@ -412,27 +417,38 @@ export default function Approvals() {
   };
   
   const handleScan = () => {
-    scanMutation.mutate(24);
+    scanMutation.mutate(parseInt(hoursBack));
   };
   
   const isLoading = loadingBusiness || loadingLender;
   
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+    <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900" data-testid="heading-approvals">
-              Lender Approvals
-            </h1>
-            <p className="text-gray-500">
-              Track funding approvals from lender emails
-            </p>
-          </div>
+        <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => setLocation("/dashboard")}
+              data-testid="button-back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold" data-testid="heading-approvals">
+                Lender Approvals
+              </h1>
+              <p className="text-muted-foreground">
+                Track funding approvals from lender emails
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3">
             {gmailStatus?.connected ? (
-              <Badge className="bg-green-100 text-green-800 flex items-center gap-1">
+              <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 flex items-center gap-1">
                 <Mail className="w-3 h-3" />
                 Gmail Connected
               </Badge>
@@ -442,19 +458,41 @@ export default function Approvals() {
                 Gmail Not Connected
               </Badge>
             )}
-            <Button 
-              onClick={handleScan}
-              disabled={scanMutation.isPending || !gmailStatus?.connected}
-              className="flex items-center gap-2"
-              data-testid="button-scan"
-            >
-              {scanMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )}
-              Scan for Approvals
-            </Button>
+            
+            {lastScanTime && (
+              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                <History className="w-3 h-3" />
+                Last scan: {lastScanTime.toLocaleTimeString()}
+              </div>
+            )}
+            
+            <div className="flex items-center gap-2 ml-auto">
+              <Select value={hoursBack} onValueChange={setHoursBack}>
+                <SelectTrigger className="w-32" data-testid="select-hours">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="6">Last 6 hours</SelectItem>
+                  <SelectItem value="24">Last 24 hours</SelectItem>
+                  <SelectItem value="48">Last 48 hours</SelectItem>
+                  <SelectItem value="168">Last 7 days</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Button 
+                onClick={handleScan}
+                disabled={scanMutation.isPending || !gmailStatus?.connected}
+                className="flex items-center gap-2"
+                data-testid="button-scan"
+              >
+                {scanMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                Scan for Approvals
+              </Button>
+            </div>
           </div>
         </div>
         
@@ -471,7 +509,7 @@ export default function Approvals() {
                     <div className="text-2xl font-bold" data-testid="text-total-approvals">
                       {stats.totalApprovals}
                     </div>
-                    <div className="text-sm text-gray-500">Total Approvals</div>
+                    <div className="text-sm text-muted-foreground">Total Approvals</div>
                   </div>
                 </div>
               </CardContent>
@@ -486,7 +524,7 @@ export default function Approvals() {
                     <div className="text-2xl font-bold" data-testid="text-total-amount">
                       {formatCurrency(stats.totalApprovedAmount)}
                     </div>
-                    <div className="text-sm text-gray-500">Total Approved</div>
+                    <div className="text-sm text-muted-foreground">Total Approved</div>
                   </div>
                 </div>
               </CardContent>
@@ -501,7 +539,7 @@ export default function Approvals() {
                     <div className="text-2xl font-bold" data-testid="text-pending-approvals">
                       {stats.pendingApprovals}
                     </div>
-                    <div className="text-sm text-gray-500">Pending</div>
+                    <div className="text-sm text-muted-foreground">Pending</div>
                   </div>
                 </div>
               </CardContent>
@@ -516,7 +554,7 @@ export default function Approvals() {
                     <div className="text-2xl font-bold">
                       {stats.uniqueBusinesses} / {stats.uniqueLenders}
                     </div>
-                    <div className="text-sm text-gray-500">Businesses / Lenders</div>
+                    <div className="text-sm text-muted-foreground">Businesses / Lenders</div>
                   </div>
                 </div>
               </CardContent>
@@ -543,7 +581,7 @@ export default function Approvals() {
           <CardContent>
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
               </div>
             ) : (
               <>
@@ -573,7 +611,7 @@ export default function Approvals() {
         </Card>
         
         {/* Scan info */}
-        <div className="text-center text-sm text-gray-400 flex items-center justify-center gap-2">
+        <div className="text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
           <CalendarClock className="w-4 h-4" />
           Emails are automatically scanned every hour
         </div>
