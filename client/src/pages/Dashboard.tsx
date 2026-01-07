@@ -409,6 +409,236 @@ function ItemStatementsModal({
   );
 }
 
+interface AssetReportAccount {
+  account_id: string;
+  name: string;
+  official_name: string | null;
+  type: string;
+  subtype: string | null;
+  balances: {
+    current: number | null;
+    available: number | null;
+  };
+  days_available: number;
+  historical_balances?: Array<{
+    date: string;
+    current: number;
+  }>;
+  transactions?: Array<{
+    date: string;
+    original_description: string;
+    amount: number;
+  }>;
+}
+
+interface AssetReportItem {
+  institution_name: string;
+  institution_id: string;
+  accounts: AssetReportAccount[];
+}
+
+interface AssetReportData {
+  report: {
+    asset_report_id: string;
+    date_generated: string;
+    days_requested: number;
+    items: AssetReportItem[];
+  };
+  assetReportToken: string;
+}
+
+function AssetReportModal({ 
+  plaidItemId, 
+  institutionName,
+  isOpen,
+  onClose 
+}: { 
+  plaidItemId: string;
+  institutionName: string;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const { data: assetReport, isLoading, error, refetch } = useQuery<AssetReportData>({
+    queryKey: ['/api/plaid/asset-report', plaidItemId],
+    queryFn: async () => {
+      const res = await fetch(`/api/plaid/asset-report/${plaidItemId}?days=90`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || data.error || 'Failed to generate asset report');
+      }
+      return res.json();
+    },
+    enabled: isOpen && !!plaidItemId,
+    retry: false,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  const handleDownloadPdf = async () => {
+    setIsDownloading(true);
+    try {
+      const res = await fetch(`/api/plaid/asset-report-pdf/${plaidItemId}?days=90`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to download PDF');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `asset_report_${institutionName.replace(/\s+/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Error downloading PDF:', err);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const formatCurrency = (amount: number | null) => {
+    if (amount === null) return 'N/A';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" data-testid="dialog-asset-report">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Asset Report - {institutionName}
+          </DialogTitle>
+          {assetReport && (
+            <p className="text-sm text-muted-foreground">
+              Generated: {format(new Date(assetReport.report.date_generated), 'MMM d, yyyy h:mm a')} | 
+              {assetReport.report.days_requested} days of data
+            </p>
+          )}
+        </DialogHeader>
+        
+        <div className="flex-1 overflow-auto">
+          {isLoading ? (
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Generating asset report...</p>
+              <p className="text-xs text-muted-foreground">This may take 10-30 seconds</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <AlertTriangle className="w-8 h-8 text-destructive" />
+              <p className="text-destructive">{(error as Error).message}</p>
+              <div className="flex gap-2 mt-4">
+                <Button variant="default" onClick={() => refetch()} data-testid="button-retry-asset-report">
+                  Retry
+                </Button>
+                <Button variant="outline" onClick={onClose}>Close</Button>
+              </div>
+            </div>
+          ) : assetReport ? (
+            <div className="space-y-6">
+              {/* Download PDF Button */}
+              <div className="flex justify-end">
+                <Button 
+                  onClick={handleDownloadPdf} 
+                  disabled={isDownloading}
+                  data-testid="button-download-asset-pdf"
+                >
+                  {isDownloading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-2" />
+                  )}
+                  Download PDF
+                </Button>
+              </div>
+
+              {/* Accounts Summary */}
+              {assetReport.report.items.map((item, itemIndex) => (
+                <div key={itemIndex} className="space-y-4">
+                  <h3 className="font-semibold text-lg flex items-center gap-2">
+                    <Landmark className="w-5 h-5" />
+                    {item.institution_name}
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {item.accounts.map((account) => (
+                      <Card key={account.account_id} className="p-4" data-testid={`card-asset-account-${account.account_id}`}>
+                        <div className="flex justify-between items-start gap-2 mb-3">
+                          <div>
+                            <p className="font-medium">{account.name}</p>
+                            {account.official_name && (
+                              <p className="text-xs text-muted-foreground">{account.official_name}</p>
+                            )}
+                            <p className="text-sm text-muted-foreground capitalize mt-1">
+                              {account.type}{account.subtype ? ` - ${account.subtype}` : ''}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-lg">{formatCurrency(account.balances.current)}</p>
+                            {account.balances.available !== null && (
+                              <p className="text-xs text-muted-foreground">
+                                Available: {formatCurrency(account.balances.available)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-muted-foreground">
+                          {account.days_available} days of history available
+                        </div>
+
+                        {/* Historical Balances Preview */}
+                        {account.historical_balances && account.historical_balances.length > 0 && (
+                          <div className="mt-3 pt-3 border-t">
+                            <p className="text-xs font-medium mb-2">Recent Balance History</p>
+                            <div className="space-y-1">
+                              {account.historical_balances.slice(0, 5).map((bal, idx) => (
+                                <div key={idx} className="flex justify-between text-xs">
+                                  <span className="text-muted-foreground">{bal.date}</span>
+                                  <span>{formatCurrency(bal.current)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Recent Transactions Preview */}
+                        {account.transactions && account.transactions.length > 0 && (
+                          <div className="mt-3 pt-3 border-t">
+                            <p className="text-xs font-medium mb-2">Recent Transactions ({account.transactions.length} total)</p>
+                            <div className="space-y-1 max-h-32 overflow-y-auto">
+                              {account.transactions.slice(0, 10).map((txn, idx) => (
+                                <div key={idx} className="flex justify-between text-xs gap-2">
+                                  <span className="text-muted-foreground flex-shrink-0">{txn.date}</span>
+                                  <span className="truncate flex-1">{txn.original_description}</span>
+                                  <span className={`flex-shrink-0 ${txn.amount < 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {txn.amount < 0 ? '+' : '-'}{formatCurrency(Math.abs(txn.amount))}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
   "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
@@ -425,6 +655,7 @@ const INDUSTRIES = [
 
 function BankStatementsTab() {
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
+  const [selectedAssetReport, setSelectedAssetReport] = useState<BankConnection | null>(null);
   const [expandedBusinesses, setExpandedBusinesses] = useState<Set<string>>(new Set());
 
   const { data: bankConnections, isLoading: connectionsLoading } = useQuery<BankConnection[]>({
@@ -643,6 +874,14 @@ function BankStatementsTab() {
                         <FileText className="w-4 h-4 mr-2" />
                         View Statements
                       </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setSelectedAssetReport(connection)}
+                        data-testid={`button-view-asset-report-${connection.id}`}
+                      >
+                        <Landmark className="w-4 h-4 mr-2" />
+                        Asset Report
+                      </Button>
                     </div>
                   </div>
                 </Card>
@@ -745,6 +984,15 @@ function BankStatementsTab() {
           institutionName={selectedConnection.institutionName}
           isOpen={!!selectedConnection}
           onClose={() => setSelectedConnection(null)}
+        />
+      )}
+
+      {selectedAssetReport && (
+        <AssetReportModal
+          plaidItemId={selectedAssetReport.plaidItemId}
+          institutionName={selectedAssetReport.institutionName}
+          isOpen={!!selectedAssetReport}
+          onClose={() => setSelectedAssetReport(null)}
         />
       )}
     </>
