@@ -105,7 +105,8 @@ const plaidExchangeSchema = z.object({
     }).optional()
   }).optional(),
   businessName: z.string().min(1, "Business name is required"),
-  email: z.string().email("Valid email is required")
+  email: z.string().email("Valid email is required"),
+  useAIAnalysis: z.boolean().optional().default(true)
 });
 
 // Helper function to generate funding report URL from application data
@@ -777,7 +778,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 2. Handle Successful Link & Analyze
+  // 2. Handle Successful Link & Analyze (with Asset Report + AI Analysis)
   app.post("/api/plaid/exchange-token", async (req, res) => {
     try {
       // Validate request body
@@ -789,33 +790,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const { publicToken, metadata, businessName, email } = validationResult.data;
+      const { publicToken, metadata, businessName, email, useAIAnalysis } = validationResult.data;
 
       // A. Exchange Token
       const tokenResponse = await plaidService.exchangePublicToken(publicToken);
+      const institutionName = metadata?.institution?.name || 'Unknown Bank';
       
       // B. Save Access Token using storage layer
       await storage.createPlaidItem({
         itemId: tokenResponse.item_id,
         accessToken: tokenResponse.access_token,
-        institutionName: metadata?.institution?.name || 'Unknown Bank',
+        institutionName,
       });
 
-      // C. Run Analysis
-      const analysis = await plaidService.analyzeFinancials(tokenResponse.access_token);
-
-      // D. Save Results using storage layer
-      await storage.createFundingAnalysis({
-        businessName,
-        email,
-        calculatedMonthlyRevenue: analysis.metrics.monthlyRevenue.toString(),
-        calculatedAvgBalance: analysis.metrics.avgBalance.toString(),
-        negativeDaysCount: analysis.metrics.negativeDays,
-        analysisResult: analysis.recommendations,
-        plaidItemId: tokenResponse.item_id
-      });
-
-      // E. Auto-link to existing application if email matches
+      // C. Auto-link to existing application if email matches
       const applications = await storage.getAllLoanApplications();
       const matchingApp = applications.find((app: LoanApplication) => app.email === email);
       if (matchingApp && !matchingApp.plaidItemId) {
@@ -825,8 +813,197 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`Linked Plaid item ${tokenResponse.item_id} to application ${matchingApp.id}`);
       }
 
-      // F. Return results to frontend
-      res.json(analysis);
+      // D. Run AI-powered Asset Report Analysis if enabled
+      if (useAIAnalysis && isOpenAIConfigured()) {
+        console.log(`[PLAID EXCHANGE] Running AI-powered Asset Report analysis for ${email}...`);
+        
+        try {
+          // Generate Asset Report for comprehensive financial data
+          const assetReport = await plaidService.createAndGetAssetReport(tokenResponse.access_token, 90);
+          
+          // Format Asset Report data for OpenAI analysis
+          let analysisText = "=== PLAID ASSET REPORT ===\n";
+          analysisText += `Report Generated: ${assetReport.report?.date_generated || 'N/A'}\n`;
+          analysisText += `Days Requested: ${assetReport.report?.days_requested || 90}\n\n`;
+          
+          // Extract metrics from asset report
+          let totalDeposits = 0;
+          let totalCurrentBalance = 0;
+          let negativeDays = 0;
+          
+          // Process each item in the report
+          if (assetReport.report?.items) {
+            for (const item of assetReport.report.items) {
+              analysisText += `=== INSTITUTION: ${item.institution_name || 'Unknown'} ===\n\n`;
+              
+              if (item.accounts) {
+                for (const account of item.accounts) {
+                  analysisText += `--- ACCOUNT: ${account.name} (${account.subtype || account.type}) ---\n`;
+                  analysisText += `Current Balance: $${account.balances?.current?.toFixed(2) || 'N/A'}\n`;
+                  analysisText += `Available Balance: $${account.balances?.available?.toFixed(2) || 'N/A'}\n`;
+                  
+                  totalCurrentBalance += account.balances?.current || 0;
+                  
+                  // Historical balances
+                  if (account.historical_balances && account.historical_balances.length > 0) {
+                    analysisText += `\nHistorical Daily Balances (${account.historical_balances.length} days):\n`;
+                    const balances = account.historical_balances.slice(0, 90);
+                    let totalBalance = 0;
+                    let minBalance = Infinity;
+                    let maxBalance = -Infinity;
+                    
+                    for (const bal of balances) {
+                      const current = bal.current || 0;
+                      totalBalance += current;
+                      minBalance = Math.min(minBalance, current);
+                      maxBalance = Math.max(maxBalance, current);
+                      if (current < 0) negativeDays++;
+                    }
+                    
+                    const avgBalance = balances.length > 0 ? totalBalance / balances.length : 0;
+                    analysisText += `  Average Daily Balance: $${avgBalance.toFixed(2)}\n`;
+                    analysisText += `  Min/Max Balance: $${minBalance === Infinity ? 'N/A' : minBalance.toFixed(2)} / $${maxBalance === -Infinity ? 'N/A' : maxBalance.toFixed(2)}\n`;
+                    analysisText += `  Days with Negative Balance: ${negativeDays}\n`;
+                    
+                    // Sample recent balances
+                    analysisText += `\n  Recent Balance History:\n`;
+                    for (const bal of balances.slice(0, 30)) {
+                      analysisText += `    ${bal.date}: $${bal.current?.toFixed(2) || '0.00'}\n`;
+                    }
+                  }
+                  
+                  // Transactions from asset report
+                  if (account.transactions && account.transactions.length > 0) {
+                    analysisText += `\nTransactions (${account.transactions.length} total):\n`;
+                    
+                    let accountDeposits = 0;
+                    let accountWithdrawals = 0;
+                    let depositCount = 0;
+                    let withdrawalCount = 0;
+                    
+                    for (const txn of account.transactions) {
+                      const amount = txn.amount || 0;
+                      if (amount < 0) {
+                        accountDeposits += Math.abs(amount);
+                        depositCount++;
+                      } else {
+                        accountWithdrawals += amount;
+                        withdrawalCount++;
+                      }
+                    }
+                    
+                    totalDeposits += accountDeposits;
+                    
+                    analysisText += `  Total Deposits: $${accountDeposits.toFixed(2)} (${depositCount} transactions)\n`;
+                    analysisText += `  Total Withdrawals: $${accountWithdrawals.toFixed(2)} (${withdrawalCount} transactions)\n`;
+                    analysisText += `  Estimated Monthly Revenue: $${(accountDeposits / 3).toFixed(2)}\n`;
+                    
+                    // Recent transactions
+                    analysisText += `\n  Recent Transactions:\n`;
+                    for (const txn of account.transactions.slice(0, 50)) {
+                      const amount = txn.amount < 0 ? `+$${Math.abs(txn.amount).toFixed(2)}` : `-$${txn.amount.toFixed(2)}`;
+                      analysisText += `    ${txn.date} | ${amount} | ${txn.original_description || txn.name || 'N/A'}\n`;
+                    }
+                  }
+                  
+                  analysisText += `\n`;
+                }
+              }
+            }
+          }
+
+          console.log(`[PLAID EXCHANGE] Analyzing ${analysisText.length} chars of Asset Report data with AI...`);
+
+          // Run AI analysis
+          const aiAnalysis = await analyzeBankStatements(analysisText, {});
+          
+          // Calculate metrics for legacy compatibility
+          const monthlyRevenue = totalDeposits / 3;
+          const avgBalance = totalCurrentBalance;
+          
+          // Save results with AI analysis
+          await storage.createFundingAnalysis({
+            businessName,
+            email,
+            calculatedMonthlyRevenue: monthlyRevenue.toString(),
+            calculatedAvgBalance: avgBalance.toString(),
+            negativeDaysCount: negativeDays,
+            analysisResult: {
+              sba: { status: aiAnalysis.overallScore >= 70 ? 'High' : aiAnalysis.overallScore >= 40 ? 'Medium' : 'Low', reason: aiAnalysis.fundingRecommendation?.message || '' },
+              loc: { status: aiAnalysis.overallScore >= 60 ? 'High' : aiAnalysis.overallScore >= 35 ? 'Medium' : 'Low', reason: 'Based on balance history and revenue patterns' },
+              mca: { status: aiAnalysis.overallScore >= 30 ? 'High' : aiAnalysis.overallScore >= 15 ? 'Medium' : 'Low', reason: 'Working capital based on deposit flow' }
+            },
+            plaidItemId: tokenResponse.item_id
+          });
+
+          // Return comprehensive AI analysis
+          res.json({
+            type: 'ai_analysis',
+            metrics: {
+              monthlyRevenue: Math.round(monthlyRevenue),
+              avgBalance: Math.round(avgBalance),
+              negativeDays
+            },
+            recommendations: {
+              sba: { status: aiAnalysis.overallScore >= 70 ? 'High' : aiAnalysis.overallScore >= 40 ? 'Medium' : 'Low', reason: aiAnalysis.fundingRecommendation?.message || 'Based on financial analysis' },
+              loc: { status: aiAnalysis.overallScore >= 60 ? 'High' : aiAnalysis.overallScore >= 35 ? 'Medium' : 'Low', reason: 'Based on balance history' },
+              mca: { status: aiAnalysis.overallScore >= 30 ? 'High' : aiAnalysis.overallScore >= 15 ? 'Medium' : 'Low', reason: 'Based on cash flow' }
+            },
+            aiAnalysis: {
+              overallScore: aiAnalysis.overallScore,
+              qualificationTier: aiAnalysis.qualificationTier,
+              estimatedMonthlyRevenue: aiAnalysis.estimatedMonthlyRevenue,
+              averageDailyBalance: aiAnalysis.averageDailyBalance,
+              redFlags: aiAnalysis.redFlags,
+              positiveIndicators: aiAnalysis.positiveIndicators,
+              fundingRecommendation: aiAnalysis.fundingRecommendation,
+              improvementSuggestions: aiAnalysis.improvementSuggestions,
+              summary: aiAnalysis.summary
+            },
+            institutionName
+          });
+          
+        } catch (aiError) {
+          console.error("[PLAID EXCHANGE] AI analysis failed, falling back to basic analysis:", aiError);
+          // Fall back to basic analysis if AI fails
+          const basicAnalysis = await plaidService.analyzeFinancials(tokenResponse.access_token);
+          
+          await storage.createFundingAnalysis({
+            businessName,
+            email,
+            calculatedMonthlyRevenue: basicAnalysis.metrics.monthlyRevenue.toString(),
+            calculatedAvgBalance: basicAnalysis.metrics.avgBalance.toString(),
+            negativeDaysCount: basicAnalysis.metrics.negativeDays,
+            analysisResult: basicAnalysis.recommendations,
+            plaidItemId: tokenResponse.item_id
+          });
+          
+          res.json({
+            type: 'basic_analysis',
+            ...basicAnalysis
+          });
+        }
+      } else {
+        // E. Run basic analysis (original flow)
+        const analysis = await plaidService.analyzeFinancials(tokenResponse.access_token);
+
+        // F. Save Results using storage layer
+        await storage.createFundingAnalysis({
+          businessName,
+          email,
+          calculatedMonthlyRevenue: analysis.metrics.monthlyRevenue.toString(),
+          calculatedAvgBalance: analysis.metrics.avgBalance.toString(),
+          negativeDaysCount: analysis.metrics.negativeDays,
+          analysisResult: analysis.recommendations,
+          plaidItemId: tokenResponse.item_id
+        });
+
+        // G. Return results to frontend
+        res.json({
+          type: 'basic_analysis',
+          ...analysis
+        });
+      }
 
     } catch (error) {
       console.error("Plaid Exchange Error:", error);
