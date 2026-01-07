@@ -320,19 +320,6 @@ export class PlaidService {
     const response = await plaidClient.assetReportCreate({
       access_tokens: [accessToken],
       days_requested: daysRequested,
-      options: {
-        client_report_id: `tcg_${Date.now()}`,
-        webhook: undefined,
-        user: {
-          client_user_id: `user_${Date.now()}`,
-          first_name: '',
-          middle_name: '',
-          last_name: '',
-          ssn: '',
-          phone_number: '',
-          email: '',
-        }
-      }
     });
     
     return {
