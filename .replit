@@ -40,7 +40,7 @@ args = "npm run dev"
 waitForPort = 5000
 
 [agent]
-integrations = ["javascript_mem_db:1.0.0", "javascript_openai_ai_integrations:1.0.0", "google-mail:1.0.0"]
+integrations = ["javascript_mem_db:1.0.0", "javascript_openai_ai_integrations:1.0.0", "google-mail:1.0.0", "google-sheet:1.0.0"]
 
 [objectStorage]
 defaultBucketID = "replit-objstore-e30ea7af-1167-43fe-aaea-ad41f28adbba"

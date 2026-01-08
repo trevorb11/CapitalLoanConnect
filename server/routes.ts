@@ -12,6 +12,7 @@ import { plaidService } from "./services/plaid";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
+import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
@@ -2697,7 +2698,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // APPROVAL EMAIL SCANNING ROUTES
   // ========================================
 
-  // Check Gmail connection status (admin only)
+  // Check Google Sheets connection status (admin only)
   app.get("/api/approvals/gmail-status", async (req, res) => {
     const user = (req.session as any)?.user;
     if (!user?.isAuthenticated) {
@@ -2708,10 +2709,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
-      const isConfigured = await gmailService.isConfigured();
-      res.json({ connected: isConfigured });
+      // Now checking Google Sheets connection instead of Gmail
+      const isConfigured = await googleSheetsService.isConfigured();
+      res.json({ connected: isConfigured, source: "google_sheets" });
     } catch (error) {
-      res.json({ connected: false, error: "Failed to check Gmail status" });
+      res.json({ connected: false, error: "Failed to check Google Sheets status" });
     }
   });
 
@@ -2790,7 +2792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Manual scan trigger - scan for approval emails (admin only)
+  // Manual scan trigger - sync approvals from Google Sheets (admin only)
   app.post("/api/approvals/scan", async (req, res) => {
     const user = (req.session as any)?.user;
     if (!user?.isAuthenticated) {
@@ -2801,106 +2803,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
-      const hoursBack = req.body.hoursBack || 24;
+      console.log(`[APPROVAL SYNC] Starting sync from Google Sheets...`);
       
-      console.log(`[APPROVAL SCAN] Starting manual scan for emails from last ${hoursBack} hours...`);
-      
-      // Check if Gmail is configured
-      const isGmailConfigured = await gmailService.isConfigured();
-      if (!isGmailConfigured) {
-        return res.status(400).json({ error: "Gmail is not connected. Please connect your Gmail account first." });
+      // Check if Google Sheets is configured
+      const isSheetsConfigured = await googleSheetsService.isConfigured();
+      if (!isSheetsConfigured) {
+        return res.status(400).json({ error: "Google Sheets is not connected. Please connect your Google Sheets account first." });
       }
       
-      // Check if OpenAI is configured
-      if (!isOpenAIConfigured()) {
-        return res.status(400).json({ error: "OpenAI is not configured. AI analysis is required to parse approval emails." });
-      }
-      
-      // Fetch recent emails
-      const emails = await gmailService.fetchRecentEmails(hoursBack, 50);
-      console.log(`[APPROVAL SCAN] Fetched ${emails.length} potential approval emails`);
+      // Fetch approvals from Google Sheets
+      const sheetApprovals = await googleSheetsService.fetchApprovals();
+      console.log(`[APPROVAL SYNC] Fetched ${sheetApprovals.length} approvals from Google Sheets`);
       
       const results = {
-        scanned: emails.length,
+        scanned: sheetApprovals.length,
         newApprovals: 0,
+        updated: 0,
         skipped: 0,
         errors: 0,
         approvals: [] as any[]
       };
       
-      for (const email of emails) {
+      for (const row of sheetApprovals) {
         try {
-          // Check if we've already processed this email
-          const existing = await storage.getLenderApprovalByEmailId(email.id);
+          // Check if we've already processed this row (using rowId as emailId for deduplication)
+          const existing = await storage.getLenderApprovalByEmailId(row.rowId);
+          
           if (existing) {
-            console.log(`[APPROVAL SCAN] Skipping already processed email: ${email.subject}`);
-            results.skipped++;
-            continue;
-          }
-          
-          // Pre-filter: Check if likely an approval
-          if (!gmailService.isLikelyApprovalEmail(email)) {
-            console.log(`[APPROVAL SCAN] Skipping unlikely approval email: ${email.subject}`);
-            results.skipped++;
-            continue;
-          }
-          
-          // Parse with AI
-          console.log(`[APPROVAL SCAN] Parsing email: ${email.subject}`);
-          const parsed = await parseApprovalEmail(email.subject, email.body, email.from);
-          
-          if (parsed.isApproval && parsed.confidence >= 60) {
-            // Create approval record
-            const approval = await storage.createLenderApproval({
-              businessName: parsed.businessName || "Unknown Business",
-              businessEmail: parsed.businessEmail,
-              lenderName: parsed.lenderName || "Unknown Lender",
-              lenderEmail: email.from,
-              approvedAmount: parsed.approvedAmount?.toString() || null,
-              termLength: parsed.termLength,
-              factorRate: parsed.factorRate,
-              paybackAmount: parsed.paybackAmount?.toString() || null,
-              paymentFrequency: parsed.paymentFrequency,
-              paymentAmount: parsed.paymentAmount?.toString() || null,
-              interestRate: parsed.interestRate,
-              productType: parsed.productType,
-              status: "pending",
-              expirationDate: parsed.expirationDate,
-              conditions: parsed.conditions,
-              notes: parsed.notes,
-              emailId: email.id,
-              emailSubject: email.subject,
-              emailReceivedAt: email.date,
-              rawEmailContent: email.body.substring(0, 5000) // Limit storage size
-            });
+            // Update existing record if data changed
+            const updates: any = {};
+            if (row.approvedAmount && row.approvedAmount !== existing.approvedAmount?.toString()) {
+              updates.approvedAmount = googleSheetsService.parseAmount(row.approvedAmount);
+            }
+            if (row.status && row.status !== existing.status) {
+              updates.status = row.status.toLowerCase();
+            }
+            if (row.termLength && row.termLength !== existing.termLength) {
+              updates.termLength = row.termLength;
+            }
+            if (row.factorRate && row.factorRate !== existing.factorRate) {
+              updates.factorRate = row.factorRate;
+            }
+            if (row.notes && row.notes !== existing.notes) {
+              updates.notes = row.notes;
+            }
             
-            console.log(`[APPROVAL SCAN] Created approval: ${approval.businessName} - $${approval.approvedAmount} from ${approval.lenderName}`);
-            results.newApprovals++;
-            results.approvals.push({
-              id: approval.id,
-              businessName: approval.businessName,
-              lenderName: approval.lenderName,
-              approvedAmount: approval.approvedAmount,
-              confidence: parsed.confidence
-            });
-          } else {
-            console.log(`[APPROVAL SCAN] Email not a high-confidence approval (confidence: ${parsed.confidence}): ${email.subject}`);
-            results.skipped++;
+            if (Object.keys(updates).length > 0) {
+              await storage.updateLenderApproval(existing.id, updates);
+              console.log(`[APPROVAL SYNC] Updated approval: ${row.businessName}`);
+              results.updated++;
+            } else {
+              results.skipped++;
+            }
+            continue;
           }
           
-        } catch (emailError) {
-          console.error(`[APPROVAL SCAN] Error processing email ${email.id}:`, emailError);
+          // Create new approval record
+          const approval = await storage.createLenderApproval({
+            businessName: row.businessName,
+            businessEmail: row.businessEmail || null,
+            lenderName: row.lenderName,
+            lenderEmail: row.lenderEmail || null,
+            approvedAmount: googleSheetsService.parseAmount(row.approvedAmount),
+            termLength: row.termLength || null,
+            factorRate: row.factorRate || null,
+            paybackAmount: googleSheetsService.parseAmount(row.paybackAmount),
+            paymentFrequency: row.paymentFrequency || null,
+            paymentAmount: googleSheetsService.parseAmount(row.paymentAmount),
+            interestRate: row.interestRate || null,
+            productType: row.productType || null,
+            status: row.status?.toLowerCase() || "pending",
+            expirationDate: row.expirationDate || null,
+            conditions: row.conditions || null,
+            notes: row.notes || null,
+            emailId: row.rowId, // Use rowId for deduplication
+            emailSubject: `Google Sheets Import - Row ${row.rowId}`,
+            emailReceivedAt: googleSheetsService.parseDate(row.dateReceived) || new Date(),
+            rawEmailContent: null
+          });
+          
+          console.log(`[APPROVAL SYNC] Created approval: ${approval.businessName} - $${approval.approvedAmount} from ${approval.lenderName}`);
+          results.newApprovals++;
+          results.approvals.push({
+            id: approval.id,
+            businessName: approval.businessName,
+            lenderName: approval.lenderName,
+            approvedAmount: approval.approvedAmount
+          });
+          
+        } catch (rowError) {
+          console.error(`[APPROVAL SYNC] Error processing row ${row.rowId}:`, rowError);
           results.errors++;
         }
       }
       
-      console.log(`[APPROVAL SCAN] Complete. New approvals: ${results.newApprovals}, Skipped: ${results.skipped}, Errors: ${results.errors}`);
+      console.log(`[APPROVAL SYNC] Complete. New: ${results.newApprovals}, Updated: ${results.updated}, Skipped: ${results.skipped}, Errors: ${results.errors}`);
       
       res.json(results);
       
     } catch (error) {
-      console.error("[APPROVAL SCAN] Error during scan:", error);
-      res.status(500).json({ error: "Failed to scan for approvals" });
+      console.error("[APPROVAL SYNC] Error during sync:", error);
+      res.status(500).json({ error: "Failed to sync approvals from Google Sheets" });
     }
   });
 
@@ -2969,82 +2972,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
 
-  // Schedule hourly approval scans
+  // Schedule hourly approval syncs from Google Sheets
   const SCAN_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
   
-  async function runScheduledScan() {
-    console.log("[SCHEDULED SCAN] Running hourly approval email scan...");
+  async function runScheduledSync() {
+    console.log("[SCHEDULED SYNC] Running hourly Google Sheets approval sync...");
     
     try {
-      const isGmailConfigured = await gmailService.isConfigured();
-      if (!isGmailConfigured) {
-        console.log("[SCHEDULED SCAN] Gmail not configured, skipping scan");
+      const isSheetsConfigured = await googleSheetsService.isConfigured();
+      if (!isSheetsConfigured) {
+        console.log("[SCHEDULED SYNC] Google Sheets not configured, skipping sync");
         return;
       }
       
-      if (!isOpenAIConfigured()) {
-        console.log("[SCHEDULED SCAN] OpenAI not configured, skipping scan");
-        return;
-      }
-      
-      // Fetch emails from last 2 hours (with some overlap for safety)
-      const emails = await gmailService.fetchRecentEmails(2, 30);
-      console.log(`[SCHEDULED SCAN] Found ${emails.length} potential emails`);
+      // Fetch all approvals from Google Sheets
+      const sheetApprovals = await googleSheetsService.fetchApprovals();
+      console.log(`[SCHEDULED SYNC] Found ${sheetApprovals.length} approvals in sheet`);
       
       let newApprovals = 0;
+      let updatedApprovals = 0;
       
-      for (const email of emails) {
+      for (const row of sheetApprovals) {
         try {
           // Check if already processed
-          const existing = await storage.getLenderApprovalByEmailId(email.id);
-          if (existing) continue;
+          const existing = await storage.getLenderApprovalByEmailId(row.rowId);
           
-          // Pre-filter
-          if (!gmailService.isLikelyApprovalEmail(email)) continue;
-          
-          // Parse with AI
-          const parsed = await parseApprovalEmail(email.subject, email.body, email.from);
-          
-          if (parsed.isApproval && parsed.confidence >= 60) {
-            await storage.createLenderApproval({
-              businessName: parsed.businessName || "Unknown Business",
-              businessEmail: parsed.businessEmail,
-              lenderName: parsed.lenderName || "Unknown Lender",
-              lenderEmail: email.from,
-              approvedAmount: parsed.approvedAmount?.toString() || null,
-              termLength: parsed.termLength,
-              factorRate: parsed.factorRate,
-              paybackAmount: parsed.paybackAmount?.toString() || null,
-              paymentFrequency: parsed.paymentFrequency,
-              paymentAmount: parsed.paymentAmount?.toString() || null,
-              interestRate: parsed.interestRate,
-              productType: parsed.productType,
-              status: "pending",
-              expirationDate: parsed.expirationDate,
-              conditions: parsed.conditions,
-              notes: parsed.notes,
-              emailId: email.id,
-              emailSubject: email.subject,
-              emailReceivedAt: email.date,
-              rawEmailContent: email.body.substring(0, 5000)
-            });
-            newApprovals++;
+          if (existing) {
+            // Check if any data has changed and update if needed
+            const updates: any = {};
+            if (row.approvedAmount && row.approvedAmount !== existing.approvedAmount?.toString()) {
+              updates.approvedAmount = googleSheetsService.parseAmount(row.approvedAmount);
+            }
+            if (row.status && row.status.toLowerCase() !== existing.status) {
+              updates.status = row.status.toLowerCase();
+            }
+            
+            if (Object.keys(updates).length > 0) {
+              await storage.updateLenderApproval(existing.id, updates);
+              updatedApprovals++;
+            }
+            continue;
           }
-        } catch (emailError) {
-          console.error(`[SCHEDULED SCAN] Error processing email:`, emailError);
+          
+          // Create new approval
+          await storage.createLenderApproval({
+            businessName: row.businessName,
+            businessEmail: row.businessEmail || null,
+            lenderName: row.lenderName,
+            lenderEmail: row.lenderEmail || null,
+            approvedAmount: googleSheetsService.parseAmount(row.approvedAmount),
+            termLength: row.termLength || null,
+            factorRate: row.factorRate || null,
+            paybackAmount: googleSheetsService.parseAmount(row.paybackAmount),
+            paymentFrequency: row.paymentFrequency || null,
+            paymentAmount: googleSheetsService.parseAmount(row.paymentAmount),
+            interestRate: row.interestRate || null,
+            productType: row.productType || null,
+            status: row.status?.toLowerCase() || "pending",
+            expirationDate: row.expirationDate || null,
+            conditions: row.conditions || null,
+            notes: row.notes || null,
+            emailId: row.rowId,
+            emailSubject: `Google Sheets Import - Row ${row.rowId}`,
+            emailReceivedAt: googleSheetsService.parseDate(row.dateReceived) || new Date(),
+            rawEmailContent: null
+          });
+          newApprovals++;
+        } catch (rowError) {
+          console.error(`[SCHEDULED SYNC] Error processing row:`, rowError);
         }
       }
       
-      console.log(`[SCHEDULED SCAN] Complete. New approvals found: ${newApprovals}`);
+      console.log(`[SCHEDULED SYNC] Complete. New: ${newApprovals}, Updated: ${updatedApprovals}`);
       
     } catch (error) {
-      console.error("[SCHEDULED SCAN] Error during scheduled scan:", error);
+      console.error("[SCHEDULED SYNC] Error during scheduled sync:", error);
     }
   }
   
-  // Start the scheduled scan (runs every hour)
-  setInterval(runScheduledScan, SCAN_INTERVAL_MS);
-  console.log("[STARTUP] Hourly approval email scan scheduled");
+  // Start the scheduled sync (runs every hour)
+  setInterval(runScheduledSync, SCAN_INTERVAL_MS);
+  console.log("[STARTUP] Hourly Google Sheets approval sync scheduled");
 
   return httpServer;
 }

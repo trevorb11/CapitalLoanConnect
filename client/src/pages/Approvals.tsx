@@ -20,7 +20,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
-  Mail,
+  FileSpreadsheet,
   RefreshCw,
   Building2,
   Landmark,
@@ -213,7 +213,7 @@ function ApprovalCard({
       
       {approval.emailSubject && (
         <div className="mt-3 pt-3 border-t text-xs text-muted-foreground flex items-center gap-1">
-          <Mail className="w-3 h-3" />
+          <FileSpreadsheet className="w-3 h-3" />
           {approval.emailSubject}
         </div>
       )}
@@ -255,9 +255,9 @@ function GroupedApprovals({
   if (sortedKeys.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
-        <Mail className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 opacity-50" />
         <p>No approvals found</p>
-        <p className="text-sm">Click "Scan for Approvals" to check your email</p>
+        <p className="text-sm">Click "Sync from Sheet" to import approvals from Google Sheets</p>
       </div>
     );
   }
@@ -343,8 +343,8 @@ export default function Approvals() {
     checkAuth();
   }, [setLocation]);
   
-  // Fetch Gmail status - only after auth is confirmed
-  const { data: gmailStatus, error: gmailError } = useQuery<{ connected: boolean }>({
+  // Fetch Google Sheets status - only after auth is confirmed
+  const { data: sheetsStatus, error: sheetsError } = useQuery<{ connected: boolean; source?: string }>({
     queryKey: ["/api/approvals/gmail-status"],
     retry: false,
     enabled: isAuthenticated,
@@ -386,7 +386,7 @@ export default function Approvals() {
       
       toast({
         title: "Scan Complete",
-        description: `Scanned ${data.scanned} emails. Found ${data.newApprovals} new approval${data.newApprovals !== 1 ? "s" : ""}.`
+        description: `Synced ${data.scanned} rows from sheet. Found ${data.newApprovals} new approval${data.newApprovals !== 1 ? "s" : ""}.`
       });
     },
     onError: (error: any) => {
@@ -418,14 +418,14 @@ export default function Approvals() {
 
   // Check for 403 errors (non-admin access)
   useEffect(() => {
-    const errors = [gmailError, statsError, businessError, lenderError];
+    const errors = [sheetsError, statsError, businessError, lenderError];
     for (const error of errors) {
       if (error && (error as any).message?.includes("403")) {
         setAccessDenied(true);
         break;
       }
     }
-  }, [gmailError, statsError, businessError, lenderError]);
+  }, [sheetsError, statsError, businessError, lenderError]);
   
   const handleStatusChange = (id: string, status: string) => {
     updateStatusMutation.mutate({ id, status });
@@ -483,47 +483,35 @@ export default function Approvals() {
                 Lender Approvals
               </h1>
               <p className="text-muted-foreground">
-                Track funding approvals from lender emails
+                Track funding approvals from Google Sheets
               </p>
             </div>
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-            {gmailStatus?.connected ? (
+            {sheetsStatus?.connected ? (
               <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 flex items-center gap-1">
-                <Mail className="w-3 h-3" />
-                Gmail Connected
+                <FileSpreadsheet className="w-3 h-3" />
+                Google Sheets Connected
               </Badge>
             ) : (
               <Badge variant="secondary" className="flex items-center gap-1">
-                <Mail className="w-3 h-3" />
-                Gmail Not Connected
+                <FileSpreadsheet className="w-3 h-3" />
+                Google Sheets Not Connected
               </Badge>
             )}
             
             {lastScanTime && (
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <History className="w-3 h-3" />
-                Last scan: {lastScanTime.toLocaleTimeString()}
+                Last sync: {lastScanTime.toLocaleTimeString()}
               </div>
             )}
             
             <div className="flex items-center gap-2 ml-auto">
-              <Select value={hoursBack} onValueChange={setHoursBack}>
-                <SelectTrigger className="w-32" data-testid="select-hours">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="6">Last 6 hours</SelectItem>
-                  <SelectItem value="24">Last 24 hours</SelectItem>
-                  <SelectItem value="48">Last 48 hours</SelectItem>
-                  <SelectItem value="168">Last 7 days</SelectItem>
-                </SelectContent>
-              </Select>
-              
               <Button 
                 onClick={handleScan}
-                disabled={scanMutation.isPending || !gmailStatus?.connected}
+                disabled={scanMutation.isPending || !sheetsStatus?.connected}
                 className="flex items-center gap-2"
                 data-testid="button-scan"
               >
@@ -532,7 +520,7 @@ export default function Approvals() {
                 ) : (
                   <RefreshCw className="w-4 h-4" />
                 )}
-                Scan for Approvals
+                Sync from Sheet
               </Button>
             </div>
           </div>
@@ -544,8 +532,8 @@ export default function Approvals() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <Mail className="w-5 h-5 text-blue-600" />
+                  <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-900">
+                    <FileSpreadsheet className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
                     <div className="text-2xl font-bold" data-testid="text-total-approvals">
