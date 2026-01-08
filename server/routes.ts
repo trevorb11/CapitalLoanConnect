@@ -2700,6 +2700,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Check Gmail connection status (admin only)
   app.get("/api/approvals/gmail-status", async (req, res) => {
     const session = req.session as any;
+    console.log("[APPROVALS DEBUG] Session:", JSON.stringify({ isAuthenticated: session?.isAuthenticated, role: session?.role, sessionID: req.sessionID }));
     if (!session?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
