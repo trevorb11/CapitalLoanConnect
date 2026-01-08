@@ -2699,12 +2699,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Check Gmail connection status (admin only)
   app.get("/api/approvals/gmail-status", async (req, res) => {
-    const session = req.session as any;
-    console.log("[APPROVALS DEBUG] Session:", JSON.stringify({ isAuthenticated: session?.isAuthenticated, role: session?.role, sessionID: req.sessionID }));
-    if (!session?.isAuthenticated) {
+    const user = (req.session as any)?.user;
+    if (!user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    if (session.role !== "admin") {
+    if (user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -2718,11 +2717,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get all approvals (admin only)
   app.get("/api/approvals", async (req, res) => {
-    const session = req.session as any;
-    if (!session?.isAuthenticated) {
+    const user = (req.session as any)?.user;
+    if (!user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    if (session.role !== "admin") {
+    if (user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -2737,11 +2736,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get approvals grouped by business (admin only)
   app.get("/api/approvals/by-business", async (req, res) => {
-    const session = req.session as any;
-    if (!session?.isAuthenticated) {
+    const user = (req.session as any)?.user;
+    if (!user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    if (session.role !== "admin") {
+    if (user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -2765,11 +2764,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get approvals grouped by lender (admin only)
   app.get("/api/approvals/by-lender", async (req, res) => {
-    const session = req.session as any;
-    if (!session?.isAuthenticated) {
+    const user = (req.session as any)?.user;
+    if (!user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    if (session.role !== "admin") {
+    if (user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -2793,11 +2792,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Manual scan trigger - scan for approval emails (admin only)
   app.post("/api/approvals/scan", async (req, res) => {
-    const session = req.session as any;
-    if (!session?.isAuthenticated) {
+    const user = (req.session as any)?.user;
+    if (!user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    if (session.role !== "admin") {
+    if (user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -2907,11 +2906,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update approval status (admin only)
   app.patch("/api/approvals/:id", async (req, res) => {
-    const session = req.session as any;
-    if (!session?.isAuthenticated) {
+    const user = (req.session as any)?.user;
+    if (!user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    if (session.role !== "admin") {
+    if (user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
@@ -2933,11 +2932,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get approval statistics (admin only)
   app.get("/api/approvals/stats", async (req, res) => {
-    const session = req.session as any;
-    if (!session?.isAuthenticated) {
+    const user = (req.session as any)?.user;
+    if (!user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    if (session.role !== "admin") {
+    if (user.role !== "admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
 
