@@ -306,6 +306,11 @@ function GroupedApprovals({
   );
 }
 
+interface AuthState {
+  isAuthenticated: boolean;
+  role?: 'admin' | 'agent';
+}
+
 export default function Approvals() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -313,29 +318,57 @@ export default function Approvals() {
   const [accessDenied, setAccessDenied] = useState(false);
   const [hoursBack, setHoursBack] = useState("24");
   const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check authentication first
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const res = await fetch("/api/auth/check", { credentials: "include" });
+        const data: AuthState = await res.json();
+        if (data.isAuthenticated && data.role === "admin") {
+          setIsAuthenticated(true);
+        } else if (data.isAuthenticated && data.role !== "admin") {
+          setAccessDenied(true);
+        } else {
+          setLocation("/dashboard");
+        }
+      } catch {
+        setLocation("/dashboard");
+      } finally {
+        setAuthChecked(true);
+      }
+    }
+    checkAuth();
+  }, [setLocation]);
   
-  // Fetch Gmail status
+  // Fetch Gmail status - only after auth is confirmed
   const { data: gmailStatus, error: gmailError } = useQuery<{ connected: boolean }>({
     queryKey: ["/api/approvals/gmail-status"],
     retry: false,
+    enabled: isAuthenticated,
   });
   
   // Fetch stats
   const { data: stats, error: statsError } = useQuery<ApprovalStats>({
     queryKey: ["/api/approvals/stats"],
     retry: false,
+    enabled: isAuthenticated,
   });
   
   // Fetch approvals by business
   const { data: byBusiness, isLoading: loadingBusiness, error: businessError } = useQuery<Record<string, LenderApproval[]>>({
     queryKey: ["/api/approvals/by-business"],
     retry: false,
+    enabled: isAuthenticated,
   });
   
   // Fetch approvals by lender
   const { data: byLender, isLoading: loadingLender, error: lenderError } = useQuery<Record<string, LenderApproval[]>>({
     queryKey: ["/api/approvals/by-lender"],
     retry: false,
+    enabled: isAuthenticated,
   });
 
   // Check for 403 errors (non-admin access)
@@ -348,6 +381,15 @@ export default function Approvals() {
       }
     }
   }, [gmailError, statsError, businessError, lenderError]);
+
+  // Show loading while checking auth
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   // Access denied view
   if (accessDenied) {
