@@ -371,45 +371,7 @@ export default function Approvals() {
     enabled: isAuthenticated,
   });
 
-  // Check for 403 errors (non-admin access)
-  useEffect(() => {
-    const errors = [gmailError, statsError, businessError, lenderError];
-    for (const error of errors) {
-      if (error && (error as any).message?.includes("403")) {
-        setAccessDenied(true);
-        break;
-      }
-    }
-  }, [gmailError, statsError, businessError, lenderError]);
-
-  // Show loading while checking auth
-  if (!authChecked) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  // Access denied view
-  if (accessDenied) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-8 text-center">
-          <ShieldAlert className="w-16 h-16 mx-auto text-red-500 dark:text-red-400 mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
-          <p className="text-muted-foreground mb-6">
-            This page is only accessible to administrators. Please contact your admin if you need access.
-          </p>
-          <Button onClick={() => setLocation("/dashboard")} data-testid="button-back-dashboard">
-            Return to Dashboard
-          </Button>
-        </Card>
-      </div>
-    );
-  }
-  
-  // Scan mutation
+  // Scan mutation - must be before any conditional returns
   const scanMutation = useMutation({
     mutationFn: async (hours: number) => {
       const res = await apiRequest("POST", "/api/approvals/scan", { hoursBack: hours });
@@ -453,6 +415,17 @@ export default function Approvals() {
       });
     }
   });
+
+  // Check for 403 errors (non-admin access)
+  useEffect(() => {
+    const errors = [gmailError, statsError, businessError, lenderError];
+    for (const error of errors) {
+      if (error && (error as any).message?.includes("403")) {
+        setAccessDenied(true);
+        break;
+      }
+    }
+  }, [gmailError, statsError, businessError, lenderError]);
   
   const handleStatusChange = (id: string, status: string) => {
     updateStatusMutation.mutate({ id, status });
@@ -463,6 +436,33 @@ export default function Approvals() {
   };
   
   const isLoading = loadingBusiness || loadingLender;
+
+  // Show loading while checking auth
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Access denied view
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-8 text-center">
+          <ShieldAlert className="w-16 h-16 mx-auto text-red-500 dark:text-red-400 mb-4" />
+          <h1 className="text-2xl font-bold mb-2">Access Denied</h1>
+          <p className="text-muted-foreground mb-6">
+            This page is only accessible to administrators. Please contact your admin if you need access.
+          </p>
+          <Button onClick={() => setLocation("/dashboard")} data-testid="button-back-dashboard">
+            Return to Dashboard
+          </Button>
+        </Card>
+      </div>
+    );
+  }
   
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
