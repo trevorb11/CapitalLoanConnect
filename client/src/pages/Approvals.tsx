@@ -35,8 +35,10 @@ import {
   CalendarClock,
   ShieldAlert,
   ArrowLeft,
-  History
+  History,
+  Search
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 interface LenderApproval {
   id: string;
@@ -311,6 +313,31 @@ interface AuthState {
   role?: 'admin' | 'agent';
 }
 
+function filterGroupedApprovals(
+  grouped: Record<string, LenderApproval[]>,
+  query: string
+): Record<string, LenderApproval[]> {
+  if (!query.trim()) return grouped;
+  
+  const lowerQuery = query.toLowerCase().trim();
+  const filtered: Record<string, LenderApproval[]> = {};
+  
+  for (const [key, approvals] of Object.entries(grouped)) {
+    // Filter approvals that match the search query
+    const matchingApprovals = approvals.filter(approval =>
+      approval.businessName.toLowerCase().includes(lowerQuery) ||
+      approval.lenderName.toLowerCase().includes(lowerQuery)
+    );
+    
+    // Only include groups that have matching approvals
+    if (matchingApprovals.length > 0) {
+      filtered[key] = matchingApprovals;
+    }
+  }
+  
+  return filtered;
+}
+
 export default function Approvals() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -320,6 +347,7 @@ export default function Approvals() {
   const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Check authentication first
   useEffect(() => {
@@ -594,19 +622,32 @@ export default function Approvals() {
         
         {/* Tabs */}
         <Card>
-          <CardHeader className="pb-2">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full max-w-md grid-cols-2">
-                <TabsTrigger value="business" className="flex items-center gap-2" data-testid="tab-business">
-                  <Building2 className="w-4 h-4" />
-                  By Business
-                </TabsTrigger>
-                <TabsTrigger value="lender" className="flex items-center gap-2" data-testid="tab-lender">
-                  <Landmark className="w-4 h-4" />
-                  By Lender
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+          <CardHeader className="pb-2 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="grid w-full max-w-md grid-cols-2">
+                  <TabsTrigger value="business" className="flex items-center gap-2" data-testid="tab-business">
+                    <Building2 className="w-4 h-4" />
+                    By Business
+                  </TabsTrigger>
+                  <TabsTrigger value="lender" className="flex items-center gap-2" data-testid="tab-lender">
+                    <Landmark className="w-4 h-4" />
+                    By Lender
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search business or lender..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-search"
+                />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -617,7 +658,7 @@ export default function Approvals() {
               <>
                 {activeTab === "business" && byBusiness && (
                   <GroupedApprovals
-                    grouped={byBusiness}
+                    grouped={filterGroupedApprovals(byBusiness, searchQuery)}
                     groupKey="business"
                     icon={<Building2 className="w-5 h-5 text-blue-600" />}
                     showBusiness={false}
@@ -627,7 +668,7 @@ export default function Approvals() {
                 )}
                 {activeTab === "lender" && byLender && (
                   <GroupedApprovals
-                    grouped={byLender}
+                    grouped={filterGroupedApprovals(byLender, searchQuery)}
                     groupKey="lender"
                     icon={<Landmark className="w-5 h-5 text-purple-600" />}
                     showBusiness={true}
