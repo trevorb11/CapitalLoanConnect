@@ -908,6 +908,7 @@ function BankStatementsTab() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisTitle, setAnalysisTitle] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: bankConnections, isLoading: connectionsLoading } = useQuery<BankConnection[]>({
     queryKey: ['/api/plaid/all'],
@@ -1078,10 +1079,22 @@ function BankStatementsTab() {
     return acc;
   }, {} as Record<string, BankStatementUpload[]>) || {};
 
+  // Filter connections and uploads by search query
+  const lowerQuery = searchQuery.toLowerCase().trim();
+  const filteredConnections = bankConnections?.filter(conn => 
+    !lowerQuery || conn.businessName.toLowerCase().includes(lowerQuery)
+  ) || [];
+  const filteredUploadsByBusiness = Object.entries(uploadsByBusiness).filter(
+    ([businessName]) => !lowerQuery || businessName.toLowerCase().includes(lowerQuery)
+  );
+
   const isLoading = connectionsLoading || uploadsLoading;
-  const hasConnections = bankConnections && bankConnections.length > 0;
-  const hasUploads = bankUploads && bankUploads.length > 0;
+  const hasConnections = filteredConnections.length > 0;
+  const hasUploads = filteredUploadsByBusiness.length > 0;
   const isEmpty = !hasConnections && !hasUploads;
+
+  // Check if there's any data at all (before search filtering)
+  const hasAnyData = (bankConnections && bankConnections.length > 0) || (bankUploads && bankUploads.length > 0);
 
   if (isLoading) {
     return (
@@ -1094,7 +1107,7 @@ function BankStatementsTab() {
     );
   }
 
-  if (isEmpty) {
+  if (!hasAnyData) {
     return (
       <Card className="p-12" data-testid="card-bank-empty">
         <div className="text-center">
@@ -1111,6 +1124,28 @@ function BankStatementsTab() {
   return (
     <>
       <div className="space-y-6">
+        {/* Search Bar */}
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search by business name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+            data-testid="input-bank-search"
+          />
+        </div>
+
+        {/* No results message */}
+        {isEmpty && searchQuery && (
+          <Card className="p-8" data-testid="card-no-results">
+            <div className="text-center text-muted-foreground">
+              No bank statements match "{searchQuery}"
+            </div>
+          </Card>
+        )}
+
         {/* Plaid Connections Section */}
         {hasConnections && (
           <div>
@@ -1119,7 +1154,7 @@ function BankStatementsTab() {
               Connected Banks
             </h3>
             <div className="space-y-4">
-              {bankConnections.map((connection) => (
+              {filteredConnections.map((connection) => (
                 <Card key={connection.id} className="p-6 hover-elevate" data-testid={`card-bank-connection-${connection.id}`}>
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="flex-1">
@@ -1210,7 +1245,7 @@ function BankStatementsTab() {
               Uploaded Statements
             </h3>
             <div className="space-y-4">
-              {Object.entries(uploadsByBusiness).map(([businessName, uploads]) => (
+              {filteredUploadsByBusiness.map(([businessName, uploads]) => (
                 <Card key={businessName} className="p-6 hover-elevate" data-testid={`card-business-${businessName}`}>
                   {/* Business Header */}
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
