@@ -21,15 +21,7 @@ const OWN_BUSINESS_OPTIONS = [
   "No",
 ];
 
-const MONTHLY_REVENUE_OPTIONS = [
-  "Less than $15,000",
-  "$15,000 – $20,000",
-  "$20,000 – $30,000",
-  "$30,000 – $50,000",
-  "$50,000 – $100,000",
-  "$100,000 – $200,000",
-  "$200,000+",
-];
+// Monthly revenue is now a direct numeric input instead of predefined ranges
 
 const CREDIT_SCORE_OPTIONS = [
   "550 and below",
@@ -69,7 +61,7 @@ interface QuizData {
   ownBusiness: string;
   businessAge: string;
   industry: string;
-  monthlyRevenue: string;
+  monthlyRevenue: number;
   creditScore: string;
   fundingPurpose: string;
   fullName: string;
@@ -121,7 +113,7 @@ export default function QuizIntake() {
     ownBusiness: "",
     businessAge: "",
     industry: "",
-    monthlyRevenue: "",
+    monthlyRevenue: 0,
     creditScore: "",
     fundingPurpose: "",
     fullName: "",
@@ -142,18 +134,6 @@ export default function QuizIntake() {
     initUTMTracking();
   }, []);
 
-  const parseRevenueToNumber = (revenueRange: string): string => {
-    const rangeMap: Record<string, string> = {
-      "Less than $15,000": "7500",
-      "$15,000 – $20,000": "17500",
-      "$20,000 – $30,000": "25000",
-      "$30,000 – $50,000": "40000",
-      "$50,000 – $100,000": "75000",
-      "$100,000 – $200,000": "150000",
-      "$200,000+": "250000",
-    };
-    return rangeMap[revenueRange] || "0";
-  };
 
   const submitMutation = useMutation({
     mutationFn: async (data: QuizData & { recaptchaToken?: string }) => {
@@ -171,8 +151,8 @@ export default function QuizIntake() {
         requestedAmount: data.financingAmount.toString(),
         timeInBusiness: data.businessAge,
         industry: data.industry,
-        monthlyRevenue: parseRevenueToNumber(data.monthlyRevenue),
-        averageMonthlyRevenue: parseRevenueToNumber(data.monthlyRevenue),
+        monthlyRevenue: data.monthlyRevenue.toString(),
+        averageMonthlyRevenue: data.monthlyRevenue.toString(),
         creditScore: data.creditScore,
         personalCreditScoreRange: data.creditScore,
         useOfFunds: data.fundingPurpose,
@@ -192,7 +172,7 @@ export default function QuizIntake() {
         requestedAmount: quizData.financingAmount.toString(),
         creditScore: quizData.creditScore,
         timeInBusiness: quizData.businessAge,
-        monthlyRevenue: quizData.monthlyRevenue,
+        monthlyRevenue: quizData.monthlyRevenue.toString(),
         industry: quizData.industry,
         useOfFunds: quizData.fundingPurpose,
       });
@@ -556,33 +536,41 @@ export default function QuizIntake() {
               <ArrowLeft className="w-5 h-5" />
               <span>Back</span>
             </button>
-            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
+            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-2">
               Gross Monthly Revenue?
             </h3>
+            <p className="text-white/70 mb-8">(Enter your average monthly revenue)</p>
 
-            <div className="flex flex-col gap-3 max-w-md mx-auto text-left max-h-[400px] overflow-y-auto pr-2">
-              {MONTHLY_REVENUE_OPTIONS.map((option, idx) => (
-                <label
-                  key={option}
-                  className={`flex items-center cursor-pointer p-4 rounded-lg transition-all duration-200 ${
-                    quizData.monthlyRevenue === option ? "bg-white/20" : "bg-transparent hover:bg-white/10"
-                  }`}
-                  data-testid={`label-revenue-${idx}`}
-                >
-                  <input
-                    type="radio"
-                    name="monthlyRevenue"
-                    value={option}
-                    checked={quizData.monthlyRevenue === option}
-                    onChange={() => handleRadioSelect("monthlyRevenue", option)}
-                    className="w-5 h-5 mr-4 appearance-none border-2 border-white rounded-full grid place-content-center cursor-pointer
-                      before:content-[''] before:w-2.5 before:h-2.5 before:rounded-full before:scale-0 before:transition-transform before:bg-white
-                      checked:before:scale-100"
-                    data-testid={`radio-revenue-${idx}`}
-                  />
-                  <span className="text-white text-base md:text-lg">{option}</span>
-                </label>
-              ))}
+            <div className="flex flex-col gap-4 max-w-md mx-auto">
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white text-xl font-medium">$</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={quizData.monthlyRevenue > 0 ? quizData.monthlyRevenue.toLocaleString() : ""}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9]/g, "");
+                    const numValue = value ? parseInt(value, 10) : 0;
+                    setQuizData((prev) => ({ ...prev, monthlyRevenue: numValue }));
+                  }}
+                  placeholder="25,000"
+                  className="w-full pl-10 pr-4 py-4 text-xl text-white bg-white/10 border-2 border-white/30 rounded-lg focus:border-white focus:outline-none placeholder:text-white/40"
+                  data-testid="input-monthly-revenue"
+                />
+              </div>
+              
+              <button
+                onClick={nextQuestion}
+                disabled={quizData.monthlyRevenue <= 0}
+                className={`w-full py-4 rounded-lg font-semibold text-lg transition-all duration-200 ${
+                  quizData.monthlyRevenue > 0
+                    ? "bg-white text-[#0a2540] hover:bg-white/90"
+                    : "bg-white/30 text-white/50 cursor-not-allowed"
+                }`}
+                data-testid="button-continue-revenue"
+              >
+                Continue
+              </button>
             </div>
           </div>
         </div>
