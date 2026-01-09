@@ -114,6 +114,7 @@ export default function QuizIntake() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showConsentError, setShowConsentError] = useState(false);
   const [formError, setFormError] = useState("");
+  const [showNotBusinessOwnerMessage, setShowNotBusinessOwnerMessage] = useState(false);
 
   const [quizData, setQuizData] = useState<QuizData>({
     financingAmount: 25000,
@@ -236,6 +237,18 @@ export default function QuizIntake() {
     setTimeout(() => nextQuestion(), 400);
   };
 
+  // Special handler for business ownership question
+  const handleBusinessOwnershipSelect = (value: string) => {
+    setQuizData((prev) => ({ ...prev, ownBusiness: value }));
+    if (value === "No") {
+      // Show the message screen instead of advancing
+      setTimeout(() => setShowNotBusinessOwnerMessage(true), 400);
+    } else {
+      // Advance to next question normally
+      setTimeout(() => nextQuestion(), 400);
+    }
+  };
+
   const handleSubmit = useCallback(async () => {
     setFormError("");
     setShowConsentError(false);
@@ -345,7 +358,7 @@ export default function QuizIntake() {
 
         {/* Question 2: Do you own a business? */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 2 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 2 && !showNotBusinessOwnerMessage ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-2"
         >
           <div className="text-center">
@@ -375,7 +388,7 @@ export default function QuizIntake() {
                     name="ownBusiness"
                     value={option}
                     checked={quizData.ownBusiness === option}
-                    onChange={() => handleRadioSelect("ownBusiness", option)}
+                    onChange={() => handleBusinessOwnershipSelect(option)}
                     className="w-5 h-5 mr-4 appearance-none border-2 border-white rounded-full grid place-content-center cursor-pointer
                       before:content-[''] before:w-2.5 before:h-2.5 before:rounded-full before:scale-0 before:transition-transform before:bg-white
                       checked:before:scale-100"
@@ -384,6 +397,57 @@ export default function QuizIntake() {
                   <span className="text-white text-base md:text-lg">{option}</span>
                 </label>
               ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Not a Business Owner Message */}
+        <div
+          className={`transition-all duration-300 ${currentQuestion === 2 && showNotBusinessOwnerMessage ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="not-business-owner-message"
+        >
+          <div className="text-center">
+            <button
+              onClick={() => {
+                setShowNotBusinessOwnerMessage(false);
+                setQuizData((prev) => ({ ...prev, ownBusiness: "" }));
+              }}
+              className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
+              data-testid="back-button-message"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back</span>
+            </button>
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-white/10 flex items-center justify-center">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-4">
+              Business Financing Only
+            </h3>
+            <p className="text-white/70 mb-8 text-base md:text-lg max-w-md mx-auto">
+              We specialize in business financing solutions. Our products are designed specifically for business owners looking to grow or manage their operations.
+            </p>
+
+            <div className="flex flex-col gap-3 max-w-md mx-auto">
+              <button
+                onClick={() => {
+                  setShowNotBusinessOwnerMessage(false);
+                  nextQuestion();
+                }}
+                className="w-full bg-white text-[#192F56] py-4 px-8 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
+                data-testid="button-continue-anyway"
+              >
+                Continue Anyway
+              </button>
+              <button
+                onClick={() => navigate("/intake")}
+                className="w-full p-4 rounded-lg bg-transparent hover:bg-white/10 border-2 border-white/30 hover:border-white text-white text-lg font-medium transition-all duration-200"
+                data-testid="button-exit-quiz"
+              >
+                Exit
+              </button>
             </div>
           </div>
         </div>

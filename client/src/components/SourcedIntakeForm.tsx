@@ -116,6 +116,7 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showConsentError, setShowConsentError] = useState(false);
   const [formError, setFormError] = useState("");
+  const [showNotBusinessOwnerMessage, setShowNotBusinessOwnerMessage] = useState(false);
 
   const [quizData, setQuizData] = useState<QuizData>({
     financingAmount: 25000,
@@ -132,7 +133,7 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
     faxNumber: "", // Honeypot - should remain empty
   });
 
-  const totalQuestions = 7;
+  const totalQuestions = 8;
   const progress = (currentQuestion / totalQuestions) * 100;
 
   // Track page view on mount
@@ -218,7 +219,7 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
   const nextQuestion = () => {
     if (currentQuestion < totalQuestions) {
       // Track step completion
-      const stepNames = ['Financing Amount', 'Business Age', 'Industry', 'Monthly Revenue', 'Credit Score', 'Funding Purpose', 'Contact Info'];
+      const stepNames = ['Financing Amount', 'Business Ownership', 'Business Age', 'Industry', 'Monthly Revenue', 'Credit Score', 'Funding Purpose', 'Contact Info'];
       trackFormStepCompleted('intake_quiz', currentQuestion, stepNames[currentQuestion - 1]);
       goToQuestion(currentQuestion + 1);
     }
@@ -336,10 +337,79 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
           </div>
         </div>
 
-        {/* Question 2: Business Operating Time */}
+        {/* Question 2: Do you own a business? */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 2 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 2 && !showNotBusinessOwnerMessage ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-2"
+        >
+          <div className="text-center">
+            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
+              Do you currently own a business?
+            </h3>
+
+            <div className="flex flex-col gap-3 max-w-md mx-auto">
+              <button
+                onClick={() => nextQuestion()}
+                className="w-full p-4 rounded-lg bg-transparent hover:bg-white/10 border-2 border-white/30 hover:border-white text-white text-lg font-medium transition-all duration-200"
+                data-testid="button-owns-business-yes"
+              >
+                Yes, I own a business
+              </button>
+              <button
+                onClick={() => setShowNotBusinessOwnerMessage(true)}
+                className="w-full p-4 rounded-lg bg-transparent hover:bg-white/10 border-2 border-white/30 hover:border-white text-white text-lg font-medium transition-all duration-200"
+                data-testid="button-owns-business-no"
+              >
+                No, I don't own a business
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Not a Business Owner Message */}
+        <div
+          className={`transition-all duration-300 ${currentQuestion === 2 && showNotBusinessOwnerMessage ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="not-business-owner-message"
+        >
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-white/10 flex items-center justify-center">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-4">
+              Business Financing Only
+            </h3>
+            <p className="text-white/70 mb-8 text-base md:text-lg max-w-md mx-auto">
+              We specialize in business financing solutions. Our products are designed specifically for business owners looking to grow or manage their operations.
+            </p>
+
+            <div className="flex flex-col gap-3 max-w-md mx-auto">
+              <button
+                onClick={() => {
+                  setShowNotBusinessOwnerMessage(false);
+                  nextQuestion();
+                }}
+                className="w-full bg-white text-[#192F56] py-4 px-8 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
+                data-testid="button-continue-anyway"
+              >
+                Continue Anyway
+              </button>
+              <button
+                onClick={() => navigate("/intake")}
+                className="w-full p-4 rounded-lg bg-transparent hover:bg-white/10 border-2 border-white/30 hover:border-white text-white text-lg font-medium transition-all duration-200"
+                data-testid="button-exit-quiz"
+              >
+                Exit
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Question 3: Business Operating Time */}
+        <div
+          className={`transition-all duration-300 ${currentQuestion === 3 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-3"
         >
           <div className="text-center">
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
@@ -373,10 +443,10 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
           </div>
         </div>
 
-        {/* Question 3: Industry */}
+        {/* Question 4: Industry */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 3 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-3"
+          className={`transition-all duration-300 ${currentQuestion === 4 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-4"
         >
           <div className="text-center">
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
@@ -410,10 +480,10 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
           </div>
         </div>
 
-        {/* Question 4: Monthly Revenue */}
+        {/* Question 5: Monthly Revenue */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 4 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-4"
+          className={`transition-all duration-300 ${currentQuestion === 5 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-5"
         >
           <div className="text-center">
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
@@ -447,10 +517,10 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
           </div>
         </div>
 
-        {/* Question 5: Credit Score */}
+        {/* Question 6: Credit Score */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 5 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-5"
+          className={`transition-all duration-300 ${currentQuestion === 6 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-6"
         >
           <div className="text-center">
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-2">
@@ -485,10 +555,10 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
           </div>
         </div>
 
-        {/* Question 6: Funding Purpose */}
+        {/* Question 7: Funding Purpose */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 6 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-6"
+          className={`transition-all duration-300 ${currentQuestion === 7 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-7"
         >
           <div className="text-center">
             <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
@@ -522,10 +592,10 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
           </div>
         </div>
 
-        {/* Question 7: Contact Info */}
+        {/* Question 8: Contact Info */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 7 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-          data-testid="question-7"
+          className={`transition-all duration-300 ${currentQuestion === 8 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          data-testid="question-8"
         >
           <div className="text-center">
             <h3 className="text-white text-xl md:text-2xl font-semibold mb-2">
