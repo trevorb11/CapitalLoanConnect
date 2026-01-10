@@ -20,7 +20,9 @@ The frontend is built with React and TypeScript, using Vite for bundling. It lev
 
 **Additional Pages:**
 - **/intake**: Marketing landing page promoting financing solutions with hero section (stats), benefits cards, funding options comparison, 4-step process explanation, and CTAs directing users to the quiz form.
-- **/intake/quiz**: Quiz-style 5-step intake form with slider for financing amount, radio selections for business age/revenue/credit score, and contact info. Submits to GHL and redirects to full application page.
+- **/intake/quiz**: Quiz-style 8-step intake form with slider for financing amount, radio selections for business ownership/age/revenue/credit score, and contact info. Submits to GHL and redirects to full application page. Features two branching paths:
+  - **Business Ownership Branch**: If user selects "No" to owning a business, shows a message explaining that only business financing is offered, with "Continue Anyway" or "Exit" options.
+  - **Low Revenue Branch**: If user enters monthly revenue below $12,000, they still complete all questions but after submission see an alternative outcome page explaining the $15,000/month minimum threshold, with helpful resources and a promise to follow up in the future.
 - **/complete-application**: Retargeting landing page for leads who completed the intake form but haven't filled out the full application. Features progress indicator, benefits of completing, FAQ section, testimonials, and multiple CTAs directing to the full application.
 - **/complete-application/:initials**: Agent-specific retargeting page. When agent initials are included (e.g., /complete-application/DL or /complete-application/dl), CTAs redirect to the agent's application page (e.g., /dl) and display "You're working with [Agent Name]" attribution. Supports case-insensitive initials.
 - **/check-status**: Progress tracker page allowing merchants to check their application status by entering email or phone. Displays completion checklist for Intake Form, Full Application, and Bank Statements with action buttons for incomplete items.

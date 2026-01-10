@@ -107,6 +107,11 @@ export default function QuizIntake() {
   const [showConsentError, setShowConsentError] = useState(false);
   const [formError, setFormError] = useState("");
   const [showNotBusinessOwnerMessage, setShowNotBusinessOwnerMessage] = useState(false);
+  const [showLowRevenueOutcome, setShowLowRevenueOutcome] = useState(false);
+
+  // Revenue threshold for the main application flow
+  const LOW_REVENUE_THRESHOLD = 12000;
+  const MINIMUM_REVENUE_REQUIREMENT = 15000;
 
   const [quizData, setQuizData] = useState<QuizData>({
     financingAmount: 25000,
@@ -177,7 +182,10 @@ export default function QuizIntake() {
         useOfFunds: quizData.fundingPurpose,
       });
       
-      if (data.id) {
+      // Check if user is on the low revenue path
+      if (quizData.monthlyRevenue < LOW_REVENUE_THRESHOLD) {
+        setShowLowRevenueOutcome(true);
+      } else if (data.id) {
         navigate(`/?applicationId=${data.id}`);
       } else {
         navigate("/");
@@ -277,18 +285,20 @@ export default function QuizIntake() {
         }}
         data-testid="quiz-container"
       >
-        {/* Progress Bar */}
-        <div className="w-full h-1 bg-white/20 rounded-full mb-8">
-          <div
-            className="h-full bg-white rounded-full transition-all duration-500 ease-out"
-            style={{ width: `${progress}%` }}
-            data-testid="progress-bar"
-          />
-        </div>
+        {/* Progress Bar - hide on outcome screens */}
+        {!showLowRevenueOutcome && (
+          <div className="w-full h-1 bg-white/20 rounded-full mb-8">
+            <div
+              className="h-full bg-white rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${progress}%` }}
+              data-testid="progress-bar"
+            />
+          </div>
+        )}
 
         {/* Question 1: Financing Amount */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 1 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 1 && !showLowRevenueOutcome ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-1"
         >
           <div className="text-center">
@@ -338,7 +348,7 @@ export default function QuizIntake() {
 
         {/* Question 2: Do you own a business? */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 2 && !showNotBusinessOwnerMessage ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 2 && !showNotBusinessOwnerMessage && !showLowRevenueOutcome ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-2"
         >
           <div className="text-center">
@@ -434,7 +444,7 @@ export default function QuizIntake() {
 
         {/* Question 3: Business Operating Time */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 3 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 3 && !showLowRevenueOutcome ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-3"
         >
           <div className="text-center">
@@ -479,7 +489,7 @@ export default function QuizIntake() {
 
         {/* Question 4: Industry */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 4 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 4 && !showLowRevenueOutcome ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-4"
         >
           <div className="text-center">
@@ -524,7 +534,7 @@ export default function QuizIntake() {
 
         {/* Question 5: Monthly Revenue */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 5 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 5 && !showLowRevenueOutcome ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-5"
         >
           <div className="text-center">
@@ -577,7 +587,7 @@ export default function QuizIntake() {
 
         {/* Question 6: Credit Score */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 6 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 6 && !showLowRevenueOutcome ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-6"
         >
           <div className="text-center">
@@ -623,7 +633,7 @@ export default function QuizIntake() {
 
         {/* Question 7: Funding Purpose */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 7 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 7 && !showLowRevenueOutcome ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-7"
         >
           <div className="text-center">
@@ -668,7 +678,7 @@ export default function QuizIntake() {
 
         {/* Question 8: Contact Info */}
         <div
-          className={`transition-all duration-300 ${currentQuestion === 8 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+          className={`transition-all duration-300 ${currentQuestion === 8 && !showLowRevenueOutcome ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
           data-testid="question-8"
         >
           <div className="text-center">
@@ -819,12 +829,110 @@ export default function QuizIntake() {
           </div>
         </div>
 
-        {/* Business Loans Disclaimer */}
-        <div className="mt-8 pt-6 border-t border-white/10">
-          <p className="text-white/50 text-xs text-center">
-            We specialize in business loans and financing only. We do not offer personal loans or consumer financing.
-          </p>
+        {/* Low Revenue Outcome Screen */}
+        <div
+          className={`transition-all duration-300 ${showLowRevenueOutcome ? "block opacity-100" : "hidden opacity-0"}`}
+          data-testid="low-revenue-outcome"
+        >
+          <div className="text-center">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-white/10 flex items-center justify-center">
+              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-4">
+              Thank You for Your Interest!
+            </h3>
+            <p className="text-white/80 mb-4 text-base md:text-lg max-w-md mx-auto leading-relaxed">
+              We appreciate you taking the time to complete our intake form.
+            </p>
+            <p className="text-white/70 mb-6 text-base max-w-md mx-auto leading-relaxed">
+              Our financing programs currently require a minimum of <span className="text-white font-semibold">${MINIMUM_REVENUE_REQUIREMENT.toLocaleString()}/month</span> in revenue. While you don't quite meet this threshold right now, we'd love to stay in touch!
+            </p>
+            
+            <div className="bg-white/10 rounded-xl p-6 max-w-md mx-auto mb-6 text-left">
+              <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-green-400" />
+                What Happens Next
+              </h4>
+              <ul className="text-white/80 space-y-2 text-sm">
+                <li className="flex items-start gap-2">
+                  <span className="text-white/60">1.</span>
+                  <span>We've saved your information for future follow-up</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-white/60">2.</span>
+                  <span>Our team will check in with you periodically to see if your revenue has grown</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-white/60">3.</span>
+                  <span>You'll receive helpful resources to support your business growth</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-white/5 rounded-xl p-6 max-w-md mx-auto mb-8 text-left border border-white/10">
+              <h4 className="text-white font-semibold mb-3">Helpful Resources</h4>
+              <div className="space-y-3">
+                <a 
+                  href="https://www.sba.gov/business-guide" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+                  data-testid="link-sba-resources"
+                >
+                  <span className="text-white font-medium">SBA Business Guide</span>
+                  <p className="text-white/60 text-sm mt-1">Free resources for growing your business</p>
+                </a>
+                <a 
+                  href="https://www.score.org" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+                  data-testid="link-score-mentors"
+                >
+                  <span className="text-white font-medium">SCORE Mentorship</span>
+                  <p className="text-white/60 text-sm mt-1">Free business mentoring and workshops</p>
+                </a>
+                <a 
+                  href="https://www.todaycapitalgroup.com/blog" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+                  data-testid="link-tcg-blog"
+                >
+                  <span className="text-white font-medium">Today Capital Blog</span>
+                  <p className="text-white/60 text-sm mt-1">Tips for business funding and growth</p>
+                </a>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 max-w-md mx-auto">
+              <button
+                onClick={() => navigate("/intake")}
+                className="w-full bg-white text-[#192F56] py-4 px-8 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
+                data-testid="button-back-to-home"
+              >
+                Back to Home
+              </button>
+              <p className="text-white/50 text-sm mt-2">
+                Questions? Contact us at{" "}
+                <a href="mailto:info@todaycapitalgroup.com" className="text-white/70 underline hover:text-white">
+                  info@todaycapitalgroup.com
+                </a>
+              </p>
+            </div>
+          </div>
         </div>
+
+        {/* Business Loans Disclaimer - hide on outcome screens */}
+        {!showLowRevenueOutcome && (
+          <div className="mt-8 pt-6 border-t border-white/10">
+            <p className="text-white/50 text-xs text-center">
+              We specialize in business loans and financing only. We do not offer personal loans or consumer financing.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Custom slider styles */}
