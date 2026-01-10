@@ -36,7 +36,8 @@ import {
   ShieldAlert,
   ArrowLeft,
   History,
-  Search
+  Search,
+  ArrowUpDown
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -229,7 +230,8 @@ function GroupedApprovals({
   icon,
   showBusiness,
   showLender,
-  onStatusChange
+  onStatusChange,
+  sortBy = "name"
 }: {
   grouped: Record<string, LenderApproval[]>;
   groupKey: "business" | "lender";
@@ -237,6 +239,7 @@ function GroupedApprovals({
   showBusiness: boolean;
   showLender: boolean;
   onStatusChange: (id: string, status: string) => void;
+  sortBy?: "name" | "date";
 }) {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(Object.keys(grouped)));
   
@@ -252,7 +255,23 @@ function GroupedApprovals({
     });
   };
   
-  const sortedKeys = Object.keys(grouped).sort();
+  // Get the most recent date from a group's approvals
+  const getMostRecentDate = (approvals: LenderApproval[]): Date => {
+    const dates = approvals
+      .map(a => new Date(a.createdAt || a.emailReceivedAt || 0))
+      .filter(d => !isNaN(d.getTime()));
+    return dates.length > 0 ? new Date(Math.max(...dates.map(d => d.getTime()))) : new Date(0);
+  };
+  
+  // Sort keys based on sortBy option
+  const sortedKeys = Object.keys(grouped).sort((a, b) => {
+    if (sortBy === "date") {
+      const dateA = getMostRecentDate(grouped[a]);
+      const dateB = getMostRecentDate(grouped[b]);
+      return dateB.getTime() - dateA.getTime(); // Most recent first
+    }
+    return a.localeCompare(b); // Alphabetical
+  });
   
   if (sortedKeys.length === 0) {
     return (
@@ -348,6 +367,7 @@ export default function Approvals() {
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "date">("name");
 
   // Check authentication first
   useEffect(() => {
@@ -636,16 +656,28 @@ export default function Approvals() {
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Search business or lender..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                  data-testid="input-search"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search business or lender..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                    data-testid="input-search"
+                  />
+                </div>
+                <Select value={sortBy} onValueChange={(value: "name" | "date") => setSortBy(value)}>
+                  <SelectTrigger className="w-[140px]" data-testid="select-sort">
+                    <ArrowUpDown className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">Sort by Name</SelectItem>
+                    <SelectItem value="date">Sort by Date</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </CardHeader>
@@ -664,6 +696,7 @@ export default function Approvals() {
                     showBusiness={false}
                     showLender={true}
                     onStatusChange={handleStatusChange}
+                    sortBy={sortBy}
                   />
                 )}
                 {activeTab === "lender" && byLender && (
@@ -674,6 +707,7 @@ export default function Approvals() {
                     showBusiness={true}
                     showLender={false}
                     onStatusChange={handleStatusChange}
+                    sortBy={sortBy}
                   />
                 )}
               </>
