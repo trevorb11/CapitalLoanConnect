@@ -872,39 +872,20 @@ export default function QuizIntake() {
             </div>
 
             <div className="bg-white/5 rounded-xl p-6 max-w-md mx-auto mb-8 text-left border border-white/10">
-              <h4 className="text-white font-semibold mb-3">Helpful Resources</h4>
-              <div className="space-y-3">
-                <a 
-                  href="https://www.sba.gov/business-guide" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
-                  data-testid="link-sba-resources"
-                >
-                  <span className="text-white font-medium">SBA Business Guide</span>
-                  <p className="text-white/60 text-sm mt-1">Free resources for growing your business</p>
-                </a>
-                <a 
-                  href="https://www.score.org" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
-                  data-testid="link-score-mentors"
-                >
-                  <span className="text-white font-medium">SCORE Mentorship</span>
-                  <p className="text-white/60 text-sm mt-1">Free business mentoring and workshops</p>
-                </a>
-                <a 
-                  href="https://www.todaycapitalgroup.com/blog" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
-                  data-testid="link-tcg-blog"
-                >
-                  <span className="text-white font-medium">Today Capital Blog</span>
-                  <p className="text-white/60 text-sm mt-1">Tips for business funding and growth</p>
-                </a>
-              </div>
+              <h4 className="text-white font-semibold mb-3">Want to See Where You Stand?</h4>
+              <p className="text-white/70 text-sm mb-4">
+                Upload your bank statements to get a detailed breakdown of your funding eligibility and see exactly what factors are affecting your qualification.
+              </p>
+              <button
+                onClick={() => navigate("/funding-check")}
+                className="w-full bg-white/10 hover:bg-white/20 text-white py-3 px-6 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2"
+                data-testid="button-funding-check"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Get Your Funding Analysis
+              </button>
             </div>
 
             <div className="flex flex-col gap-3 max-w-md mx-auto">
