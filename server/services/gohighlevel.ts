@@ -840,7 +840,7 @@ export class GoHighLevelService {
       last_name: lastName,
       submission_date: new Date().toISOString(),
       source: "Partial Application Form",
-      is_complete: application.isComplete ? "Yes" : "No",
+      is_complete: application.isCompleted ? "Yes" : "No",
       current_step: application.currentStep,
       
       // ===== TAGS FOR GHL =====
@@ -922,6 +922,47 @@ export class GoHighLevelService {
       }
     } catch (error) {
       console.error('[GHL] Intake webhook error:', error);
+      // Don't throw - webhooks are nice-to-have, not critical
+    }
+  }
+
+  async sendBankStatementUploadedWebhook(contactInfo: {
+    email: string;
+    businessName?: string | null;
+    phone?: string;
+    firstName?: string;
+    lastName?: string;
+  }): Promise<void> {
+    const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
+    
+    const webhookPayload = {
+      email: contactInfo.email,
+      phone: contactInfo.phone || null,
+      first_name: contactInfo.firstName || null,
+      last_name: contactInfo.lastName || null,
+      company_name: contactInfo.businessName || null,
+      submission_date: new Date().toISOString(),
+      source: "Bank Statement Upload",
+      tags: ["Statements Uploaded"],
+    };
+
+    try {
+      console.log('[GHL] Sending bank statement uploaded webhook to:', APPLICATION_WEBHOOK_URL);
+      console.log('[GHL] Bank statement webhook payload:', JSON.stringify(webhookPayload, null, 2));
+      
+      const response = await fetch(APPLICATION_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload),
+      });
+      
+      if (!response.ok) {
+        console.error('[GHL] Bank statement webhook failed:', response.status, await response.text());
+      } else {
+        console.log('[GHL] Bank statement webhook sent successfully');
+      }
+    } catch (error) {
+      console.error('[GHL] Bank statement webhook error:', error);
       // Don't throw - webhooks are nice-to-have, not critical
     }
   }

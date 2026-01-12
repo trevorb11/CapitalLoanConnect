@@ -1549,14 +1549,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if there's a matching application by email
       let linkedApplicationId = applicationId;
+      let matchingApp: LoanApplication | undefined;
       if (!linkedApplicationId) {
         const applications = await storage.getAllLoanApplications();
-        const matchingApp = applications.find((app: LoanApplication) => app.email === email);
+        matchingApp = applications.find((app: LoanApplication) => app.email === email);
         if (matchingApp) {
           linkedApplicationId = matchingApp.id;
           console.log(`Auto-linked bank statement upload ${upload.id} to application ${matchingApp.id}`);
         }
       }
+
+      // Send webhook to GHL with "Statements Uploaded" tag
+      const nameParts = (matchingApp?.fullName || '').trim().split(' ');
+      ghlService.sendBankStatementUploadedWebhook({
+        email,
+        businessName: businessName || matchingApp?.businessName || matchingApp?.legalBusinessName || undefined,
+        phone: matchingApp?.phone || undefined,
+        firstName: nameParts[0] || undefined,
+        lastName: nameParts.slice(1).join(' ') || undefined,
+      }).catch(err => console.error('[GHL] Bank statement webhook error:', err));
 
       res.json({
         success: true,
