@@ -933,7 +933,7 @@ export class GoHighLevelService {
     firstName?: string;
     lastName?: string;
   }): Promise<void> {
-    const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
+    const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/28d54ee8-b1d3-4087-a71a-41b0e62da8b1';
     
     const webhookPayload = {
       email: contactInfo.email,
@@ -947,10 +947,10 @@ export class GoHighLevelService {
     };
 
     try {
-      console.log('[GHL] Sending bank statement uploaded webhook to:', APPLICATION_WEBHOOK_URL);
+      console.log('[GHL] Sending bank statement uploaded webhook to:', BANK_STATEMENT_WEBHOOK_URL);
       console.log('[GHL] Bank statement webhook payload:', JSON.stringify(webhookPayload, null, 2));
       
-      const response = await fetch(APPLICATION_WEBHOOK_URL, {
+      const response = await fetch(BANK_STATEMENT_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(webhookPayload),
