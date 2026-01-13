@@ -933,7 +933,7 @@ export class GoHighLevelService {
     firstName?: string;
     lastName?: string;
   }): Promise<void> {
-    const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/28d54ee8-b1d3-4087-a71a-41b0e62da8b1';
+    const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/763f2d42-9850-4ed3-acde-9449ef94f9ae';
     
     const webhookPayload = {
       email: contactInfo.email,
