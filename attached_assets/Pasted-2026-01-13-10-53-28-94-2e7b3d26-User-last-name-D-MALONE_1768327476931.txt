@@ -1,0 +1,156 @@
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+"last_name": "D MALONE",
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+"company_name": "CNZ HEATING ",
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+"email": "cnzheating@gmail.com",
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+}
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+"source": "Bank Statement Upload",
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+"tags": [
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+"Statements Uploaded"
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+"submission_date": "2026-01-13T17:53:28.946Z",
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+"phone": "207-538-5186",
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+[GHL] Sending bank statement uploaded webhook to: https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+"first_name": "Jonathan",
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+]
+2026-01-13 10:53:28.94
+2e7b3d26
+User
+5:53:28 PM [express] POST /api/bank-statements/upload 200 in 516ms :: {"success":true,"upload":{"id"…
+2026-01-13 10:53:29.78
+2e7b3d26
+User
+[GHL] Bank statement webhook sent successfully
+2026-01-13 10:53:47.88
+2e7b3d26
+User
+[UPLOAD] ✓ Bank statement uploaded to Object Storage: bank-statements/113514f9-d072-49e9-a67e-441249301ef9-3.pdf
+2026-01-13 10:53:47.88
+2e7b3d26
+User
+[OBJECT STORAGE] Uploaded bank-statements/113514f9-d072-49e9-a67e-441249301ef9-3.pdf (17150 bytes, 22868 base64 chars)
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+[GHL] Bank statement webhook payload: {
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+"company_name": "CNZ HEATING ",
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+"last_name": "D MALONE",
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+}
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+"Statements Uploaded"
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+]
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+"email": "cnzheating@gmail.com",
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+"tags": [
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+Auto-linked bank statement upload aec9c6a0-3166-432a-9a33-1eabf10f0a37 to application cd39bb20-4b0e-40e2-9f5d-0ad245de5b95
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+"source": "Bank Statement Upload",
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+"submission_date": "2026-01-13T17:53:48.084Z",
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+[GHL] Sending bank statement uploaded webhook to: https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+"phone": "207-538-5186",
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+"first_name": "Jonathan",
+2026-01-13 10:53:48.08
+2e7b3d26
+User
+5:53:48 PM [express] POST /api/bank-statements/upload 200 in 407ms :: {"success":true,"upload":{"id"…
+2026-01-13 10:53:48.61
+2e7b3d26
+User
+[GHL] Bank statement webhook sent successfully
+2026-01-13 10:53:53.74
+2e7b3d26
+User
+"businessStartDate": "2026-01-09",
+2026-01-13 10:53:53.74
+2e7b3d26
+User
+[SANITIZE] averageMonthlyRevenue → NULL (empty/undefined)
+2026-01-13 10:53:53.74
+2e7b3d26
+User
+"ownerAddress2": "",
+2026-01-13 10:53:53.74
+2e7b3d26
+User
+[SANITIZE] Processing monthlyRevenue: undefined (type: undefined)
+2026-01-13 10:53:53.74
+2e7b3d26
+User
+"doYouProcessCreditCards": "No",
+2026-01-13 10:53:53.74
+2e7b3d26
+User
+"businessCsz": "Haynesville, ME 04497",
+2026-01-13 10:53:53.74
+2e7b3d26
+User
+[SANITIZE] Input data: {
