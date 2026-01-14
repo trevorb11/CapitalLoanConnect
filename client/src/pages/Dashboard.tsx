@@ -1467,7 +1467,7 @@ function BotAttemptsTab() {
 
 export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial" | "low-revenue">("all");
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>("all");
   const [selectedAppDetails, setSelectedAppDetails] = useState<LoanApplication | null>(null);
   const [selectedAppForStatements, setSelectedAppForStatements] = useState<string | null>(null);
@@ -1636,11 +1636,19 @@ export default function Dashboard() {
             (app.businessName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
             (app.legalBusinessName || "").toLowerCase().includes(searchTerm.toLowerCase());
 
+          // Parse monthly revenue for low-revenue filter
+          const revenueStr = app.monthlyRevenue || app.averageMonthlyRevenue || "0";
+          const revenueValue = typeof revenueStr === 'string' 
+            ? parseFloat(revenueStr.replace(/[$,]/g, ''))
+            : Number(revenueStr);
+          const isLowRevenue = !isNaN(revenueValue) && revenueValue > 0 && revenueValue < 10000;
+
           const matchesFilter =
             filterStatus === "all" ||
             (filterStatus === "intake" && app.isCompleted && !app.isFullApplicationCompleted) ||
             (filterStatus === "full" && app.isFullApplicationCompleted) ||
-            (filterStatus === "partial" && !app.isCompleted && !app.isFullApplicationCompleted);
+            (filterStatus === "partial" && !app.isCompleted && !app.isFullApplicationCompleted) ||
+            (filterStatus === "low-revenue" && isLowRevenue);
 
           // Agent filter (admin only feature)
           const matchesAgentFilter =
@@ -1663,12 +1671,22 @@ export default function Dashboard() {
     a.plaidItemId || (a.email && emailsWithBankData.has(a.email.toLowerCase()))
   ).length || 0;
 
+  // Helper to check if app has low revenue
+  const isAppLowRevenue = (app: LoanApplication) => {
+    const revenueStr = app.monthlyRevenue || app.averageMonthlyRevenue || "0";
+    const revenueValue = typeof revenueStr === 'string' 
+      ? parseFloat(revenueStr.replace(/[$,]/g, ''))
+      : Number(revenueStr);
+    return !isNaN(revenueValue) && revenueValue > 0 && revenueValue < 10000;
+  };
+
   const stats = {
     total: applications?.length || 0,
     intakeOnly: applications?.filter((a) => a.isCompleted && !a.isFullApplicationCompleted).length || 0,
     fullCompleted: applications?.filter((a) => a.isFullApplicationCompleted).length || 0,
     partial: applications?.filter((a) => !a.isCompleted && !a.isFullApplicationCompleted).length || 0,
     bankConnected: appsWithBankData,
+    lowRevenue: applications?.filter(isAppLowRevenue).length || 0,
   };
 
   return (
@@ -1862,6 +1880,15 @@ export default function Dashboard() {
                 data-testid="button-filter-partial"
               >
                 Partial
+              </Button>
+              <Button
+                variant={filterStatus === "low-revenue" ? "default" : "outline"}
+                onClick={() => setFilterStatus("low-revenue")}
+                data-testid="button-filter-low-revenue"
+                className={filterStatus === "low-revenue" ? "bg-amber-600 hover:bg-amber-700" : ""}
+              >
+                <TrendingDown className="w-4 h-4 mr-1" />
+                Low Revenue ({stats.lowRevenue})
               </Button>
               {authData.role === "admin" && uniqueAgentNames.length > 0 && (
                 <Select
