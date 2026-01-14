@@ -872,6 +872,20 @@ export class GoHighLevelService {
   async sendIntakeWebhook(application: Partial<LoanApplication>, pageUrl?: string): Promise<void> {
     const INTAKE_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2a9dd48e-792a-4bdb-8688-fddaf3141ae4';
     
+    // Check monthly revenue - hold off on webhook if below $10,000
+    const monthlyRevenue = application.monthlyRevenue;
+    if (monthlyRevenue) {
+      // Parse revenue value (could be "$15,000", "15000", or number)
+      const revenueValue = typeof monthlyRevenue === 'string' 
+        ? parseFloat(monthlyRevenue.replace(/[$,]/g, ''))
+        : Number(monthlyRevenue);
+      
+      if (!isNaN(revenueValue) && revenueValue < 10000) {
+        console.log(`[GHL] Holding off on intake webhook - monthly revenue ($${revenueValue}) is below $10,000 threshold`);
+        return; // Skip sending webhook
+      }
+    }
+    
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
     const firstName = nameParts[0] || '';
