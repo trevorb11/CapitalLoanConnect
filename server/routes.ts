@@ -584,6 +584,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("[RECAPTCHA] Verified successfully, score:", recaptchaResult.score);
       }
 
+      // Server-side validation for full application completion
+      // Reject submissions with missing required fields when marking as complete
+      if (updates.isFullApplicationCompleted) {
+        // Get existing application to merge with updates for validation
+        const existingApp = await storage.getLoanApplication(id);
+        const mergedData = { ...existingApp, ...updates };
+        
+        // Define required fields for full application completion
+        const requiredFields: { field: string; label: string }[] = [
+          { field: 'fullName', label: 'Full Name' },
+          { field: 'email', label: 'Email' },
+          { field: 'phone', label: 'Phone' },
+          { field: 'dateOfBirth', label: 'Date of Birth' },
+          { field: 'socialSecurityNumber', label: 'Social Security Number' },
+          { field: 'legalBusinessName', label: 'Legal Business Name' },
+          { field: 'ein', label: 'EIN' },
+          { field: 'businessStartDate', label: 'Business Start Date' },
+          { field: 'stateOfIncorporation', label: 'State of Incorporation' },
+          { field: 'ownership', label: 'Ownership Percentage' },
+        ];
+        
+        // Check for business address (could be in businessStreetAddress or businessAddress)
+        const hasBusinessAddress = mergedData.businessStreetAddress || mergedData.businessAddress;
+        const hasBusinessCity = mergedData.city;
+        const hasBusinessState = mergedData.state;
+        const hasBusinessZip = mergedData.zipCode;
+        
+        // Check for owner address
+        const hasOwnerAddress = mergedData.ownerAddress1;
+        const hasOwnerCity = mergedData.ownerCity;
+        const hasOwnerState = mergedData.ownerState;
+        const hasOwnerZip = mergedData.ownerZip;
+        
+        const missingFields: string[] = [];
+        
+        // Check required text fields
+        for (const { field, label } of requiredFields) {
+          const value = (mergedData as any)[field];
+          if (!value || value.toString().trim() === '') {
+            missingFields.push(label);
+          }
+        }
+        
+        // Check SSN format (should be XXX-XX-XXXX with 9 digits)
+        if (mergedData.socialSecurityNumber) {
+          const ssnDigits = mergedData.socialSecurityNumber.replace(/\D/g, '');
+          if (ssnDigits.length !== 9) {
+            missingFields.push('Valid SSN (9 digits required)');
+          }
+        }
+        
+        // Check business address completeness
+        if (!hasBusinessAddress) missingFields.push('Business Street Address');
+        if (!hasBusinessCity) missingFields.push('Business City');
+        if (!hasBusinessState) missingFields.push('Business State');
+        if (!hasBusinessZip) missingFields.push('Business Zip Code');
+        
+        // Check owner address completeness
+        if (!hasOwnerAddress) missingFields.push('Owner Street Address');
+        if (!hasOwnerCity) missingFields.push('Owner City');
+        if (!hasOwnerState) missingFields.push('Owner State');
+        if (!hasOwnerZip) missingFields.push('Owner Zip Code');
+        
+        if (missingFields.length > 0) {
+          console.log(`[VALIDATION] Full application rejected - missing fields: ${missingFields.join(', ')}`);
+          return res.status(400).json({ 
+            error: "Application incomplete. Please fill out all required fields.",
+            missingFields 
+          });
+        }
+        
+        console.log('[VALIDATION] Full application passed server-side validation');
+      }
+
       // Always ensure agent view URL exists for all applications
       if (!updates.agentViewUrl) {
         updates.agentViewUrl = `/agent/application/${id}`;
