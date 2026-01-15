@@ -329,6 +329,126 @@ Respond ONLY with the JSON object.`;
   }
 }
 
+// ========================================
+// NATURAL LANGUAGE COMMAND PARSER (Actions + Search)
+// ========================================
+
+export interface ParsedCommand {
+  intent: 'search' | 'add_note' | 'create_task' | 'add_tag' | 'update_status' | 'navigate' | 'help';
+  // For search intent
+  searchParams?: ParsedContactQuery;
+  // For action intents
+  actionParams?: {
+    noteBody?: string;
+    taskTitle?: string;
+    taskDueDate?: string;
+    tagName?: string;
+    statusValue?: string;
+    targetContactName?: string;
+  };
+  explanation: string;
+  requiresConfirmation: boolean;
+}
+
+/**
+ * Parse a natural language command to determine if it's a search or an action
+ */
+export async function parseRepConsoleCommand(
+  naturalLanguageInput: string,
+  currentContactName?: string
+): Promise<ParsedCommand> {
+  const prompt = `You are a CRM assistant for a sales team. Parse the following natural language input to determine if the user wants to SEARCH for contacts or PERFORM AN ACTION on a contact.
+
+USER INPUT: "${naturalLanguageInput}"
+${currentContactName ? `CURRENT CONTACT BEING VIEWED: "${currentContactName}"` : 'USER IS NOT CURRENTLY VIEWING A SPECIFIC CONTACT'}
+
+INTENTS:
+1. "search" - User wants to find/list contacts (e.g., "show me hot leads", "find John Smith")
+2. "add_note" - User wants to add a note to a contact (e.g., "add a note saying called today", "note: interested in 50k")
+3. "create_task" - User wants to create a task (e.g., "create a follow-up task for tomorrow", "remind me to call in 2 days")
+4. "add_tag" - User wants to tag a contact (e.g., "tag as hot lead", "mark as priority")
+5. "navigate" - User wants to go somewhere (e.g., "go back", "next contact", "open dashboard")
+6. "help" - User needs help (e.g., "what can I do?", "help")
+
+For action intents (add_note, create_task, add_tag), extract the relevant details from the input.
+For search intent, extract search parameters like tags, names, etc.
+
+Respond with a JSON object:
+{
+  "intent": "search" | "add_note" | "create_task" | "add_tag" | "update_status" | "navigate" | "help",
+  "searchParams": { only if intent is "search", include: searchType, tags, query, explanation },
+  "actionParams": {
+    "noteBody": "text of the note if add_note",
+    "taskTitle": "task title if create_task",
+    "taskDueDate": "YYYY-MM-DD if mentioned, or calculate from relative dates like 'tomorrow', 'in 2 days'",
+    "tagName": "tag name if add_tag",
+    "targetContactName": "if user mentions a specific contact name for the action"
+  },
+  "explanation": "Brief explanation of what you understood",
+  "requiresConfirmation": true/false (true for destructive actions or if unclear)
+}
+
+Today's date: ${new Date().toISOString().split('T')[0]}
+
+Respond ONLY with the JSON object.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You parse natural language CRM commands into structured intents. Always respond with valid JSON only."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: 600
+    });
+
+    const content = response.choices[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error("No response from OpenAI");
+    }
+
+    // Strip markdown code blocks if present
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith("```json")) {
+      cleanContent = cleanContent.slice(7);
+    } else if (cleanContent.startsWith("```")) {
+      cleanContent = cleanContent.slice(3);
+    }
+    if (cleanContent.endsWith("```")) {
+      cleanContent = cleanContent.slice(0, -3);
+    }
+    cleanContent = cleanContent.trim();
+
+    const parsed = JSON.parse(cleanContent) as ParsedCommand;
+    
+    return parsed;
+    
+  } catch (error) {
+    console.error("[OPENAI] Command parsing error:", error);
+    
+    // Default to search if parsing fails
+    return {
+      intent: 'search',
+      searchParams: {
+        searchType: 'general',
+        query: naturalLanguageInput,
+        limit: 25,
+        explanation: "Could not parse command - treating as search"
+      },
+      explanation: "Could not parse command - treating as search",
+      requiresConfirmation: false
+    };
+  }
+}
+
 // Approval Email Parser Types
 export interface ParsedApproval {
   isApproval: boolean;

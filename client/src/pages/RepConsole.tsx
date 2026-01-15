@@ -7,6 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -41,6 +45,14 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  Flame,
+  PhoneCall,
+  FileWarning,
+  FileX,
+  UserPlus,
+  List,
+  Plus,
+  StickyNote,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import type {
@@ -1095,6 +1107,460 @@ function SmartSearch({
 }
 
 // ========================================
+// SMART CALL LISTS
+// ========================================
+interface SmartList {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  count: number;
+  priority: number;
+}
+
+const ICON_MAP: Record<string, typeof Flame> = {
+  'Flame': Flame,
+  'PhoneCallback': PhoneCall,
+  'FileWarning': FileWarning,
+  'FileX': FileX,
+  'UserPlus': UserPlus,
+  'CheckCircle': CheckCircle2,
+};
+
+function SmartCallLists({
+  onSelectContact,
+  onContactListUpdate,
+}: {
+  onSelectContact: (contactId: string) => void;
+  onContactListUpdate: (contacts: SmartSearchContact[], currentIndex: number) => void;
+}) {
+  const [selectedList, setSelectedList] = useState<string | null>(null);
+
+  // Fetch available smart lists
+  const listsQuery = useQuery<{ success: boolean; data: { lists: SmartList[] } }>({
+    queryKey: ["/api/rep-console/smart-lists"],
+    queryFn: async () => {
+      const res = await fetch("/api/rep-console/smart-lists", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch lists");
+      return res.json();
+    },
+  });
+
+  // Fetch contacts for selected list
+  const listContactsQuery = useQuery<{ success: boolean; data: { contacts: SmartSearchContact[]; total: number; listName: string } }>({
+    queryKey: ["/api/rep-console/smart-lists", selectedList],
+    queryFn: async () => {
+      const res = await fetch(`/api/rep-console/smart-lists/${selectedList}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch list contacts");
+      return res.json();
+    },
+    enabled: !!selectedList,
+  });
+
+  const handleSelectContact = (contact: SmartSearchContact, index: number) => {
+    if (listContactsQuery.data?.data?.contacts) {
+      onContactListUpdate(listContactsQuery.data.data.contacts, index);
+    }
+    onSelectContact(contact.id);
+  };
+
+  const lists = listsQuery.data?.data?.lists || [];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Click a call list to view contacts. Lists are based on GHL tags.
+        </p>
+      </div>
+
+      {/* List Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {listsQuery.isLoading ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-lg" />
+          ))
+        ) : (
+          lists.map((list) => {
+            const IconComponent = ICON_MAP[list.icon] || List;
+            const isSelected = selectedList === list.id;
+            return (
+              <Card
+                key={list.id}
+                className={`p-3 cursor-pointer transition-all hover-elevate ${
+                  isSelected ? 'ring-2 ring-primary bg-primary/5' : ''
+                }`}
+                onClick={() => setSelectedList(list.id)}
+                data-testid={`card-list-${list.id}`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <IconComponent className={`w-4 h-4 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <span className="font-medium text-sm">{list.name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">{list.description}</span>
+                  <Badge variant={list.count > 0 ? "default" : "secondary"} className="text-xs">
+                    {list.count}
+                  </Badge>
+                </div>
+              </Card>
+            );
+          })
+        )}
+      </div>
+
+      {/* Selected List Contacts */}
+      {selectedList && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-medium">
+              {listContactsQuery.data?.data?.listName || 'Loading...'}
+            </h3>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedList(null)}>
+              <XCircle className="w-4 h-4 mr-1" />
+              Close
+            </Button>
+          </div>
+
+          {listContactsQuery.isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 rounded-lg" />
+              ))}
+            </div>
+          ) : listContactsQuery.data?.data?.contacts.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">
+              No contacts in this list
+            </div>
+          ) : (
+            <ScrollArea className="h-[250px]">
+              <div className="space-y-2">
+                {listContactsQuery.data?.data?.contacts.map((contact, index) => (
+                  <Card
+                    key={contact.id}
+                    className="p-3 hover:bg-muted/50 cursor-pointer transition-colors"
+                    onClick={() => handleSelectContact(contact, index)}
+                    data-testid={`card-list-contact-${index}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <User className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{contact.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {contact.companyName || contact.email || contact.phone}
+                        </p>
+                      </div>
+                      <div className="flex gap-1 flex-wrap justify-end">
+                        {contact.tags.slice(0, 2).map((tag) => (
+                          <Badge key={tag} variant="outline" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========================================
+// QUICK ACTIONS TOOLBAR
+// ========================================
+function QuickActionsToolbar({ 
+  contactId, 
+  contactName,
+  onActionComplete 
+}: { 
+  contactId: string; 
+  contactName: string;
+  onActionComplete: () => void;
+}) {
+  const { toast } = useToast();
+  const [addNoteOpen, setAddNoteOpen] = useState(false);
+  const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [noteBody, setNoteBody] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+
+  // Add note mutation
+  const addNoteMutation = useMutation({
+    mutationFn: async (body: string) => {
+      const res = await fetch(`/api/rep-console/${contactId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ body }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to add note");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Note added", description: "Your note has been saved." });
+      setNoteBody("");
+      setAddNoteOpen(false);
+      onActionComplete();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Create task mutation
+  const createTaskMutation = useMutation({
+    mutationFn: async ({ title, dueDate }: { title: string; dueDate: string }) => {
+      const res = await fetch(`/api/rep-console/${contactId}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ title, dueDate }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to create task");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Task created", description: "Your task has been scheduled." });
+      setTaskTitle("");
+      setTaskDueDate("");
+      setAddTaskOpen(false);
+      onActionComplete();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Natural language command
+  const [commandInput, setCommandInput] = useState("");
+  const [commandResult, setCommandResult] = useState<{
+    intent: string;
+    explanation: string;
+    executed: boolean;
+  } | null>(null);
+
+  const commandMutation = useMutation({
+    mutationFn: async (command: string) => {
+      const res = await fetch("/api/rep-console/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ 
+          command, 
+          contactId, 
+          contactName,
+          execute: true 
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Command failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      const parsed = data.data?.parsed;
+      setCommandResult({
+        intent: parsed?.intent || 'unknown',
+        explanation: parsed?.explanation || '',
+        executed: data.data?.executed || false,
+      });
+      if (data.data?.executed) {
+        toast({ 
+          title: "Action completed", 
+          description: parsed?.explanation || "Command executed successfully" 
+        });
+        setCommandInput("");
+        onActionComplete();
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleCommand = () => {
+    if (commandInput.trim().length < 2) return;
+    commandMutation.mutate(commandInput);
+  };
+
+  return (
+    <Card className="mb-4">
+      <CardContent className="py-3 space-y-3">
+        {/* Natural Language Command Bar */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <MessageCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder='Try: "add note saying called today" or "create follow-up task for tomorrow"'
+              value={commandInput}
+              onChange={(e) => setCommandInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCommand()}
+              className="pl-9"
+              data-testid="input-command"
+            />
+          </div>
+          <Button 
+            onClick={handleCommand}
+            disabled={commandInput.trim().length < 2 || commandMutation.isPending}
+            data-testid="button-execute-command"
+          >
+            {commandMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              "Run"
+            )}
+          </Button>
+        </div>
+
+        {/* Command Result Feedback */}
+        {commandResult && !commandResult.executed && (
+          <Alert>
+            <AlertDescription>
+              <span className="font-medium">Understood:</span> {commandResult.explanation}
+              {commandResult.intent !== 'search' && (
+                <span className="text-muted-foreground ml-2">(needs confirmation)</span>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Quick Action Buttons */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Quick Actions</span>
+          <div className="flex items-center gap-2">
+            {/* Add Note Dialog */}
+            <Dialog open={addNoteOpen} onOpenChange={setAddNoteOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" data-testid="button-add-note">
+                  <StickyNote className="w-4 h-4 mr-1" />
+                  Add Note
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Note for {contactName}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="note-body">Note</Label>
+                    <Textarea
+                      id="note-body"
+                      placeholder="Enter your note..."
+                      value={noteBody}
+                      onChange={(e) => setNoteBody(e.target.value)}
+                      className="min-h-[100px]"
+                      data-testid="textarea-note-body"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setAddNoteOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={() => addNoteMutation.mutate(noteBody)}
+                    disabled={!noteBody.trim() || addNoteMutation.isPending}
+                    data-testid="button-save-note"
+                  >
+                    {addNoteMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                    ) : (
+                      <Plus className="w-4 h-4 mr-1" />
+                    )}
+                    Save Note
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Create Task Dialog */}
+            <Dialog open={addTaskOpen} onOpenChange={setAddTaskOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" data-testid="button-add-task">
+                  <ListTodo className="w-4 h-4 mr-1" />
+                  Create Task
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create Task for {contactName}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="task-title">Task Title</Label>
+                    <Input
+                      id="task-title"
+                      placeholder="e.g., Follow up call"
+                      value={taskTitle}
+                      onChange={(e) => setTaskTitle(e.target.value)}
+                      data-testid="input-task-title"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="task-due">Due Date</Label>
+                    <Input
+                      id="task-due"
+                      type="date"
+                      value={taskDueDate}
+                      onChange={(e) => setTaskDueDate(e.target.value)}
+                      data-testid="input-task-due-date"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setAddTaskOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={() => createTaskMutation.mutate({ title: taskTitle, dueDate: taskDueDate })}
+                    disabled={!taskTitle.trim() || !taskDueDate || createTaskMutation.isPending}
+                    data-testid="button-save-task"
+                  >
+                    {createTaskMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                    ) : (
+                      <Plus className="w-4 h-4 mr-1" />
+                    )}
+                    Create Task
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Quick Call */}
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              data-testid="button-quick-call"
+            >
+              <a href={`tel:${contactId}`}>
+                <PhoneCall className="w-4 h-4 mr-1" />
+                Call
+              </a>
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ========================================
 // MAIN COMPONENT
 // ========================================
 export default function RepConsole() {
@@ -1271,6 +1737,22 @@ export default function RepConsole() {
             </CardContent>
           </Card>
 
+          {/* Call Lists Card */}
+          <Card className="max-w-3xl mx-auto mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <List className="w-5 h-5" />
+                Call Lists
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SmartCallLists
+                onSelectContact={(id) => navigate(`/rep-console/${id}`)}
+                onContactListUpdate={handleContactListUpdate}
+              />
+            </CardContent>
+          </Card>
+
           {/* Simple Search Card */}
           <Card className="max-w-3xl mx-auto mt-6">
             <CardHeader>
@@ -1435,6 +1917,15 @@ export default function RepConsole() {
 
         {/* Contact Header */}
         <ContactHeader contact={contact360.contact} computed={contact360.computed} />
+
+        {/* Quick Actions Toolbar */}
+        <div className="mt-4">
+          <QuickActionsToolbar 
+            contactId={contactId}
+            contactName={`${contact360.contact.firstName || ''} ${contact360.contact.lastName || ''}`.trim() || 'Contact'}
+            onActionComplete={() => refetch()}
+          />
+        </div>
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">

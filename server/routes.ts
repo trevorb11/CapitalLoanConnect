@@ -11,7 +11,7 @@ import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery } from "./services/openai";
+import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { createRequire } from "module";
@@ -3199,6 +3199,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * GET /api/rep-console/smart-lists
+   *
+   * Get all available smart lists with contact counts for the agent call queue.
+   * NOTE: This MUST be defined BEFORE the :contactId wildcard route
+   */
+  app.get("/api/rep-console/smart-lists", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const result = await repConsoleService.getSmartLists();
+      return res.json({ success: true, data: result });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE SMART LISTS] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to fetch smart lists" });
+    }
+  });
+
+  /**
+   * GET /api/rep-console/smart-lists/:listId
+   *
+   * Get contacts for a specific smart list.
+   * NOTE: This MUST be defined BEFORE the :contactId wildcard route
+   */
+  app.get("/api/rep-console/smart-lists/:listId", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { listId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+
+      const result = await repConsoleService.getSmartListContacts(listId, limit);
+      return res.json({ success: true, data: result });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE SMART LIST CONTACTS] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to fetch list contacts" });
+    }
+  });
+
+  /**
    * GET /api/rep-console/:contactId
    *
    * Aggregates all contact data from GoHighLevel into a unified Contact360 view.
@@ -3363,6 +3410,181 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: false,
         error: error.message || "Failed to fetch contacts"
       });
+    }
+  });
+
+  /**
+   * POST /api/rep-console/:contactId/notes
+   *
+   * Add a note to a contact.
+   */
+  app.post("/api/rep-console/:contactId/notes", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId } = req.params;
+      const { body } = req.body;
+
+      if (!body || typeof body !== 'string') {
+        return res.status(400).json({ success: false, error: "Note body is required" });
+      }
+
+      const result = await repConsoleService.addNoteToContact(contactId, body);
+      
+      if (result.success) {
+        return res.json({ success: true, data: { noteId: result.noteId } });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE ADD NOTE] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to add note" });
+    }
+  });
+
+  /**
+   * POST /api/rep-console/:contactId/tasks
+   *
+   * Create a task for a contact.
+   */
+  app.post("/api/rep-console/:contactId/tasks", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId } = req.params;
+      const { title, dueDate, description } = req.body;
+
+      if (!title || typeof title !== 'string') {
+        return res.status(400).json({ success: false, error: "Task title is required" });
+      }
+      if (!dueDate) {
+        return res.status(400).json({ success: false, error: "Due date is required" });
+      }
+
+      const result = await repConsoleService.createTaskForContact(contactId, title, dueDate, description);
+      
+      if (result.success) {
+        return res.json({ success: true, data: { taskId: result.taskId } });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE CREATE TASK] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to create task" });
+    }
+  });
+
+  /**
+   * POST /api/rep-console/:contactId/tags
+   *
+   * Add a tag to a contact.
+   */
+  app.post("/api/rep-console/:contactId/tags", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId } = req.params;
+      const { tag } = req.body;
+
+      if (!tag || typeof tag !== 'string') {
+        return res.status(400).json({ success: false, error: "Tag is required" });
+      }
+
+      const result = await repConsoleService.addTagToContact(contactId, tag);
+      
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE ADD TAG] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to add tag" });
+    }
+  });
+
+  /**
+   * POST /api/rep-console/command
+   *
+   * Parse a natural language command and optionally execute it.
+   * Supports search, add_note, create_task, add_tag intents.
+   */
+  app.post("/api/rep-console/command", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { command, contactId, contactName, execute } = req.body;
+
+      if (!command || typeof command !== 'string' || command.length < 2) {
+        return res.status(400).json({ success: false, error: "Command must be at least 2 characters" });
+      }
+
+      console.log(`[REP CONSOLE COMMAND] Input: "${command}", Contact: ${contactName || 'none'}`);
+
+      // Parse the command
+      const parsed = await parseRepConsoleCommand(command, contactName);
+      console.log(`[REP CONSOLE COMMAND] Parsed:`, parsed);
+
+      // If execute is true and we have a contactId, execute the action
+      if (execute && contactId && !parsed.requiresConfirmation) {
+        let actionResult = null;
+
+        switch (parsed.intent) {
+          case 'add_note':
+            if (parsed.actionParams?.noteBody) {
+              actionResult = await repConsoleService.addNoteToContact(contactId, parsed.actionParams.noteBody);
+            }
+            break;
+          case 'create_task':
+            if (parsed.actionParams?.taskTitle && parsed.actionParams?.taskDueDate) {
+              actionResult = await repConsoleService.createTaskForContact(
+                contactId,
+                parsed.actionParams.taskTitle,
+                parsed.actionParams.taskDueDate
+              );
+            }
+            break;
+          case 'add_tag':
+            if (parsed.actionParams?.tagName) {
+              actionResult = await repConsoleService.addTagToContact(contactId, parsed.actionParams.tagName);
+            }
+            break;
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            parsed,
+            executed: !!actionResult,
+            actionResult
+          }
+        });
+      }
+
+      // Just return the parsed command for preview/confirmation
+      return res.json({
+        success: true,
+        data: { parsed, executed: false }
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE COMMAND] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Command processing failed" });
     }
   });
 

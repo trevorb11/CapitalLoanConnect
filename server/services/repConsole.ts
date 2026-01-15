@@ -791,6 +791,238 @@ async function searchContactsByTags(
 }
 
 // ========================================
+// SMART CALL LISTS
+// ========================================
+
+interface SmartListDefinition {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  tags: string[];
+  priority: number;
+}
+
+// Predefined smart lists for agents
+const SMART_LISTS: SmartListDefinition[] = [
+  {
+    id: 'hot-leads',
+    name: 'Hot Leads',
+    description: 'High-priority leads ready to close',
+    icon: 'Flame',
+    tags: ['hot', 'hot lead', 'hot-lead', 'priority', 'ready to close'],
+    priority: 1,
+  },
+  {
+    id: 'follow-ups',
+    name: 'Follow-ups Due',
+    description: 'Contacts needing follow-up calls',
+    icon: 'PhoneCallback',
+    tags: ['follow up', 'follow-up', 'callback', 'call back', 'needs follow up'],
+    priority: 2,
+  },
+  {
+    id: 'incomplete-apps',
+    name: 'Incomplete Applications',
+    description: 'Started but not completed applications',
+    icon: 'FileWarning',
+    tags: ['app started', 'app-started', 'incomplete', 'started application'],
+    priority: 3,
+  },
+  {
+    id: 'docs-needed',
+    name: 'Documents Needed',
+    description: 'Missing bank statements or other docs',
+    icon: 'FileX',
+    tags: ['docs needed', 'statements needed', 'missing docs', 'bank statements', 'documents requested'],
+    priority: 4,
+  },
+  {
+    id: 'new-leads',
+    name: 'New Leads',
+    description: 'Recently added contacts',
+    icon: 'UserPlus',
+    tags: ['new lead', 'new-lead', 'interest form', 'website lead'],
+    priority: 5,
+  },
+  {
+    id: 'application-complete',
+    name: 'Application Complete',
+    description: 'Completed applications ready for processing',
+    icon: 'CheckCircle',
+    tags: ['application complete', 'app complete', 'completed'],
+    priority: 6,
+  },
+];
+
+/**
+ * Get all available smart lists with their contact counts
+ */
+async function getSmartLists(locationIdOverride?: string): Promise<{
+  lists: Array<SmartListDefinition & { count: number }>;
+}> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    // Fetch all contacts to count by tags
+    const params = new URLSearchParams();
+    params.append('locationId', locationId);
+    params.append('limit', '100');
+
+    const response = await ghlFetch<{ contacts: GHLRawContact[]; meta?: { total?: number } }>(
+      `/contacts/?${params.toString()}`,
+      token
+    );
+
+    const contacts = response.contacts || [];
+
+    // Count contacts for each smart list
+    const listsWithCounts = SMART_LISTS.map(list => {
+      const lowerTags = list.tags.map(t => t.toLowerCase());
+      const matchingContacts = contacts.filter(c => {
+        const contactTags = (c.tags || []).map(t => t.toLowerCase());
+        return lowerTags.some(tag => contactTags.some(ct => ct.includes(tag)));
+      });
+      return {
+        ...list,
+        count: matchingContacts.length,
+      };
+    });
+
+    return { lists: listsWithCounts };
+  } catch (error) {
+    console.error('[RepConsole] Error fetching smart lists:', error);
+    return { lists: SMART_LISTS.map(l => ({ ...l, count: 0 })) };
+  }
+}
+
+/**
+ * Get contacts for a specific smart list
+ */
+async function getSmartListContacts(
+  listId: string,
+  limit: number = 50,
+  locationIdOverride?: string
+): Promise<ContactListResponse & { listName: string }> {
+  const list = SMART_LISTS.find(l => l.id === listId);
+  if (!list) {
+    return { contacts: [], total: 0, hasMore: false, listName: 'Unknown List' };
+  }
+
+  const results = await searchContactsByTags(list.tags, limit, locationIdOverride);
+  return {
+    ...results,
+    listName: list.name,
+  };
+}
+
+// ========================================
+// QUICK ACTIONS - Add Note / Task
+// ========================================
+
+/**
+ * Add a note to a contact
+ */
+async function addNoteToContact(
+  contactId: string,
+  body: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; noteId?: string; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    const response = await ghlFetch<{ note?: { id: string } }>(
+      `/contacts/${contactId}/notes`,
+      token,
+      {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      }
+    );
+
+    return { success: true, noteId: response.note?.id };
+  } catch (error: any) {
+    console.error('[RepConsole] Error adding note:', error);
+    return { success: false, error: error.message || 'Failed to add note' };
+  }
+}
+
+/**
+ * Create a task for a contact
+ */
+async function createTaskForContact(
+  contactId: string,
+  title: string,
+  dueDate: string,
+  description?: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; taskId?: string; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    const response = await ghlFetch<{ task?: { id: string } }>(
+      `/contacts/${contactId}/tasks`,
+      token,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          title,
+          body: description || '',
+          dueDate,
+          completed: false,
+        }),
+      }
+    );
+
+    return { success: true, taskId: response.task?.id };
+  } catch (error: any) {
+    console.error('[RepConsole] Error creating task:', error);
+    return { success: false, error: error.message || 'Failed to create task' };
+  }
+}
+
+/**
+ * Add a tag to a contact
+ */
+async function addTagToContact(
+  contactId: string,
+  tag: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    // First get current tags
+    const contact = await ghlFetch<{ contact: GHLRawContact }>(
+      `/contacts/${contactId}`,
+      token
+    );
+
+    const currentTags = contact.contact.tags || [];
+    const newTags = Array.from(new Set([...currentTags, tag]));
+
+    // Update with new tags
+    await ghlFetch<{ contact: GHLRawContact }>(
+      `/contacts/${contactId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ tags: newTags }),
+      }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error adding tag:', error);
+    return { success: false, error: error.message || 'Failed to add tag' };
+  }
+}
+
+// ========================================
 // EXPORT SERVICE OBJECT
 // ========================================
 export const repConsoleService = {
@@ -799,4 +1031,9 @@ export const repConsoleService = {
   getLocationId,
   searchContacts,
   searchContactsByTags,
+  getSmartLists,
+  getSmartListContacts,
+  addNoteToContact,
+  createTaskForContact,
+  addTagToContact,
 };
