@@ -645,10 +645,158 @@ export async function getContact360(
 }
 
 // ========================================
+// CONTACT SEARCH FUNCTIONALITY
+// ========================================
+
+export interface ContactSearchFilters {
+  query?: string;           // Free text search (name, email, phone)
+  tags?: string[];          // Filter by tags
+  pipelineId?: string;      // Filter by pipeline
+  stageId?: string;         // Filter by pipeline stage
+  assignedTo?: string;      // Filter by assigned user
+  dateAddedFrom?: string;   // ISO date
+  dateAddedTo?: string;     // ISO date
+  limit?: number;           // Max results (default 50)
+}
+
+export interface ContactSearchResult {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  companyName: string;
+  tags: string[];
+  dateAdded: string;
+}
+
+export interface ContactListResponse {
+  contacts: ContactSearchResult[];
+  total: number;
+  hasMore: boolean;
+}
+
+/**
+ * Search contacts in GHL using various filters
+ */
+async function searchContacts(
+  filters: ContactSearchFilters,
+  locationIdOverride?: string
+): Promise<ContactListResponse> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  // Build query parameters
+  const params = new URLSearchParams();
+  params.append('locationId', locationId);
+  params.append('limit', String(filters.limit || 50));
+
+  if (filters.query) {
+    params.append('query', filters.query);
+  }
+
+  console.log(`[RepConsole] Searching contacts with filters:`, filters);
+
+  try {
+    const response = await ghlFetch<{ contacts: GHLRawContact[]; meta?: { total?: number; nextPageUrl?: string } }>(
+      `/contacts/?${params.toString()}`,
+      token
+    );
+
+    const contacts = response.contacts || [];
+    
+    // Apply additional filters client-side (tags, etc.) since GHL API has limited filter support
+    let filteredContacts = contacts;
+    
+    if (filters.tags && filters.tags.length > 0) {
+      const lowerTags = filters.tags.map(t => t.toLowerCase());
+      filteredContacts = filteredContacts.filter(c => {
+        const contactTags = (c.tags || []).map(t => t.toLowerCase());
+        return lowerTags.some(tag => contactTags.includes(tag));
+      });
+    }
+
+    const mappedContacts: ContactSearchResult[] = filteredContacts.map(c => ({
+      id: c.id,
+      name: `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Unknown',
+      email: c.email || '',
+      phone: c.phone || '',
+      companyName: c.companyName || '',
+      tags: c.tags || [],
+      dateAdded: c.dateAdded || '',
+    }));
+
+    return {
+      contacts: mappedContacts,
+      total: response.meta?.total || mappedContacts.length,
+      hasMore: !!response.meta?.nextPageUrl,
+    };
+  } catch (error) {
+    console.error('[RepConsole] Error searching contacts:', error);
+    return { contacts: [], total: 0, hasMore: false };
+  }
+}
+
+/**
+ * Search contacts by tags specifically
+ */
+async function searchContactsByTags(
+  tags: string[],
+  limit: number = 50,
+  locationIdOverride?: string
+): Promise<ContactListResponse> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  console.log(`[RepConsole] Searching contacts by tags:`, tags);
+
+  try {
+    // GHL's search endpoint - fetch all and filter by tags client-side
+    const params = new URLSearchParams();
+    params.append('locationId', locationId);
+    params.append('limit', '100'); // Fetch more to filter
+
+    const response = await ghlFetch<{ contacts: GHLRawContact[]; meta?: { total?: number } }>(
+      `/contacts/?${params.toString()}`,
+      token
+    );
+
+    const contacts = response.contacts || [];
+    
+    // Filter by tags
+    const lowerTags = tags.map(t => t.toLowerCase());
+    const filteredContacts = contacts.filter(c => {
+      const contactTags = (c.tags || []).map(t => t.toLowerCase());
+      return lowerTags.some(tag => contactTags.some(ct => ct.includes(tag)));
+    });
+
+    const mappedContacts: ContactSearchResult[] = filteredContacts.slice(0, limit).map(c => ({
+      id: c.id,
+      name: `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Unknown',
+      email: c.email || '',
+      phone: c.phone || '',
+      companyName: c.companyName || '',
+      tags: c.tags || [],
+      dateAdded: c.dateAdded || '',
+    }));
+
+    return {
+      contacts: mappedContacts,
+      total: filteredContacts.length,
+      hasMore: filteredContacts.length > limit,
+    };
+  } catch (error) {
+    console.error('[RepConsole] Error searching contacts by tags:', error);
+    return { contacts: [], total: 0, hasMore: false };
+  }
+}
+
+// ========================================
 // EXPORT SERVICE OBJECT
 // ========================================
 export const repConsoleService = {
   getContact360,
   getAccessToken,
   getLocationId,
+  searchContacts,
+  searchContactsByTags,
 };

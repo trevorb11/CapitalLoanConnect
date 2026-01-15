@@ -11,7 +11,7 @@ import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail } from "./services/openai";
+import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { createRequire } from "module";
@@ -3256,6 +3256,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({
         success: false,
         error: error.message || "Failed to fetch contact data"
+      });
+    }
+  });
+
+  /**
+   * POST /api/rep-console/smart-search
+   *
+   * Natural language contact search using AI to parse queries.
+   * Returns a list of contacts matching the parsed criteria.
+   */
+  app.post("/api/rep-console/smart-search", async (req, res) => {
+    try {
+      // Check authentication
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized"
+        });
+      }
+
+      const { query } = req.body;
+      if (!query || typeof query !== 'string' || query.length < 2) {
+        return res.status(400).json({
+          success: false,
+          error: "Query must be at least 2 characters"
+        });
+      }
+
+      console.log(`[REP CONSOLE] Smart search query: "${query}"`);
+
+      // Parse the natural language query using AI
+      const parsed = await parseContactSearchQuery(query);
+      console.log(`[REP CONSOLE] Parsed query:`, parsed);
+
+      // Execute the search based on parsed criteria
+      let searchResults;
+      
+      if (parsed.searchType === 'tags' && parsed.tags && parsed.tags.length > 0) {
+        searchResults = await repConsoleService.searchContactsByTags(
+          parsed.tags,
+          parsed.limit || 25
+        );
+      } else {
+        searchResults = await repConsoleService.searchContacts({
+          query: parsed.query || undefined,
+          tags: parsed.tags || undefined,
+          limit: parsed.limit || 25
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          contacts: searchResults.contacts,
+          total: searchResults.total,
+          hasMore: searchResults.hasMore,
+          parsedQuery: parsed
+        }
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE SMART SEARCH] Error:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Smart search failed"
+      });
+    }
+  });
+
+  /**
+   * GET /api/rep-console/contacts
+   *
+   * List contacts with optional filters for manual/structured search.
+   */
+  app.get("/api/rep-console/contacts", async (req, res) => {
+    try {
+      // Check authentication
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized"
+        });
+      }
+
+      const query = req.query.q as string | undefined;
+      const tags = req.query.tags ? (req.query.tags as string).split(',') : undefined;
+      const limit = parseInt(req.query.limit as string) || 25;
+
+      const searchResults = await repConsoleService.searchContacts({
+        query,
+        tags,
+        limit: Math.min(limit, 100)
+      });
+
+      return res.json({
+        success: true,
+        data: searchResults
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE CONTACTS] Error:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to fetch contacts"
       });
     }
   });

@@ -39,6 +39,8 @@ import {
   Timer,
   TrendingUp,
   Activity,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import type {
@@ -794,7 +796,7 @@ function ConversationsCard({ conversations }: { conversations: RepConsoleConvers
 }
 
 // ========================================
-// CONTACT SEARCH
+// CONTACT SEARCH (Simple)
 // ========================================
 function ContactSearch({
   onSelectContact,
@@ -802,7 +804,6 @@ function ContactSearch({
   onSelectContact: (contactId: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
 
   const searchMutation = useMutation({
     mutationFn: async (query: string) => {
@@ -816,7 +817,6 @@ function ContactSearch({
 
   const handleSearch = () => {
     if (searchQuery.length < 2) return;
-    setIsSearching(true);
     searchMutation.mutate(searchQuery);
   };
 
@@ -832,9 +832,10 @@ function ContactSearch({
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             className="pl-9"
+            data-testid="input-contact-search"
           />
         </div>
-        <Button onClick={handleSearch} disabled={searchQuery.length < 2 || searchMutation.isPending}>
+        <Button onClick={handleSearch} disabled={searchQuery.length < 2 || searchMutation.isPending} data-testid="button-search">
           {searchMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
@@ -900,6 +901,200 @@ function ContactSearch({
 }
 
 // ========================================
+// SMART SEARCH (Natural Language)
+// ========================================
+interface SmartSearchContact {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  companyName: string;
+  tags: string[];
+  dateAdded: string;
+}
+
+interface SmartSearchResult {
+  contacts: SmartSearchContact[];
+  total: number;
+  hasMore: boolean;
+  parsedQuery: {
+    searchType: string;
+    query?: string;
+    tags?: string[];
+    explanation: string;
+  };
+}
+
+function SmartSearch({
+  onSelectContact,
+  onContactListUpdate,
+}: {
+  onSelectContact: (contactId: string) => void;
+  onContactListUpdate: (contacts: SmartSearchContact[], currentIndex: number) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SmartSearchResult | null>(null);
+
+  const searchMutation = useMutation({
+    mutationFn: async (q: string) => {
+      const res = await fetch("/api/rep-console/smart-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ query: q }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Search failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.success && data.data) {
+        setResults(data.data);
+      }
+    },
+  });
+
+  // Handle contact selection - set list state only when a contact is clicked
+  const handleSelectContact = (contact: SmartSearchContact, index: number) => {
+    if (results) {
+      onContactListUpdate(results.contacts, index);
+    }
+    onSelectContact(contact.id);
+  };
+
+  const handleSearch = () => {
+    if (query.length < 2) return;
+    searchMutation.mutate(query);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium mb-2">
+          AI-Powered Search
+        </label>
+        <p className="text-xs text-muted-foreground mb-3">
+          Describe the contacts you're looking for in plain English. Examples: "show me all hot leads", 
+          "find contacts tagged application complete", "list everyone from this week"
+        </p>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <MessageCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Describe what contacts you want to find..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              className="pl-9"
+              data-testid="input-smart-search"
+            />
+          </div>
+          <Button 
+            onClick={handleSearch} 
+            disabled={query.length < 2 || searchMutation.isPending}
+            data-testid="button-smart-search"
+          >
+            {searchMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <Search className="w-4 h-4 mr-1" />
+                Search
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {searchMutation.error && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{(searchMutation.error as Error).message}</AlertDescription>
+        </Alert>
+      )}
+
+      {results && (
+        <div className="space-y-3">
+          {/* AI Interpretation */}
+          <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+            <p className="text-sm">
+              <span className="font-medium">AI understood:</span>{" "}
+              {results.parsedQuery.explanation}
+            </p>
+            {results.parsedQuery.tags && results.parsedQuery.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {results.parsedQuery.tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Results Count */}
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Found <span className="font-medium text-foreground">{results.total}</span> contact(s)
+              {results.hasMore && " (showing first results)"}
+            </p>
+          </div>
+
+          {/* Contact List */}
+          {results.contacts.length > 0 ? (
+            <ScrollArea className="h-[300px]">
+              <div className="space-y-2">
+                {results.contacts.map((contact, index) => (
+                  <Card
+                    key={contact.id}
+                    className="p-3 hover:bg-muted/50 cursor-pointer transition-colors"
+                    onClick={() => handleSelectContact(contact, index)}
+                    data-testid={`card-contact-${index}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <User className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{contact.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {contact.companyName || contact.email || contact.phone}
+                        </p>
+                      </div>
+                      {contact.tags.length > 0 && (
+                        <div className="flex gap-1">
+                          {contact.tags.slice(0, 2).map((tag) => (
+                            <Badge key={tag} variant="outline" className="text-xs">
+                              {tag}
+                            </Badge>
+                          ))}
+                          {contact.tags.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{contact.tags.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </ScrollArea>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground">
+              No contacts match your search criteria
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========================================
 // MAIN COMPONENT
 // ========================================
 export default function RepConsole() {
@@ -910,6 +1105,42 @@ export default function RepConsole() {
   // Auth state
   const [auth, setAuth] = useState<AuthState>({ isAuthenticated: false });
   const [authChecked, setAuthChecked] = useState(false);
+
+  // Contact list navigation state
+  const [contactList, setContactList] = useState<SmartSearchContact[]>([]);
+  const [currentListIndex, setCurrentListIndex] = useState(0);
+
+  // Handle contact list updates from smart search
+  const handleContactListUpdate = (contacts: SmartSearchContact[], index: number) => {
+    setContactList(contacts);
+    setCurrentListIndex(index);
+  };
+
+  // Clear the contact list navigation
+  const clearContactList = () => {
+    setContactList([]);
+    setCurrentListIndex(0);
+  };
+
+  // Check if the current contact is in the list (for showing navigation bar)
+  const isContactInList = contactId && contactList.length > 0 && 
+    contactList[currentListIndex]?.id === contactId;
+
+  // Navigate to previous contact in list
+  const goToPreviousContact = () => {
+    if (contactList.length === 0 || currentListIndex <= 0) return;
+    const prevIndex = currentListIndex - 1;
+    setCurrentListIndex(prevIndex);
+    navigate(`/rep-console/${contactList[prevIndex].id}`);
+  };
+
+  // Navigate to next contact in list
+  const goToNextContact = () => {
+    if (contactList.length === 0 || currentListIndex >= contactList.length - 1) return;
+    const nextIndex = currentListIndex + 1;
+    setCurrentListIndex(nextIndex);
+    navigate(`/rep-console/${contactList[nextIndex].id}`);
+  };
 
   // Check auth on mount
   useEffect(() => {
@@ -1024,10 +1255,29 @@ export default function RepConsole() {
             </div>
           </div>
 
-          {/* Search Card */}
-          <Card className="max-w-2xl mx-auto">
+          {/* Smart Search Card */}
+          <Card className="max-w-3xl mx-auto">
             <CardHeader>
-              <CardTitle>Find a Contact</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5" />
+                Find Contacts with AI
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SmartSearch
+                onSelectContact={(id) => navigate(`/rep-console/${id}`)}
+                onContactListUpdate={handleContactListUpdate}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Simple Search Card */}
+          <Card className="max-w-3xl mx-auto mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Search className="w-5 h-5" />
+                Direct Search
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <ContactSearch
@@ -1035,7 +1285,7 @@ export default function RepConsole() {
               />
               <div className="mt-6 pt-6 border-t">
                 <p className="text-sm text-muted-foreground text-center">
-                  Enter a GHL Contact ID directly:
+                  Or enter a GHL Contact ID directly:
                 </p>
                 <div className="flex gap-2 mt-2">
                   <Input
@@ -1046,6 +1296,7 @@ export default function RepConsole() {
                         if (value) navigate(`/rep-console/${value}`);
                       }
                     }}
+                    data-testid="input-contact-id"
                   />
                 </div>
               </div>
@@ -1140,6 +1391,47 @@ export default function RepConsole() {
             </Button>
           </div>
         </div>
+
+        {/* List Navigation Controls - only show when current contact is in the list */}
+        {isContactInList && (
+          <div className="flex items-center justify-between mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+            <div className="text-sm">
+              Viewing contact <span className="font-medium">{currentListIndex + 1}</span> of{" "}
+              <span className="font-medium">{contactList.length}</span> from your search
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToPreviousContact}
+                disabled={currentListIndex <= 0}
+                data-testid="button-previous-contact"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToNextContact}
+                disabled={currentListIndex >= contactList.length - 1}
+                data-testid="button-next-contact"
+              >
+                Next
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearContactList}
+                data-testid="button-clear-list"
+                title="Clear search results"
+              >
+                <XCircle className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Contact Header */}
         <ContactHeader contact={contact360.contact} computed={contact360.computed} />

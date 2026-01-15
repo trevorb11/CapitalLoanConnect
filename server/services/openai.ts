@@ -223,6 +223,112 @@ export function isOpenAIConfigured(): boolean {
   return !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
 }
 
+// ========================================
+// NATURAL LANGUAGE CONTACT SEARCH PARSER
+// ========================================
+
+export interface ParsedContactQuery {
+  searchType: 'general' | 'tags' | 'pipeline' | 'recent' | 'all';
+  query?: string;           // Free text search term
+  tags?: string[];          // Tags to filter by
+  pipelineStage?: string;   // Pipeline stage filter
+  dateRange?: 'today' | 'week' | 'month' | 'all';
+  limit?: number;           // Max results
+  explanation: string;      // Human-readable explanation of what was parsed
+}
+
+/**
+ * Parse a natural language query into structured search filters for GHL contacts
+ */
+export async function parseContactSearchQuery(naturalLanguageQuery: string): Promise<ParsedContactQuery> {
+  const prompt = `You are a CRM search assistant for a sales team. Parse the following natural language query into structured search parameters for finding contacts in GoHighLevel CRM.
+
+USER QUERY: "${naturalLanguageQuery}"
+
+Common tags in this system include:
+- "hot lead", "cold lead", "warm lead" (lead temperature)
+- "application complete", "App Started" (application status)
+- "lead-source-website", "interest form" (source)
+- "Statements Uploaded" (bank statements)
+- "funded", "declined" (deal outcome)
+
+Parse the query and respond with a JSON object in this exact format:
+{
+  "searchType": "general" | "tags" | "pipeline" | "recent" | "all",
+  "query": "free text search term if user wants to find by name/email/phone, or null",
+  "tags": ["array", "of", "tags"] or null if no tags mentioned,
+  "pipelineStage": "stage name if mentioned, or null",
+  "dateRange": "today" | "week" | "month" | "all" | null,
+  "limit": number between 10-100 (default 25),
+  "explanation": "Brief explanation of what you understood from the query"
+}
+
+Examples:
+- "show me all hot leads" → searchType: "tags", tags: ["hot lead"]
+- "find contacts tagged application complete" → searchType: "tags", tags: ["application complete"]
+- "get everyone from this week" → searchType: "recent", dateRange: "week"
+- "search for John" → searchType: "general", query: "John"
+- "list all my contacts" → searchType: "all"
+- "show funded deals" → searchType: "tags", tags: ["funded"]
+
+Respond ONLY with the JSON object.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You parse natural language CRM queries into structured search parameters. Always respond with valid JSON only."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: 500
+    });
+
+    const content = response.choices[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error("No response from OpenAI");
+    }
+
+    // Strip markdown code blocks if present
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith("```json")) {
+      cleanContent = cleanContent.slice(7);
+    } else if (cleanContent.startsWith("```")) {
+      cleanContent = cleanContent.slice(3);
+    }
+    if (cleanContent.endsWith("```")) {
+      cleanContent = cleanContent.slice(0, -3);
+    }
+    cleanContent = cleanContent.trim();
+
+    const parsed = JSON.parse(cleanContent) as ParsedContactQuery;
+    
+    // Ensure reasonable defaults
+    if (!parsed.limit || parsed.limit < 1) parsed.limit = 25;
+    if (parsed.limit > 100) parsed.limit = 100;
+    
+    return parsed;
+    
+  } catch (error) {
+    console.error("[OPENAI] Contact query parsing error:", error);
+    
+    // Return a default search if parsing fails
+    return {
+      searchType: 'general',
+      query: naturalLanguageQuery,
+      limit: 25,
+      explanation: "Could not parse query - using as direct search term"
+    };
+  }
+}
+
 // Approval Email Parser Types
 export interface ParsedApproval {
   isApproval: boolean;
