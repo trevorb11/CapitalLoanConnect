@@ -32,6 +32,7 @@ import ProgressTracker from "@/pages/ProgressTracker";
 import PartnerDashboard from "@/pages/PartnerDashboard";
 import ReferralLanding from "@/pages/ReferralLanding";
 import Approvals from "@/pages/Approvals";
+import RepConsole from "@/pages/RepConsole";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -84,6 +85,10 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/approvals" component={Approvals} />
       <Route path="/agents" component={AgentSelector} />
+
+      {/* Rep Console - Contact 360 View */}
+      <Route path="/rep-console" component={RepConsole} />
+      <Route path="/rep-console/:contactId" component={RepConsole} />
 
       {/* Partner Portal Routes */}
       <Route path="/partner" component={PartnerDashboard} />

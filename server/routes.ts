@@ -9,6 +9,7 @@ import archiver from "archiver";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
+import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
@@ -3064,6 +3065,126 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Start the scheduled sync (runs every hour)
   setInterval(runScheduledSync, SCAN_INTERVAL_MS);
   console.log("[STARTUP] Hourly Google Sheets approval sync scheduled");
+
+  // ========================================
+  // REP CONSOLE ROUTES
+  // ========================================
+
+  /**
+   * GET /api/rep-console/search
+   *
+   * Search for contacts by email, phone, or name.
+   * Used for quick contact lookup in the Rep Console.
+   *
+   * IMPORTANT: This route must be defined BEFORE /:contactId to avoid
+   * "search" being matched as a contactId parameter.
+   */
+  app.get("/api/rep-console/search", async (req, res) => {
+    try {
+      // Check authentication
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized"
+        });
+      }
+
+      const query = req.query.q as string;
+      if (!query || query.length < 2) {
+        return res.status(400).json({
+          success: false,
+          error: "Search query must be at least 2 characters"
+        });
+      }
+
+      // Search in local database first (faster)
+      const localResults = await storage.getLoanApplicationByEmailOrPhone(query);
+
+      return res.json({
+        success: true,
+        data: {
+          localMatch: localResults ? {
+            id: localResults.id,
+            email: localResults.email,
+            phone: localResults.phone,
+            businessName: localResults.businessName || localResults.legalBusinessName,
+            fullName: localResults.fullName,
+            ghlContactId: localResults.ghlContactId
+          } : null
+        }
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE SEARCH] Error:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Search failed"
+      });
+    }
+  });
+
+  /**
+   * GET /api/rep-console/:contactId
+   *
+   * Aggregates all contact data from GoHighLevel into a unified Contact360 view.
+   * Returns: contact info, active opportunity, tasks, notes, conversations, lender approvals.
+   *
+   * Query params:
+   * - locationId (optional): GHL location ID. Falls back to env var if not provided.
+   */
+  app.get("/api/rep-console/:contactId", async (req, res) => {
+    try {
+      // Check authentication (admin or agent role)
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized. Must be logged in as admin or agent."
+        });
+      }
+
+      const { contactId } = req.params;
+      const locationId = req.query.locationId as string | undefined;
+
+      if (!contactId) {
+        return res.status(400).json({
+          success: false,
+          error: "Contact ID is required"
+        });
+      }
+
+      console.log(`[REP CONSOLE] Fetching Contact360 for ${contactId}`);
+      const contact360 = await repConsoleService.getContact360(contactId, locationId);
+
+      return res.json({
+        success: true,
+        data: contact360
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE] Error fetching Contact360:", error);
+
+      if (error.message?.includes('not found')) {
+        return res.status(404).json({
+          success: false,
+          error: "Contact not found"
+        });
+      }
+
+      if (error.message?.includes('not configured')) {
+        return res.status(503).json({
+          success: false,
+          error: "GoHighLevel integration not configured"
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to fetch contact data"
+      });
+    }
+  });
 
   return httpServer;
 }

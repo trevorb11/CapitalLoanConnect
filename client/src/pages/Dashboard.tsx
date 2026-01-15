@@ -1700,6 +1700,12 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <Link href="/rep-console">
+                <Button variant="outline" data-testid="button-rep-console">
+                  <User className="w-4 h-4 mr-2" />
+                  Rep Console
+                </Button>
+              </Link>
               {authData.role === "admin" && (
                 <Link href="/approvals">
                   <Button variant="outline" data-testid="button-approvals">
