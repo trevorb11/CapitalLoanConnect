@@ -242,9 +242,9 @@ async function fetchPipelines(token: string, locationId: string): Promise<GHLRaw
 // ========================================
 // LOCAL DB: LENDER APPROVALS
 // ========================================
-async function fetchLenderApprovals(contactId: string, businessName: string | null): Promise<RepConsoleLenderApproval[]> {
+async function fetchLenderApprovals(_contactId: string, businessName: string | null): Promise<RepConsoleLenderApproval[]> {
   try {
-    // Query by loanApplicationId or businessName
+    // Query by businessName (contactId reserved for future use if we add contact-based lookup)
     const approvals = await storage.getLenderApprovalsByBusinessName(businessName || '');
     return approvals.map((a) => ({
       id: a.id,

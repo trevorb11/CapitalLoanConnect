@@ -3071,6 +3071,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
 
   /**
+   * GET /api/rep-console/search
+   *
+   * Search for contacts by email, phone, or name.
+   * Used for quick contact lookup in the Rep Console.
+   *
+   * IMPORTANT: This route must be defined BEFORE /:contactId to avoid
+   * "search" being matched as a contactId parameter.
+   */
+  app.get("/api/rep-console/search", async (req, res) => {
+    try {
+      // Check authentication
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized"
+        });
+      }
+
+      const query = req.query.q as string;
+      if (!query || query.length < 2) {
+        return res.status(400).json({
+          success: false,
+          error: "Search query must be at least 2 characters"
+        });
+      }
+
+      // Search in local database first (faster)
+      const localResults = await storage.getLoanApplicationByEmailOrPhone(query);
+
+      return res.json({
+        success: true,
+        data: {
+          localMatch: localResults ? {
+            id: localResults.id,
+            email: localResults.email,
+            phone: localResults.phone,
+            businessName: localResults.businessName || localResults.legalBusinessName,
+            fullName: localResults.fullName,
+            ghlContactId: localResults.ghlContactId
+          } : null
+        }
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE SEARCH] Error:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Search failed"
+      });
+    }
+  });
+
+  /**
    * GET /api/rep-console/:contactId
    *
    * Aggregates all contact data from GoHighLevel into a unified Contact360 view.
@@ -3128,57 +3182,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({
         success: false,
         error: error.message || "Failed to fetch contact data"
-      });
-    }
-  });
-
-  /**
-   * GET /api/rep-console/search
-   *
-   * Search for contacts by email, phone, or name.
-   * Used for quick contact lookup in the Rep Console.
-   */
-  app.get("/api/rep-console/search", async (req, res) => {
-    try {
-      // Check authentication
-      const user = req.session?.user;
-      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
-        return res.status(401).json({
-          success: false,
-          error: "Unauthorized"
-        });
-      }
-
-      const query = req.query.q as string;
-      if (!query || query.length < 2) {
-        return res.status(400).json({
-          success: false,
-          error: "Search query must be at least 2 characters"
-        });
-      }
-
-      // Search in local database first (faster)
-      const localResults = await storage.getLoanApplicationByEmailOrPhone(query);
-
-      return res.json({
-        success: true,
-        data: {
-          localMatch: localResults ? {
-            id: localResults.id,
-            email: localResults.email,
-            phone: localResults.phone,
-            businessName: localResults.businessName || localResults.legalBusinessName,
-            fullName: localResults.fullName,
-            ghlContactId: localResults.ghlContactId
-          } : null
-        }
-      });
-
-    } catch (error: any) {
-      console.error("[REP CONSOLE SEARCH] Error:", error);
-      return res.status(500).json({
-        success: false,
-        error: "Search failed"
       });
     }
   });

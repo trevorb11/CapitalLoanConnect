@@ -254,6 +254,49 @@ function ContactHeader({
                   </a>
                 )}
               </div>
+
+              {/* Quick Action Buttons */}
+              <div className="flex flex-wrap gap-2 mt-4">
+                {contact.phone && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="gap-1"
+                  >
+                    <a href={`tel:${contact.phone}`}>
+                      <Phone className="w-4 h-4" />
+                      Call
+                    </a>
+                  </Button>
+                )}
+                {contact.phone && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="gap-1"
+                  >
+                    <a href={`sms:${contact.phone}`}>
+                      <MessageSquare className="w-4 h-4" />
+                      Text
+                    </a>
+                  </Button>
+                )}
+                {contact.email && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="gap-1"
+                  >
+                    <a href={`mailto:${contact.email}`}>
+                      <Mail className="w-4 h-4" />
+                      Email
+                    </a>
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -801,25 +844,49 @@ function ContactSearch({
       </div>
 
       {searchMutation.data?.data?.localMatch && (
-        <Card className="p-4 hover:bg-muted/50 cursor-pointer" onClick={() => {
-          if (searchMutation.data.data.localMatch.ghlContactId) {
-            onSelectContact(searchMutation.data.data.localMatch.ghlContactId);
-          }
-        }}>
+        <Card
+          className={`p-4 ${searchMutation.data.data.localMatch.ghlContactId ? 'hover:bg-muted/50 cursor-pointer' : ''}`}
+          onClick={() => {
+            if (searchMutation.data.data.localMatch.ghlContactId) {
+              onSelectContact(searchMutation.data.data.localMatch.ghlContactId);
+            }
+          }}
+        >
           <div className="flex items-center gap-3">
-            <User className="w-8 h-8 text-primary" />
-            <div>
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <User className="w-5 h-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
               <p className="font-medium">{searchMutation.data.data.localMatch.fullName || "Unknown"}</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground truncate">
                 {searchMutation.data.data.localMatch.businessName || searchMutation.data.data.localMatch.email}
               </p>
+              {searchMutation.data.data.localMatch.phone && (
+                <p className="text-xs text-muted-foreground">
+                  {searchMutation.data.data.localMatch.phone}
+                </p>
+              )}
             </div>
             {searchMutation.data.data.localMatch.ghlContactId ? (
-              <Badge className="ml-auto">GHL Connected</Badge>
+              <div className="flex flex-col items-end gap-1">
+                <Badge className="bg-emerald-500">GHL Connected</Badge>
+                <span className="text-xs text-muted-foreground">Click to view</span>
+              </div>
             ) : (
-              <Badge variant="secondary" className="ml-auto">Local Only</Badge>
+              <div className="flex flex-col items-end gap-1">
+                <Badge variant="outline" className="text-amber-600 border-amber-300">Local Only</Badge>
+                <span className="text-xs text-muted-foreground">Not synced to GHL</span>
+              </div>
             )}
           </div>
+          {!searchMutation.data.data.localMatch.ghlContactId && (
+            <div className="mt-3 pt-3 border-t">
+              <p className="text-xs text-muted-foreground">
+                This contact exists in the local database but hasn't been synced to GoHighLevel yet.
+                The Rep Console requires a GHL Contact ID to display full details.
+              </p>
+            </div>
+          )}
         </Card>
       )}
 
