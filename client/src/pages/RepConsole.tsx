@@ -917,7 +917,7 @@ export default function RepConsole() {
       .then((res) => res.json())
       .then((data) => {
         setAuth({
-          isAuthenticated: data.authenticated,
+          isAuthenticated: data.isAuthenticated,
           role: data.role,
           agentEmail: data.agentEmail,
           agentName: data.agentName,
@@ -981,7 +981,7 @@ export default function RepConsole() {
             .then((res) => res.json())
             .then((data) => {
               setAuth({
-                isAuthenticated: data.authenticated,
+                isAuthenticated: data.isAuthenticated,
                 role: data.role,
                 agentEmail: data.agentEmail,
                 agentName: data.agentName,
