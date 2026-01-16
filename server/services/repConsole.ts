@@ -406,8 +406,8 @@ function mapNote(raw: GHLRawNote): RepConsoleNote {
   };
 }
 
-function mapMessageType(val: string | undefined): MessageType {
-  if (!val) return 'other';
+function mapMessageType(val: unknown): MessageType {
+  if (!val || typeof val !== 'string') return 'other';
   const normalized = val.toLowerCase();
   if (normalized === 'sms' || normalized === 'text') return 'sms';
   if (normalized === 'email') return 'email';
@@ -419,8 +419,8 @@ function mapMessageType(val: string | undefined): MessageType {
   return 'other';
 }
 
-function mapMessageDirection(val: string | undefined): MessageDirection {
-  if (!val) return 'inbound';
+function mapMessageDirection(val: unknown): MessageDirection {
+  if (!val || typeof val !== 'string') return 'inbound';
   return val.toLowerCase() === 'outbound' ? 'outbound' : 'inbound';
 }
 
