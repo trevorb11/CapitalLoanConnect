@@ -1023,17 +1023,465 @@ async function addTagToContact(
 }
 
 // ========================================
+// TASK MANAGEMENT
+// ========================================
+
+/**
+ * Mark a task as complete or incomplete
+ */
+async function updateTaskStatus(
+  contactId: string,
+  taskId: string,
+  completed: boolean,
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    await ghlFetch<any>(
+      `/contacts/${contactId}/tasks/${taskId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ completed }),
+      }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error updating task status:', error);
+    return { success: false, error: error.message || 'Failed to update task' };
+  }
+}
+
+/**
+ * Delete a task
+ */
+async function deleteTask(
+  contactId: string,
+  taskId: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    await ghlFetch<any>(
+      `/contacts/${contactId}/tasks/${taskId}`,
+      token,
+      { method: 'DELETE' }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error deleting task:', error);
+    return { success: false, error: error.message || 'Failed to delete task' };
+  }
+}
+
+// ========================================
+// NOTE MANAGEMENT
+// ========================================
+
+/**
+ * Update a note
+ */
+async function updateNote(
+  contactId: string,
+  noteId: string,
+  body: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    await ghlFetch<any>(
+      `/contacts/${contactId}/notes/${noteId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ body }),
+      }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error updating note:', error);
+    return { success: false, error: error.message || 'Failed to update note' };
+  }
+}
+
+/**
+ * Delete a note
+ */
+async function deleteNote(
+  contactId: string,
+  noteId: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    await ghlFetch<any>(
+      `/contacts/${contactId}/notes/${noteId}`,
+      token,
+      { method: 'DELETE' }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error deleting note:', error);
+    return { success: false, error: error.message || 'Failed to delete note' };
+  }
+}
+
+// ========================================
+// TAG MANAGEMENT
+// ========================================
+
+/**
+ * Remove a tag from a contact
+ */
+async function removeTagFromContact(
+  contactId: string,
+  tag: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    // First get current tags
+    const contact = await ghlFetch<{ contact: GHLRawContact }>(
+      `/contacts/${contactId}`,
+      token
+    );
+
+    const currentTags = contact.contact.tags || [];
+    const newTags = currentTags.filter(t => t.toLowerCase() !== tag.toLowerCase());
+
+    // Update with new tags
+    await ghlFetch<{ contact: GHLRawContact }>(
+      `/contacts/${contactId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ tags: newTags }),
+      }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error removing tag:', error);
+    return { success: false, error: error.message || 'Failed to remove tag' };
+  }
+}
+
+// ========================================
+// OPPORTUNITY / PIPELINE MANAGEMENT
+// ========================================
+
+/**
+ * Update opportunity stage
+ */
+async function updateOpportunityStage(
+  opportunityId: string,
+  pipelineStageId: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    await ghlFetch<any>(
+      `/opportunities/${opportunityId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ pipelineStageId }),
+      }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error updating opportunity stage:', error);
+    return { success: false, error: error.message || 'Failed to update stage' };
+  }
+}
+
+/**
+ * Update opportunity status (open, won, lost, abandoned)
+ */
+async function updateOpportunityStatus(
+  opportunityId: string,
+  status: 'open' | 'won' | 'lost' | 'abandoned',
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    await ghlFetch<any>(
+      `/opportunities/${opportunityId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ status }),
+      }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error updating opportunity status:', error);
+    return { success: false, error: error.message || 'Failed to update status' };
+  }
+}
+
+/**
+ * Update opportunity monetary value
+ */
+async function updateOpportunityValue(
+  opportunityId: string,
+  monetaryValue: number,
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    await ghlFetch<any>(
+      `/opportunities/${opportunityId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ monetaryValue }),
+      }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error updating opportunity value:', error);
+    return { success: false, error: error.message || 'Failed to update value' };
+  }
+}
+
+/**
+ * Get all pipelines with stages
+ */
+async function getAllPipelines(
+  locationIdOverride?: string
+): Promise<{ pipelines: GHLRawPipeline[]; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    const response = await ghlFetch<{ pipelines: GHLRawPipeline[] }>(
+      `/opportunities/pipelines?locationId=${locationId}`,
+      token
+    );
+    return { pipelines: response.pipelines || [] };
+  } catch (error: any) {
+    console.error('[RepConsole] Error fetching pipelines:', error);
+    return { pipelines: [], error: error.message || 'Failed to fetch pipelines' };
+  }
+}
+
+// ========================================
+// CONTACT MANAGEMENT
+// ========================================
+
+/**
+ * Update contact fields
+ */
+async function updateContact(
+  contactId: string,
+  updates: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    companyName?: string;
+    address1?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+  },
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    await ghlFetch<any>(
+      `/contacts/${contactId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error updating contact:', error);
+    return { success: false, error: error.message || 'Failed to update contact' };
+  }
+}
+
+// ========================================
+// COMMUNICATION - SMS & EMAIL
+// ========================================
+
+/**
+ * Send SMS to a contact
+ */
+async function sendSMS(
+  contactId: string,
+  message: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    // First get or create a conversation for this contact
+    const conversationResponse = await ghlFetch<{ conversation?: { id: string } }>(
+      `/conversations/search?locationId=${locationId}&contactId=${contactId}`,
+      token
+    );
+
+    let conversationId: string | undefined;
+    const conversations = (conversationResponse as any).conversations || [];
+
+    // Find an SMS conversation or use the first one
+    const smsConversation = conversations.find((c: any) => c.type === 'SMS' || c.type === 'sms');
+    conversationId = smsConversation?.id || conversations[0]?.id;
+
+    if (!conversationId) {
+      // Create a new conversation
+      const createResponse = await ghlFetch<{ conversation: { id: string } }>(
+        `/conversations`,
+        token,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            locationId,
+            contactId,
+            type: 'SMS',
+          }),
+        }
+      );
+      conversationId = createResponse.conversation?.id;
+    }
+
+    if (!conversationId) {
+      return { success: false, error: 'Could not create conversation' };
+    }
+
+    // Send the message
+    const messageResponse = await ghlFetch<{ message?: { id: string }; messageId?: string }>(
+      `/conversations/messages`,
+      token,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'SMS',
+          contactId,
+          message,
+        }),
+      }
+    );
+
+    return {
+      success: true,
+      messageId: messageResponse.message?.id || messageResponse.messageId
+    };
+  } catch (error: any) {
+    console.error('[RepConsole] Error sending SMS:', error);
+    return { success: false, error: error.message || 'Failed to send SMS' };
+  }
+}
+
+/**
+ * Send Email to a contact
+ */
+async function sendEmail(
+  contactId: string,
+  subject: string,
+  body: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    const messageResponse = await ghlFetch<{ message?: { id: string }; messageId?: string }>(
+      `/conversations/messages`,
+      token,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'Email',
+          contactId,
+          subject,
+          message: body,
+          html: body, // Support HTML content
+        }),
+      }
+    );
+
+    return {
+      success: true,
+      messageId: messageResponse.message?.id || messageResponse.messageId
+    };
+  } catch (error: any) {
+    console.error('[RepConsole] Error sending email:', error);
+    return { success: false, error: error.message || 'Failed to send email' };
+  }
+}
+
+// ========================================
 // EXPORT SERVICE OBJECT
 // ========================================
 export const repConsoleService = {
+  // Core
   getContact360,
   getAccessToken,
   getLocationId,
+
+  // Search
   searchContacts,
   searchContactsByTags,
   getSmartLists,
   getSmartListContacts,
+
+  // Notes
   addNoteToContact,
+  updateNote,
+  deleteNote,
+
+  // Tasks
   createTaskForContact,
+  updateTaskStatus,
+  deleteTask,
+
+  // Tags
   addTagToContact,
+  removeTagFromContact,
+
+  // Contact
+  updateContact,
+
+  // Opportunity / Pipeline
+  updateOpportunityStage,
+  updateOpportunityStatus,
+  updateOpportunityValue,
+  getAllPipelines,
+
+  // Communication
+  sendSMS,
+  sendEmail,
 };

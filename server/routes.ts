@@ -3743,5 +3743,377 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========================================
+  // REP CONSOLE - ENHANCED GHL INTEGRATION
+  // ========================================
+
+  /**
+   * GET /api/rep-console/pipelines
+   * Get all pipelines with their stages
+   */
+  app.get("/api/rep-console/pipelines", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const result = await repConsoleService.getAllPipelines();
+      return res.json({ success: true, pipelines: result.pipelines });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE PIPELINES] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to fetch pipelines" });
+    }
+  });
+
+  /**
+   * PUT /api/rep-console/:contactId/tasks/:taskId
+   * Update task (mark complete/incomplete)
+   */
+  app.put("/api/rep-console/:contactId/tasks/:taskId", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId, taskId } = req.params;
+      const { completed } = req.body;
+
+      if (typeof completed !== 'boolean') {
+        return res.status(400).json({ success: false, error: "completed (boolean) is required" });
+      }
+
+      const result = await repConsoleService.updateTaskStatus(contactId, taskId, completed);
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE UPDATE TASK] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to update task" });
+    }
+  });
+
+  /**
+   * DELETE /api/rep-console/:contactId/tasks/:taskId
+   * Delete a task
+   */
+  app.delete("/api/rep-console/:contactId/tasks/:taskId", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId, taskId } = req.params;
+      const result = await repConsoleService.deleteTask(contactId, taskId);
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE DELETE TASK] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to delete task" });
+    }
+  });
+
+  /**
+   * PUT /api/rep-console/:contactId/notes/:noteId
+   * Update a note
+   */
+  app.put("/api/rep-console/:contactId/notes/:noteId", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId, noteId } = req.params;
+      const { body } = req.body;
+
+      if (!body || typeof body !== 'string') {
+        return res.status(400).json({ success: false, error: "body (string) is required" });
+      }
+
+      const result = await repConsoleService.updateNote(contactId, noteId, body);
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE UPDATE NOTE] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to update note" });
+    }
+  });
+
+  /**
+   * DELETE /api/rep-console/:contactId/notes/:noteId
+   * Delete a note
+   */
+  app.delete("/api/rep-console/:contactId/notes/:noteId", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId, noteId } = req.params;
+      const result = await repConsoleService.deleteNote(contactId, noteId);
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE DELETE NOTE] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to delete note" });
+    }
+  });
+
+  /**
+   * DELETE /api/rep-console/:contactId/tags/:tag
+   * Remove a tag from contact
+   */
+  app.delete("/api/rep-console/:contactId/tags/:tag", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId, tag } = req.params;
+      const result = await repConsoleService.removeTagFromContact(contactId, decodeURIComponent(tag));
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE REMOVE TAG] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to remove tag" });
+    }
+  });
+
+  /**
+   * PUT /api/rep-console/:contactId
+   * Update contact fields
+   */
+  app.put("/api/rep-console/:contactId", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId } = req.params;
+      const { firstName, lastName, email, phone, companyName, address1, city, state, postalCode } = req.body;
+
+      const updates: any = {};
+      if (firstName !== undefined) updates.firstName = firstName;
+      if (lastName !== undefined) updates.lastName = lastName;
+      if (email !== undefined) updates.email = email;
+      if (phone !== undefined) updates.phone = phone;
+      if (companyName !== undefined) updates.companyName = companyName;
+      if (address1 !== undefined) updates.address1 = address1;
+      if (city !== undefined) updates.city = city;
+      if (state !== undefined) updates.state = state;
+      if (postalCode !== undefined) updates.postalCode = postalCode;
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ success: false, error: "No fields to update" });
+      }
+
+      const result = await repConsoleService.updateContact(contactId, updates);
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE UPDATE CONTACT] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to update contact" });
+    }
+  });
+
+  /**
+   * PUT /api/rep-console/opportunities/:opportunityId/stage
+   * Update opportunity pipeline stage
+   */
+  app.put("/api/rep-console/opportunities/:opportunityId/stage", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { opportunityId } = req.params;
+      const { pipelineStageId } = req.body;
+
+      if (!pipelineStageId || typeof pipelineStageId !== 'string') {
+        return res.status(400).json({ success: false, error: "pipelineStageId is required" });
+      }
+
+      const result = await repConsoleService.updateOpportunityStage(opportunityId, pipelineStageId);
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE UPDATE STAGE] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to update stage" });
+    }
+  });
+
+  /**
+   * PUT /api/rep-console/opportunities/:opportunityId/status
+   * Update opportunity status (open, won, lost, abandoned)
+   */
+  app.put("/api/rep-console/opportunities/:opportunityId/status", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { opportunityId } = req.params;
+      const { status } = req.body;
+
+      if (!status || !['open', 'won', 'lost', 'abandoned'].includes(status)) {
+        return res.status(400).json({ success: false, error: "status must be one of: open, won, lost, abandoned" });
+      }
+
+      const result = await repConsoleService.updateOpportunityStatus(opportunityId, status);
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE UPDATE STATUS] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to update status" });
+    }
+  });
+
+  /**
+   * PUT /api/rep-console/opportunities/:opportunityId/value
+   * Update opportunity monetary value
+   */
+  app.put("/api/rep-console/opportunities/:opportunityId/value", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { opportunityId } = req.params;
+      const { monetaryValue } = req.body;
+
+      if (typeof monetaryValue !== 'number' || monetaryValue < 0) {
+        return res.status(400).json({ success: false, error: "monetaryValue (number >= 0) is required" });
+      }
+
+      const result = await repConsoleService.updateOpportunityValue(opportunityId, monetaryValue);
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE UPDATE VALUE] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to update value" });
+    }
+  });
+
+  /**
+   * POST /api/rep-console/:contactId/sms
+   * Send SMS to contact
+   */
+  app.post("/api/rep-console/:contactId/sms", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId } = req.params;
+      const { message } = req.body;
+
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ success: false, error: "message is required" });
+      }
+
+      const result = await repConsoleService.sendSMS(contactId, message);
+
+      if (result.success) {
+        return res.json({ success: true, messageId: result.messageId });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE SEND SMS] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to send SMS" });
+    }
+  });
+
+  /**
+   * POST /api/rep-console/:contactId/email
+   * Send Email to contact
+   */
+  app.post("/api/rep-console/:contactId/email", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { contactId } = req.params;
+      const { subject, body } = req.body;
+
+      if (!subject || typeof subject !== 'string') {
+        return res.status(400).json({ success: false, error: "subject is required" });
+      }
+      if (!body || typeof body !== 'string') {
+        return res.status(400).json({ success: false, error: "body is required" });
+      }
+
+      const result = await repConsoleService.sendEmail(contactId, subject, body);
+
+      if (result.success) {
+        return res.json({ success: true, messageId: result.messageId });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE SEND EMAIL] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to send email" });
+    }
+  });
+
   return httpServer;
 }
