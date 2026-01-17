@@ -353,7 +353,13 @@ export const lenderApprovals = pgTable("lender_approvals", {
   emailSubject: text("email_subject"),
   emailReceivedAt: timestamp("email_received_at"),
   rawEmailContent: text("raw_email_content"), // Store original email for reference
-  
+
+  // GHL Sync Tracking
+  ghlSynced: boolean("ghl_synced").default(false), // Whether synced to GHL opportunity
+  ghlSyncedAt: timestamp("ghl_synced_at"), // When it was synced
+  ghlSyncMessage: text("ghl_sync_message"), // Success/error message from sync attempt
+  ghlOpportunityId: text("ghl_opportunity_id"), // The opportunity ID it was synced to
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

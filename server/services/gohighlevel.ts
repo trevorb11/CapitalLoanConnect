@@ -1153,7 +1153,7 @@ export class GoHighLevelService {
 
   /**
    * Sync an approval or denial to GHL opportunity custom fields
-   * Returns: { success: boolean, message: string }
+   * Returns: { success: boolean, message: string, opportunityId?: string }
    */
   async syncApprovalToOpportunity(approval: {
     businessName: string;
@@ -1166,7 +1166,7 @@ export class GoHighLevelService {
     paymentAmount?: string | null;
     paymentFrequency?: string | null;
     productType?: string | null;
-  }): Promise<{ success: boolean; message: string }> {
+  }): Promise<{ success: boolean; message: string; opportunityId?: string }> {
     if (!this.isEnabled) {
       return { success: false, message: "GHL service not enabled" };
     }
@@ -1228,8 +1228,27 @@ export class GoHighLevelService {
         }
       }
 
-      // Step 4: Find the next available slot (1-5)
+      // Step 4: Check for duplicate lender in existing slots
       const fieldPrefix = isApproved ? 'offer_' : 'denied_';
+      const normalizedLenderName = approval.lenderName.toLowerCase().trim();
+
+      for (let i = 1; i <= 5; i++) {
+        const fieldKey = `${fieldPrefix}${i}`;
+        const existingValue = currentCustomFields[fieldKey] ||
+                             currentCustomFields[`contact.${fieldKey}`] ||
+                             currentCustomFields[`opportunity.${fieldKey}`] || '';
+
+        // Check if this lender already has an entry
+        if (existingValue && existingValue.toLowerCase().includes(`lender: ${normalizedLenderName}`)) {
+          return {
+            success: false,
+            message: `Lender "${approval.lenderName}" already has an ${isApproved ? 'offer' : 'denial'} in slot ${i}`,
+            opportunityId: targetOpp.id
+          };
+        }
+      }
+
+      // Step 5: Find the next available slot (1-5)
       let slotNumber = 0;
 
       for (let i = 1; i <= 5; i++) {
@@ -1248,11 +1267,12 @@ export class GoHighLevelService {
       if (slotNumber === 0) {
         return {
           success: false,
-          message: `All ${isApproved ? 'Offer' : 'Denied'} slots (1-5) are filled for this opportunity`
+          message: `All ${isApproved ? 'Offer' : 'Denied'} slots (1-5) are filled for this opportunity`,
+          opportunityId: targetOpp.id
         };
       }
 
-      // Step 5: Format and update the field
+      // Step 6: Format and update the field
       const offerString = this.formatOfferString(approval);
       const fieldKey = `${fieldPrefix}${slotNumber}`;
 
@@ -1263,12 +1283,14 @@ export class GoHighLevelService {
       if (updateSuccess) {
         return {
           success: true,
-          message: `Synced to ${isApproved ? 'Offer' : 'Denied'} ${slotNumber}: ${offerString}`
+          message: `Synced to ${isApproved ? 'Offer' : 'Denied'} ${slotNumber}: ${offerString}`,
+          opportunityId: targetOpp.id
         };
       } else {
         return {
           success: false,
-          message: `Failed to update opportunity custom fields`
+          message: `Failed to update opportunity custom fields`,
+          opportunityId: targetOpp.id
         };
       }
 

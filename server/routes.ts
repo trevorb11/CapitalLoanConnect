@@ -2958,6 +2958,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     productType: row.productType
                   });
 
+                  // Save GHL sync status to database
+                  await storage.updateLenderApproval(existing.id, {
+                    ghlSynced: ghlResult.success,
+                    ghlSyncedAt: new Date(),
+                    ghlSyncMessage: ghlResult.message,
+                    ghlOpportunityId: ghlResult.opportunityId || null
+                  });
+
                   if (ghlResult.success) {
                     console.log(`[APPROVAL SYNC] GHL sync success (update): ${ghlResult.message}`);
                     results.ghlSynced++;
@@ -2965,8 +2973,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.log(`[APPROVAL SYNC] GHL sync skipped (update): ${ghlResult.message}`);
                     results.ghlSkipped++;
                   }
-                } catch (ghlError) {
+                } catch (ghlError: any) {
                   console.error(`[APPROVAL SYNC] GHL sync error (update) for ${row.businessName}:`, ghlError);
+                  // Save error status to database
+                  await storage.updateLenderApproval(existing.id, {
+                    ghlSynced: false,
+                    ghlSyncedAt: new Date(),
+                    ghlSyncMessage: `Error: ${ghlError.message || 'Unknown error'}`
+                  });
                   results.ghlErrors++;
                 }
               }
@@ -3024,6 +3038,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               productType: row.productType
             });
 
+            // Save GHL sync status to database
+            await storage.updateLenderApproval(approval.id, {
+              ghlSynced: ghlResult.success,
+              ghlSyncedAt: new Date(),
+              ghlSyncMessage: ghlResult.message,
+              ghlOpportunityId: ghlResult.opportunityId || null
+            });
+
             if (ghlResult.success) {
               console.log(`[APPROVAL SYNC] GHL sync success: ${ghlResult.message}`);
               results.ghlSynced++;
@@ -3031,8 +3053,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`[APPROVAL SYNC] GHL sync skipped: ${ghlResult.message}`);
               results.ghlSkipped++;
             }
-          } catch (ghlError) {
+          } catch (ghlError: any) {
             console.error(`[APPROVAL SYNC] GHL sync error for ${row.businessName}:`, ghlError);
+            // Save error status to database
+            await storage.updateLenderApproval(approval.id, {
+              ghlSynced: false,
+              ghlSyncedAt: new Date(),
+              ghlSyncMessage: `Error: ${ghlError.message || 'Unknown error'}`
+            });
             results.ghlErrors++;
           }
 
@@ -3173,10 +3201,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     paymentFrequency: row.paymentFrequency,
                     productType: row.productType
                   });
+                  // Save GHL sync status
+                  await storage.updateLenderApproval(existing.id, {
+                    ghlSynced: ghlResult.success,
+                    ghlSyncedAt: new Date(),
+                    ghlSyncMessage: ghlResult.message,
+                    ghlOpportunityId: ghlResult.opportunityId || null
+                  });
                   if (ghlResult.success) ghlSynced++;
                   else ghlSkipped++;
-                } catch (ghlError) {
+                } catch (ghlError: any) {
                   console.error(`[SCHEDULED SYNC] GHL sync error:`, ghlError);
+                  await storage.updateLenderApproval(existing.id, {
+                    ghlSynced: false,
+                    ghlSyncedAt: new Date(),
+                    ghlSyncMessage: `Error: ${ghlError.message || 'Unknown error'}`
+                  });
                 }
               }
             }
@@ -3184,7 +3224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           // Create new approval
-          await storage.createLenderApproval({
+          const newApproval = await storage.createLenderApproval({
             businessName: row.businessName,
             businessEmail: row.businessEmail || null,
             lenderName: row.lenderName,
@@ -3222,10 +3262,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               paymentFrequency: row.paymentFrequency,
               productType: row.productType
             });
+            // Save GHL sync status
+            await storage.updateLenderApproval(newApproval.id, {
+              ghlSynced: ghlResult.success,
+              ghlSyncedAt: new Date(),
+              ghlSyncMessage: ghlResult.message,
+              ghlOpportunityId: ghlResult.opportunityId || null
+            });
             if (ghlResult.success) ghlSynced++;
             else ghlSkipped++;
-          } catch (ghlError) {
+          } catch (ghlError: any) {
             console.error(`[SCHEDULED SYNC] GHL sync error:`, ghlError);
+            await storage.updateLenderApproval(newApproval.id, {
+              ghlSynced: false,
+              ghlSyncedAt: new Date(),
+              ghlSyncMessage: `Error: ${ghlError.message || 'Unknown error'}`
+            });
           }
         } catch (rowError) {
           console.error(`[SCHEDULED SYNC] Error processing row:`, rowError);
