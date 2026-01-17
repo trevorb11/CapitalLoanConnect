@@ -1643,11 +1643,12 @@ export default function Dashboard() {
             : Number(revenueStr);
           const isLowRevenue = !isNaN(revenueValue) && revenueValue > 0 && revenueValue < 10000;
 
+          // Low revenue apps are hidden from all views EXCEPT the "low-revenue" filter
           const matchesFilter =
-            filterStatus === "all" ||
-            (filterStatus === "intake" && app.isCompleted && !app.isFullApplicationCompleted) ||
-            (filterStatus === "full" && app.isFullApplicationCompleted) ||
-            (filterStatus === "partial" && !app.isCompleted && !app.isFullApplicationCompleted) ||
+            (filterStatus === "all" && !isLowRevenue) ||
+            (filterStatus === "intake" && app.isCompleted && !app.isFullApplicationCompleted && !isLowRevenue) ||
+            (filterStatus === "full" && app.isFullApplicationCompleted && !isLowRevenue) ||
+            (filterStatus === "partial" && !app.isCompleted && !app.isFullApplicationCompleted && !isLowRevenue) ||
             (filterStatus === "low-revenue" && isLowRevenue);
 
           // Agent filter (admin only feature)
