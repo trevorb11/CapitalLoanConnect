@@ -2907,6 +2907,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updated: 0,
         skipped: 0,
         errors: 0,
+        ghlSynced: 0,
+        ghlSkipped: 0,
+        ghlErrors: 0,
         approvals: [] as any[]
       };
       
@@ -2938,6 +2941,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
               await storage.updateLenderApproval(existing.id, updates);
               console.log(`[APPROVAL SYNC] Updated approval: ${row.businessName}`);
               results.updated++;
+
+              // If status changed to approved/denied, sync to GHL
+              if (updates.status && (updates.status === 'approved' || updates.status === 'denied' || updates.status === 'declined')) {
+                try {
+                  const ghlResult = await ghlService.syncApprovalToOpportunity({
+                    businessName: row.businessName,
+                    lenderName: row.lenderName,
+                    status: updates.status,
+                    approvedAmount: row.approvedAmount,
+                    termLength: row.termLength,
+                    factorRate: row.factorRate,
+                    paybackAmount: row.paybackAmount,
+                    paymentAmount: row.paymentAmount,
+                    paymentFrequency: row.paymentFrequency,
+                    productType: row.productType
+                  });
+
+                  if (ghlResult.success) {
+                    console.log(`[APPROVAL SYNC] GHL sync success (update): ${ghlResult.message}`);
+                    results.ghlSynced++;
+                  } else {
+                    console.log(`[APPROVAL SYNC] GHL sync skipped (update): ${ghlResult.message}`);
+                    results.ghlSkipped++;
+                  }
+                } catch (ghlError) {
+                  console.error(`[APPROVAL SYNC] GHL sync error (update) for ${row.businessName}:`, ghlError);
+                  results.ghlErrors++;
+                }
+              }
             } else {
               results.skipped++;
             }
@@ -2976,14 +3008,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
             lenderName: approval.lenderName,
             approvedAmount: approval.approvedAmount
           });
-          
+
+          // Sync to GHL opportunity (if status is approved/denied)
+          try {
+            const ghlResult = await ghlService.syncApprovalToOpportunity({
+              businessName: row.businessName,
+              lenderName: row.lenderName,
+              status: row.status || 'pending',
+              approvedAmount: row.approvedAmount,
+              termLength: row.termLength,
+              factorRate: row.factorRate,
+              paybackAmount: row.paybackAmount,
+              paymentAmount: row.paymentAmount,
+              paymentFrequency: row.paymentFrequency,
+              productType: row.productType
+            });
+
+            if (ghlResult.success) {
+              console.log(`[APPROVAL SYNC] GHL sync success: ${ghlResult.message}`);
+              results.ghlSynced++;
+            } else {
+              console.log(`[APPROVAL SYNC] GHL sync skipped: ${ghlResult.message}`);
+              results.ghlSkipped++;
+            }
+          } catch (ghlError) {
+            console.error(`[APPROVAL SYNC] GHL sync error for ${row.businessName}:`, ghlError);
+            results.ghlErrors++;
+          }
+
         } catch (rowError) {
           console.error(`[APPROVAL SYNC] Error processing row ${row.rowId}:`, rowError);
           results.errors++;
         }
       }
-      
-      console.log(`[APPROVAL SYNC] Complete. New: ${results.newApprovals}, Updated: ${results.updated}, Skipped: ${results.skipped}, Errors: ${results.errors}`);
+
+      console.log(`[APPROVAL SYNC] Complete. New: ${results.newApprovals}, Updated: ${results.updated}, Skipped: ${results.skipped}, Errors: ${results.errors}, GHL Synced: ${results.ghlSynced}, GHL Skipped: ${results.ghlSkipped}`);
       
       res.json(results);
       
@@ -3077,12 +3136,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       let newApprovals = 0;
       let updatedApprovals = 0;
-      
+      let ghlSynced = 0;
+      let ghlSkipped = 0;
+
       for (const row of sheetApprovals) {
         try {
           // Check if already processed
           const existing = await storage.getLenderApprovalByEmailId(row.rowId);
-          
+
           if (existing) {
             // Check if any data has changed and update if needed
             const updates: any = {};
@@ -3092,14 +3153,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (row.status && row.status.toLowerCase() !== existing.status) {
               updates.status = row.status.toLowerCase();
             }
-            
+
             if (Object.keys(updates).length > 0) {
               await storage.updateLenderApproval(existing.id, updates);
               updatedApprovals++;
+
+              // If status changed to approved/denied, sync to GHL
+              if (updates.status && (updates.status === 'approved' || updates.status === 'denied' || updates.status === 'declined')) {
+                try {
+                  const ghlResult = await ghlService.syncApprovalToOpportunity({
+                    businessName: row.businessName,
+                    lenderName: row.lenderName,
+                    status: updates.status,
+                    approvedAmount: row.approvedAmount,
+                    termLength: row.termLength,
+                    factorRate: row.factorRate,
+                    paybackAmount: row.paybackAmount,
+                    paymentAmount: row.paymentAmount,
+                    paymentFrequency: row.paymentFrequency,
+                    productType: row.productType
+                  });
+                  if (ghlResult.success) ghlSynced++;
+                  else ghlSkipped++;
+                } catch (ghlError) {
+                  console.error(`[SCHEDULED SYNC] GHL sync error:`, ghlError);
+                }
+              }
             }
             continue;
           }
-          
+
           // Create new approval
           await storage.createLenderApproval({
             businessName: row.businessName,
@@ -3124,12 +3207,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
             rawEmailContent: null
           });
           newApprovals++;
+
+          // Sync new approval to GHL opportunity (if status is approved/denied)
+          try {
+            const ghlResult = await ghlService.syncApprovalToOpportunity({
+              businessName: row.businessName,
+              lenderName: row.lenderName,
+              status: row.status || 'pending',
+              approvedAmount: row.approvedAmount,
+              termLength: row.termLength,
+              factorRate: row.factorRate,
+              paybackAmount: row.paybackAmount,
+              paymentAmount: row.paymentAmount,
+              paymentFrequency: row.paymentFrequency,
+              productType: row.productType
+            });
+            if (ghlResult.success) ghlSynced++;
+            else ghlSkipped++;
+          } catch (ghlError) {
+            console.error(`[SCHEDULED SYNC] GHL sync error:`, ghlError);
+          }
         } catch (rowError) {
           console.error(`[SCHEDULED SYNC] Error processing row:`, rowError);
         }
       }
-      
-      console.log(`[SCHEDULED SYNC] Complete. New: ${newApprovals}, Updated: ${updatedApprovals}`);
+
+      console.log(`[SCHEDULED SYNC] Complete. New: ${newApprovals}, Updated: ${updatedApprovals}, GHL Synced: ${ghlSynced}, GHL Skipped: ${ghlSkipped}`);
       
     } catch (error) {
       console.error("[SCHEDULED SYNC] Error during scheduled sync:", error);
