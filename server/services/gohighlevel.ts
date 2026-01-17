@@ -980,6 +980,328 @@ export class GoHighLevelService {
       // Don't throw - webhooks are nice-to-have, not critical
     }
   }
+
+  // ========================================
+  // OPPORTUNITY SYNC FOR APPROVALS/DENIALS
+  // ========================================
+
+  /**
+   * Search for a contact by business/company name
+   */
+  async searchContactByBusinessName(businessName: string): Promise<string | null> {
+    if (!this.isEnabled || !businessName) return null;
+
+    try {
+      // Use the contacts search endpoint with query parameter
+      const response = await this.makeRequest(
+        `/contacts/?locationId=${this.locationId}&query=${encodeURIComponent(businessName)}&limit=20`,
+        "GET"
+      );
+
+      const contacts = response.contacts || [];
+
+      // Find best match - prioritize exact company name match
+      const normalizedSearch = businessName.toLowerCase().trim();
+
+      for (const contact of contacts) {
+        const companyName = (contact.companyName || '').toLowerCase().trim();
+        // Exact match
+        if (companyName === normalizedSearch) {
+          console.log(`[GHL] Found exact company match for "${businessName}": ${contact.id}`);
+          return contact.id;
+        }
+      }
+
+      // Fuzzy match - check if company name contains search term or vice versa
+      for (const contact of contacts) {
+        const companyName = (contact.companyName || '').toLowerCase().trim();
+        if (companyName && (companyName.includes(normalizedSearch) || normalizedSearch.includes(companyName))) {
+          console.log(`[GHL] Found fuzzy company match for "${businessName}": ${contact.id} (${contact.companyName})`);
+          return contact.id;
+        }
+      }
+
+      console.log(`[GHL] No contact found for business name: "${businessName}"`);
+      return null;
+    } catch (error) {
+      console.error(`[GHL] Error searching contact by business name:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Search for opportunities by contact ID
+   */
+  async searchOpportunitiesByContact(contactId: string): Promise<any[]> {
+    if (!this.isEnabled || !contactId) return [];
+
+    try {
+      const response = await this.makeRequest(
+        `/opportunities/search?location_id=${this.locationId}&contact_id=${contactId}`,
+        "GET"
+      );
+
+      const opportunities = response.opportunities || [];
+      console.log(`[GHL] Found ${opportunities.length} opportunities for contact ${contactId}`);
+      return opportunities;
+    } catch (error) {
+      console.error(`[GHL] Error searching opportunities:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get a single opportunity with its custom fields
+   */
+  async getOpportunity(opportunityId: string): Promise<any | null> {
+    if (!this.isEnabled || !opportunityId) return null;
+
+    try {
+      const response = await this.makeRequest(
+        `/opportunities/${opportunityId}`,
+        "GET"
+      );
+      return response.opportunity || response || null;
+    } catch (error) {
+      console.error(`[GHL] Error fetching opportunity:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Update an opportunity's custom fields
+   */
+  async updateOpportunityCustomFields(
+    opportunityId: string,
+    customFields: Record<string, string>
+  ): Promise<boolean> {
+    if (!this.isEnabled || !opportunityId) return false;
+
+    try {
+      // Format custom fields for API
+      const customFieldsArray = Object.entries(customFields).map(([key, value]) => ({
+        key,
+        field_value: value
+      }));
+
+      await this.makeRequest(
+        `/opportunities/${opportunityId}`,
+        "PUT",
+        { customFields: customFieldsArray }
+      );
+
+      console.log(`[GHL] Updated opportunity ${opportunityId} with custom fields:`, Object.keys(customFields));
+      return true;
+    } catch (error) {
+      console.error(`[GHL] Error updating opportunity custom fields:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Format approval/denial data as a readable string
+   */
+  private formatOfferString(approval: {
+    lenderName: string;
+    approvedAmount?: string | null;
+    termLength?: string | null;
+    factorRate?: string | null;
+    paybackAmount?: string | null;
+    paymentAmount?: string | null;
+    paymentFrequency?: string | null;
+    productType?: string | null;
+  }): string {
+    const parts: string[] = [];
+
+    parts.push(`Lender: ${approval.lenderName}`);
+
+    if (approval.approvedAmount) {
+      const amount = parseFloat(approval.approvedAmount.replace(/[$,]/g, ''));
+      if (!isNaN(amount)) {
+        parts.push(`Amount: $${amount.toLocaleString()}`);
+      }
+    }
+
+    if (approval.termLength) {
+      parts.push(`Term: ${approval.termLength}`);
+    }
+
+    if (approval.factorRate) {
+      parts.push(`Rate: ${approval.factorRate}`);
+    }
+
+    if (approval.paybackAmount) {
+      const payback = parseFloat(approval.paybackAmount.replace(/[$,]/g, ''));
+      if (!isNaN(payback)) {
+        parts.push(`Payback: $${payback.toLocaleString()}`);
+      }
+    }
+
+    if (approval.paymentAmount && approval.paymentFrequency) {
+      const payment = parseFloat(approval.paymentAmount.replace(/[$,]/g, ''));
+      if (!isNaN(payment)) {
+        parts.push(`Payment: $${payment.toLocaleString()} ${approval.paymentFrequency}`);
+      }
+    }
+
+    if (approval.productType) {
+      parts.push(`Product: ${approval.productType}`);
+    }
+
+    return parts.join(' | ');
+  }
+
+  /**
+   * Sync an approval or denial to GHL opportunity custom fields
+   * Returns: { success: boolean, message: string, opportunityId?: string }
+   */
+  async syncApprovalToOpportunity(approval: {
+    businessName: string;
+    lenderName: string;
+    status: string;
+    approvedAmount?: string | null;
+    termLength?: string | null;
+    factorRate?: string | null;
+    paybackAmount?: string | null;
+    paymentAmount?: string | null;
+    paymentFrequency?: string | null;
+    productType?: string | null;
+  }): Promise<{ success: boolean; message: string; opportunityId?: string }> {
+    if (!this.isEnabled) {
+      return { success: false, message: "GHL service not enabled" };
+    }
+
+    // Normalize status
+    const normalizedStatus = (approval.status || '').toLowerCase().trim();
+
+    // Only process if status is clearly approved or denied
+    const isApproved = normalizedStatus === 'approved' || normalizedStatus === 'approval';
+    const isDenied = normalizedStatus === 'denied' || normalizedStatus === 'denial' || normalizedStatus === 'declined';
+
+    if (!isApproved && !isDenied) {
+      return {
+        success: false,
+        message: `Skipping - status "${approval.status}" is not approved or denied`
+      };
+    }
+
+    try {
+      // Step 1: Find contact by business name
+      const contactId = await this.searchContactByBusinessName(approval.businessName);
+      if (!contactId) {
+        return {
+          success: false,
+          message: `No GHL contact found for business: "${approval.businessName}"`
+        };
+      }
+
+      // Step 2: Find opportunities for this contact
+      const opportunities = await this.searchOpportunitiesByContact(contactId);
+      if (opportunities.length === 0) {
+        return {
+          success: false,
+          message: `No opportunities found for contact ${contactId} (${approval.businessName})`
+        };
+      }
+
+      // Get the most recent open opportunity, or the most recent one overall
+      const openOpps = opportunities.filter(o =>
+        o.status?.toLowerCase() !== 'won' &&
+        o.status?.toLowerCase() !== 'lost'
+      );
+
+      const targetOpp = openOpps.length > 0
+        ? openOpps.sort((a, b) => new Date(b.updatedAt || b.dateAdded || 0).getTime() - new Date(a.updatedAt || a.dateAdded || 0).getTime())[0]
+        : opportunities.sort((a, b) => new Date(b.updatedAt || b.dateAdded || 0).getTime() - new Date(a.updatedAt || a.dateAdded || 0).getTime())[0];
+
+      // Step 3: Get current opportunity to check existing fields
+      const oppDetails = await this.getOpportunity(targetOpp.id);
+      const currentCustomFields: Record<string, string> = {};
+
+      if (oppDetails?.customFields) {
+        for (const cf of oppDetails.customFields) {
+          const key = cf.key || cf.id || '';
+          const value = cf.value || cf.field_value || '';
+          if (key && value) {
+            currentCustomFields[key] = value;
+          }
+        }
+      }
+
+      // Step 4: Check for duplicate lender in existing slots
+      const fieldPrefix = isApproved ? 'offer_' : 'denied_';
+      const normalizedLenderName = approval.lenderName.toLowerCase().trim();
+
+      for (let i = 1; i <= 5; i++) {
+        const fieldKey = `${fieldPrefix}${i}`;
+        const existingValue = currentCustomFields[fieldKey] ||
+                             currentCustomFields[`contact.${fieldKey}`] ||
+                             currentCustomFields[`opportunity.${fieldKey}`] || '';
+
+        // Check if this lender already has an entry
+        if (existingValue && existingValue.toLowerCase().includes(`lender: ${normalizedLenderName}`)) {
+          return {
+            success: false,
+            message: `Lender "${approval.lenderName}" already has an ${isApproved ? 'offer' : 'denial'} in slot ${i}`,
+            opportunityId: targetOpp.id
+          };
+        }
+      }
+
+      // Step 5: Find the next available slot (1-5)
+      let slotNumber = 0;
+
+      for (let i = 1; i <= 5; i++) {
+        const fieldKey = `${fieldPrefix}${i}`;
+        // Check various possible key formats
+        const existingValue = currentCustomFields[fieldKey] ||
+                             currentCustomFields[`contact.${fieldKey}`] ||
+                             currentCustomFields[`opportunity.${fieldKey}`];
+
+        if (!existingValue || existingValue.trim() === '') {
+          slotNumber = i;
+          break;
+        }
+      }
+
+      if (slotNumber === 0) {
+        return {
+          success: false,
+          message: `All ${isApproved ? 'Offer' : 'Denied'} slots (1-5) are filled for this opportunity`,
+          opportunityId: targetOpp.id
+        };
+      }
+
+      // Step 6: Format and update the field
+      const offerString = this.formatOfferString(approval);
+      const fieldKey = `${fieldPrefix}${slotNumber}`;
+
+      const updateSuccess = await this.updateOpportunityCustomFields(targetOpp.id, {
+        [fieldKey]: offerString
+      });
+
+      if (updateSuccess) {
+        return {
+          success: true,
+          message: `Synced to ${isApproved ? 'Offer' : 'Denied'} ${slotNumber}: ${offerString}`,
+          opportunityId: targetOpp.id
+        };
+      } else {
+        return {
+          success: false,
+          message: `Failed to update opportunity custom fields`,
+          opportunityId: targetOpp.id
+        };
+      }
+
+    } catch (error: any) {
+      console.error(`[GHL] Error syncing approval to opportunity:`, error);
+      return {
+        success: false,
+        message: `Error: ${error.message || 'Unknown error'}`
+      };
+    }
+  }
 }
 
 export const ghlService = new GoHighLevelService();
