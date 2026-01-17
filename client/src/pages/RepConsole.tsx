@@ -222,15 +222,101 @@ function formatRelativeTime(dateString: string | null): string {
 }
 
 // ========================================
-// CONTACT HEADER CARD
+// CONTACT HEADER CARD (with SMS/Email modals and tag removal)
 // ========================================
 function ContactHeader({
   contact,
   computed,
+  contactId,
+  onRefresh,
 }: {
   contact: RepConsoleContact;
   computed: Contact360["computed"];
+  contactId: string;
+  onRefresh: () => void;
 }) {
+  const { toast } = useToast();
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [smsMessage, setSmsMessage] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+
+  // Send SMS mutation
+  const sendSmsMutation = useMutation({
+    mutationFn: async (message: string) => {
+      const res = await fetch(`/api/rep-console/${contactId}/sms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ message }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to send SMS");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "SMS sent", description: "Your message has been sent." });
+      setSmsMessage("");
+      setSmsOpen(false);
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Send Email mutation
+  const sendEmailMutation = useMutation({
+    mutationFn: async ({ subject, body }: { subject: string; body: string }) => {
+      const res = await fetch(`/api/rep-console/${contactId}/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ subject, body }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to send email");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Email sent", description: "Your email has been sent." });
+      setEmailSubject("");
+      setEmailBody("");
+      setEmailOpen(false);
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Remove tag mutation
+  const removeTagMutation = useMutation({
+    mutationFn: async (tag: string) => {
+      const res = await fetch(`/api/rep-console/${contactId}/tags/${encodeURIComponent(tag)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to remove tag");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Tag removed" });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   return (
     <Card className="border-l-4 border-l-primary">
       <CardContent className="pt-6">
@@ -285,30 +371,87 @@ function ContactHeader({
                   </Button>
                 )}
                 {contact.phone && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    asChild
-                    className="gap-1"
-                  >
-                    <a href={`sms:${contact.phone}`}>
-                      <MessageSquare className="w-4 h-4" />
-                      Text
-                    </a>
-                  </Button>
+                  <Dialog open={smsOpen} onOpenChange={setSmsOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1">
+                        <MessageSquare className="w-4 h-4" />
+                        Send SMS
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Send SMS to {contact.name}</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="text-sm text-muted-foreground">
+                          To: {contact.phone}
+                        </div>
+                        <Textarea
+                          placeholder="Type your message..."
+                          value={smsMessage}
+                          onChange={(e) => setSmsMessage(e.target.value)}
+                          className="min-h-[120px]"
+                        />
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setSmsOpen(false)}>Cancel</Button>
+                        <Button
+                          onClick={() => sendSmsMutation.mutate(smsMessage)}
+                          disabled={!smsMessage.trim() || sendSmsMutation.isPending}
+                        >
+                          {sendSmsMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                          Send
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 )}
                 {contact.email && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    asChild
-                    className="gap-1"
-                  >
-                    <a href={`mailto:${contact.email}`}>
-                      <Mail className="w-4 h-4" />
-                      Email
-                    </a>
-                  </Button>
+                  <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1">
+                        <Mail className="w-4 h-4" />
+                        Send Email
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>Send Email to {contact.name}</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="text-sm text-muted-foreground">
+                          To: {contact.email}
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Subject</Label>
+                          <Input
+                            placeholder="Email subject..."
+                            value={emailSubject}
+                            onChange={(e) => setEmailSubject(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Message</Label>
+                          <Textarea
+                            placeholder="Type your message..."
+                            value={emailBody}
+                            onChange={(e) => setEmailBody(e.target.value)}
+                            className="min-h-[150px]"
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setEmailOpen(false)}>Cancel</Button>
+                        <Button
+                          onClick={() => sendEmailMutation.mutate({ subject: emailSubject, body: emailBody })}
+                          disabled={!emailSubject.trim() || !emailBody.trim() || sendEmailMutation.isPending}
+                        >
+                          {sendEmailMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                          Send
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 )}
               </div>
             </div>
@@ -348,13 +491,21 @@ function ContactHeader({
           </div>
         </div>
 
-        {/* Tags */}
+        {/* Tags with remove buttons */}
         {contact.tags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t">
             {contact.tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="flex items-center gap-1">
+              <Badge key={tag} variant="secondary" className="flex items-center gap-1 pr-1">
                 <Tag className="w-3 h-3" />
                 {tag}
+                <button
+                  onClick={() => removeTagMutation.mutate(tag)}
+                  disabled={removeTagMutation.isPending}
+                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                  title="Remove tag"
+                >
+                  <XCircle className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                </button>
               </Badge>
             ))}
           </div>
@@ -365,9 +516,102 @@ function ContactHeader({
 }
 
 // ========================================
-// ACTIVE DEAL CARD
+// ACTIVE DEAL CARD (with pipeline stage selector and status buttons)
 // ========================================
-function ActiveDealCard({ opportunity }: { opportunity: RepConsoleOpportunity | null }) {
+interface PipelineStage {
+  id: string;
+  name: string;
+}
+
+interface Pipeline {
+  id: string;
+  name: string;
+  stages: PipelineStage[];
+}
+
+function ActiveDealCard({
+  opportunity,
+  onRefresh
+}: {
+  opportunity: RepConsoleOpportunity | null;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+  const [selectedStage, setSelectedStage] = useState<string>("");
+
+  // Fetch pipelines for stage dropdown
+  const pipelinesQuery = useQuery<{ success: boolean; data: { pipelines: Pipeline[] } }>({
+    queryKey: ["/api/rep-console/pipelines"],
+    queryFn: async () => {
+      const res = await fetch("/api/rep-console/pipelines", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch pipelines");
+      return res.json();
+    },
+    enabled: !!opportunity,
+  });
+
+  // Get stages for the current opportunity's pipeline
+  const currentPipeline = pipelinesQuery.data?.data?.pipelines?.find(
+    (p) => p.id === opportunity?.pipelineId
+  );
+  const stages = currentPipeline?.stages || [];
+
+  // Update stage mutation
+  const updateStageMutation = useMutation({
+    mutationFn: async (stageId: string) => {
+      const res = await fetch(`/api/rep-console/opportunities/${opportunity?.id}/stage`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pipelineStageId: stageId }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update stage");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Stage updated" });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Update status mutation (won/lost/abandoned)
+  const updateStatusMutation = useMutation({
+    mutationFn: async (status: "won" | "lost" | "abandoned" | "open") => {
+      const res = await fetch(`/api/rep-console/opportunities/${opportunity?.id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update status");
+      }
+      return res.json();
+    },
+    onSuccess: (_, status) => {
+      toast({ title: `Deal marked as ${status}` });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Handle stage change
+  const handleStageChange = (stageId: string) => {
+    setSelectedStage(stageId);
+    if (stageId && stageId !== opportunity?.stageId) {
+      updateStageMutation.mutate(stageId);
+    }
+  };
+
   if (!opportunity) {
     return (
       <Card>
@@ -407,10 +651,28 @@ function ActiveDealCard({ opportunity }: { opportunity: RepConsoleOpportunity | 
             <span className="text-muted-foreground">Pipeline</span>
             <span className="font-medium">{opportunity.pipelineName}</span>
           </div>
+
+          {/* Stage Selector */}
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Stage</span>
-            <Badge variant="outline">{opportunity.stageName}</Badge>
+            {stages.length > 0 ? (
+              <select
+                value={selectedStage || opportunity.stageId || ""}
+                onChange={(e) => handleStageChange(e.target.value)}
+                disabled={updateStageMutation.isPending}
+                className="text-sm border rounded px-2 py-1 bg-background"
+              >
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {stage.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Badge variant="outline">{opportunity.stageName}</Badge>
+            )}
           </div>
+
           {opportunity.monetaryValue && (
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Value</span>
@@ -419,6 +681,56 @@ function ActiveDealCard({ opportunity }: { opportunity: RepConsoleOpportunity | 
               </span>
             </div>
           )}
+        </div>
+
+        <Separator />
+
+        {/* Deal Status Actions */}
+        <div className="space-y-2">
+          <div className="text-sm font-medium">Deal Status</div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={opportunity.status === "won" ? "default" : "outline"}
+              size="sm"
+              onClick={() => updateStatusMutation.mutate("won")}
+              disabled={updateStatusMutation.isPending || opportunity.status === "won"}
+              className={opportunity.status === "won" ? "bg-emerald-600 hover:bg-emerald-700" : ""}
+            >
+              <CheckCircle2 className="w-4 h-4 mr-1" />
+              Won
+            </Button>
+            <Button
+              variant={opportunity.status === "lost" ? "default" : "outline"}
+              size="sm"
+              onClick={() => updateStatusMutation.mutate("lost")}
+              disabled={updateStatusMutation.isPending || opportunity.status === "lost"}
+              className={opportunity.status === "lost" ? "bg-red-600 hover:bg-red-700" : ""}
+            >
+              <XCircle className="w-4 h-4 mr-1" />
+              Lost
+            </Button>
+            <Button
+              variant={opportunity.status === "abandoned" ? "default" : "outline"}
+              size="sm"
+              onClick={() => updateStatusMutation.mutate("abandoned")}
+              disabled={updateStatusMutation.isPending || opportunity.status === "abandoned"}
+              className={opportunity.status === "abandoned" ? "bg-gray-600 hover:bg-gray-700" : ""}
+            >
+              <AlertTriangle className="w-4 h-4 mr-1" />
+              Abandoned
+            </Button>
+            {(opportunity.status === "won" || opportunity.status === "lost" || opportunity.status === "abandoned") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => updateStatusMutation.mutate("open")}
+                disabled={updateStatusMutation.isPending}
+              >
+                <RefreshCw className="w-4 h-4 mr-1" />
+                Reopen
+              </Button>
+            )}
+          </div>
         </div>
 
         <Separator />
@@ -566,11 +878,64 @@ function LenderApprovalsCard({ approvals }: { approvals: RepConsoleLenderApprova
 }
 
 // ========================================
-// TASKS CARD
+// TASKS CARD (with completion toggle)
 // ========================================
-function TasksCard({ tasks }: { tasks: RepConsoleTask[] }) {
+function TasksCard({
+  tasks,
+  contactId,
+  onRefresh
+}: {
+  tasks: RepConsoleTask[];
+  contactId: string;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
   const pendingTasks = tasks.filter((t) => !t.isCompleted);
   const completedTasks = tasks.filter((t) => t.isCompleted);
+
+  const toggleTaskMutation = useMutation({
+    mutationFn: async ({ taskId, completed }: { taskId: string; completed: boolean }) => {
+      const res = await fetch(`/api/rep-console/${contactId}/tasks/${taskId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ completed }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update task");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Task updated" });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const res = await fetch(`/api/rep-console/${contactId}/tasks/${taskId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete task");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Task deleted" });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
   return (
     <Card>
@@ -596,10 +961,15 @@ function TasksCard({ tasks }: { tasks: RepConsoleTask[] }) {
               {pendingTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                  className="p-3 border rounded-lg hover:bg-muted/50 transition-colors group"
                 >
                   <div className="flex items-start gap-3">
-                    <Clock className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                    <button
+                      onClick={() => toggleTaskMutation.mutate({ taskId: task.id, completed: true })}
+                      disabled={toggleTaskMutation.isPending}
+                      className="mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 border-amber-500 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                      title="Mark as complete"
+                    />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium">{task.title}</p>
                       {task.body && (
@@ -613,6 +983,14 @@ function TasksCard({ tasks }: { tasks: RepConsoleTask[] }) {
                         </p>
                       )}
                     </div>
+                    <button
+                      onClick={() => deleteTaskMutation.mutate(task.id)}
+                      disabled={deleteTaskMutation.isPending}
+                      className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-opacity"
+                      title="Delete task"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -626,13 +1004,28 @@ function TasksCard({ tasks }: { tasks: RepConsoleTask[] }) {
                   {completedTasks.slice(0, 5).map((task) => (
                     <div
                       key={task.id}
-                      className="p-3 border rounded-lg opacity-60"
+                      className="p-3 border rounded-lg opacity-60 group"
                     >
                       <div className="flex items-start gap-3">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                        <button
+                          onClick={() => toggleTaskMutation.mutate({ taskId: task.id, completed: false })}
+                          disabled={toggleTaskMutation.isPending}
+                          className="mt-0.5 flex-shrink-0"
+                          title="Mark as incomplete"
+                        >
+                          <CheckCircle2 className="w-5 h-5 text-emerald-500 hover:text-emerald-600" />
+                        </button>
                         <div className="flex-1 min-w-0">
                           <p className="line-through">{task.title}</p>
                         </div>
+                        <button
+                          onClick={() => deleteTaskMutation.mutate(task.id)}
+                          disabled={deleteTaskMutation.isPending}
+                          className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-opacity"
+                          title="Delete task"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -647,9 +1040,65 @@ function TasksCard({ tasks }: { tasks: RepConsoleTask[] }) {
 }
 
 // ========================================
-// NOTES CARD
+// NOTES CARD (with edit/delete)
 // ========================================
-function NotesCard({ notes }: { notes: RepConsoleNote[] }) {
+function NotesCard({
+  notes,
+  contactId,
+  onRefresh
+}: {
+  notes: RepConsoleNote[];
+  contactId: string;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+  const [editingNote, setEditingNote] = useState<{ id: string; body: string } | null>(null);
+
+  const updateNoteMutation = useMutation({
+    mutationFn: async ({ noteId, body }: { noteId: string; body: string }) => {
+      const res = await fetch(`/api/rep-console/${contactId}/notes/${noteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ body }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update note");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Note updated" });
+      setEditingNote(null);
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: async (noteId: string) => {
+      const res = await fetch(`/api/rep-console/${contactId}/notes/${noteId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete note");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Note deleted" });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -671,15 +1120,62 @@ function NotesCard({ notes }: { notes: RepConsoleNote[] }) {
               {notes.map((note) => (
                 <div
                   key={note.id}
-                  className="p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                  className="p-3 border rounded-lg hover:bg-muted/50 transition-colors group"
                 >
-                  <p className="text-sm whitespace-pre-wrap">{note.body}</p>
-                  <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                    {note.userName && <span>By {note.userName}</span>}
-                    {note.dateAdded && (
-                      <span>{formatRelativeTime(note.dateAdded)}</span>
-                    )}
-                  </div>
+                  {editingNote?.id === note.id ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={editingNote.body}
+                        onChange={(e) => setEditingNote({ ...editingNote, body: e.target.value })}
+                        className="text-sm min-h-[80px]"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => updateNoteMutation.mutate({ noteId: note.id, body: editingNote.body })}
+                          disabled={updateNoteMutation.isPending}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingNote(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm whitespace-pre-wrap flex-1">{note.body}</p>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => setEditingNote({ id: note.id, body: note.body })}
+                            className="text-muted-foreground hover:text-foreground"
+                            title="Edit note"
+                          >
+                            <StickyNote className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteNoteMutation.mutate(note.id)}
+                            disabled={deleteNoteMutation.isPending}
+                            className="text-destructive hover:text-destructive/80"
+                            title="Delete note"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                        {note.userName && <span>By {note.userName}</span>}
+                        {note.dateAdded && (
+                          <span>{formatRelativeTime(note.dateAdded)}</span>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -1916,7 +2412,12 @@ export default function RepConsole() {
         )}
 
         {/* Contact Header */}
-        <ContactHeader contact={contact360.contact} computed={contact360.computed} />
+        <ContactHeader
+          contact={contact360.contact}
+          computed={contact360.computed}
+          contactId={contactId}
+          onRefresh={() => refetch()}
+        />
 
         {/* Quick Actions Toolbar */}
         <div className="mt-4">
@@ -1931,14 +2432,25 @@ export default function RepConsole() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
           {/* Left Column: Deal & Approvals */}
           <div className="space-y-6">
-            <ActiveDealCard opportunity={contact360.activeOpportunity} />
+            <ActiveDealCard
+              opportunity={contact360.activeOpportunity}
+              onRefresh={() => refetch()}
+            />
             <LenderApprovalsCard approvals={contact360.lenderApprovals} />
           </div>
 
           {/* Middle Column: Tasks & Notes */}
           <div className="space-y-6">
-            <TasksCard tasks={contact360.tasks} />
-            <NotesCard notes={contact360.notes} />
+            <TasksCard
+              tasks={contact360.tasks}
+              contactId={contactId}
+              onRefresh={() => refetch()}
+            />
+            <NotesCard
+              notes={contact360.notes}
+              contactId={contactId}
+              onRefresh={() => refetch()}
+            />
           </div>
 
           {/* Right Column: Conversations */}
