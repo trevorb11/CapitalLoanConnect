@@ -4049,6 +4049,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * PUT /api/rep-console/opportunities/:opportunityId/next-action
+   * Update opportunity next action and due date
+   */
+  app.put("/api/rep-console/opportunities/:opportunityId/next-action", async (req, res) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
+      const { opportunityId } = req.params;
+      const { nextAction, nextActionDue } = req.body;
+
+      // Update custom fields on the opportunity
+      const result = await repConsoleService.updateOpportunityNextAction(opportunityId, nextAction, nextActionDue);
+
+      if (result.success) {
+        return res.json({ success: true });
+      } else {
+        return res.status(500).json({ success: false, error: result.error });
+      }
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE UPDATE NEXT ACTION] Error:", error);
+      return res.status(500).json({ success: false, error: error.message || "Failed to update next action" });
+    }
+  });
+
+  /**
    * POST /api/rep-console/:contactId/sms
    * Send SMS to contact
    */

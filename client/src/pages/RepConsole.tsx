@@ -53,6 +53,16 @@ import {
   List,
   Plus,
   StickyNote,
+  Pencil,
+  Save,
+  X,
+  Reply,
+  Star,
+  Trophy,
+  PhoneOff,
+  Copy,
+  FileCheck,
+  Target,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import type {
@@ -222,7 +232,23 @@ function formatRelativeTime(dateString: string | null): string {
 }
 
 // ========================================
-// CONTACT HEADER CARD (with SMS/Email modals and tag removal)
+// SMS TEMPLATES
+// ========================================
+const SMS_TEMPLATES = [
+  { label: "Follow-up", text: "Hi {name}, just following up on your application. Do you have a few minutes to chat today?" },
+  { label: "Docs Needed", text: "Hi {name}, we're missing some documents to move forward. Can you send your latest bank statements?" },
+  { label: "Approval Ready", text: "Great news {name}! We have an approval ready for you. When's a good time to discuss the terms?" },
+  { label: "Quick Check-in", text: "Hi {name}, just checking in to see how things are going. Let me know if you have any questions!" },
+];
+
+const EMAIL_TEMPLATES = [
+  { label: "Follow-up", subject: "Following Up on Your Application", body: "Hi {name},\n\nI wanted to follow up on your recent application. Please let me know if you have any questions or if there's anything I can help with.\n\nBest regards" },
+  { label: "Approval", subject: "Great News - You're Approved!", body: "Hi {name},\n\nI'm excited to let you know that we have an approval for you! Please review the attached terms and let me know when you'd like to discuss.\n\nBest regards" },
+  { label: "Docs Request", subject: "Additional Documents Needed", body: "Hi {name},\n\nTo continue processing your application, we need the following documents:\n- Last 3 months bank statements\n- Photo ID\n\nPlease send these at your earliest convenience.\n\nBest regards" },
+];
+
+// ========================================
+// CONTACT HEADER CARD (with SMS/Email modals, tag management, and inline editing)
 // ========================================
 function ContactHeader({
   contact,
@@ -241,6 +267,25 @@ function ContactHeader({
   const [smsMessage, setSmsMessage] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
+
+  // Inline editing state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    firstName: contact.firstName,
+    lastName: contact.lastName,
+    email: contact.email,
+    phone: contact.phone,
+    companyName: contact.companyName,
+  });
+
+  // Add tag state
+  const [newTag, setNewTag] = useState("");
+  const [showAddTag, setShowAddTag] = useState(false);
+
+  // Call log state
+  const [callLogOpen, setCallLogOpen] = useState(false);
+  const [callNotes, setCallNotes] = useState("");
+  const [callOutcome, setCallOutcome] = useState<"answered" | "voicemail" | "no-answer" | "busy">("answered");
 
   // Send SMS mutation
   const sendSmsMutation = useMutation({
@@ -317,6 +362,102 @@ function ContactHeader({
     },
   });
 
+  // Add tag mutation
+  const addTagMutation = useMutation({
+    mutationFn: async (tag: string) => {
+      const res = await fetch(`/api/rep-console/${contactId}/tags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tag }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to add tag");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Tag added" });
+      setNewTag("");
+      setShowAddTag(false);
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Update contact mutation
+  const updateContactMutation = useMutation({
+    mutationFn: async (updates: typeof editForm) => {
+      const res = await fetch(`/api/rep-console/${contactId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update contact");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Contact updated" });
+      setIsEditing(false);
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Log call mutation (adds a note with call details)
+  const logCallMutation = useMutation({
+    mutationFn: async ({ outcome, notes }: { outcome: string; notes: string }) => {
+      const callLog = `📞 Call Log - ${outcome.toUpperCase()}\n${notes ? `Notes: ${notes}` : "No notes"}`;
+      const res = await fetch(`/api/rep-console/${contactId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ body: callLog }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to log call");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Call logged" });
+      setCallNotes("");
+      setCallOutcome("answered");
+      setCallLogOpen(false);
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Helper to copy to clipboard
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: `${label} copied` });
+  };
+
+  // Apply template with name replacement
+  const applyTemplate = (template: { text?: string; subject?: string; body?: string }, type: "sms" | "email") => {
+    const name = contact.firstName || contact.name.split(" ")[0] || "there";
+    if (type === "sms" && template.text) {
+      setSmsMessage(template.text.replace("{name}", name));
+    } else if (type === "email" && template.subject && template.body) {
+      setEmailSubject(template.subject);
+      setEmailBody(template.body.replace("{name}", name));
+    }
+  };
+
   return (
     <Card className="border-l-4 border-l-primary">
       <CardContent className="pt-6">
@@ -326,34 +467,138 @@ function ContactHeader({
             <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
               <User className="w-7 h-7 text-primary" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold">{contact.name}</h1>
-              {contact.companyName && (
-                <div className="flex items-center gap-2 text-muted-foreground mt-1">
-                  <Building2 className="w-4 h-4" />
-                  <span>{contact.companyName}</span>
+            <div className="flex-1">
+              {isEditing ? (
+                /* Edit Mode */
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="First name"
+                      value={editForm.firstName}
+                      onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                      className="h-8"
+                    />
+                    <Input
+                      placeholder="Last name"
+                      value={editForm.lastName}
+                      onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <Input
+                      placeholder="Company name"
+                      value={editForm.companyName}
+                      onChange={(e) => setEditForm({ ...editForm, companyName: e.target.value })}
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <Input
+                      placeholder="Phone"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <Input
+                      placeholder="Email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => updateContactMutation.mutate(editForm)}
+                      disabled={updateContactMutation.isPending}
+                    >
+                      {updateContactMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1" />}
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setEditForm({
+                          firstName: contact.firstName,
+                          lastName: contact.lastName,
+                          email: contact.email,
+                          phone: contact.phone,
+                          companyName: contact.companyName,
+                        });
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
+              ) : (
+                /* View Mode */
+                <>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-2xl font-bold">{contact.name}</h1>
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="p-1 hover:bg-muted rounded-md transition-colors"
+                      title="Edit contact"
+                    >
+                      <Pencil className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+                    </button>
+                  </div>
+                  {contact.companyName && (
+                    <div className="flex items-center gap-2 text-muted-foreground mt-1">
+                      <Building2 className="w-4 h-4" />
+                      <span>{contact.companyName}</span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-4 mt-3">
+                    {contact.phone && (
+                      <div className="flex items-center gap-1">
+                        <a
+                          href={`tel:${contact.phone}`}
+                          className="flex items-center gap-1 text-sm hover:text-primary transition-colors"
+                        >
+                          <Phone className="w-4 h-4" />
+                          {contact.phone}
+                        </a>
+                        <button
+                          onClick={() => copyToClipboard(contact.phone, "Phone")}
+                          className="p-0.5 hover:bg-muted rounded transition-colors"
+                          title="Copy phone"
+                        >
+                          <Copy className="w-3 h-3 text-muted-foreground" />
+                        </button>
+                      </div>
+                    )}
+                    {contact.email && (
+                      <div className="flex items-center gap-1">
+                        <a
+                          href={`mailto:${contact.email}`}
+                          className="flex items-center gap-1 text-sm hover:text-primary transition-colors"
+                        >
+                          <Mail className="w-4 h-4" />
+                          {contact.email}
+                        </a>
+                        <button
+                          onClick={() => copyToClipboard(contact.email, "Email")}
+                          className="p-0.5 hover:bg-muted rounded transition-colors"
+                          title="Copy email"
+                        >
+                          <Copy className="w-3 h-3 text-muted-foreground" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
-              <div className="flex flex-wrap items-center gap-4 mt-3">
-                {contact.phone && (
-                  <a
-                    href={`tel:${contact.phone}`}
-                    className="flex items-center gap-1 text-sm hover:text-primary transition-colors"
-                  >
-                    <Phone className="w-4 h-4" />
-                    {contact.phone}
-                  </a>
-                )}
-                {contact.email && (
-                  <a
-                    href={`mailto:${contact.email}`}
-                    className="flex items-center gap-1 text-sm hover:text-primary transition-colors"
-                  >
-                    <Mail className="w-4 h-4" />
-                    {contact.email}
-                  </a>
-                )}
-              </div>
 
               {/* Quick Action Buttons */}
               <div className="flex flex-wrap gap-2 mt-4">
@@ -370,6 +615,61 @@ function ContactHeader({
                     </a>
                   </Button>
                 )}
+                {/* Log Call Dialog */}
+                {contact.phone && (
+                  <Dialog open={callLogOpen} onOpenChange={setCallLogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1">
+                        <FileCheck className="w-4 h-4" />
+                        Log Call
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Log Call with {contact.name}</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label>Call Outcome</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {(["answered", "voicemail", "no-answer", "busy"] as const).map((outcome) => (
+                              <Button
+                                key={outcome}
+                                type="button"
+                                variant={callOutcome === outcome ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setCallOutcome(outcome)}
+                                className="capitalize"
+                              >
+                                {outcome === "no-answer" ? "No Answer" : outcome}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Notes (optional)</Label>
+                          <Textarea
+                            placeholder="What was discussed..."
+                            value={callNotes}
+                            onChange={(e) => setCallNotes(e.target.value)}
+                            className="min-h-[100px]"
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setCallLogOpen(false)}>Cancel</Button>
+                        <Button
+                          onClick={() => logCallMutation.mutate({ outcome: callOutcome, notes: callNotes })}
+                          disabled={logCallMutation.isPending}
+                        >
+                          {logCallMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileCheck className="w-4 h-4 mr-2" />}
+                          Log Call
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                )}
+                {/* SMS Dialog with Templates */}
                 {contact.phone && (
                   <Dialog open={smsOpen} onOpenChange={setSmsOpen}>
                     <DialogTrigger asChild>
@@ -386,12 +686,33 @@ function ContactHeader({
                         <div className="text-sm text-muted-foreground">
                           To: {contact.phone}
                         </div>
+                        {/* SMS Templates */}
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">Quick Templates</Label>
+                          <div className="flex flex-wrap gap-1">
+                            {SMS_TEMPLATES.map((template) => (
+                              <Button
+                                key={template.label}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-7"
+                                onClick={() => applyTemplate(template, "sms")}
+                              >
+                                {template.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
                         <Textarea
                           placeholder="Type your message..."
                           value={smsMessage}
                           onChange={(e) => setSmsMessage(e.target.value)}
                           className="min-h-[120px]"
                         />
+                        <div className="text-xs text-muted-foreground text-right">
+                          {smsMessage.length} characters
+                        </div>
                       </div>
                       <DialogFooter>
                         <Button variant="outline" onClick={() => setSmsOpen(false)}>Cancel</Button>
@@ -406,6 +727,7 @@ function ContactHeader({
                     </DialogContent>
                   </Dialog>
                 )}
+                {/* Email Dialog with Templates */}
                 {contact.email && (
                   <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
                     <DialogTrigger asChild>
@@ -421,6 +743,24 @@ function ContactHeader({
                       <div className="space-y-4 py-4">
                         <div className="text-sm text-muted-foreground">
                           To: {contact.email}
+                        </div>
+                        {/* Email Templates */}
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">Quick Templates</Label>
+                          <div className="flex flex-wrap gap-1">
+                            {EMAIL_TEMPLATES.map((template) => (
+                              <Button
+                                key={template.label}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-7"
+                                onClick={() => applyTemplate(template, "email")}
+                              >
+                                {template.label}
+                              </Button>
+                            ))}
+                          </div>
                         </div>
                         <div className="space-y-2">
                           <Label>Subject</Label>
@@ -491,25 +831,77 @@ function ContactHeader({
           </div>
         </div>
 
-        {/* Tags with remove buttons */}
-        {contact.tags.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t">
-            {contact.tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="flex items-center gap-1 pr-1">
-                <Tag className="w-3 h-3" />
-                {tag}
-                <button
-                  onClick={() => removeTagMutation.mutate(tag)}
-                  disabled={removeTagMutation.isPending}
-                  className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
-                  title="Remove tag"
-                >
-                  <XCircle className="w-3 h-3 text-muted-foreground hover:text-destructive" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        )}
+        {/* Tags with add/remove functionality */}
+        <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t">
+          {contact.tags.map((tag) => (
+            <Badge key={tag} variant="secondary" className="flex items-center gap-1 pr-1">
+              <Tag className="w-3 h-3" />
+              {tag}
+              <button
+                onClick={() => removeTagMutation.mutate(tag)}
+                disabled={removeTagMutation.isPending}
+                className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                title="Remove tag"
+              >
+                <XCircle className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+              </button>
+            </Badge>
+          ))}
+          {/* Add Tag */}
+          {showAddTag ? (
+            <div className="flex items-center gap-1">
+              <Input
+                placeholder="New tag..."
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newTag.trim()) {
+                    addTagMutation.mutate(newTag.trim());
+                  } else if (e.key === "Escape") {
+                    setShowAddTag(false);
+                    setNewTag("");
+                  }
+                }}
+                className="h-7 w-32 text-sm"
+                autoFocus
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                onClick={() => {
+                  if (newTag.trim()) {
+                    addTagMutation.mutate(newTag.trim());
+                  }
+                }}
+                disabled={!newTag.trim() || addTagMutation.isPending}
+              >
+                {addTagMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                onClick={() => {
+                  setShowAddTag(false);
+                  setNewTag("");
+                }}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-xs gap-1"
+              onClick={() => setShowAddTag(true)}
+            >
+              <Plus className="w-3 h-3" />
+              Add Tag
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -538,6 +930,13 @@ function ActiveDealCard({
 }) {
   const { toast } = useToast();
   const [selectedStage, setSelectedStage] = useState<string>("");
+
+  // Inline editing state
+  const [isEditingValue, setIsEditingValue] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const [isEditingNextAction, setIsEditingNextAction] = useState(false);
+  const [editNextAction, setEditNextAction] = useState("");
+  const [editNextActionDue, setEditNextActionDue] = useState("");
 
   // Fetch pipelines for stage dropdown
   const pipelinesQuery = useQuery<{ success: boolean; data: { pipelines: Pipeline[] } }>({
@@ -604,12 +1003,77 @@ function ActiveDealCard({
     },
   });
 
+  // Update value mutation
+  const updateValueMutation = useMutation({
+    mutationFn: async (value: number) => {
+      const res = await fetch(`/api/rep-console/opportunities/${opportunity?.id}/value`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ monetaryValue: value }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update value");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Deal value updated" });
+      setIsEditingValue(false);
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Update next action mutation (uses custom fields update)
+  const updateNextActionMutation = useMutation({
+    mutationFn: async ({ action, dueDate }: { action: string; dueDate: string }) => {
+      const res = await fetch(`/api/rep-console/opportunities/${opportunity?.id}/next-action`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ nextAction: action, nextActionDue: dueDate }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update next action");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Next action updated" });
+      setIsEditingNextAction(false);
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   // Handle stage change
   const handleStageChange = (stageId: string) => {
     setSelectedStage(stageId);
     if (stageId && stageId !== opportunity?.stageId) {
       updateStageMutation.mutate(stageId);
     }
+  };
+
+  // Handle value save
+  const handleValueSave = () => {
+    const numValue = parseFloat(editValue.replace(/[$,]/g, ""));
+    if (!isNaN(numValue) && numValue >= 0) {
+      updateValueMutation.mutate(numValue);
+    } else {
+      toast({ title: "Invalid value", description: "Please enter a valid number", variant: "destructive" });
+    }
+  };
+
+  // Handle next action save
+  const handleNextActionSave = () => {
+    updateNextActionMutation.mutate({ action: editNextAction, dueDate: editNextActionDue });
   };
 
   if (!opportunity) {
@@ -673,14 +1137,55 @@ function ActiveDealCard({
             )}
           </div>
 
-          {opportunity.monetaryValue && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Value</span>
-              <span className="font-bold text-primary">
-                {formatCurrency(opportunity.monetaryValue)}
-              </span>
-            </div>
-          )}
+          {/* Editable Deal Value */}
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Value</span>
+            {isEditingValue ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleValueSave();
+                    if (e.key === "Escape") setIsEditingValue(false);
+                  }}
+                  className="h-7 w-28 text-sm text-right"
+                  placeholder="$0.00"
+                  autoFocus
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0"
+                  onClick={handleValueSave}
+                  disabled={updateValueMutation.isPending}
+                >
+                  {updateValueMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setIsEditingValue(false)}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setEditValue(opportunity.monetaryValue?.toString() || "");
+                  setIsEditingValue(true);
+                }}
+                className="font-bold text-primary hover:underline flex items-center gap-1"
+                title="Click to edit"
+              >
+                {opportunity.monetaryValue ? formatCurrency(opportunity.monetaryValue) : "Set value"}
+                <Pencil className="w-3 h-3 opacity-50" />
+              </button>
+            )}
+          </div>
         </div>
 
         <Separator />
@@ -778,13 +1283,66 @@ function ActiveDealCard({
           </>
         )}
 
-        {/* Next Action */}
+        {/* Next Action - Editable */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Activity className="w-4 h-4" />
-            Next Action
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Target className="w-4 h-4" />
+              Next Action
+            </div>
+            {!isEditingNextAction && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs"
+                onClick={() => {
+                  setEditNextAction(opportunity.nextAction || "");
+                  setEditNextActionDue(opportunity.nextActionDue || "");
+                  setIsEditingNextAction(true);
+                }}
+              >
+                <Pencil className="w-3 h-3 mr-1" />
+                {opportunity.nextAction ? "Edit" : "Set"}
+              </Button>
+            )}
           </div>
-          {opportunity.nextAction ? (
+          {isEditingNextAction ? (
+            <div className="space-y-2 p-3 bg-muted rounded-lg">
+              <Input
+                placeholder="What's the next step?"
+                value={editNextAction}
+                onChange={(e) => setEditNextAction(e.target.value)}
+                className="text-sm"
+                autoFocus
+              />
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground">Due:</Label>
+                <Input
+                  type="date"
+                  value={editNextActionDue ? editNextActionDue.split("T")[0] : ""}
+                  onChange={(e) => setEditNextActionDue(e.target.value)}
+                  className="text-sm flex-1"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleNextActionSave}
+                  disabled={updateNextActionMutation.isPending}
+                >
+                  {updateNextActionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Save className="w-4 h-4 mr-1" />}
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditingNextAction(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : opportunity.nextAction ? (
             <div className="p-3 bg-muted rounded-lg">
               <p className="text-sm">{opportunity.nextAction}</p>
               {opportunity.nextActionDue && (
@@ -803,9 +1361,31 @@ function ActiveDealCard({
 }
 
 // ========================================
-// LENDER APPROVALS CARD
+// LENDER APPROVALS CARD (with best offer indicator and selection)
 // ========================================
-function LenderApprovalsCard({ approvals }: { approvals: RepConsoleLenderApproval[] }) {
+function LenderApprovalsCard({
+  approvals,
+  onRefresh
+}: {
+  approvals: RepConsoleLenderApproval[];
+  onRefresh?: () => void;
+}) {
+  const { toast } = useToast();
+
+  // Find the best offer (highest approved amount among approved offers)
+  const approvedOffers = approvals.filter(a => a.status?.toLowerCase() === "approved" || a.status?.toLowerCase() === "accepted");
+  const bestOffer = approvedOffers.length > 0
+    ? approvedOffers.reduce((best, curr) =>
+        (curr.approvedAmount || 0) > (best.approvedAmount || 0) ? curr : best
+      )
+    : null;
+
+  // Calculate factor rate if we have amounts
+  const calculateFactor = (approved: number | null, payback: number | null) => {
+    if (!approved || !payback || approved === 0) return null;
+    return (payback / approved).toFixed(2);
+  };
+
   if (approvals.length === 0) {
     return (
       <Card>
@@ -825,6 +1405,15 @@ function LenderApprovalsCard({ approvals }: { approvals: RepConsoleLenderApprova
     );
   }
 
+  // Sort: Approved offers first (by amount desc), then others
+  const sortedApprovals = [...approvals].sort((a, b) => {
+    const aApproved = a.status?.toLowerCase() === "approved" || a.status?.toLowerCase() === "accepted";
+    const bApproved = b.status?.toLowerCase() === "approved" || b.status?.toLowerCase() === "accepted";
+    if (aApproved && !bApproved) return -1;
+    if (!aApproved && bApproved) return 1;
+    return (b.approvedAmount || 0) - (a.approvedAmount || 0);
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -835,41 +1424,126 @@ function LenderApprovalsCard({ approvals }: { approvals: RepConsoleLenderApprova
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-[300px]">
-          <div className="space-y-3">
-            {approvals.map((approval) => (
-              <div
-                key={approval.id}
-                className="p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">{approval.lenderName}</span>
-                  <Badge variant={approval.status === "accepted" ? "default" : "secondary"}>
-                    {approval.status}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
-                  {approval.approvedAmount && (
-                    <span>Amount: {formatCurrency(approval.approvedAmount)}</span>
-                  )}
-                  {approval.paybackAmount && (
-                    <span>Payback: {formatCurrency(approval.paybackAmount)}</span>
-                  )}
-                  {approval.paymentAmount && (
-                    <span>
-                      Payment: {formatCurrency(approval.paymentAmount)}
-                      {approval.paymentFrequency && ` (${approval.paymentFrequency})`}
-                    </span>
-                  )}
-                  {approval.productType && <span>Type: {approval.productType}</span>}
-                </div>
-                {approval.createdAt && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Received: {formatRelativeTime(approval.createdAt)}
-                  </p>
-                )}
+        {/* Best Offer Summary */}
+        {bestOffer && (
+          <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <Trophy className="w-4 h-4 text-emerald-600" />
+              <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Best Offer</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-emerald-700 dark:text-emerald-400">{bestOffer.lenderName}</span>
+              <span className="font-bold text-lg text-emerald-700 dark:text-emerald-400">
+                {formatCurrency(bestOffer.approvedAmount || 0)}
+              </span>
+            </div>
+            {bestOffer.paybackAmount && (
+              <div className="text-xs text-emerald-600 dark:text-emerald-500 mt-1">
+                Payback: {formatCurrency(bestOffer.paybackAmount)} | Factor: {calculateFactor(bestOffer.approvedAmount, bestOffer.paybackAmount)}x
               </div>
-            ))}
+            )}
+          </div>
+        )}
+
+        <ScrollArea className="h-[250px]">
+          <div className="space-y-3">
+            {sortedApprovals.map((approval) => {
+              const isApproved = approval.status?.toLowerCase() === "approved" || approval.status?.toLowerCase() === "accepted";
+              const isBest = bestOffer?.id === approval.id;
+              const isDeclined = approval.status?.toLowerCase() === "declined" || approval.status?.toLowerCase() === "denied";
+
+              return (
+                <div
+                  key={approval.id}
+                  className={`p-3 border rounded-lg transition-colors ${
+                    isBest
+                      ? "border-emerald-300 bg-emerald-50/50 dark:border-emerald-700 dark:bg-emerald-950/20"
+                      : isDeclined
+                      ? "border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20"
+                      : isApproved
+                      ? "hover:bg-muted/50"
+                      : "opacity-60"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {isBest && <Star className="w-4 h-4 text-amber-500 fill-amber-500" />}
+                      <span className="font-medium">{approval.lenderName}</span>
+                    </div>
+                    <Badge
+                      variant={isApproved ? "default" : isDeclined ? "destructive" : "secondary"}
+                      className={isApproved ? "bg-emerald-600" : ""}
+                    >
+                      {approval.status}
+                    </Badge>
+                  </div>
+
+                  {/* Approval Details */}
+                  <div className="grid grid-cols-2 gap-1 text-sm">
+                    {approval.approvedAmount && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Amount:</span>
+                        <span className="font-medium">{formatCurrency(approval.approvedAmount)}</span>
+                      </div>
+                    )}
+                    {approval.paybackAmount && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Payback:</span>
+                        <span>{formatCurrency(approval.paybackAmount)}</span>
+                      </div>
+                    )}
+                    {approval.paymentAmount && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Payment:</span>
+                        <span>
+                          {formatCurrency(approval.paymentAmount)}
+                          {approval.paymentFrequency && <span className="text-xs text-muted-foreground ml-1">/{approval.paymentFrequency}</span>}
+                        </span>
+                      </div>
+                    )}
+                    {approval.factorRate && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Factor:</span>
+                        <span>{approval.factorRate}x</span>
+                      </div>
+                    )}
+                    {approval.termLength && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Term:</span>
+                        <span>{approval.termLength}</span>
+                      </div>
+                    )}
+                    {approval.productType && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Type:</span>
+                        <span>{approval.productType}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Conditions if any */}
+                  {approval.conditions && (
+                    <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 p-2 bg-amber-50 dark:bg-amber-950/30 rounded">
+                      <span className="font-medium">Conditions:</span> {approval.conditions}
+                    </div>
+                  )}
+
+                  {/* Timestamp */}
+                  <div className="flex items-center justify-between mt-2">
+                    {approval.createdAt && (
+                      <p className="text-xs text-muted-foreground">
+                        {formatRelativeTime(approval.createdAt)}
+                      </p>
+                    )}
+                    {approval.expirationDate && (
+                      <p className="text-xs text-amber-600">
+                        Expires: {formatDate(approval.expirationDate)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </ScrollArea>
       </CardContent>
@@ -1189,8 +1863,18 @@ function NotesCard({
 // ========================================
 // CONVERSATIONS CARD
 // ========================================
-function ConversationsCard({ conversations }: { conversations: RepConsoleConversation[] }) {
+function ConversationsCard({
+  conversations,
+  contactId,
+  onRefresh
+}: {
+  conversations: RepConsoleConversation[];
+  contactId: string;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
   const [selectedConv, setSelectedConv] = useState<string | null>(null);
+  const [replyMessage, setReplyMessage] = useState("");
 
   const getMessageIcon = (type: string) => {
     switch (type) {
@@ -1206,6 +1890,40 @@ function ConversationsCard({ conversations }: { conversations: RepConsoleConvers
   };
 
   const selectedConversation = conversations.find((c) => c.id === selectedConv);
+
+  // Quick reply mutation
+  const replyMutation = useMutation({
+    mutationFn: async (message: string) => {
+      const type = selectedConversation?.type === "email" ? "email" : "sms";
+      const endpoint = type === "email"
+        ? `/api/rep-console/${contactId}/email`
+        : `/api/rep-console/${contactId}/sms`;
+
+      const body = type === "email"
+        ? { subject: "Re: " + (selectedConversation?.lastMessageBody?.slice(0, 30) || "Your message"), body: message }
+        : { message };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to send reply");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Reply sent" });
+      setReplyMessage("");
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
   return (
     <Card>
@@ -1236,7 +1954,7 @@ function ConversationsCard({ conversations }: { conversations: RepConsoleConvers
               <ArrowLeft className="w-4 h-4 mr-1" />
               Back to list
             </Button>
-            <ScrollArea className="h-[250px]">
+            <ScrollArea className="h-[200px]">
               <div className="space-y-3">
                 {selectedConversation.messages.map((msg) => (
                   <div
@@ -1263,6 +1981,33 @@ function ConversationsCard({ conversations }: { conversations: RepConsoleConvers
                 ))}
               </div>
             </ScrollArea>
+            {/* Quick Reply */}
+            <div className="mt-3 pt-3 border-t">
+              <div className="flex gap-2">
+                <Input
+                  placeholder={`Quick reply via ${selectedConversation.type}...`}
+                  value={replyMessage}
+                  onChange={(e) => setReplyMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && replyMessage.trim()) {
+                      replyMutation.mutate(replyMessage);
+                    }
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => replyMutation.mutate(replyMessage)}
+                  disabled={!replyMessage.trim() || replyMutation.isPending}
+                >
+                  {replyMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Reply className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
           </div>
         ) : (
           // Show conversation list
@@ -2455,7 +3200,11 @@ export default function RepConsole() {
 
           {/* Right Column: Conversations */}
           <div className="space-y-6">
-            <ConversationsCard conversations={contact360.conversations} />
+            <ConversationsCard
+              conversations={contact360.conversations}
+              contactId={contactId}
+              onRefresh={() => refetch()}
+            />
 
             {/* Quick Stats */}
             <Card>

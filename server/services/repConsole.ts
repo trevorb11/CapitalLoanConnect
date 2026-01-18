@@ -1269,6 +1269,42 @@ async function updateOpportunityValue(
 }
 
 /**
+ * Update opportunity next action (via custom fields)
+ */
+async function updateOpportunityNextAction(
+  opportunityId: string,
+  nextAction: string,
+  nextActionDue: string,
+  locationIdOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  try {
+    // Update opportunity with custom fields for next action
+    // GHL stores these in customFields on the opportunity
+    await ghlFetch<any>(
+      `/opportunities/${opportunityId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          customFields: [
+            { key: 'next_action', field_value: nextAction },
+            { key: 'next_action_due', field_value: nextActionDue },
+          ],
+        }),
+      }
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[RepConsole] Error updating opportunity next action:', error);
+    return { success: false, error: error.message || 'Failed to update next action' };
+  }
+}
+
+/**
  * Get all pipelines with stages
  */
 async function getAllPipelines(
@@ -1479,6 +1515,7 @@ export const repConsoleService = {
   updateOpportunityStage,
   updateOpportunityStatus,
   updateOpportunityValue,
+  updateOpportunityNextAction,
   getAllPipelines,
 
   // Communication
