@@ -1311,10 +1311,27 @@ export default function RepConsole() {
         {/* Contact Header */}
         <ContactHeader contact={contact360.contact} computed={contact360.computed} />
 
+        {/* Opportunity Flow Progress Bar */}
+        <div className="my-4">
+          <div
+            className="w-full py-2 px-4 bg-muted/50 border rounded-lg hover:bg-muted cursor-pointer transition-colors flex items-center justify-center gap-2 text-sm text-muted-foreground"
+            onClick={() => {
+              // Could navigate to opportunity flow view or expand a progress section
+              if (contact360.activeOpportunity?.id) {
+                // Scroll to deal card for now
+                document.querySelector('[data-deal-card]')?.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+          >
+            <Activity className="w-4 h-4" />
+            <span>Click to view Opportunity Flow Progress</span>
+          </div>
+        </div>
+
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
           {/* Left Column: Deal & Approvals */}
-          <div className="space-y-6">
+          <div className="space-y-6" data-deal-card>
             <ActiveDealCard opportunity={contact360.activeOpportunity} />
             <LenderApprovalsCard approvals={contact360.lenderApprovals} />
           </div>
