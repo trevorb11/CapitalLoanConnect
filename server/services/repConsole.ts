@@ -720,12 +720,62 @@ export async function createTask(
 }
 
 // ========================================
+// SEARCH CONTACTS IN GHL
+// ========================================
+export interface GHLSearchResult {
+  id: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  email: string;
+  phone: string;
+  companyName: string;
+  dateAdded: string;
+}
+
+export async function searchContacts(
+  query: string,
+  locationIdOverride?: string,
+  limit: number = 10
+): Promise<GHLSearchResult[]> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  console.log(`[RepConsole] Searching GHL contacts for "${query}"`);
+
+  try {
+    // GHL search endpoint - search by query string
+    const response = await ghlFetch<{ contacts: GHLRawContact[] }>(
+      `/contacts/?locationId=${locationId}&query=${encodeURIComponent(query)}&limit=${limit}`,
+      token
+    );
+
+    const contacts = response.contacts || [];
+
+    return contacts.map((c) => ({
+      id: c.id,
+      firstName: c.firstName || '',
+      lastName: c.lastName || '',
+      name: `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Unknown',
+      email: c.email || '',
+      phone: c.phone || '',
+      companyName: c.companyName || '',
+      dateAdded: c.dateAdded || '',
+    }));
+  } catch (error) {
+    console.error('[RepConsole] Error searching GHL contacts:', error);
+    return [];
+  }
+}
+
+// ========================================
 // EXPORT SERVICE OBJECT
 // ========================================
 export const repConsoleService = {
   getContact360,
   createNote,
   createTask,
+  searchContacts,
   getAccessToken,
   getLocationId,
 };

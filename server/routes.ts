@@ -3091,6 +3091,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const query = req.query.q as string;
+      const locationId = req.query.locationId as string | undefined;
+
       if (!query || query.length < 2) {
         return res.status(400).json({
           success: false,
@@ -3098,8 +3100,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Search in local database first (faster)
-      const localResults = await storage.getLoanApplicationByEmailOrPhone(query);
+      // Search both local database and GHL in parallel
+      const [localResults, ghlResults] = await Promise.all([
+        storage.getLoanApplicationByEmailOrPhone(query),
+        repConsoleService.searchContacts(query, locationId, 10).catch((err) => {
+          console.error("[REP CONSOLE SEARCH] GHL search error:", err);
+          return [];
+        })
+      ]);
 
       return res.json({
         success: true,
@@ -3111,7 +3119,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             businessName: localResults.businessName || localResults.legalBusinessName,
             fullName: localResults.fullName,
             ghlContactId: localResults.ghlContactId
-          } : null
+          } : null,
+          ghlContacts: ghlResults
         }
       });
 

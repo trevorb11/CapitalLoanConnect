@@ -898,13 +898,23 @@ function ConversationsCard({ conversations }: { conversations: RepConsoleConvers
 // ========================================
 // CONTACT SEARCH
 // ========================================
+interface GHLSearchContact {
+  id: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  email: string;
+  phone: string;
+  companyName: string;
+  dateAdded: string;
+}
+
 function ContactSearch({
   onSelectContact,
 }: {
   onSelectContact: (contactId: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
 
   const searchMutation = useMutation({
     mutationFn: async (query: string) => {
@@ -918,9 +928,12 @@ function ContactSearch({
 
   const handleSearch = () => {
     if (searchQuery.length < 2) return;
-    setIsSearching(true);
     searchMutation.mutate(searchQuery);
   };
+
+  const localMatch = searchMutation.data?.data?.localMatch;
+  const ghlContacts: GHLSearchContact[] = searchMutation.data?.data?.ghlContacts || [];
+  const hasResults = localMatch || ghlContacts.length > 0;
 
   return (
     <div className="space-y-4">
@@ -945,56 +958,108 @@ function ContactSearch({
         </Button>
       </div>
 
-      {searchMutation.data?.data?.localMatch && (
-        <Card
-          className={`p-4 ${searchMutation.data.data.localMatch.ghlContactId ? 'hover:bg-muted/50 cursor-pointer' : ''}`}
-          onClick={() => {
-            if (searchMutation.data.data.localMatch.ghlContactId) {
-              onSelectContact(searchMutation.data.data.localMatch.ghlContactId);
-            }
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <User className="w-5 h-5 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium">{searchMutation.data.data.localMatch.fullName || "Unknown"}</p>
-              <p className="text-sm text-muted-foreground truncate">
-                {searchMutation.data.data.localMatch.businessName || searchMutation.data.data.localMatch.email}
-              </p>
-              {searchMutation.data.data.localMatch.phone && (
-                <p className="text-xs text-muted-foreground">
-                  {searchMutation.data.data.localMatch.phone}
+      {/* Local Database Match */}
+      {localMatch && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Local Database
+          </p>
+          <Card
+            className={`p-4 ${localMatch.ghlContactId ? 'hover:bg-muted/50 cursor-pointer' : ''}`}
+            onClick={() => {
+              if (localMatch.ghlContactId) {
+                onSelectContact(localMatch.ghlContactId);
+              }
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <User className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium">{localMatch.fullName || "Unknown"}</p>
+                <p className="text-sm text-muted-foreground truncate">
+                  {localMatch.businessName || localMatch.email}
                 </p>
+                {localMatch.phone && (
+                  <p className="text-xs text-muted-foreground">
+                    {localMatch.phone}
+                  </p>
+                )}
+              </div>
+              {localMatch.ghlContactId ? (
+                <div className="flex flex-col items-end gap-1">
+                  <Badge className="bg-emerald-500">GHL Connected</Badge>
+                  <span className="text-xs text-muted-foreground">Click to view</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-end gap-1">
+                  <Badge variant="outline" className="text-amber-600 border-amber-300">Local Only</Badge>
+                  <span className="text-xs text-muted-foreground">Not synced to GHL</span>
+                </div>
               )}
             </div>
-            {searchMutation.data.data.localMatch.ghlContactId ? (
-              <div className="flex flex-col items-end gap-1">
-                <Badge className="bg-emerald-500">GHL Connected</Badge>
-                <span className="text-xs text-muted-foreground">Click to view</span>
-              </div>
-            ) : (
-              <div className="flex flex-col items-end gap-1">
-                <Badge variant="outline" className="text-amber-600 border-amber-300">Local Only</Badge>
-                <span className="text-xs text-muted-foreground">Not synced to GHL</span>
-              </div>
-            )}
-          </div>
-          {!searchMutation.data.data.localMatch.ghlContactId && (
-            <div className="mt-3 pt-3 border-t">
-              <p className="text-xs text-muted-foreground">
-                This contact exists in the local database but hasn't been synced to GoHighLevel yet.
-                The Rep Console requires a GHL Contact ID to display full details.
-              </p>
-            </div>
-          )}
-        </Card>
+          </Card>
+        </div>
       )}
 
-      {searchMutation.data && !searchMutation.data.data?.localMatch && (
+      {/* GHL Contacts */}
+      {ghlContacts.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            GoHighLevel Contacts ({ghlContacts.length})
+          </p>
+          <div className="space-y-2">
+            {ghlContacts.map((contact) => (
+              <Card
+                key={contact.id}
+                className="p-4 hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => onSelectContact(contact.id)}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                    <User className="w-5 h-5 text-blue-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium">{contact.name}</p>
+                    {contact.companyName && (
+                      <p className="text-sm text-muted-foreground truncate flex items-center gap-1">
+                        <Building2 className="w-3 h-3" />
+                        {contact.companyName}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-1">
+                      {contact.email && (
+                        <span className="flex items-center gap-1">
+                          <Mail className="w-3 h-3" />
+                          {contact.email}
+                        </span>
+                      )}
+                      {contact.phone && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {contact.phone}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge variant="outline" className="text-blue-600 border-blue-300">GHL</Badge>
+                    <span className="text-xs text-muted-foreground">Click to view</span>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* No Results */}
+      {searchMutation.data && !hasResults && (
         <div className="text-center py-6 text-muted-foreground">
-          No contacts found for "{searchQuery}"
+          <Search className="w-10 h-10 mx-auto mb-2 opacity-50" />
+          <p>No contacts found for "{searchQuery}"</p>
+          <p className="text-xs mt-1">Try searching by email, phone, or name</p>
         </div>
       )}
     </div>
