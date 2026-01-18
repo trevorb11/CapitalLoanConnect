@@ -769,6 +769,112 @@ export async function searchContacts(
 }
 
 // ========================================
+// GET PIPELINE STAGES
+// ========================================
+export interface PipelineStage {
+  id: string;
+  name: string;
+  position: number;
+}
+
+export interface PipelineWithStages {
+  id: string;
+  name: string;
+  stages: PipelineStage[];
+}
+
+export async function getPipelineStages(
+  pipelineId: string,
+  locationIdOverride?: string
+): Promise<PipelineWithStages | null> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  console.log(`[RepConsole] Fetching pipeline stages for ${pipelineId}`);
+
+  try {
+    const pipelines = await fetchPipelines(token, locationId);
+    const pipeline = pipelines.find((p) => p.id === pipelineId);
+
+    if (!pipeline) {
+      return null;
+    }
+
+    return {
+      id: pipeline.id,
+      name: pipeline.name,
+      stages: (pipeline.stages || []).map((s, index) => ({
+        id: s.id,
+        name: s.name,
+        position: s.position ?? index,
+      })).sort((a, b) => a.position - b.position),
+    };
+  } catch (error) {
+    console.error('[RepConsole] Error fetching pipeline stages:', error);
+    return null;
+  }
+}
+
+// ========================================
+// UPDATE OPPORTUNITY STAGE
+// ========================================
+export interface UpdateOpportunityResult {
+  success: boolean;
+  opportunity?: RepConsoleOpportunity;
+  error?: string;
+}
+
+export async function updateOpportunityStage(
+  opportunityId: string,
+  stageId: string,
+  locationIdOverride?: string
+): Promise<UpdateOpportunityResult> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  console.log(`[RepConsole] Updating opportunity ${opportunityId} to stage ${stageId}`);
+
+  try {
+    // First fetch the opportunity to get current data
+    const currentOpp = await fetchOpportunity(token, opportunityId);
+    if (!currentOpp) {
+      return { success: false, error: 'Opportunity not found' };
+    }
+
+    // Update the opportunity stage via GHL API
+    const response = await ghlFetch<{ opportunity: GHLRawOpportunity }>(
+      `/opportunities/${opportunityId}`,
+      token,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          pipelineStageId: stageId,
+        }),
+      }
+    );
+
+    const updatedOpp = response.opportunity;
+    if (!updatedOpp) {
+      return { success: false, error: 'Failed to update opportunity - no opportunity returned' };
+    }
+
+    // Get pipelines to map the updated opportunity
+    const pipelines = await fetchPipelines(token, locationId);
+    const mappedOpp = mapOpportunity(updatedOpp, pipelines);
+
+    console.log(`[RepConsole] Successfully updated opportunity ${opportunityId} to stage ${mappedOpp.stageName}`);
+
+    return { success: true, opportunity: mappedOpp };
+  } catch (error) {
+    console.error('[RepConsole] Error updating opportunity stage:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error updating opportunity',
+    };
+  }
+}
+
+// ========================================
 // EXPORT SERVICE OBJECT
 // ========================================
 export const repConsoleService = {
@@ -776,6 +882,8 @@ export const repConsoleService = {
   createNote,
   createTask,
   searchContacts,
+  getPipelineStages,
+  updateOpportunityStage,
   getAccessToken,
   getLocationId,
 };

@@ -896,6 +896,220 @@ function ConversationsCard({ conversations }: { conversations: RepConsoleConvers
 }
 
 // ========================================
+// OPPORTUNITY FLOW PROGRESS BAR
+// ========================================
+interface PipelineStage {
+  id: string;
+  name: string;
+  position: number;
+}
+
+interface StagesData {
+  pipelineId: string;
+  pipelineName: string;
+  stages: PipelineStage[];
+  currentStageId: string | null;
+}
+
+function OpportunityFlowBar({
+  opportunity,
+  onStageUpdated,
+}: {
+  opportunity: RepConsoleOpportunity | null;
+  onStageUpdated: () => void;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [stagesData, setStagesData] = useState<StagesData | null>(null);
+  const [isLoadingStages, setIsLoadingStages] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchStages = async () => {
+    if (!opportunity?.id) return;
+
+    setIsLoadingStages(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rep-console/opportunity/${opportunity.id}/stages`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to fetch stages");
+      }
+      const data = await res.json();
+      setStagesData(data.data);
+    } catch (err: any) {
+      setError(err.message || "Failed to load stages");
+    } finally {
+      setIsLoadingStages(false);
+    }
+  };
+
+  const handleClick = () => {
+    if (!opportunity?.id) {
+      // Scroll to deal card if no opportunity
+      document.querySelector('[data-deal-card]')?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    if (!isExpanded) {
+      fetchStages();
+    }
+    setIsExpanded(!isExpanded);
+  };
+
+  const updateStage = async (stageId: string) => {
+    if (!opportunity?.id || isUpdating) return;
+
+    setIsUpdating(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rep-console/opportunity/${opportunity.id}/stage`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ stageId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update stage");
+      }
+
+      // Refresh the contact data
+      onStageUpdated();
+      setIsExpanded(false);
+    } catch (err: any) {
+      setError(err.message || "Failed to update stage");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Find current stage index for progress visualization
+  const currentStageIndex = stagesData?.stages.findIndex(
+    (s) => s.id === (stagesData?.currentStageId || opportunity?.stageId)
+  ) ?? -1;
+
+  return (
+    <div className="my-4">
+      {/* Main clickable bar */}
+      <div
+        className={`w-full py-2 px-4 border rounded-lg transition-colors flex items-center justify-center gap-2 text-sm cursor-pointer ${
+          isExpanded
+            ? "bg-primary/10 border-primary/30"
+            : "bg-muted/50 hover:bg-muted text-muted-foreground"
+        }`}
+        onClick={handleClick}
+      >
+        {isLoadingStages ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Activity className="w-4 h-4" />
+        )}
+        <span>
+          {opportunity
+            ? `Click to view Opportunity Flow Progress - Current: ${opportunity.stageName}`
+            : "Click to view Opportunity Flow Progress"}
+        </span>
+        {opportunity && (
+          <Badge variant="outline" className="ml-2">
+            {opportunity.pipelineName}
+          </Badge>
+        )}
+      </div>
+
+      {/* Expanded stage selector */}
+      {isExpanded && (
+        <div className="mt-3 p-4 border rounded-lg bg-card">
+          {error && (
+            <div className="mb-3 p-2 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
+          {isLoadingStages ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : stagesData ? (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium">{stagesData.pipelineName} Pipeline</h4>
+                <span className="text-xs text-muted-foreground">
+                  Click a stage to update
+                </span>
+              </div>
+
+              {/* Visual progress bar */}
+              <div className="flex items-center gap-1 mb-4">
+                {stagesData.stages.map((stage, index) => {
+                  const isCurrent = stage.id === (stagesData.currentStageId || opportunity?.stageId);
+                  const isPast = index < currentStageIndex;
+                  const isFuture = index > currentStageIndex;
+
+                  return (
+                    <div
+                      key={stage.id}
+                      className="flex-1 flex flex-col items-center"
+                    >
+                      <button
+                        onClick={() => updateStage(stage.id)}
+                        disabled={isUpdating || isCurrent}
+                        className={`w-full h-2 rounded-full transition-all ${
+                          isCurrent
+                            ? "bg-primary"
+                            : isPast
+                            ? "bg-primary/60 hover:bg-primary/80"
+                            : "bg-muted hover:bg-muted-foreground/30"
+                        } ${!isCurrent && !isUpdating ? "cursor-pointer" : ""}`}
+                        title={`Move to: ${stage.name}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Stage buttons */}
+              <div className="flex flex-wrap gap-2">
+                {stagesData.stages.map((stage) => {
+                  const isCurrent = stage.id === (stagesData.currentStageId || opportunity?.stageId);
+
+                  return (
+                    <Button
+                      key={stage.id}
+                      variant={isCurrent ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => updateStage(stage.id)}
+                      disabled={isUpdating || isCurrent}
+                      className="text-xs"
+                    >
+                      {isUpdating && stage.id === stagesData.currentStageId ? (
+                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      ) : isCurrent ? (
+                        <CheckCircle2 className="w-3 h-3 mr-1" />
+                      ) : null}
+                      {stage.name}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-4 text-muted-foreground">
+              <p>No pipeline stages available</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========================================
 // CONTACT SEARCH
 // ========================================
 interface GHLSearchContact {
@@ -1312,21 +1526,10 @@ export default function RepConsole() {
         <ContactHeader contact={contact360.contact} computed={contact360.computed} />
 
         {/* Opportunity Flow Progress Bar */}
-        <div className="my-4">
-          <div
-            className="w-full py-2 px-4 bg-muted/50 border rounded-lg hover:bg-muted cursor-pointer transition-colors flex items-center justify-center gap-2 text-sm text-muted-foreground"
-            onClick={() => {
-              // Could navigate to opportunity flow view or expand a progress section
-              if (contact360.activeOpportunity?.id) {
-                // Scroll to deal card for now
-                document.querySelector('[data-deal-card]')?.scrollIntoView({ behavior: 'smooth' });
-              }
-            }}
-          >
-            <Activity className="w-4 h-4" />
-            <span>Click to view Opportunity Flow Progress</span>
-          </div>
-        </div>
+        <OpportunityFlowBar
+          opportunity={contact360.activeOpportunity}
+          onStageUpdated={() => refetch()}
+        />
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">

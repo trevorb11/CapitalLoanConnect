@@ -3303,5 +3303,155 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * GET /api/rep-console/opportunity/:opportunityId/stages
+   *
+   * Get available pipeline stages for an opportunity.
+   * Used to display stage options in the opportunity flow progress bar.
+   */
+  app.get("/api/rep-console/opportunity/:opportunityId/stages", async (req, res) => {
+    try {
+      // Check authentication
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized"
+        });
+      }
+
+      const { opportunityId } = req.params;
+      const locationId = req.query.locationId as string | undefined;
+
+      if (!opportunityId) {
+        return res.status(400).json({
+          success: false,
+          error: "Opportunity ID is required"
+        });
+      }
+
+      // First get the opportunity to find its pipeline ID
+      const contact360 = await repConsoleService.getContact360(opportunityId, locationId).catch(() => null);
+
+      // Try to get the pipeline from the active opportunity
+      // If not found via contact360, we need to fetch the opportunity directly
+      const ghlToken = repConsoleService.getAccessToken(locationId || repConsoleService.getLocationId());
+      const oppResponse = await fetch(`https://services.leadconnectorhq.com/opportunities/${opportunityId}`, {
+        headers: {
+          Authorization: `Bearer ${ghlToken}`,
+          'Content-Type': 'application/json',
+          Version: '2021-07-28',
+        },
+      });
+
+      if (!oppResponse.ok) {
+        return res.status(404).json({
+          success: false,
+          error: "Opportunity not found"
+        });
+      }
+
+      const oppData = await oppResponse.json();
+      const pipelineId = oppData.opportunity?.pipelineId;
+
+      if (!pipelineId) {
+        return res.status(400).json({
+          success: false,
+          error: "Opportunity has no pipeline"
+        });
+      }
+
+      console.log(`[REP CONSOLE] Fetching stages for pipeline ${pipelineId}`);
+      const pipeline = await repConsoleService.getPipelineStages(pipelineId, locationId);
+
+      if (!pipeline) {
+        return res.status(404).json({
+          success: false,
+          error: "Pipeline not found"
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          pipelineId: pipeline.id,
+          pipelineName: pipeline.name,
+          stages: pipeline.stages,
+          currentStageId: oppData.opportunity?.pipelineStageId || null,
+        }
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE] Error fetching pipeline stages:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to fetch pipeline stages"
+      });
+    }
+  });
+
+  /**
+   * PUT /api/rep-console/opportunity/:opportunityId/stage
+   *
+   * Update the stage of an opportunity in GoHighLevel.
+   * Used by the opportunity flow progress bar to move deals through the pipeline.
+   */
+  app.put("/api/rep-console/opportunity/:opportunityId/stage", async (req, res) => {
+    try {
+      // Check authentication
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized"
+        });
+      }
+
+      const { opportunityId } = req.params;
+      const { stageId } = req.body;
+      const locationId = req.query.locationId as string | undefined;
+
+      if (!opportunityId) {
+        return res.status(400).json({
+          success: false,
+          error: "Opportunity ID is required"
+        });
+      }
+
+      if (!stageId || typeof stageId !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: "Stage ID is required"
+        });
+      }
+
+      console.log(`[REP CONSOLE] Updating opportunity ${opportunityId} to stage ${stageId}`);
+      const result = await repConsoleService.updateOpportunityStage(
+        opportunityId,
+        stageId,
+        locationId
+      );
+
+      if (!result.success) {
+        return res.status(400).json({
+          success: false,
+          error: result.error || "Failed to update opportunity stage"
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: result.opportunity
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE] Error updating opportunity stage:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to update opportunity stage"
+      });
+    }
+  });
+
   return httpServer;
 }
