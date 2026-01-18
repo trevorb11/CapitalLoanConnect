@@ -645,10 +645,87 @@ export async function getContact360(
 }
 
 // ========================================
+// CREATE NOTE
+// ========================================
+export async function createNote(
+  contactId: string,
+  body: string,
+  locationIdOverride?: string
+): Promise<RepConsoleNote> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  console.log(`[RepConsole] Creating note for contact ${contactId}`);
+
+  const response = await ghlFetch<{ note: GHLRawNote }>(
+    `/contacts/${contactId}/notes`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }
+  );
+
+  const rawNote = response.note;
+  if (!rawNote) {
+    throw new Error('Failed to create note - no note returned');
+  }
+
+  return mapNote(rawNote);
+}
+
+// ========================================
+// CREATE TASK
+// ========================================
+export async function createTask(
+  contactId: string,
+  title: string,
+  dueDate?: string,
+  description?: string,
+  locationIdOverride?: string
+): Promise<RepConsoleTask> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  console.log(`[RepConsole] Creating task for contact ${contactId}`);
+
+  const taskData: Record<string, any> = {
+    title,
+    contactId,
+  };
+
+  if (dueDate) {
+    taskData.dueDate = dueDate;
+  }
+
+  if (description) {
+    taskData.body = description;
+  }
+
+  const response = await ghlFetch<{ task: GHLRawTask }>(
+    `/contacts/${contactId}/tasks`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify(taskData),
+    }
+  );
+
+  const rawTask = response.task;
+  if (!rawTask) {
+    throw new Error('Failed to create task - no task returned');
+  }
+
+  return mapTask(rawTask);
+}
+
+// ========================================
 // EXPORT SERVICE OBJECT
 // ========================================
 export const repConsoleService = {
   getContact360,
+  createNote,
+  createTask,
   getAccessToken,
   getLocationId,
 };

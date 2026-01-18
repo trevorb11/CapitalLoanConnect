@@ -4,6 +4,7 @@ import { useLocation, useRoute, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -39,6 +40,7 @@ import {
   Timer,
   TrendingUp,
   Activity,
+  Plus,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import type {
@@ -635,24 +637,124 @@ function TasksCard({ tasks }: { tasks: RepConsoleTask[] }) {
 // ========================================
 // NOTES CARD
 // ========================================
-function NotesCard({ notes }: { notes: RepConsoleNote[] }) {
+function NotesCard({
+  notes,
+  contactId,
+  onNoteCreated,
+}: {
+  notes: RepConsoleNote[];
+  contactId: string;
+  onNoteCreated: () => void;
+}) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [noteBody, setNoteBody] = useState("");
+
+  const createNoteMutation = useMutation({
+    mutationFn: async (body: string) => {
+      const res = await fetch(`/api/rep-console/${contactId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ body }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to create note");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setNoteBody("");
+      setIsAdding(false);
+      onNoteCreated();
+    },
+  });
+
+  const handleSubmit = () => {
+    if (noteBody.trim()) {
+      createNoteMutation.mutate(noteBody.trim());
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="w-5 h-5" />
-          Notes
-          {notes.length > 0 && <Badge variant="secondary">{notes.length}</Badge>}
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Notes
+            {notes.length > 0 && <Badge variant="secondary">{notes.length}</Badge>}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsAdding(!isAdding)}
+            className="h-8 w-8 p-0"
+          >
+            <Plus className={`w-4 h-4 transition-transform ${isAdding ? 'rotate-45' : ''}`} />
+          </Button>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {notes.length === 0 ? (
+        {/* Add Note Form */}
+        {isAdding && (
+          <div className="mb-4 space-y-2">
+            <Textarea
+              placeholder="Add a note..."
+              value={noteBody}
+              onChange={(e) => setNoteBody(e.target.value)}
+              className="min-h-[80px] resize-none"
+              disabled={createNoteMutation.isPending}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setIsAdding(false);
+                  setNoteBody("");
+                }}
+                disabled={createNoteMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSubmit}
+                disabled={!noteBody.trim() || createNoteMutation.isPending}
+              >
+                {createNoteMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                ) : (
+                  <Plus className="w-4 h-4 mr-1" />
+                )}
+                Add Note
+              </Button>
+            </div>
+            {createNoteMutation.isError && (
+              <p className="text-xs text-destructive">
+                {(createNoteMutation.error as Error)?.message || "Failed to create note"}
+              </p>
+            )}
+          </div>
+        )}
+
+        {notes.length === 0 && !isAdding ? (
           <div className="text-center py-6 text-muted-foreground">
             <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
             <p>No notes found</p>
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => setIsAdding(true)}
+              className="mt-2"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Add the first note
+            </Button>
           </div>
         ) : (
-          <ScrollArea className="h-[300px]">
+          <ScrollArea className="h-[250px]">
             <div className="space-y-3">
               {notes.map((note) => (
                 <div
@@ -1155,7 +1257,11 @@ export default function RepConsole() {
           {/* Middle Column: Tasks & Notes */}
           <div className="space-y-6">
             <TasksCard tasks={contact360.tasks} />
-            <NotesCard notes={contact360.notes} />
+            <NotesCard
+              notes={contact360.notes}
+              contactId={contactId!}
+              onNoteCreated={() => refetch()}
+            />
           </div>
 
           {/* Right Column: Conversations */}

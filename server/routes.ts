@@ -3186,5 +3186,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * POST /api/rep-console/:contactId/notes
+   *
+   * Create a new note for a contact.
+   */
+  app.post("/api/rep-console/:contactId/notes", async (req, res) => {
+    try {
+      // Check authentication
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized"
+        });
+      }
+
+      const { contactId } = req.params;
+      const { body } = req.body;
+      const locationId = req.query.locationId as string | undefined;
+
+      if (!contactId) {
+        return res.status(400).json({
+          success: false,
+          error: "Contact ID is required"
+        });
+      }
+
+      if (!body || typeof body !== 'string' || body.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Note body is required"
+        });
+      }
+
+      console.log(`[REP CONSOLE] Creating note for ${contactId}`);
+      const note = await repConsoleService.createNote(contactId, body.trim(), locationId);
+
+      return res.json({
+        success: true,
+        data: note
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE] Error creating note:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to create note"
+      });
+    }
+  });
+
+  /**
+   * POST /api/rep-console/:contactId/tasks
+   *
+   * Create a new task for a contact.
+   */
+  app.post("/api/rep-console/:contactId/tasks", async (req, res) => {
+    try {
+      // Check authentication
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized"
+        });
+      }
+
+      const { contactId } = req.params;
+      const { title, dueDate, description } = req.body;
+      const locationId = req.query.locationId as string | undefined;
+
+      if (!contactId) {
+        return res.status(400).json({
+          success: false,
+          error: "Contact ID is required"
+        });
+      }
+
+      if (!title || typeof title !== 'string' || title.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Task title is required"
+        });
+      }
+
+      console.log(`[REP CONSOLE] Creating task for ${contactId}`);
+      const task = await repConsoleService.createTask(
+        contactId,
+        title.trim(),
+        dueDate,
+        description?.trim(),
+        locationId
+      );
+
+      return res.json({
+        success: true,
+        data: task
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE] Error creating task:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to create task"
+      });
+    }
+  });
+
   return httpServer;
 }
