@@ -29,6 +29,7 @@ import type {
   GHLRawConversation,
   GHLRawMessage,
   GHLRawPipeline,
+  GHLRawPipelineStage,
 } from '@shared/repConsoleTypes';
 import { storage } from '../storage';
 
@@ -232,7 +233,20 @@ async function fetchPipelines(token: string, locationId: string): Promise<GHLRaw
       `/opportunities/pipelines?locationId=${locationId}`,
       token
     );
-    return response.pipelines || [];
+    const pipelines = response.pipelines || [];
+
+    // Log pipeline data for debugging
+    console.log(`[RepConsole] Fetched ${pipelines.length} pipelines from GHL:`);
+    pipelines.forEach((p) => {
+      console.log(`  - Pipeline: "${p.name}" (${p.id})`);
+      if (p.stages && p.stages.length > 0) {
+        p.stages.forEach((s, idx) => {
+          console.log(`      Stage ${idx + 1}: "${s.name}" (${s.id}) position=${s.position ?? 'N/A'}`);
+        });
+      }
+    });
+
+    return pipelines;
   } catch (error) {
     console.error('[RepConsole] Error fetching pipelines:', error);
     return [];

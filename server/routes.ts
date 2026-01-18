@@ -3304,6 +3304,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   /**
+   * GET /api/rep-console/pipelines
+   *
+   * Get all pipelines and their stages from GoHighLevel.
+   * Used for debugging and verifying pipeline configuration.
+   */
+  app.get("/api/rep-console/pipelines", async (req, res) => {
+    try {
+      // Check authentication
+      const user = req.session?.user;
+      if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'agent')) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized"
+        });
+      }
+
+      const locationId = req.query.locationId as string | undefined;
+      const ghlLocationId = locationId || repConsoleService.getLocationId();
+      const ghlToken = repConsoleService.getAccessToken(ghlLocationId);
+
+      console.log(`[REP CONSOLE] Fetching all pipelines for location ${ghlLocationId}`);
+
+      const response = await fetch(`https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${ghlLocationId}`, {
+        headers: {
+          Authorization: `Bearer ${ghlToken}`,
+          'Content-Type': 'application/json',
+          Version: '2021-07-28',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(response.status).json({
+          success: false,
+          error: `GHL API error: ${errorText}`
+        });
+      }
+
+      const data = await response.json();
+      const pipelines = data.pipelines || [];
+
+      // Format the response with all stage details
+      const formattedPipelines = pipelines.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        locationId: p.locationId,
+        stages: (p.stages || []).map((s: any, index: number) => ({
+          id: s.id,
+          name: s.name,
+          position: s.position ?? index,
+        })).sort((a: any, b: any) => a.position - b.position),
+      }));
+
+      return res.json({
+        success: true,
+        data: {
+          locationId: ghlLocationId,
+          pipelineCount: formattedPipelines.length,
+          pipelines: formattedPipelines
+        }
+      });
+
+    } catch (error: any) {
+      console.error("[REP CONSOLE] Error fetching pipelines:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to fetch pipelines"
+      });
+    }
+  });
+
+  /**
    * GET /api/rep-console/opportunity/:opportunityId/stages
    *
    * Get available pipeline stages for an opportunity.

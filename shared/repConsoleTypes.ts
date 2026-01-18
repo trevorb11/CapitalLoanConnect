@@ -250,8 +250,17 @@ export interface GHLRawMessage {
   [key: string]: any;
 }
 
+export interface GHLRawPipelineStage {
+  id: string;
+  name: string;
+  position?: number;
+  showInFunnel?: boolean;
+  showInPieChart?: boolean;
+}
+
 export interface GHLRawPipeline {
   id: string;
   name: string;
-  stages?: Array<{ id: string; name: string }>;
+  locationId?: string;
+  stages?: GHLRawPipelineStage[];
 }
