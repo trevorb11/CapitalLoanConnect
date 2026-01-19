@@ -796,26 +796,26 @@ export default function FullApplication(props?: FullApplicationProps) {
                 )}
 
                 {/* 3. Legacy Single Field Renderer (Fallback if needed) */}
-                {!['industry_select', 'address_group', 'simple_signature', 'group'].includes(currentStep.type) && (
+                {!['industry_select', 'address_group', 'simple_signature', 'group'].includes(currentStep.type) && 'name' in currentStep && currentStep.name && (
                     <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-                         {currentStep.type === 'select' ? (
+                         {currentStep.type === 'select' && 'options' in currentStep ? (
                             <select
                                 name={currentStep.name}
-                                value={formData[currentStep.name] || ''}
+                                value={formData[currentStep.name as keyof typeof formData] || ''}
                                 onChange={handleInputChange}
                                 style={{ width: '100%', padding: '1.2rem', fontSize: '1.1rem', borderRadius: '8px', border: '2px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)', color: 'white' }}
                             >
                                 <option value="" disabled>Select...</option>
-                                {currentStep.options?.map((opt: string) => <option key={opt} value={opt} style={{ color: 'black' }}>{opt}</option>)}
+                                {(currentStep as any).options?.map((opt: string) => <option key={opt} value={opt} style={{ color: 'black' }}>{opt}</option>)}
                             </select>
                          ) : (
                             <input
                                 name={currentStep.name}
                                 type={currentStep.type === 'currency' ? 'text' : currentStep.type}
-                                value={formData[currentStep.name] || ''}
+                                value={formData[currentStep.name as keyof typeof formData] || ''}
                                 onChange={handleInputChange}
                                 onKeyDown={handleKeyDown}
-                                placeholder={currentStep.placeholder}
+                                placeholder={'placeholder' in currentStep ? (currentStep as any).placeholder : ''}
                                 style={{ width: '100%', padding: '1.2rem', fontSize: '1.1rem', borderRadius: '8px', border: '2px solid rgba(255,255,255,0.3)', background: 'rgba(255,255,255,0.1)', color: 'white', outline: 'none' }}
                             />
                          )}
