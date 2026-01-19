@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   User,
   Building2,
@@ -63,6 +65,13 @@ import {
   Copy,
   FileCheck,
   Target,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  History,
+  Thermometer,
+  Keyboard,
+  Circle,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import type {
@@ -246,6 +255,651 @@ const EMAIL_TEMPLATES = [
   { label: "Approval", subject: "Great News - You're Approved!", body: "Hi {name},\n\nI'm excited to let you know that we have an approval for you! Please review the attached terms and let me know when you'd like to discuss.\n\nBest regards" },
   { label: "Docs Request", subject: "Additional Documents Needed", body: "Hi {name},\n\nTo continue processing your application, we need the following documents:\n- Last 3 months bank statements\n- Photo ID\n\nPlease send these at your earliest convenience.\n\nBest regards" },
 ];
+
+// ========================================
+// RECENT CONTACTS - localStorage persistence
+// ========================================
+const RECENT_CONTACTS_KEY = "rep-console-recent-contacts";
+const MAX_RECENT_CONTACTS = 10;
+
+interface RecentContact {
+  id: string;
+  name: string;
+  company?: string;
+  lastViewed: string;
+}
+
+function useRecentContacts() {
+  const [recentContacts, setRecentContacts] = useState<RecentContact[]>([]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(RECENT_CONTACTS_KEY);
+    if (stored) {
+      try {
+        setRecentContacts(JSON.parse(stored));
+      } catch {
+        setRecentContacts([]);
+      }
+    }
+  }, []);
+
+  const addRecentContact = useCallback((contact: RecentContact) => {
+    setRecentContacts((prev) => {
+      const filtered = prev.filter((c) => c.id !== contact.id);
+      const updated = [{ ...contact, lastViewed: new Date().toISOString() }, ...filtered].slice(0, MAX_RECENT_CONTACTS);
+      localStorage.setItem(RECENT_CONTACTS_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  return { recentContacts, addRecentContact };
+}
+
+// ========================================
+// KEYBOARD SHORTCUTS HOOK
+// ========================================
+interface KeyboardShortcuts {
+  onEditContact?: () => void;
+  onNewNote?: () => void;
+  onNewTask?: () => void;
+  onLogCall?: () => void;
+  onSendSms?: () => void;
+  onRefresh?: () => void;
+  onSearch?: () => void;
+}
+
+function useKeyboardShortcuts(shortcuts: KeyboardShortcuts, enabled: boolean = true) {
+  useEffect(() => {
+    if (!enabled) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Shortcuts without modifiers
+      switch (e.key.toLowerCase()) {
+        case "e":
+          e.preventDefault();
+          shortcuts.onEditContact?.();
+          break;
+        case "n":
+          e.preventDefault();
+          shortcuts.onNewNote?.();
+          break;
+        case "t":
+          e.preventDefault();
+          shortcuts.onNewTask?.();
+          break;
+        case "c":
+          e.preventDefault();
+          shortcuts.onLogCall?.();
+          break;
+        case "s":
+          e.preventDefault();
+          shortcuts.onSendSms?.();
+          break;
+        case "r":
+          e.preventDefault();
+          shortcuts.onRefresh?.();
+          break;
+        case "/":
+          e.preventDefault();
+          shortcuts.onSearch?.();
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [shortcuts, enabled]);
+}
+
+// ========================================
+// ENGAGEMENT SCORE (Contact Temperature)
+// ========================================
+type EngagementLevel = "hot" | "warm" | "cold";
+
+function calculateEngagement(computed: Contact360["computed"]): { level: EngagementLevel; score: number; label: string } {
+  let score = 50; // Start neutral
+
+  // Recent activity boosts score
+  if (computed.daysSinceLastTouch !== null) {
+    if (computed.daysSinceLastTouch <= 1) score += 30;
+    else if (computed.daysSinceLastTouch <= 3) score += 20;
+    else if (computed.daysSinceLastTouch <= 7) score += 10;
+    else if (computed.daysSinceLastTouch > 14) score -= 20;
+    else if (computed.daysSinceLastTouch > 30) score -= 30;
+  }
+
+  // Unread messages show engagement
+  if (computed.hasUnreadMessages) score += 15;
+
+  // Overdue follow-up is bad
+  if (computed.isOverdue) score -= 15;
+
+  // Clamp score
+  score = Math.max(0, Math.min(100, score));
+
+  // Determine level
+  let level: EngagementLevel = "warm";
+  let label = "Warm Lead";
+  if (score >= 70) {
+    level = "hot";
+    label = "Hot Lead";
+  } else if (score <= 30) {
+    level = "cold";
+    label = "Cold Lead";
+  }
+
+  return { level, score, label };
+}
+
+function EngagementBadge({ computed }: { computed: Contact360["computed"] }) {
+  const { level, label } = calculateEngagement(computed);
+
+  const colors = {
+    hot: "bg-red-500 text-white",
+    warm: "bg-amber-500 text-white",
+    cold: "bg-blue-400 text-white",
+  };
+
+  const icons = {
+    hot: <Flame className="w-3 h-3" />,
+    warm: <Thermometer className="w-3 h-3" />,
+    cold: <Circle className="w-3 h-3" />,
+  };
+
+  return (
+    <Badge className={`${colors[level]} gap-1`}>
+      {icons[level]}
+      {label}
+    </Badge>
+  );
+}
+
+// ========================================
+// SALES PATH / PIPELINE PROGRESS
+// ========================================
+interface SalesPathProps {
+  stages: { id: string; name: string }[];
+  currentStageId: string | null;
+  pipelineName: string;
+  onStageClick?: (stageId: string) => void;
+}
+
+function SalesPath({ stages, currentStageId, pipelineName, onStageClick }: SalesPathProps) {
+  if (!stages.length) return null;
+
+  const currentIndex = stages.findIndex((s) => s.id === currentStageId);
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-muted-foreground">{pipelineName}</span>
+        <span className="text-xs text-muted-foreground">
+          Stage {currentIndex + 1} of {stages.length}
+        </span>
+      </div>
+      <div className="flex items-center gap-1">
+        {stages.map((stage, index) => {
+          const isCompleted = index < currentIndex;
+          const isCurrent = index === currentIndex;
+          const isClickable = onStageClick && index !== currentIndex;
+
+          return (
+            <TooltipProvider key={stage.id}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => isClickable && onStageClick(stage.id)}
+                    disabled={!isClickable}
+                    className={`
+                      flex-1 h-2 rounded-full transition-all
+                      ${isCompleted ? "bg-emerald-500" : isCurrent ? "bg-primary" : "bg-muted"}
+                      ${isClickable ? "cursor-pointer hover:opacity-80" : "cursor-default"}
+                    `}
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="font-medium">{stage.name}</p>
+                  {isCompleted && <p className="text-xs text-emerald-500">Completed</p>}
+                  {isCurrent && <p className="text-xs text-primary">Current Stage</p>}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        })}
+      </div>
+      <div className="flex justify-between mt-1">
+        <span className="text-xs text-muted-foreground">{stages[0]?.name}</span>
+        <span className="text-xs font-medium text-primary">
+          {stages[currentIndex]?.name || "Not Started"}
+        </span>
+        <span className="text-xs text-muted-foreground">{stages[stages.length - 1]?.name}</span>
+      </div>
+    </div>
+  );
+}
+
+// ========================================
+// ACTIVITY TIMELINE
+// ========================================
+interface TimelineItem {
+  id: string;
+  type: "note" | "task" | "call" | "sms" | "email" | "stage_change";
+  title: string;
+  body?: string;
+  date: string;
+  userName?: string;
+  metadata?: Record<string, any>;
+}
+
+function ActivityTimeline({
+  notes,
+  tasks,
+  conversations,
+}: {
+  notes: RepConsoleNote[];
+  tasks: RepConsoleTask[];
+  conversations: RepConsoleConversation[];
+}) {
+  // Merge all activities into a timeline
+  const timelineItems: TimelineItem[] = [];
+
+  // Add notes
+  notes.forEach((note) => {
+    // Detect call logs
+    const isCallLog = note.body.startsWith("📞 Call Log");
+    timelineItems.push({
+      id: `note-${note.id}`,
+      type: isCallLog ? "call" : "note",
+      title: isCallLog ? "Call Logged" : "Note Added",
+      body: note.body,
+      date: note.dateAdded,
+      userName: note.userName,
+    });
+  });
+
+  // Add tasks
+  tasks.forEach((task) => {
+    timelineItems.push({
+      id: `task-${task.id}`,
+      type: "task",
+      title: task.isCompleted ? "Task Completed" : "Task Created",
+      body: task.title,
+      date: task.dateAdded || task.dueDate || new Date().toISOString(),
+      metadata: { completed: task.isCompleted, dueDate: task.dueDate },
+    });
+  });
+
+  // Add conversations (last message from each)
+  conversations.forEach((conv) => {
+    if (conv.lastMessageDate) {
+      timelineItems.push({
+        id: `conv-${conv.id}`,
+        type: conv.type === "email" ? "email" : "sms",
+        title: conv.type === "email" ? "Email Conversation" : "SMS Conversation",
+        body: conv.lastMessageBody,
+        date: conv.lastMessageDate,
+        metadata: { unread: conv.unreadCount },
+      });
+    }
+  });
+
+  // Sort by date descending
+  timelineItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const getIcon = (type: TimelineItem["type"]) => {
+    switch (type) {
+      case "note":
+        return <StickyNote className="w-4 h-4" />;
+      case "task":
+        return <ListTodo className="w-4 h-4" />;
+      case "call":
+        return <PhoneCall className="w-4 h-4" />;
+      case "sms":
+        return <MessageSquare className="w-4 h-4" />;
+      case "email":
+        return <Mail className="w-4 h-4" />;
+      case "stage_change":
+        return <Target className="w-4 h-4" />;
+      default:
+        return <Activity className="w-4 h-4" />;
+    }
+  };
+
+  const getColor = (type: TimelineItem["type"]) => {
+    switch (type) {
+      case "note":
+        return "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300";
+      case "task":
+        return "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300";
+      case "call":
+        return "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300";
+      case "sms":
+        return "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300";
+      case "email":
+        return "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300";
+      default:
+        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+    }
+  };
+
+  if (timelineItems.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <History className="w-10 h-10 mx-auto mb-2 opacity-50" />
+        <p>No activity yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {/* Timeline line */}
+      <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
+
+      <div className="space-y-4">
+        {timelineItems.slice(0, 20).map((item) => (
+          <div key={item.id} className="relative pl-10">
+            {/* Icon circle */}
+            <div
+              className={`absolute left-0 w-8 h-8 rounded-full flex items-center justify-center ${getColor(item.type)}`}
+            >
+              {getIcon(item.type)}
+            </div>
+
+            {/* Content */}
+            <div className="bg-card border rounded-lg p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm">{item.title}</p>
+                  {item.body && (
+                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                      {item.body}
+                    </p>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {formatRelativeTime(item.date)}
+                </span>
+              </div>
+              {item.userName && (
+                <p className="text-xs text-muted-foreground mt-2">By {item.userName}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {timelineItems.length > 20 && (
+        <div className="text-center mt-4">
+          <span className="text-xs text-muted-foreground">
+            Showing 20 of {timelineItems.length} activities
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========================================
+// RECENT CONTACTS SIDEBAR
+// ========================================
+function RecentContactsSidebar({
+  contacts,
+  currentContactId,
+  onSelect,
+}: {
+  contacts: RecentContact[];
+  currentContactId?: string;
+  onSelect: (id: string) => void;
+}) {
+  if (contacts.length === 0) {
+    return (
+      <div className="text-center py-4 text-sm text-muted-foreground">
+        <History className="w-6 h-6 mx-auto mb-2 opacity-50" />
+        <p>No recent contacts</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {contacts.map((contact) => (
+        <button
+          key={contact.id}
+          onClick={() => onSelect(contact.id)}
+          className={`w-full text-left p-2 rounded-md transition-colors ${
+            contact.id === currentContactId
+              ? "bg-primary/10 text-primary"
+              : "hover:bg-muted"
+          }`}
+        >
+          <p className="font-medium text-sm truncate">{contact.name}</p>
+          {contact.company && (
+            <p className="text-xs text-muted-foreground truncate">{contact.company}</p>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ========================================
+// FLOATING QUICK ACTIONS
+// ========================================
+function FloatingQuickActions({
+  onLogCall,
+  onNewNote,
+  onNewTask,
+  onSendSms,
+}: {
+  onLogCall: () => void;
+  onNewNote: () => void;
+  onNewTask: () => void;
+  onSendSms: () => void;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50">
+      {/* Expanded Actions */}
+      {isExpanded && (
+        <div className="absolute bottom-16 right-0 flex flex-col gap-2 mb-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="rounded-full shadow-lg"
+                  onClick={() => { onLogCall(); setIsExpanded(false); }}
+                >
+                  <PhoneCall className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">Log Call (C)</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="rounded-full shadow-lg"
+                  onClick={() => { onNewNote(); setIsExpanded(false); }}
+                >
+                  <StickyNote className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">Add Note (N)</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="rounded-full shadow-lg"
+                  onClick={() => { onNewTask(); setIsExpanded(false); }}
+                >
+                  <ListTodo className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">New Task (T)</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="rounded-full shadow-lg"
+                  onClick={() => { onSendSms(); setIsExpanded(false); }}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">Send SMS (S)</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      )}
+
+      {/* Main FAB */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="lg"
+              className={`rounded-full shadow-lg transition-transform ${isExpanded ? "rotate-45" : ""}`}
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              <Zap className="w-5 h-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">Quick Actions</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+}
+
+// ========================================
+// KEYBOARD SHORTCUTS HELP
+// ========================================
+function KeyboardShortcutsHelp() {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const shortcuts = [
+    { key: "E", description: "Edit contact" },
+    { key: "N", description: "Add note" },
+    { key: "T", description: "Create task" },
+    { key: "C", description: "Log call" },
+    { key: "S", description: "Send SMS" },
+    { key: "R", description: "Refresh data" },
+    { key: "/", description: "Focus search" },
+  ];
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="gap-1">
+          <Keyboard className="w-4 h-4" />
+          <span className="hidden sm:inline">Shortcuts</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Keyboard className="w-5 h-5" />
+            Keyboard Shortcuts
+          </DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-2 py-4">
+          {shortcuts.map((s) => (
+            <div key={s.key} className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">{s.description}</span>
+              <kbd className="px-2 py-1 bg-muted rounded text-xs font-mono">{s.key}</kbd>
+            </div>
+          ))}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Shortcuts are disabled when typing in input fields.
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ========================================
+// COLLAPSIBLE CARD WRAPPER
+// ========================================
+function CollapsibleCard({
+  title,
+  icon,
+  badge,
+  defaultOpen = true,
+  storageKey,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  badge?: React.ReactNode;
+  defaultOpen?: boolean;
+  storageKey?: string;
+  children: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(() => {
+    if (storageKey) {
+      const stored = localStorage.getItem(`collapse-${storageKey}`);
+      return stored !== null ? stored === "true" : defaultOpen;
+    }
+    return defaultOpen;
+  });
+
+  const handleToggle = (open: boolean) => {
+    setIsOpen(open);
+    if (storageKey) {
+      localStorage.setItem(`collapse-${storageKey}`, String(open));
+    }
+  };
+
+  return (
+    <Card>
+      <Collapsible open={isOpen} onOpenChange={handleToggle}>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {icon}
+                {title}
+                {badge}
+              </div>
+              {isOpen ? (
+                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              )}
+            </CardTitle>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent>{children}</CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
 
 // ========================================
 // CONTACT HEADER CARD (with SMS/Email modals, tag management, and inline editing)
@@ -2817,6 +3471,19 @@ export default function RepConsole() {
   const [contactList, setContactList] = useState<SmartSearchContact[]>([]);
   const [currentListIndex, setCurrentListIndex] = useState(0);
 
+  // Recent contacts hook
+  const { recentContacts, addRecentContact } = useRecentContacts();
+
+  // Dialog states for keyboard shortcuts
+  const [showAddNote, setShowAddNote] = useState(false);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [showCallLog, setShowCallLog] = useState(false);
+  const [showSmsDialog, setShowSmsDialog] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Active tab for the main content area
+  const [activeTab, setActiveTab] = useState<"overview" | "timeline">("overview");
+
   // Handle contact list updates from smart search
   const handleContactListUpdate = (contacts: SmartSearchContact[], index: number) => {
     setContactList(contacts);
@@ -2891,6 +3558,31 @@ export default function RepConsole() {
   });
 
   const contact360 = contact360Response?.data;
+
+  // Track recent contacts
+  useEffect(() => {
+    if (contact360 && contactId) {
+      addRecentContact({
+        id: contactId,
+        name: contact360.contact.name,
+        company: contact360.contact.companyName,
+        lastViewed: new Date().toISOString(),
+      });
+    }
+  }, [contact360, contactId, addRecentContact]);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts(
+    {
+      onNewNote: () => setShowAddNote(true),
+      onNewTask: () => setShowAddTask(true),
+      onLogCall: () => setShowCallLog(true),
+      onSendSms: () => setShowSmsDialog(true),
+      onRefresh: () => refetch(),
+      onSearch: () => searchInputRef.current?.focus(),
+    },
+    authChecked && auth.isAuthenticated && !!contactId
+  );
 
   // Logout handler
   const handleLogout = async () => {
@@ -3099,6 +3791,7 @@ export default function RepConsole() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <KeyboardShortcutsHelp />
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="w-4 h-4 mr-1" />
               Refresh
@@ -3113,6 +3806,17 @@ export default function RepConsole() {
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
+        </div>
+
+        {/* Engagement Score Badge */}
+        <div className="flex items-center gap-2 mb-4">
+          <EngagementBadge computed={contact360.computed} />
+          {contact360.activeOpportunity?.monetaryValue && (
+            <Badge variant="outline" className="gap-1">
+              <DollarSign className="w-3 h-3" />
+              {formatCurrency(contact360.activeOpportunity.monetaryValue)}
+            </Badge>
+          )}
         </div>
 
         {/* List Navigation Controls - only show when current contact is in the list */}
@@ -3166,79 +3870,235 @@ export default function RepConsole() {
 
         {/* Quick Actions Toolbar */}
         <div className="mt-4">
-          <QuickActionsToolbar 
+          <QuickActionsToolbar
             contactId={contactId}
             contactName={`${contact360.contact.firstName || ''} ${contact360.contact.lastName || ''}`.trim() || 'Contact'}
             onActionComplete={() => refetch()}
           />
         </div>
 
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-          {/* Left Column: Deal & Approvals */}
-          <div className="space-y-6">
-            <ActiveDealCard
-              opportunity={contact360.activeOpportunity}
-              onRefresh={() => refetch()}
-            />
-            <LenderApprovalsCard approvals={contact360.lenderApprovals} />
-          </div>
-
-          {/* Middle Column: Tasks & Notes */}
-          <div className="space-y-6">
-            <TasksCard
-              tasks={contact360.tasks}
-              contactId={contactId}
-              onRefresh={() => refetch()}
-            />
-            <NotesCard
-              notes={contact360.notes}
-              contactId={contactId}
-              onRefresh={() => refetch()}
-            />
-          </div>
-
-          {/* Right Column: Conversations */}
-          <div className="space-y-6">
-            <ConversationsCard
-              conversations={contact360.conversations}
-              contactId={contactId}
-              onRefresh={() => refetch()}
-            />
-
-            {/* Quick Stats */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5" />
-                  Quick Stats
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Contact Added</span>
-                  <span>{formatDate(contact360.contact.dateAdded)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Last Updated</span>
-                  <span>{formatDate(contact360.contact.dateUpdated)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Source</span>
-                  <span>{contact360.contact.source || "Unknown"}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Total Tasks</span>
-                  <span>{contact360.tasks.length}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Total Notes</span>
-                  <span>{contact360.notes.length}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        {/* View Toggle Tabs */}
+        <div className="flex items-center gap-2 mt-4 mb-6">
+          <Button
+            variant={activeTab === "overview" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("overview")}
+          >
+            <Target className="w-4 h-4 mr-1" />
+            Overview
+          </Button>
+          <Button
+            variant={activeTab === "timeline" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("timeline")}
+          >
+            <History className="w-4 h-4 mr-1" />
+            Activity Timeline
+          </Button>
         </div>
+
+        {activeTab === "timeline" ? (
+          /* Activity Timeline View */
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Main Timeline */}
+            <div className="lg:col-span-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <History className="w-5 h-5" />
+                    Activity Timeline
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[600px]">
+                    <ActivityTimeline
+                      notes={contact360.notes}
+                      tasks={contact360.tasks}
+                      conversations={contact360.conversations}
+                    />
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Sidebar - Recent Contacts */}
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <History className="w-4 h-4" />
+                    Recent Contacts
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <RecentContactsSidebar
+                    contacts={recentContacts}
+                    currentContactId={contactId}
+                    onSelect={(id) => navigate(`/rep-console/${id}`)}
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Quick Stats Compact */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <TrendingUp className="w-4 h-4" />
+                    Quick Stats
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tasks</span>
+                    <span>{contact360.tasks.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Notes</span>
+                    <span>{contact360.notes.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Approvals</span>
+                    <span>{contact360.lenderApprovals.length}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        ) : (
+          /* Overview Grid - Original Layout with Sales Path */
+          <>
+            {/* Sales Path - Pipeline Progress */}
+            {contact360.activeOpportunity && (
+              <SalesPathWithData
+                opportunityId={contact360.activeOpportunity.id}
+                pipelineId={contact360.activeOpportunity.pipelineId}
+                currentStageId={contact360.activeOpportunity.pipelineStageId}
+                onRefresh={() => refetch()}
+              />
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* Left Sidebar - Recent Contacts */}
+              <div className="hidden lg:block space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <History className="w-4 h-4" />
+                      Recent Contacts
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <RecentContactsSidebar
+                      contacts={recentContacts}
+                      currentContactId={contactId}
+                      onSelect={(id) => navigate(`/rep-console/${id}`)}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Main Content - 2 Columns */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Deal Card */}
+                <ActiveDealCard
+                  opportunity={contact360.activeOpportunity}
+                  onRefresh={() => refetch()}
+                />
+
+                {/* Tasks & Notes in Collapsible Cards */}
+                <CollapsibleCard
+                  title="Follow-ups"
+                  icon={<ListTodo className="w-5 h-5" />}
+                  badge={contact360.tasks.filter(t => !t.isCompleted).length > 0 ? (
+                    <Badge variant="default">{contact360.tasks.filter(t => !t.isCompleted).length}</Badge>
+                  ) : undefined}
+                  storageKey="tasks"
+                >
+                  <TasksCardContent
+                    tasks={contact360.tasks}
+                    contactId={contactId}
+                    onRefresh={() => refetch()}
+                  />
+                </CollapsibleCard>
+
+                <CollapsibleCard
+                  title="Notes"
+                  icon={<FileText className="w-5 h-5" />}
+                  badge={contact360.notes.length > 0 ? (
+                    <Badge variant="secondary">{contact360.notes.length}</Badge>
+                  ) : undefined}
+                  storageKey="notes"
+                >
+                  <NotesCardContent
+                    notes={contact360.notes}
+                    contactId={contactId}
+                    onRefresh={() => refetch()}
+                  />
+                </CollapsibleCard>
+              </div>
+
+              {/* Right Column - Approvals & Conversations */}
+              <div className="space-y-6">
+                <LenderApprovalsCard approvals={contact360.lenderApprovals} />
+
+                <CollapsibleCard
+                  title="Conversations"
+                  icon={<MessageSquare className="w-5 h-5" />}
+                  badge={contact360.conversations.reduce((sum, c) => sum + c.unreadCount, 0) > 0 ? (
+                    <Badge variant="default">{contact360.conversations.reduce((sum, c) => sum + c.unreadCount, 0)}</Badge>
+                  ) : undefined}
+                  storageKey="conversations"
+                >
+                  <ConversationsCardContent
+                    conversations={contact360.conversations}
+                    contactId={contactId}
+                    onRefresh={() => refetch()}
+                  />
+                </CollapsibleCard>
+
+                {/* Quick Stats */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5" />
+                      Quick Stats
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Contact Added</span>
+                      <span>{formatDate(contact360.contact.dateAdded)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Last Updated</span>
+                      <span>{formatDate(contact360.contact.dateUpdated)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Source</span>
+                      <span>{contact360.contact.source || "Unknown"}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Total Tasks</span>
+                      <span>{contact360.tasks.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Total Notes</span>
+                      <span>{contact360.notes.length}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Floating Quick Actions */}
+        <FloatingQuickActions
+          onLogCall={() => setShowCallLog(true)}
+          onNewNote={() => setShowAddNote(true)}
+          onNewTask={() => setShowAddTask(true)}
+          onSendSms={() => setShowSmsDialog(true)}
+        />
 
         {/* Footer */}
         <div className="text-center text-xs text-muted-foreground mt-8">
@@ -3246,5 +4106,392 @@ export default function RepConsole() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ========================================
+// HELPER COMPONENTS FOR COLLAPSIBLE CARDS
+// ========================================
+function SalesPathWithData({
+  opportunityId,
+  pipelineId,
+  currentStageId,
+  onRefresh,
+}: {
+  opportunityId: string;
+  pipelineId: string;
+  currentStageId: string | null;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+
+  // Fetch pipelines to get stages
+  const pipelinesQuery = useQuery<{ success: boolean; data: { pipelines: Pipeline[] } }>({
+    queryKey: ["/api/rep-console/pipelines"],
+    queryFn: async () => {
+      const res = await fetch("/api/rep-console/pipelines", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch pipelines");
+      return res.json();
+    },
+  });
+
+  const currentPipeline = pipelinesQuery.data?.data?.pipelines?.find((p) => p.id === pipelineId);
+  const stages = currentPipeline?.stages || [];
+
+  // Update stage mutation
+  const updateStageMutation = useMutation({
+    mutationFn: async (stageId: string) => {
+      const res = await fetch(`/api/rep-console/opportunities/${opportunityId}/stage`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pipelineStageId: stageId }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update stage");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Stage updated" });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  if (!stages.length) return null;
+
+  return (
+    <SalesPath
+      stages={stages}
+      currentStageId={currentStageId}
+      pipelineName={currentPipeline?.name || "Pipeline"}
+      onStageClick={(stageId) => updateStageMutation.mutate(stageId)}
+    />
+  );
+}
+
+// TasksCard content without the card wrapper
+function TasksCardContent({
+  tasks,
+  contactId,
+  onRefresh
+}: {
+  tasks: RepConsoleTask[];
+  contactId: string;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+  const pendingTasks = tasks.filter((t) => !t.isCompleted);
+  const completedTasks = tasks.filter((t) => t.isCompleted);
+
+  const toggleTaskMutation = useMutation({
+    mutationFn: async ({ taskId, completed }: { taskId: string; completed: boolean }) => {
+      const res = await fetch(`/api/rep-console/${contactId}/tasks/${taskId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ completed }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update task");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Task updated" });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const res = await fetch(`/api/rep-console/${contactId}/tasks/${taskId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete task");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Task deleted" });
+      onRefresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  if (tasks.length === 0) {
+    return (
+      <div className="text-center py-6 text-muted-foreground">
+        <ListTodo className="w-10 h-10 mx-auto mb-2 opacity-50" />
+        <p>No tasks found</p>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="h-[250px]">
+      <div className="space-y-3">
+        {pendingTasks.map((task) => (
+          <div key={task.id} className="p-3 border rounded-lg hover:bg-muted/50 transition-colors group">
+            <div className="flex items-start gap-3">
+              <button
+                onClick={() => toggleTaskMutation.mutate({ taskId: task.id, completed: true })}
+                disabled={toggleTaskMutation.isPending}
+                className="mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 border-amber-500 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                title="Mark as complete"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium">{task.title}</p>
+                {task.dueDate && (
+                  <p className="text-xs text-muted-foreground mt-1">Due: {formatDate(task.dueDate)}</p>
+                )}
+              </div>
+              <button
+                onClick={() => deleteTaskMutation.mutate(task.id)}
+                disabled={deleteTaskMutation.isPending}
+                className="opacity-0 group-hover:opacity-100 text-destructive"
+                title="Delete task"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+        {completedTasks.length > 0 && (
+          <>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider pt-2">Completed</div>
+            {completedTasks.slice(0, 3).map((task) => (
+              <div key={task.id} className="p-3 border rounded-lg opacity-60">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  <p className="line-through">{task.title}</p>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </ScrollArea>
+  );
+}
+
+// NotesCard content without the card wrapper
+function NotesCardContent({
+  notes,
+  contactId,
+  onRefresh
+}: {
+  notes: RepConsoleNote[];
+  contactId: string;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+  const [editingNote, setEditingNote] = useState<{ id: string; body: string } | null>(null);
+
+  const updateNoteMutation = useMutation({
+    mutationFn: async ({ noteId, body }: { noteId: string; body: string }) => {
+      const res = await fetch(`/api/rep-console/${contactId}/notes/${noteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ body }),
+      });
+      if (!res.ok) throw new Error("Failed to update note");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Note updated" });
+      setEditingNote(null);
+      onRefresh();
+    },
+  });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: async (noteId: string) => {
+      const res = await fetch(`/api/rep-console/${contactId}/notes/${noteId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete note");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Note deleted" });
+      onRefresh();
+    },
+  });
+
+  if (notes.length === 0) {
+    return (
+      <div className="text-center py-6 text-muted-foreground">
+        <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
+        <p>No notes found</p>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="h-[250px]">
+      <div className="space-y-3">
+        {notes.map((note) => (
+          <div key={note.id} className="p-3 border rounded-lg hover:bg-muted/50 transition-colors group">
+            {editingNote?.id === note.id ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={editingNote.body}
+                  onChange={(e) => setEditingNote({ ...editingNote, body: e.target.value })}
+                  className="text-sm min-h-[80px]"
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => updateNoteMutation.mutate({ noteId: note.id, body: editingNote.body })}>
+                    Save
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditingNote(null)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm whitespace-pre-wrap flex-1 line-clamp-3">{note.body}</p>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => setEditingNote({ id: note.id, body: note.body })} className="text-muted-foreground hover:text-foreground">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => deleteNoteMutation.mutate(note.id)} className="text-destructive">
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {note.userName && `By ${note.userName} • `}
+                  {formatRelativeTime(note.dateAdded)}
+                </p>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </ScrollArea>
+  );
+}
+
+// ConversationsCard content without the card wrapper
+function ConversationsCardContent({
+  conversations,
+  contactId,
+  onRefresh
+}: {
+  conversations: RepConsoleConversation[];
+  contactId: string;
+  onRefresh: () => void;
+}) {
+  const { toast } = useToast();
+  const [selectedConv, setSelectedConv] = useState<string | null>(null);
+  const [replyMessage, setReplyMessage] = useState("");
+
+  const selectedConversation = conversations.find((c) => c.id === selectedConv);
+
+  const replyMutation = useMutation({
+    mutationFn: async (message: string) => {
+      const type = selectedConversation?.type === "email" ? "email" : "sms";
+      const endpoint = type === "email"
+        ? `/api/rep-console/${contactId}/email`
+        : `/api/rep-console/${contactId}/sms`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(type === "email" ? { subject: "Re: ", body: message } : { message }),
+      });
+      if (!res.ok) throw new Error("Failed to send");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Message sent" });
+      setReplyMessage("");
+      onRefresh();
+    },
+  });
+
+  const getMessageIcon = (type: string) => {
+    switch (type) {
+      case "sms": return <MessageSquare className="w-4 h-4" />;
+      case "email": return <Mail className="w-4 h-4" />;
+      default: return <MessageCircle className="w-4 h-4" />;
+    }
+  };
+
+  if (conversations.length === 0) {
+    return (
+      <div className="text-center py-6 text-muted-foreground">
+        <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-50" />
+        <p>No conversations found</p>
+      </div>
+    );
+  }
+
+  if (selectedConv && selectedConversation) {
+    return (
+      <div className="space-y-3">
+        <Button variant="ghost" size="sm" onClick={() => setSelectedConv(null)}>
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back
+        </Button>
+        <div className="p-3 bg-muted/50 rounded-lg">
+          <p className="text-sm">{selectedConversation.lastMessageBody}</p>
+          <p className="text-xs text-muted-foreground mt-1">{formatRelativeTime(selectedConversation.lastMessageDate || "")}</p>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            placeholder="Quick reply..."
+            value={replyMessage}
+            onChange={(e) => setReplyMessage(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && replyMessage && replyMutation.mutate(replyMessage)}
+          />
+          <Button size="icon" onClick={() => replyMutation.mutate(replyMessage)} disabled={!replyMessage || replyMutation.isPending}>
+            {replyMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Reply className="w-4 h-4" />}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="h-[200px]">
+      <div className="space-y-2">
+        {conversations.map((conv) => (
+          <button
+            key={conv.id}
+            onClick={() => setSelectedConv(conv.id)}
+            className="w-full p-3 border rounded-lg hover:bg-muted/50 transition-colors text-left"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                {getMessageIcon(conv.type)}
+                <span className="font-medium capitalize">{conv.type}</span>
+              </div>
+              {conv.unreadCount > 0 && <Badge variant="default">{conv.unreadCount}</Badge>}
+            </div>
+            {conv.lastMessageBody && (
+              <p className="text-sm text-muted-foreground truncate">{conv.lastMessageBody}</p>
+            )}
+          </button>
+        ))}
+      </div>
+    </ScrollArea>
   );
 }
