@@ -10,6 +10,42 @@ import {
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
 
+// Retry wrapper for database operations to handle connection drops
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  operationName: string,
+  maxRetries: number = 3,
+  delayMs: number = 500
+): Promise<T> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      const isRetryable = 
+        error.message?.includes('terminating connection') ||
+        error.message?.includes('connection') ||
+        error.code === 'ECONNRESET' ||
+        error.code === '57P01' || // admin_shutdown
+        error.code === '08006' || // connection_failure
+        error.code === '08003';   // connection_does_not_exist
+      
+      if (isRetryable && attempt < maxRetries) {
+        console.log(`[DB RETRY] ${operationName} failed (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+        continue;
+      }
+      
+      console.error(`[DB ERROR] ${operationName} failed after ${attempt} attempts:`, error.message);
+      throw error;
+    }
+  }
+  
+  throw lastError;
+}
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -124,28 +160,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLoanApplication(insertApplication: Partial<InsertLoanApplication>): Promise<LoanApplication> {
-    const [application] = await db
-      .insert(loanApplications)
-      .values({
-        ...insertApplication,
-        email: insertApplication.email ?? "",
-        currentStep: insertApplication.currentStep ?? 1,
-        isCompleted: insertApplication.isCompleted ?? false,
-      })
-      .returning();
-    return application;
+    return withRetry(async () => {
+      const [application] = await db
+        .insert(loanApplications)
+        .values({
+          ...insertApplication,
+          email: insertApplication.email ?? "",
+          currentStep: insertApplication.currentStep ?? 1,
+          isCompleted: insertApplication.isCompleted ?? false,
+        })
+        .returning();
+      return application;
+    }, 'createLoanApplication');
   }
 
   async updateLoanApplication(id: string, updates: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined> {
-    const [updated] = await db
-      .update(loanApplications)
-      .set({
-        ...updates,
-        updatedAt: new Date(),
-      })
-      .where(eq(loanApplications.id, id))
-      .returning();
-    return updated || undefined;
+    return withRetry(async () => {
+      const [updated] = await db
+        .update(loanApplications)
+        .set({
+          ...updates,
+          updatedAt: new Date(),
+        })
+        .where(eq(loanApplications.id, id))
+        .returning();
+      
+      // Log important updates for debugging
+      if (updates.isFullApplicationCompleted) {
+        console.log(`[DB] Application ${id} marked as FULL APPLICATION COMPLETED`);
+      }
+      
+      return updated || undefined;
+    }, `updateLoanApplication(${id})`);
   }
 
   async getAllLoanApplications(): Promise<LoanApplication[]> {
