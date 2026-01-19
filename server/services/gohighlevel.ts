@@ -1229,20 +1229,19 @@ export class GoHighLevelService {
       }
 
       // Step 4: Check for duplicate lender in existing slots
-      const fieldPrefix = isApproved ? 'offer_' : 'denied_';
+      // Use correct GHL field keys: opportunity.offer_X and opportunity.decline_X
+      const fieldPrefix = isApproved ? 'opportunity.offer_' : 'opportunity.decline_';
       const normalizedLenderName = approval.lenderName.toLowerCase().trim();
 
       for (let i = 1; i <= 5; i++) {
         const fieldKey = `${fieldPrefix}${i}`;
-        const existingValue = currentCustomFields[fieldKey] ||
-                             currentCustomFields[`contact.${fieldKey}`] ||
-                             currentCustomFields[`opportunity.${fieldKey}`] || '';
+        const existingValue = currentCustomFields[fieldKey] || '';
 
         // Check if this lender already has an entry
         if (existingValue && existingValue.toLowerCase().includes(`lender: ${normalizedLenderName}`)) {
           return {
             success: false,
-            message: `Lender "${approval.lenderName}" already has an ${isApproved ? 'offer' : 'denial'} in slot ${i}`,
+            message: `Lender "${approval.lenderName}" already has an ${isApproved ? 'offer' : 'decline'} in slot ${i}`,
             opportunityId: targetOpp.id
           };
         }
@@ -1253,10 +1252,7 @@ export class GoHighLevelService {
 
       for (let i = 1; i <= 5; i++) {
         const fieldKey = `${fieldPrefix}${i}`;
-        // Check various possible key formats
-        const existingValue = currentCustomFields[fieldKey] ||
-                             currentCustomFields[`contact.${fieldKey}`] ||
-                             currentCustomFields[`opportunity.${fieldKey}`];
+        const existingValue = currentCustomFields[fieldKey];
 
         if (!existingValue || existingValue.trim() === '') {
           slotNumber = i;
@@ -1267,7 +1263,7 @@ export class GoHighLevelService {
       if (slotNumber === 0) {
         return {
           success: false,
-          message: `All ${isApproved ? 'Offer' : 'Denied'} slots (1-5) are filled for this opportunity`,
+          message: `All ${isApproved ? 'Offer' : 'Decline'} slots (1-5) are filled for this opportunity`,
           opportunityId: targetOpp.id
         };
       }
@@ -1276,14 +1272,46 @@ export class GoHighLevelService {
       const offerString = this.formatOfferString(approval);
       const fieldKey = `${fieldPrefix}${slotNumber}`;
 
-      const updateSuccess = await this.updateOpportunityCustomFields(targetOpp.id, {
+      // Build the fields to update
+      const fieldsToUpdate: Record<string, string> = {
         [fieldKey]: offerString
-      });
+      };
+
+      // For approvals, also check if this should be the "best offer" (highest amount)
+      if (isApproved && approval.approvedAmount) {
+        const newAmount = parseFloat((approval.approvedAmount || '0').replace(/[$,]/g, ''));
+        let isBestOffer = true;
+
+        // Check existing offers to see if any have a higher amount
+        for (let i = 1; i <= 5; i++) {
+          const existingOffer = currentCustomFields[`opportunity.offer_${i}`] || '';
+          const amountMatch = existingOffer.match(/Amount:\s*\$?([\d,]+)/i);
+          if (amountMatch) {
+            const existingAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
+            if (existingAmount >= newAmount) {
+              isBestOffer = false;
+              break;
+            }
+          }
+        }
+
+        if (isBestOffer && !isNaN(newAmount) && newAmount > 0) {
+          fieldsToUpdate['opportunity.lender_with_best_offer'] = approval.lenderName;
+        }
+      }
+
+      // For declines, set the declined_date
+      if (isDenied) {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        fieldsToUpdate['opportunity.declined_date'] = today;
+      }
+
+      const updateSuccess = await this.updateOpportunityCustomFields(targetOpp.id, fieldsToUpdate);
 
       if (updateSuccess) {
         return {
           success: true,
-          message: `Synced to ${isApproved ? 'Offer' : 'Denied'} ${slotNumber}: ${offerString}`,
+          message: `Synced to ${isApproved ? 'Offer' : 'Decline'} ${slotNumber}: ${offerString}`,
           opportunityId: targetOpp.id
         };
       } else {
