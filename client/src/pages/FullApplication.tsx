@@ -433,10 +433,41 @@ export default function FullApplication(props?: FullApplicationProps) {
         localStorage.setItem("applicationId", newApp.id);
         setApplicationId(newApp.id);
       } else {
-        await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
+        const response = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
+        
+        // Check for validation errors on final submission
+        if (isFinal && !response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error("[SAVE FAILED] Server rejected final submission:", errorData);
+          
+          if (errorData.missingFields && errorData.missingFields.length > 0) {
+            toast({
+              title: "Application Incomplete",
+              description: `Please complete these fields: ${errorData.missingFields.slice(0, 3).join(', ')}${errorData.missingFields.length > 3 ? '...' : ''}`,
+              variant: "destructive"
+            });
+          } else {
+            toast({
+              title: "Submission Failed",
+              description: errorData.error || "Please try again or contact support.",
+              variant: "destructive"
+            });
+          }
+          return false; // Indicate save failed
+        }
       }
-    } catch (error) {
-      console.warn("Save attempt failed", error);
+      return true; // Indicate save succeeded
+    } catch (error: any) {
+      console.error("[SAVE ERROR]", error);
+      if (isFinal) {
+        toast({
+          title: "Submission Error",
+          description: "Could not save your application. Please try again.",
+          variant: "destructive"
+        });
+        return false; // Indicate save failed
+      }
+      return false;
     }
   };
 
@@ -522,7 +553,14 @@ export default function FullApplication(props?: FullApplicationProps) {
             return;
         }
         setIsSubmitting(true);
-        await saveProgress(true);
+        const saveSucceeded = await saveProgress(true);
+        setIsSubmitting(false);
+        
+        // Only proceed if save was successful
+        if (!saveSucceeded) {
+            console.error("[SUBMIT] Final save failed, not redirecting to success page");
+            return; // Stay on signature page so user can fix issues
+        }
         
         // Track full application submission
         trackApplicationSubmitted({
@@ -531,8 +569,6 @@ export default function FullApplication(props?: FullApplicationProps) {
           businessName: formData.legal_business_name,
           requestedAmount: formData.requested_loan_amount,
         });
-        
-        setIsSubmitting(false);
         
         // Redirect to upload-statements page with email and business name pre-filled
         const email = encodeURIComponent(formData.company_email || '');

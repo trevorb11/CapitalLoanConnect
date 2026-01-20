@@ -165,11 +165,47 @@ function generateFundingReportUrl(application: Partial<LoanApplication>): string
 }
 
 // Helper function to sanitize application data for database storage
+// Parse combined City, State Zip string into components
+function parseCityStateZip(csz: string | undefined | null): { city?: string; state?: string; zip?: string } {
+  if (!csz || typeof csz !== 'string') return {};
+  
+  // Try pattern: "City, ST 12345" or "City, State 12345"
+  const match = csz.match(/^(.+?),\s*([A-Za-z]{2,})\s+(\d{5}(?:-\d{4})?)$/);
+  if (match) {
+    return { city: match[1].trim(), state: match[2].trim(), zip: match[3].trim() };
+  }
+  
+  // Try pattern without comma: "City ST 12345"
+  const match2 = csz.match(/^(.+?)\s+([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+  if (match2) {
+    return { city: match2[1].trim(), state: match2[2].trim(), zip: match2[3].trim() };
+  }
+  
+  return {};
+}
+
 function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string; faxNumber?: string } {
   const { recaptchaToken, faxNumber, ...rest } = data;
   const sanitized = { ...rest };
   
-  console.log('[SANITIZE] Input data:', JSON.stringify(rest, null, 2));
+  // Parse ownerCsz into separate fields if not already present
+  if (sanitized.ownerCsz && (!sanitized.ownerCity || !sanitized.ownerState || !sanitized.ownerZip)) {
+    const parsed = parseCityStateZip(sanitized.ownerCsz);
+    if (parsed.city && !sanitized.ownerCity) sanitized.ownerCity = parsed.city;
+    if (parsed.state && !sanitized.ownerState) sanitized.ownerState = parsed.state;
+    if (parsed.zip && !sanitized.ownerZip) sanitized.ownerZip = parsed.zip;
+    console.log(`[SANITIZE] Parsed ownerCsz "${sanitized.ownerCsz}" → city=${sanitized.ownerCity}, state=${sanitized.ownerState}, zip=${sanitized.ownerZip}`);
+  }
+  
+  // Parse businessCsz into separate fields if not already present
+  if (sanitized.businessCsz && (!sanitized.city || !sanitized.state || !sanitized.zipCode)) {
+    const parsed = parseCityStateZip(sanitized.businessCsz);
+    if (parsed.city && !sanitized.city) sanitized.city = parsed.city;
+    if (parsed.state && !sanitized.state) sanitized.state = parsed.state;
+    if (parsed.zip && !sanitized.zipCode) sanitized.zipCode = parsed.zip;
+    console.log(`[SANITIZE] Parsed businessCsz "${sanitized.businessCsz}" → city=${sanitized.city}, state=${sanitized.state}, zip=${sanitized.zipCode}`);
+  }
+  
   console.log('[SANITIZE] timeInBusiness raw:', sanitized.timeInBusiness);
   console.log('[SANITIZE] monthlyRevenue raw:', sanitized.monthlyRevenue);
   
@@ -648,14 +684,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!hasOwnerZip) missingFields.push('Owner Zip Code');
         
         if (missingFields.length > 0) {
-          console.log(`[VALIDATION] Full application rejected - missing fields: ${missingFields.join(', ')}`);
+          console.log(`[VALIDATION] Full application REJECTED for ${mergedData.email || id}`);
+          console.log(`[VALIDATION] Missing fields: ${missingFields.join(', ')}`);
+          console.log(`[VALIDATION] Data snapshot: SSN=${mergedData.socialSecurityNumber ? 'SET' : 'MISSING'}, ownership=${mergedData.ownership}, ownerAddress=${hasOwnerAddress ? 'SET' : 'MISSING'}`);
           return res.status(400).json({ 
             error: "Application incomplete. Please fill out all required fields.",
             missingFields 
           });
         }
         
-        console.log('[VALIDATION] Full application passed server-side validation');
+        console.log(`[VALIDATION] Full application APPROVED for ${mergedData.email || id}`);
       }
 
       // Always ensure agent view URL exists for all applications
