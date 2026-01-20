@@ -14,6 +14,7 @@ import IntakeBlog from "@/pages/IntakeBlog";
 import IntakeReferral from "@/pages/IntakeReferral";
 import IntakeDirect from "@/pages/IntakeDirect";
 import IntakeReddit from "@/pages/IntakeReddit";
+import FundingQuiz from "@/pages/FundingQuiz";
 import FullApplication from "@/pages/FullApplication";
 import AgentApplication from "@/pages/AgentApplication";
 import Success from "@/pages/Success";
@@ -46,6 +47,7 @@ function Router() {
       </Route>
       <Route path="/intake" component={IntakeLanding} />
       <Route path="/intake/quiz" component={QuizIntake} />
+      <Route path="/funding-quiz" component={FundingQuiz} />
 
       {/* Source-specific intake forms for tracking */}
       <Route path="/intake/google-ads" component={IntakeGoogleAds} />
