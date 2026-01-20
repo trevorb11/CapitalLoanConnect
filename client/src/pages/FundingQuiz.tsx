@@ -527,10 +527,14 @@ export default function FundingQuiz() {
     const question = questions.find((q) => q.id === questionId);
     if (question) {
       const insightContent = answer === "Yes" ? question.insight.yes : question.insight.no;
-      const isPositive = answer === "Yes" ? question.scoreImpact.yes > question.scoreImpact.no : question.scoreImpact.no > question.scoreImpact.yes;
+      // Determine if this answer is positive for funding based on score impact
+      const answerScore = answer === "Yes" ? question.scoreImpact.yes : question.scoreImpact.no;
+      const alternativeScore = answer === "Yes" ? question.scoreImpact.no : question.scoreImpact.yes;
+      const isPositive = answerScore >= alternativeScore;
 
       setCurrentInsight({
-        title: answer === "Yes" ? "Great!" : "Good to know",
+        // Show "Great!" when the answer is good for funding, "Good to know" when it's less favorable
+        title: isPositive ? "Great!" : "Good to know",
         content: insightContent || "",
         isPositive,
       });
@@ -641,14 +645,14 @@ export default function FundingQuiz() {
 
   // Render current question
   const renderQuestion = () => {
+    // Show results after submission (check FIRST - takes priority over contact form)
+    if (showResults) {
+      return renderResults();
+    }
+
     // Show contact form after all questions
     if (showContactForm) {
       return renderContactForm();
-    }
-
-    // Show results after submission
-    if (showResults) {
-      return renderResults();
     }
 
     // Industry selection (after main questions)
