@@ -1620,6 +1620,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Email is required" });
       }
 
+      // Verify the application exists and is fully completed before accepting bank statements
+      const existingApp = await storage.getLoanApplicationByEmail(email);
+      if (!existingApp) {
+        console.log(`[BANK UPLOAD] Rejected - no application found for email: ${email}`);
+        return res.status(400).json({ 
+          error: "Please complete your application first before uploading bank statements.",
+          redirectTo: "/"
+        });
+      }
+      
+      if (!existingApp.isFullApplicationCompleted) {
+        console.log(`[BANK UPLOAD] Rejected - full application not completed for: ${email}`);
+        return res.status(400).json({ 
+          error: "Please complete your full application with all required information before uploading bank statements.",
+          redirectTo: `/?applicationId=${existingApp.id}`,
+          applicationId: existingApp.id
+        });
+      }
+
       let storedFileName: string;
       let storageType: string = "local";
 
