@@ -435,38 +435,35 @@ export default function FullApplication(props?: FullApplicationProps) {
       } else {
         const response = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
         
-        // Check for validation errors on final submission
-        if (isFinal && !response.ok) {
+        // Check for validation errors (both step validation and final submission)
+        if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          console.error("[SAVE FAILED] Server rejected final submission:", errorData);
+          console.error("[SAVE FAILED] Server rejected:", errorData);
           
           if (errorData.missingFields && errorData.missingFields.length > 0) {
             toast({
-              title: "Application Incomplete",
-              description: `Please complete these fields: ${errorData.missingFields.slice(0, 3).join(', ')}${errorData.missingFields.length > 3 ? '...' : ''}`,
+              title: "Required Fields Missing",
+              description: `Please complete: ${errorData.missingFields.slice(0, 3).join(', ')}${errorData.missingFields.length > 3 ? '...' : ''}`,
               variant: "destructive"
             });
           } else {
             toast({
-              title: "Submission Failed",
-              description: errorData.error || "Please try again or contact support.",
+              title: "Cannot Continue",
+              description: errorData.error || "Please complete all required fields.",
               variant: "destructive"
             });
           }
-          return false; // Indicate save failed
+          return false; // Indicate save failed - prevents step advancement
         }
       }
       return true; // Indicate save succeeded
     } catch (error: any) {
       console.error("[SAVE ERROR]", error);
-      if (isFinal) {
-        toast({
-          title: "Submission Error",
-          description: "Could not save your application. Please try again.",
-          variant: "destructive"
-        });
-        return false; // Indicate save failed
-      }
+      toast({
+        title: "Save Error",
+        description: "Could not save your progress. Please try again.",
+        variant: "destructive"
+      });
       return false;
     }
   };
@@ -577,13 +574,20 @@ export default function FullApplication(props?: FullApplicationProps) {
         return;
     }
 
+    // Proceed - save and validate on server before advancing
+    setIsSubmitting(true); 
+    const saveSucceeded = await saveProgress(false);
+    setIsSubmitting(false);
+    
+    // Only advance if server validation passed
+    if (!saveSucceeded) {
+      console.log("[VALIDATION] Server rejected step advancement");
+      return;
+    }
+    
     // Track step completion
     trackFormStepCompleted('full_application', currentStepIndex + 1, currentConfig.label);
-
-    // Proceed
-    setIsSubmitting(true); 
-    await saveProgress(false);
-    setIsSubmitting(false);
+    
     setCurrentStepIndex(prev => prev + 1);
   };
 

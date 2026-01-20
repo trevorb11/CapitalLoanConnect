@@ -277,7 +277,7 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
     setSelectedFiles([]);
   };
 
-  const goToStep2 = () => {
+  const goToStep2 = async () => {
     const requiredStep1 = [
       'legal_business_name', 'doing_business_as', 'company_email',
       'business_start_date', 'ein', 'industry', 'state_of_incorporation',
@@ -300,11 +300,78 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
       return;
     }
     
-    // Track step 1 completion
-    trackFormStepCompleted('agent_application', 1, 'Business Information');
-    
-    setCurrentStep(2);
-    window.scrollTo(0, 0);
+    // Server-side validation: save Step 1 data to ensure it's validated on the server
+    setIsSubmitting(true);
+    try {
+      const step1Payload = {
+        legalBusinessName: formData.legal_business_name,
+        doingBusinessAs: formData.doing_business_as,
+        companyEmail: formData.company_email,
+        businessStartDate: formData.business_start_date,
+        ein: formData.ein.replace(/\D/g, ''),
+        industry: formData.industry,
+        stateOfIncorporation: formData.state_of_incorporation,
+        doYouProcessCreditCards: formData.do_you_process_credit_cards,
+        businessStreetAddress: formData.business_street_address,
+        city: formData.business_city,
+        state: formData.business_state,
+        zipCode: formData.business_zip,
+        requestedAmount: formData.requested_loan_amount.replace(/[^0-9.]/g, ""),
+        monthlyRevenue: formData.monthly_revenue ? formData.monthly_revenue.replace(/[^0-9.]/g, "") : "",
+        averageMonthlyRevenue: formData.monthly_revenue ? formData.monthly_revenue.replace(/[^0-9.]/g, "") : "",
+        agentName: agent.name,
+        agentEmail: agent.email,
+        agentGhlId: agent.ghlId,
+        currentStep: 1, // Indicate we're completing step 1
+        ...getStoredUTMParams(),
+      };
+      
+      let response;
+      if (applicationId) {
+        response = await apiRequest("PATCH", `/api/applications/${applicationId}`, step1Payload);
+      } else {
+        response = await apiRequest("POST", "/api/applications", step1Payload);
+      }
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("[STEP 1 VALIDATION] Server rejected:", errorData);
+        
+        if (errorData.missingFields && errorData.missingFields.length > 0) {
+          toast({
+            title: "Required Fields Missing",
+            description: `Please complete: ${errorData.missingFields.slice(0, 3).join(', ')}${errorData.missingFields.length > 3 ? '...' : ''}`,
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Cannot Continue",
+            description: errorData.error || "Please complete all required fields.",
+            variant: "destructive"
+          });
+        }
+        setIsSubmitting(false);
+        return;
+      }
+      
+      const data = await response.json();
+      if (data.id && !applicationId) {
+        localStorage.setItem("applicationId", data.id.toString());
+        setApplicationId(data.id.toString());
+      }
+      
+      setIsSubmitting(false);
+      
+      // Track step 1 completion
+      trackFormStepCompleted('agent_application', 1, 'Business Information');
+      
+      setCurrentStep(2);
+      window.scrollTo(0, 0);
+    } catch (error) {
+      console.error("[STEP 1 ERROR]", error);
+      toast({ title: "Save Error", description: "Could not save your progress. Please try again.", variant: "destructive" });
+      setIsSubmitting(false);
+    }
   };
 
   const submitApplication = async () => {
@@ -392,17 +459,39 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         ...getStoredUTMParams(),
       };
 
-      let data: any;
+      let response;
       if (applicationId) {
-        const response = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
-        data = await response.json();
+        response = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
       } else {
-        const response = await apiRequest("POST", "/api/applications", payload);
-        data = await response.json();
-        if (data.id) {
-          localStorage.setItem("applicationId", data.id.toString());
-          setApplicationId(data.id.toString());
+        response = await apiRequest("POST", "/api/applications", payload);
+      }
+      
+      // Check for server-side validation errors
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("[SUBMIT VALIDATION] Server rejected:", errorData);
+        
+        if (errorData.missingFields && errorData.missingFields.length > 0) {
+          toast({
+            title: "Application Incomplete",
+            description: `Please complete: ${errorData.missingFields.slice(0, 3).join(', ')}${errorData.missingFields.length > 3 ? '...' : ''}`,
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Submission Failed",
+            description: errorData.error || "Please complete all required fields.",
+            variant: "destructive"
+          });
         }
+        setIsSubmitting(false);
+        return;
+      }
+      
+      const data = await response.json();
+      if (data.id && !applicationId) {
+        localStorage.setItem("applicationId", data.id.toString());
+        setApplicationId(data.id.toString());
       }
       
       if (data && data.agentViewUrl) {
