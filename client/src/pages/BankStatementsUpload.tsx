@@ -15,9 +15,10 @@ import {
   ArrowLeft,
   Building2,
   Mail,
-  X
+  X,
+  ArrowRight
 } from "lucide-react";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import tcgLogo from "@assets/TCG_White_logo_1764664150165.png";
 
 interface UploadedFile {
