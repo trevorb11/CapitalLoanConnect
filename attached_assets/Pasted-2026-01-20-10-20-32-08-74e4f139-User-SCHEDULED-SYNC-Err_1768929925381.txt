@@ -1,0 +1,144 @@
+2026-01-20 10:20:32.08
+74e4f139
+User
+[SCHEDULED SYNC] Error processing row: error: column "ghl_synced" does not exist
+2026-01-20 10:20:32.08
+74e4f139
+User
+at async NeonPreparedQuery.execute (file:///home/runner/workspace/node_modules/drizzle-orm/neon-serverless/session.js:76:20)
+2026-01-20 10:20:32.08
+74e4f139
+User
+where: undefined,
+2026-01-20 10:20:32.08
+74e4f139
+User
+at async DatabaseStorage.getLenderApprovalByEmailId (file:///home/runner/workspace/dist/index.js:590:24)
+2026-01-20 10:20:32.08
+74e4f139
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-01-20 10:20:32.08
+74e4f139
+User
+at async Timeout.runScheduledSync [as _onTimeout] (file:///home/runner/workspace/dist/index.js:5987:28) {
+2026-01-20 10:20:32.08
+74e4f139
+User
+length: 111,
+2026-01-20 10:20:32.08
+74e4f139
+User
+detail: undefined,
+2026-01-20 10:20:32.08
+74e4f139
+User
+internalQuery: undefined,
+2026-01-20 10:20:32.08
+74e4f139
+User
+at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2026-01-20 10:20:32.08
+74e4f139
+User
+constraint: undefined,
+2026-01-20 10:20:32.08
+74e4f139
+User
+routine: 'errorMissingColumn'
+2026-01-20 10:20:32.08
+74e4f139
+User
+}
+2026-01-20 10:20:32.08
+74e4f139
+User
+table: undefined,
+2026-01-20 10:20:32.08
+74e4f139
+User
+dataType: undefined,
+2026-01-20 10:20:32.08
+74e4f139
+User
+severity: 'ERROR',
+2026-01-20 10:20:32.08
+74e4f139
+User
+position: '365',
+2026-01-20 10:20:32.08
+74e4f139
+User
+column: undefined,
+2026-01-20 10:20:32.08
+74e4f139
+User
+internalPosition: undefined,
+2026-01-20 10:20:32.08
+74e4f139
+User
+hint: undefined,
+2026-01-20 10:20:32.08
+74e4f139
+User
+file: 'parse_relation.c',
+2026-01-20 10:20:32.08
+74e4f139
+User
+line: '3722',
+2026-01-20 10:20:32.08
+74e4f139
+User
+code: '42703',
+2026-01-20 10:20:32.08
+74e4f139
+User
+schema: undefined,
+2026-01-20 10:20:33.08
+74e4f139
+User
+at async Timeout.runScheduledSync [as _onTimeout] (file:///home/runner/workspace/dist/index.js:5987:28) {
+2026-01-20 10:20:33.08
+74e4f139
+User
+detail: undefined,
+2026-01-20 10:20:33.08
+74e4f139
+User
+schema: undefined,
+2026-01-20 10:20:33.08
+74e4f139
+User
+at async DatabaseStorage.getLenderApprovalByEmailId (file:///home/runner/workspace/dist/index.js:590:24)
+2026-01-20 10:20:33.08
+74e4f139
+User
+length: 111,
+2026-01-20 10:20:33.08
+74e4f139
+User
+column: undefined,
+2026-01-20 10:20:33.08
+74e4f139
+User
+internalPosition: undefined,
+2026-01-20 10:20:33.08
+74e4f139
+User
+dataType: undefined,
+2026-01-20 10:20:33.08
+74e4f139
+User
+}
+2026-01-20 10:20:33.08
+74e4f139
+User
+where: undefined,
+2026-01-20 10:20:33.08
+74e4f139
+User
+hint: undefined,
+2026-01-20 10:20:33.08
+74e4f139
+User
+routine: 'errorMissingColumn'
