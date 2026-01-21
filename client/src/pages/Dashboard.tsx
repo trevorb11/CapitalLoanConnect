@@ -1924,8 +1924,8 @@ export default function Dashboard() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <h3 className="font-semibold text-lg flex items-center gap-1" data-testid={`text-applicant-name-${app.id}`}>
-                        {app.fullName || "No name"}
+                      <h3 className="font-semibold text-lg flex items-center gap-1" data-testid={`text-business-name-${app.id}`}>
+                        {app.legalBusinessName || app.businessName || "No business name"}
                         {Number(app.monthlyRevenue || app.averageMonthlyRevenue) >= 20000 && (
                           <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" data-testid={`icon-high-revenue-${app.id}`} />
                         )}
@@ -1963,8 +1963,8 @@ export default function Dashboard() {
                         <span data-testid={`value-email-${app.id}`}>{app.email || "N/A"}</span>
                       </div>
                       <div>
-                        <span className="font-medium">Business:</span>{" "}
-                        <span data-testid={`value-business-${app.id}`}>{app.legalBusinessName || app.businessName || "N/A"}</span>
+                        <span className="font-medium">Contact:</span>{" "}
+                        <span data-testid={`value-contact-${app.id}`}>{app.fullName || "N/A"}</span>
                       </div>
                       <div>
                         <span className="font-medium">Phone:</span>{" "}
