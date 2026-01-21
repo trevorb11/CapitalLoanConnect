@@ -400,6 +400,18 @@ export class GoHighLevelService {
       tags.push("App Started");
     }
     
+    // Check for low revenue contacts (threshold: $12,000/month)
+    const LOW_REVENUE_THRESHOLD = 12000;
+    const monthlyRevenueValue = application.monthlyRevenue 
+      ? parseFloat(application.monthlyRevenue.toString().replace(/[^0-9.]/g, ''))
+      : application.averageMonthlyRevenue 
+        ? parseFloat(application.averageMonthlyRevenue.toString().replace(/[^0-9.]/g, ''))
+        : null;
+    
+    if (monthlyRevenueValue !== null && monthlyRevenueValue < LOW_REVENUE_THRESHOLD) {
+      tags.push("Low Revenue");
+    }
+    
     if (tags.length > 0) {
       contactData.tags = tags;
     }
