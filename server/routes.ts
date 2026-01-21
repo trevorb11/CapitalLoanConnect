@@ -184,6 +184,18 @@ function parseCityStateZip(csz: string | undefined | null): { city?: string; sta
   return {};
 }
 
+// Filter out empty/undefined/null values to prevent overwriting existing data
+function filterEmptyValues(data: Record<string, any>): Record<string, any> {
+  const filtered: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    // Keep the value if it's not empty
+    if (value !== undefined && value !== null && value !== '') {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
+}
+
 function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string; faxNumber?: string } {
   const { recaptchaToken, faxNumber, ...rest } = data;
   const sanitized = { ...rest };
@@ -589,7 +601,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Update existing application with new data instead of just returning old data
-        const updatedApp = await storage.updateLoanApplication(existingApp.id, applicationData);
+        // Filter out empty values to preserve previously entered data
+        const filteredApplicationData = filterEmptyValues(applicationData);
+        const updatedApp = await storage.updateLoanApplication(existingApp.id, filteredApplicationData);
         
         // Sync to GoHighLevel and send webhooks
         try {
@@ -929,7 +943,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.agentViewUrl = `/agent/application/${id}`;
       }
 
-      const updatedApp = await storage.updateLoanApplication(id, updates);
+      // Filter out empty values to preserve previously entered data
+      const filteredUpdates = filterEmptyValues(updates);
+      const updatedApp = await storage.updateLoanApplication(id, filteredUpdates);
       
       if (!updatedApp) {
         return res.status(404).json({ error: "Application not found" });
