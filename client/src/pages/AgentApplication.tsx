@@ -333,20 +333,21 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         response = await apiRequest("POST", "/api/applications", step1Payload);
       }
       
+      const data = await response.json().catch(() => ({}));
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("[STEP 1 VALIDATION] Server rejected:", errorData);
+        console.error("[STEP 1 VALIDATION] Server rejected:", data);
         
-        if (errorData.missingFields && errorData.missingFields.length > 0) {
+        if (data.missingFields && data.missingFields.length > 0) {
           toast({
             title: "Required Fields Missing",
-            description: `Please complete: ${errorData.missingFields.slice(0, 3).join(', ')}${errorData.missingFields.length > 3 ? '...' : ''}`,
+            description: `Please complete: ${data.missingFields.slice(0, 3).join(', ')}${data.missingFields.length > 3 ? '...' : ''}`,
             variant: "destructive"
           });
         } else {
           toast({
             title: "Cannot Continue",
-            description: errorData.error || "Please complete all required fields.",
+            description: data.error || "Please complete all required fields.",
             variant: "destructive"
           });
         }
@@ -354,7 +355,18 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         return;
       }
       
-      const data = await response.json();
+      // Check for validation failures in successful response (data saved but step blocked)
+      if (data.validationFailed && data.validationErrors?.length > 0) {
+        console.log("[SAVE OK] Data saved but validation failed:", data.validationErrors);
+        toast({
+          title: "Required Fields Missing",
+          description: `Please complete: ${data.validationErrors.slice(0, 3).join(', ')}${data.validationErrors.length > 3 ? '...' : ''}`,
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      
       if (data.id && !applicationId) {
         localStorage.setItem("applicationId", data.id.toString());
         setApplicationId(data.id.toString());

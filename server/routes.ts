@@ -480,14 +480,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Email is required" });
       }
 
-      // Step-based server-side validation for new applications with currentStep
+      // Step-based server-side validation for new applications - validate but ALWAYS save data
+      // This ensures data is preserved even if validation fails
+      let postStepValidationErrors: string[] = [];
+      let postRequestedStep: number | undefined = undefined;
+      
       if (applicationData.currentStep !== undefined && applicationData.currentStep !== null) {
+        postRequestedStep = applicationData.currentStep;
         const currentStep = applicationData.currentStep;
         const isAgentFlow = !!(applicationData.agentName || applicationData.agentEmail);
         
         // AgentApplication has 2 steps with different field groupings than FullApplication
-        // Step 1: All business info including EIN, address, revenue
-        // Step 2: All owner info including SSN (handled at final submission via isFullApplicationCompleted)
         const agentStepValidationRules: Record<number, { fields: { key: string; label: string; format?: 'ein' | 'ssn' | 'phone' | 'email' }[] }> = {
           1: {
             fields: [
@@ -510,117 +513,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // FullApplication has 11 steps with fields spread across steps
         const fullAppStepValidationRules: Record<number, { fields: { key: string; label: string; format?: 'ein' | 'ssn' | 'phone' | 'email' }[] }> = {
-          1: {
-            fields: [
-              { key: 'legalBusinessName', label: 'Legal Business Name' }
-            ]
-          },
-          2: {
-            fields: [
-              { key: 'companyEmail', label: 'Company Email', format: 'email' }
-            ]
-          },
-          3: {
-            fields: [
-              { key: 'businessStartDate', label: 'Business Start Date' },
-              { key: 'stateOfIncorporation', label: 'State of Incorporation' }
-            ]
-          },
-          4: {
-            fields: [
-              { key: 'ein', label: 'EIN (Tax ID)', format: 'ein' },
-              { key: 'doYouProcessCreditCards', label: 'Credit Card Processing' }
-            ]
-          },
-          5: {
-            fields: [
-              { key: 'industry', label: 'Industry' }
-            ]
-          },
-          6: {
-            fields: [
-              { key: 'businessStreetAddress', label: 'Business Street Address' }
-            ]
-          },
-          7: {
-            fields: [
-              { key: 'requestedAmount', label: 'Requested Amount' }
-            ]
-          },
-          8: {
-            fields: [
-              { key: 'fullName', label: 'Full Name' },
-              { key: 'email', label: 'Email', format: 'email' },
-              { key: 'phone', label: 'Phone', format: 'phone' },
-              { key: 'ownership', label: 'Ownership Percentage' }
-            ]
-          },
-          9: {
-            fields: [
-              { key: 'socialSecurityNumber', label: 'Social Security Number', format: 'ssn' },
-              { key: 'dateOfBirth', label: 'Date of Birth' }
-            ]
-          },
-          10: {
-            fields: [
-              { key: 'ownerAddress1', label: 'Home Address' },
-              { key: 'ownerCity', label: 'City' },
-              { key: 'ownerState', label: 'State' },
-              { key: 'ownerZip', label: 'Zip Code' }
-            ]
-          }
+          1: { fields: [{ key: 'legalBusinessName', label: 'Legal Business Name' }] },
+          2: { fields: [{ key: 'companyEmail', label: 'Company Email', format: 'email' }] },
+          3: { fields: [{ key: 'businessStartDate', label: 'Business Start Date' }, { key: 'stateOfIncorporation', label: 'State of Incorporation' }] },
+          4: { fields: [{ key: 'ein', label: 'EIN (Tax ID)', format: 'ein' }, { key: 'doYouProcessCreditCards', label: 'Credit Card Processing' }] },
+          5: { fields: [{ key: 'industry', label: 'Industry' }] },
+          6: { fields: [{ key: 'businessStreetAddress', label: 'Business Street Address' }] },
+          7: { fields: [{ key: 'requestedAmount', label: 'Requested Amount' }] },
+          8: { fields: [{ key: 'fullName', label: 'Full Name' }, { key: 'email', label: 'Email', format: 'email' }, { key: 'phone', label: 'Phone', format: 'phone' }, { key: 'ownership', label: 'Ownership Percentage' }] },
+          9: { fields: [{ key: 'socialSecurityNumber', label: 'Social Security Number', format: 'ssn' }, { key: 'dateOfBirth', label: 'Date of Birth' }] },
+          10: { fields: [{ key: 'ownerAddress1', label: 'Home Address' }, { key: 'ownerCity', label: 'City' }, { key: 'ownerState', label: 'State' }, { key: 'ownerZip', label: 'Zip Code' }] }
         };
         
         const stepValidationRules = isAgentFlow ? agentStepValidationRules : fullAppStepValidationRules;
         
         const stepRules = stepValidationRules[currentStep];
         if (stepRules) {
-          const validationErrors: string[] = [];
-          
           for (const field of stepRules.fields) {
             const value = (applicationData as any)[field.key];
             
             if (!value || value.toString().trim() === '') {
-              validationErrors.push(field.label);
+              postStepValidationErrors.push(field.label);
               continue;
             }
             
             if (field.format === 'ein') {
               const digits = value.toString().replace(/\D/g, '');
               if (digits.length !== 9) {
-                validationErrors.push(`${field.label} (must be 9 digits)`);
+                postStepValidationErrors.push(`${field.label} (must be 9 digits)`);
               }
             }
             if (field.format === 'ssn') {
               const digits = value.toString().replace(/\D/g, '');
               if (digits.length !== 9) {
-                validationErrors.push(`${field.label} (must be 9 digits)`);
+                postStepValidationErrors.push(`${field.label} (must be 9 digits)`);
               }
             }
             if (field.format === 'phone') {
               const digits = value.toString().replace(/\D/g, '');
               if (digits.length < 10) {
-                validationErrors.push(`${field.label} (must be at least 10 digits)`);
+                postStepValidationErrors.push(`${field.label} (must be at least 10 digits)`);
               }
             }
             if (field.format === 'email') {
               if (!value.includes('@') || !value.includes('.')) {
-                validationErrors.push(`${field.label} (invalid format)`);
+                postStepValidationErrors.push(`${field.label} (invalid format)`);
               }
             }
           }
           
-          if (validationErrors.length > 0) {
-            console.log(`[STEP VALIDATION] Step ${currentStep} REJECTED for new application`);
-            console.log(`[STEP VALIDATION] Missing/invalid fields: ${validationErrors.join(', ')}`);
-            return res.status(400).json({
-              error: "Please complete all required fields before continuing.",
-              missingFields: validationErrors,
-              step: currentStep
-            });
+          if (postStepValidationErrors.length > 0) {
+            console.log(`[STEP VALIDATION] Step ${currentStep} has validation issues for new application`);
+            console.log(`[STEP VALIDATION] Issues: ${postStepValidationErrors.join(', ')}`);
+            // Don't update currentStep if validation fails - but still save data
+            delete applicationData.currentStep;
+          } else {
+            console.log(`[STEP VALIDATION] Step ${currentStep} PASSED for new application`);
           }
-          
-          console.log(`[STEP VALIDATION] Step ${currentStep} PASSED for new application`);
         }
       }
 
@@ -663,6 +612,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               );
             }
             // Note: Partial webhook is NOT sent on every update to avoid excessive triggers
+            // Return with validation errors if any (data was still saved)
+            if (postStepValidationErrors.length > 0) {
+              return res.json({
+                ...(finalApp || updatedApp),
+                validationFailed: true,
+                validationErrors: postStepValidationErrors,
+                requestedStep: postRequestedStep
+              });
+            }
             return res.json(finalApp || updatedApp);
           }
         } catch (ghlError) {
@@ -675,6 +633,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
+        // Return with validation errors if any (data was still saved)
+        if (postStepValidationErrors.length > 0) {
+          return res.json({
+            ...(updatedApp || existingApp),
+            validationFailed: true,
+            validationErrors: postStepValidationErrors,
+            requestedStep: postRequestedStep
+          });
+        }
         return res.json(updatedApp || existingApp);
       }
 
@@ -710,6 +677,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         // Note: Partial webhook is NOT sent on every creation to avoid excessive triggers
         
+        // Return with validation errors if any (data was still saved)
+        if (postStepValidationErrors.length > 0) {
+          return res.json({
+            ...(updatedApp || application),
+            validationFailed: true,
+            validationErrors: postStepValidationErrors,
+            requestedStep: postRequestedStep
+          });
+        }
         res.json(updatedApp || application);
       } catch (ghlError) {
         console.error("GHL sync error, but application saved:", ghlError);
@@ -729,6 +705,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         // Note: Partial webhook is NOT sent on every creation to avoid excessive triggers
         
+        // Return with validation errors if any (data was still saved)
+        if (postStepValidationErrors.length > 0) {
+          return res.json({
+            ...(updatedApp || application),
+            validationFailed: true,
+            validationErrors: postStepValidationErrors,
+            requestedStep: postRequestedStep
+          });
+        }
         res.json(updatedApp || application);
       }
     } catch (error) {
@@ -755,17 +740,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Step-based server-side validation
-      // This ensures required fields are filled before allowing progression
+      // Step-based server-side validation - validate but ALWAYS save data first
+      // This ensures data is preserved even if validation fails
+      let stepValidationErrors: string[] = [];
+      let requestedStep: number | undefined = undefined;
+      
       if (updates.currentStep !== undefined && updates.currentStep !== null) {
+        requestedStep = updates.currentStep;
         const existingApp = await storage.getLoanApplication(id);
         const mergedData = { ...existingApp, ...updates };
         const currentStep = updates.currentStep;
         const isAgentFlow = !!(updates.agentName || updates.agentEmail || existingApp?.agentEmail);
         
         // AgentApplication has 2 steps with different field groupings than FullApplication
-        // Step 1: All business info including EIN, address, revenue
-        // Step 2: All owner info including SSN (handled at final submission via isFullApplicationCompleted)
         const agentStepValidationRules: Record<number, { fields: { key: string; label: string; format?: 'ein' | 'ssn' | 'phone' | 'email' }[] }> = {
           1: {
             fields: [
@@ -788,129 +775,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // FullApplication has 11 steps with fields spread across steps
         const fullAppStepValidationRules: Record<number, { fields: { key: string; label: string; format?: 'ein' | 'ssn' | 'phone' | 'email' }[] }> = {
-          // After Step 1 (Business Name) - requires legal business name
-          1: {
-            fields: [
-              { key: 'legalBusinessName', label: 'Legal Business Name' }
-            ]
-          },
-          // After Step 2 (Company Contact) - requires company email
-          2: {
-            fields: [
-              { key: 'companyEmail', label: 'Company Email', format: 'email' }
-            ]
-          },
-          // After Step 3 (Business Origin) - requires start date and state
-          3: {
-            fields: [
-              { key: 'businessStartDate', label: 'Business Start Date' },
-              { key: 'stateOfIncorporation', label: 'State of Incorporation' }
-            ]
-          },
-          // After Step 4 (Business Details) - requires EIN
-          4: {
-            fields: [
-              { key: 'ein', label: 'EIN (Tax ID)', format: 'ein' },
-              { key: 'doYouProcessCreditCards', label: 'Credit Card Processing' }
-            ]
-          },
-          // After Step 5 (Industry) - requires industry
-          5: {
-            fields: [
-              { key: 'industry', label: 'Industry' }
-            ]
-          },
-          // After Step 6 (Business Address)
-          6: {
-            fields: [
-              { key: 'businessStreetAddress', label: 'Business Street Address' }
-            ]
-          },
-          // After Step 7 (Financial Request) - requires requested amount
-          7: {
-            fields: [
-              { key: 'requestedAmount', label: 'Requested Amount' }
-            ]
-          },
-          // After Step 8 (Owner Profile) - requires owner info
-          8: {
-            fields: [
-              { key: 'fullName', label: 'Full Name' },
-              { key: 'email', label: 'Email', format: 'email' },
-              { key: 'phone', label: 'Phone', format: 'phone' },
-              { key: 'ownership', label: 'Ownership Percentage' }
-            ]
-          },
-          // After Step 9 (Identity Verification) - requires SSN and DOB
-          9: {
-            fields: [
-              { key: 'socialSecurityNumber', label: 'Social Security Number', format: 'ssn' },
-              { key: 'dateOfBirth', label: 'Date of Birth' }
-            ]
-          },
-          // After Step 10 (Home Address) - requires owner address
-          10: {
-            fields: [
-              { key: 'ownerAddress1', label: 'Home Address' },
-              { key: 'ownerCity', label: 'City' },
-              { key: 'ownerState', label: 'State' },
-              { key: 'ownerZip', label: 'Zip Code' }
-            ]
-          }
+          1: { fields: [{ key: 'legalBusinessName', label: 'Legal Business Name' }] },
+          2: { fields: [{ key: 'companyEmail', label: 'Company Email', format: 'email' }] },
+          3: { fields: [{ key: 'businessStartDate', label: 'Business Start Date' }, { key: 'stateOfIncorporation', label: 'State of Incorporation' }] },
+          4: { fields: [{ key: 'ein', label: 'EIN (Tax ID)', format: 'ein' }, { key: 'doYouProcessCreditCards', label: 'Credit Card Processing' }] },
+          5: { fields: [{ key: 'industry', label: 'Industry' }] },
+          6: { fields: [{ key: 'businessStreetAddress', label: 'Business Street Address' }] },
+          7: { fields: [{ key: 'requestedAmount', label: 'Requested Amount' }] },
+          8: { fields: [{ key: 'fullName', label: 'Full Name' }, { key: 'email', label: 'Email', format: 'email' }, { key: 'phone', label: 'Phone', format: 'phone' }, { key: 'ownership', label: 'Ownership Percentage' }] },
+          9: { fields: [{ key: 'socialSecurityNumber', label: 'Social Security Number', format: 'ssn' }, { key: 'dateOfBirth', label: 'Date of Birth' }] },
+          10: { fields: [{ key: 'ownerAddress1', label: 'Home Address' }, { key: 'ownerCity', label: 'City' }, { key: 'ownerState', label: 'State' }, { key: 'ownerZip', label: 'Zip Code' }] }
         };
         
         const stepValidationRules = isAgentFlow ? agentStepValidationRules : fullAppStepValidationRules;
         
         const stepRules = stepValidationRules[currentStep];
         if (stepRules) {
-          const validationErrors: string[] = [];
-          
           for (const field of stepRules.fields) {
             const value = (mergedData as any)[field.key];
             
-            // Check if field has a value
+            // Check if field has a value (only check for presence, not format)
             if (!value || value.toString().trim() === '') {
-              validationErrors.push(field.label);
+              stepValidationErrors.push(field.label);
               continue;
             }
             
-            // Format-specific validation
+            // Format-specific validation - only for required formats
             if (field.format === 'ein') {
               const digits = value.toString().replace(/\D/g, '');
               if (digits.length !== 9) {
-                validationErrors.push(`${field.label} (must be 9 digits)`);
+                stepValidationErrors.push(`${field.label} (must be 9 digits)`);
               }
             }
             if (field.format === 'ssn') {
               const digits = value.toString().replace(/\D/g, '');
               if (digits.length !== 9) {
-                validationErrors.push(`${field.label} (must be 9 digits)`);
+                stepValidationErrors.push(`${field.label} (must be 9 digits)`);
               }
             }
             if (field.format === 'phone') {
               const digits = value.toString().replace(/\D/g, '');
               if (digits.length < 10) {
-                validationErrors.push(`${field.label} (must be at least 10 digits)`);
+                stepValidationErrors.push(`${field.label} (must be at least 10 digits)`);
               }
             }
             if (field.format === 'email') {
               if (!value.includes('@') || !value.includes('.')) {
-                validationErrors.push(`${field.label} (invalid format)`);
+                stepValidationErrors.push(`${field.label} (invalid format)`);
               }
             }
           }
           
-          if (validationErrors.length > 0) {
-            console.log(`[STEP VALIDATION] Step ${currentStep} REJECTED for application ${id}`);
-            console.log(`[STEP VALIDATION] Missing/invalid fields: ${validationErrors.join(', ')}`);
-            return res.status(400).json({
-              error: "Please complete all required fields before continuing.",
-              missingFields: validationErrors,
-              step: currentStep
-            });
+          if (stepValidationErrors.length > 0) {
+            console.log(`[STEP VALIDATION] Step ${currentStep} has validation issues for application ${id}`);
+            console.log(`[STEP VALIDATION] Issues: ${stepValidationErrors.join(', ')}`);
+            // Don't update currentStep if validation fails - keep them on current step
+            // But still save all other data
+            delete updates.currentStep;
+          } else {
+            console.log(`[STEP VALIDATION] Step ${currentStep} PASSED for application ${id}`);
           }
-          
-          console.log(`[STEP VALIDATION] Step ${currentStep} PASSED for application ${id}`);
         }
       }
 
@@ -1027,6 +951,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           // Note: Partial/abandoned webhook is NOT sent on auto-save to avoid excessive triggers
           
+          // Return with validation errors if any (data was still saved)
+          if (stepValidationErrors.length > 0) {
+            return res.json({
+              ...(finalApp || updatedApp),
+              validationFailed: true,
+              validationErrors: stepValidationErrors,
+              requestedStep: requestedStep
+            });
+          }
           return res.json(finalApp || updatedApp);
         }
         
@@ -1041,6 +974,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("GHL sync error, but application updated:", ghlError);
       }
 
+      // Return with validation errors if any (data was still saved)
+      if (stepValidationErrors.length > 0) {
+        return res.json({
+          ...updatedApp,
+          validationFailed: true,
+          validationErrors: stepValidationErrors,
+          requestedStep: requestedStep
+        });
+      }
       res.json(updatedApp);
     } catch (error) {
       console.error("Error updating application:", error);

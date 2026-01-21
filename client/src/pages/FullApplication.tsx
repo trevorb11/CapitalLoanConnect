@@ -430,30 +430,56 @@ export default function FullApplication(props?: FullApplicationProps) {
       if (!applicationId) {
         const response = await apiRequest("POST", "/api/applications", payload);
         const newApp = await response.json();
-        localStorage.setItem("applicationId", newApp.id);
-        setApplicationId(newApp.id);
+        
+        // Store the application ID regardless of validation status (data is saved)
+        if (newApp.id) {
+          localStorage.setItem("applicationId", newApp.id);
+          setApplicationId(newApp.id);
+        }
+        
+        // Check for validation failures in successful response (data saved but step blocked)
+        if (newApp.validationFailed && newApp.validationErrors?.length > 0) {
+          console.log("[SAVE OK] Data saved but validation failed:", newApp.validationErrors);
+          toast({
+            title: "Required Fields Missing",
+            description: `Please complete: ${newApp.validationErrors.slice(0, 3).join(', ')}${newApp.validationErrors.length > 3 ? '...' : ''}`,
+            variant: "destructive"
+          });
+          return false; // Prevent step advancement
+        }
       } else {
         const response = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
+        const responseData = await response.json().catch(() => ({}));
         
         // Check for validation errors (both step validation and final submission)
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.error("[SAVE FAILED] Server rejected:", errorData);
+          console.error("[SAVE FAILED] Server rejected:", responseData);
           
-          if (errorData.missingFields && errorData.missingFields.length > 0) {
+          if (responseData.missingFields && responseData.missingFields.length > 0) {
             toast({
               title: "Required Fields Missing",
-              description: `Please complete: ${errorData.missingFields.slice(0, 3).join(', ')}${errorData.missingFields.length > 3 ? '...' : ''}`,
+              description: `Please complete: ${responseData.missingFields.slice(0, 3).join(', ')}${responseData.missingFields.length > 3 ? '...' : ''}`,
               variant: "destructive"
             });
           } else {
             toast({
               title: "Cannot Continue",
-              description: errorData.error || "Please complete all required fields.",
+              description: responseData.error || "Please complete all required fields.",
               variant: "destructive"
             });
           }
           return false; // Indicate save failed - prevents step advancement
+        }
+        
+        // Check for validation failures in successful response (data saved but step blocked)
+        if (responseData.validationFailed && responseData.validationErrors?.length > 0) {
+          console.log("[SAVE OK] Data saved but validation failed:", responseData.validationErrors);
+          toast({
+            title: "Required Fields Missing",
+            description: `Please complete: ${responseData.validationErrors.slice(0, 3).join(', ')}${responseData.validationErrors.length > 3 ? '...' : ''}`,
+            variant: "destructive"
+          });
+          return false; // Prevent step advancement
         }
       }
       return true; // Indicate save succeeded
