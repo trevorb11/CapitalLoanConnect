@@ -280,14 +280,14 @@ export default function FullApplication(props?: FullApplicationProps) {
         phone: existingData.phone ? formatPhone(existingData.phone) : "",
         personal_credit_score_range: existingData.personalCreditScoreRange || existingData.ficoScoreExact || existingData.creditScore || "",
 
-        address1: existingData.ownerAddress1 || existingData.businessAddress || "",
-        address2: existingData.ownerAddress2 || "",
+        owner_address1: existingData.ownerAddress1 || existingData.businessAddress || "",
+        owner_address2: existingData.ownerAddress2 || "",
         owner_city: oAddr.city,
         owner_state: oAddr.state,
         owner_zip: oAddr.zip,
 
         date_of_birth: existingData.dateOfBirth || "",
-        ownership_percentage: existingData.ownership || "",
+        ownership_percentage: existingData.ownerPercentage || existingData.ownership || "",
       });
 
       if (existingData.isFullApplicationCompleted) {
@@ -390,10 +390,11 @@ export default function FullApplication(props?: FullApplicationProps) {
       socialSecurityNumber: formData.social_security_,
       phone: formData.phone,
       personalCreditScoreRange: formData.personal_credit_score_range,
-      ownerAddress1: formData.address1, 
-      ownerAddress2: formData.address2,
+      ownerAddress1: formData.owner_address1, 
+      ownerAddress2: formData.owner_address2,
       ownerCsz: ownerCsz,
       dateOfBirth: formData.date_of_birth,
+      ownerPercentage: formData.ownership_percentage,
       ownership: formData.ownership_percentage,
       // Rough approximation of progress for backend
       currentStep: currentStepIndex >= 4 ? 2 : 1,
@@ -551,7 +552,7 @@ export default function FullApplication(props?: FullApplicationProps) {
     if (currentConfig.type === 'address_group') {
         const prefix = currentConfig.prefix === 'business' ? 'business' : 'owner';
         const zip = formData[`${prefix}_zip`];
-        const street = prefix === 'business' ? formData.business_street : formData.address1;
+        const street = prefix === 'business' ? formData.business_street : formData.owner_address1;
         const city = formData[`${prefix}_city`];
         const state = formData[`${prefix}_state`];
 
@@ -673,8 +674,8 @@ export default function FullApplication(props?: FullApplicationProps) {
 
   const renderAddressGroup = (prefix: 'business' | 'owner') => {
       const isBiz = prefix === 'business';
-      const streetKey = isBiz ? 'business_street' : 'address1';
-      const unitKey = isBiz ? 'business_unit' : 'address2';
+      const streetKey = isBiz ? 'business_street' : 'owner_address1';
+      const unitKey = isBiz ? 'business_unit' : 'owner_address2';
       const cityKey = `${prefix}_city`;
       const stateKey = `${prefix}_state`;
       const zipKey = `${prefix}_zip`;

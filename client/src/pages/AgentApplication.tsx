@@ -145,7 +145,7 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         owner_state: existingData.ownerState || "",
         owner_zip: existingData.ownerZip || "",
         date_of_birth: existingData.dateOfBirth || "",
-        ownership_percentage: existingData.ownership || "",
+        ownership_percentage: existingData.ownerPercentage || existingData.ownership || "",
       });
       if (existingData.applicantSignature) {
         setExistingSignature(existingData.applicantSignature);
@@ -460,6 +460,7 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         ownerZip: formData.owner_zip,
         ownerCsz: `${formData.owner_city}, ${formData.owner_state} ${formData.owner_zip}`,
         dateOfBirth: formData.date_of_birth,
+        ownerPercentage: formData.ownership_percentage,
         ownership: formData.ownership_percentage,
         applicantSignature: signatureToUse,
         isFullApplicationCompleted: true,
