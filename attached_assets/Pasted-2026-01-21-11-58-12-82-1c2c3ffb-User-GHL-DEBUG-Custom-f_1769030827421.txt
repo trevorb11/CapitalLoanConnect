@@ -1,0 +1,132 @@
+2026-01-21 11:58:12.82
+1c2c3ffb
+User
+[GHL DEBUG] Custom fields count: 25
+2026-01-21 11:58:12.82
+1c2c3ffb
+User
+"key": "contact.personal_credit_score_range",
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] Processing mcaBalanceAmount: undefined (type: undefined)
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] Processing monthlyRevenue: undefined (type: undefined)
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] requestedAmount: "25000" → cleaned: "25000" → num: 25000 → final: 25000
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] Processing requestedAmount: 25000 (type: string)
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] Processing averageMonthlyRevenue: undefined (type: undefined)
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] Parsed ownerCsz "Fletcher, NC 28732" → city=Fletcher, state=NC, zip=28732
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] monthlyRevenue raw: undefined
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] Processing outstandingLoansAmount: undefined (type: undefined)
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] Parsed businessCsz "Fletcher, NC 28732" → city=Fletcher, state=NC, zip=28732
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] mcaBalanceAmount → NULL (empty/undefined)
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] averageMonthlyRevenue → NULL (empty/undefined)
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] outstandingLoansAmount → NULL (empty/undefined)
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] monthlyRevenue → NULL (empty/undefined)
+2026-01-21 11:58:15.26
+1c2c3ffb
+User
+[SANITIZE] timeInBusiness raw: undefined
+2026-01-21 11:58:15.32
+1c2c3ffb
+User
+[STEP VALIDATION] Step 2 PASSED for application fbfebc7a-ae62-4949-929a-26adf82fed41
+2026-01-21 11:58:15.37
+1c2c3ffb
+User
+score: 0.9,
+2026-01-21 11:58:15.37
+1c2c3ffb
+User
+success: true,
+2026-01-21 11:58:15.37
+1c2c3ffb
+User
+action: 'full_application_submit'
+2026-01-21 11:58:15.37
+1c2c3ffb
+User
+challenge_ts: '2026-01-21T18:55:10Z',
+2026-01-21 11:58:15.37
+1c2c3ffb
+User
+hostname: 'app.todaycapitalgroup.com',
+2026-01-21 11:58:15.37
+1c2c3ffb
+User
+[RECAPTCHA] Verification response: {
+2026-01-21 11:58:15.37
+1c2c3ffb
+User
+}
+2026-01-21 11:58:15.37
+1c2c3ffb
+User
+[RECAPTCHA] Verified successfully, score: 0.9
+2026-01-21 11:58:15.43
+1c2c3ffb
+User
+[VALIDATION] Full application APPROVED for ferrythad44@gmail.com
+2026-01-21 11:58:15.49
+1c2c3ffb
+User
+[DB] Application fbfebc7a-ae62-4949-929a-26adf82fed41 marked as FULL APPLICATION COMPLETED
+2026-01-21 11:58:15.49
+1c2c3ffb
+User
+isCompleted: true,
+2026-01-21 11:58:15.49
+1c2c3ffb
+User
+creditScore: '550 - 650',
+2026-01-21 11:58:15.49
+1c2c3ffb
+User
+id: 'fbfebc7a-ae62-4949-929a-26adf82fed41',
+2026-01-21 11:58:15.49
+1c2c3ffb
+User
+businessName: 'Tr trucking ',
+2026-01-21 11:58:15.49
+1c2c3ffb
+User
+timeInBusiness: '2-5 years',
+2026-01-21 11:58:15.49
+1c2c3ffb
+User
+[GHL DEBUG] Application data received: {
