@@ -605,46 +605,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const filteredApplicationData = filterEmptyValues(applicationData);
         const updatedApp = await storage.updateLoanApplication(existingApp.id, filteredApplicationData);
         
-        // Sync to GoHighLevel and send webhooks
-        try {
-          if (updatedApp && updatedApp.ghlContactId) {
-            await ghlService.updateContact(updatedApp.ghlContactId, applicationData);
-            // Only send intake webhook when explicitly completed
-            if (applicationData.isCompleted) {
-              await ghlService.sendIntakeWebhook(updatedApp).catch(err => 
-                console.error("Intake webhook error (non-blocking):", err)
-              );
-            }
-            // Note: Partial webhook is NOT sent on every update to avoid excessive triggers
-          } else if (updatedApp) {
-            const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
-            const finalApp = await storage.updateLoanApplication(existingApp.id, { ghlContactId });
-            // Only send intake webhook when explicitly completed
-            if (applicationData.isCompleted) {
-              await ghlService.sendIntakeWebhook(finalApp || updatedApp).catch(err => 
-                console.error("Intake webhook error (non-blocking):", err)
-              );
-            }
-            // Note: Partial webhook is NOT sent on every update to avoid excessive triggers
-            // Return with validation errors if any (data was still saved)
-            if (postStepValidationErrors.length > 0) {
-              return res.json({
-                ...(finalApp || updatedApp),
-                validationFailed: true,
-                validationErrors: postStepValidationErrors,
-                requestedStep: postRequestedStep
-              });
-            }
-            return res.json(finalApp || updatedApp);
-          }
-        } catch (ghlError) {
-          console.error("GHL sync error:", ghlError);
-          // Still send intake webhook if completed even if GHL sync failed
-          if (applicationData.isCompleted && updatedApp) {
-            ghlService.sendIntakeWebhook(updatedApp).catch(err => 
-              console.error("Intake webhook error (non-blocking):", err)
-            );
-          }
+        // Send webhook only (GHL API sync disabled for now)
+        // Only send intake webhook when explicitly completed
+        if (applicationData.isCompleted && updatedApp) {
+          ghlService.sendIntakeWebhook(updatedApp).catch(err => 
+            console.error("Intake webhook error (non-blocking):", err)
+          );
         }
         
         // Return with validation errors if any (data was still saved)
@@ -672,64 +638,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('[FUNDING REPORT] Generated URL for new app:', fundingReportUrl);
       }
 
-      // Sync to GoHighLevel
-      try {
-        const ghlContactId = await ghlService.createOrUpdateContact(application);
-        const updatedApp = await storage.updateLoanApplication(application.id, {
-          ghlContactId,
-          agentViewUrl,
-          ...(fundingReportUrl && { fundingReportUrl }),
-        });
-        
-        // Only send intake webhook when explicitly completed
-        if (applicationData.isCompleted) {
-          try {
-            await ghlService.sendIntakeWebhook(updatedApp || application);
-          } catch (webhookError) {
-            console.error("Intake webhook error (non-blocking):", webhookError);
-          }
+      // Update with agentViewUrl and fundingReportUrl (GHL API sync disabled for now)
+      const updatedApp = await storage.updateLoanApplication(application.id, {
+        agentViewUrl,
+        ...(fundingReportUrl && { fundingReportUrl }),
+      });
+      
+      // Only send intake webhook when explicitly completed
+      if (applicationData.isCompleted) {
+        try {
+          await ghlService.sendIntakeWebhook(updatedApp || application);
+        } catch (webhookError) {
+          console.error("Intake webhook error (non-blocking):", webhookError);
         }
-        // Note: Partial webhook is NOT sent on every creation to avoid excessive triggers
-        
-        // Return with validation errors if any (data was still saved)
-        if (postStepValidationErrors.length > 0) {
-          return res.json({
-            ...(updatedApp || application),
-            validationFailed: true,
-            validationErrors: postStepValidationErrors,
-            requestedStep: postRequestedStep
-          });
-        }
-        res.json(updatedApp || application);
-      } catch (ghlError) {
-        console.error("GHL sync error, but application saved:", ghlError);
-        // Still update the agentViewUrl and fundingReportUrl even if GHL sync fails
-        const updatedApp = await storage.updateLoanApplication(application.id, {
-          agentViewUrl,
-          ...(fundingReportUrl && { fundingReportUrl }),
-        });
-        
-        // Only send intake webhook when explicitly completed (even if GHL sync failed)
-        if (applicationData.isCompleted) {
-          try {
-            await ghlService.sendIntakeWebhook(updatedApp || application);
-          } catch (webhookError) {
-            console.error("Intake webhook error (non-blocking):", webhookError);
-          }
-        }
-        // Note: Partial webhook is NOT sent on every creation to avoid excessive triggers
-        
-        // Return with validation errors if any (data was still saved)
-        if (postStepValidationErrors.length > 0) {
-          return res.json({
-            ...(updatedApp || application),
-            validationFailed: true,
-            validationErrors: postStepValidationErrors,
-            requestedStep: postRequestedStep
-          });
-        }
-        res.json(updatedApp || application);
       }
+      
+      // Return with validation errors if any (data was still saved)
+      if (postStepValidationErrors.length > 0) {
+        return res.json({
+          ...(updatedApp || application),
+          validationFailed: true,
+          validationErrors: postStepValidationErrors,
+          requestedStep: postRequestedStep
+        });
+      }
+      res.json(updatedApp || application);
     } catch (error) {
       console.error("Error creating application:", error);
       res.status(500).json({ error: "Failed to create application" });
@@ -951,43 +884,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Application not found" });
       }
 
-      // Sync to GoHighLevel
-      try {
-        if (updatedApp.ghlContactId) {
-          await ghlService.updateContact(updatedApp.ghlContactId, updatedApp);
-        } else {
-          const ghlContactId = await ghlService.createOrUpdateContact(updatedApp);
-          const finalApp = await storage.updateLoanApplication(id, { ghlContactId });
-          
-          // Only send webhook when full application is explicitly completed (not on every auto-save)
-          if (updatedApp.isFullApplicationCompleted) {
-            ghlService.sendWebhook(finalApp || updatedApp).catch(err => 
-              console.error("Webhook error (non-blocking):", err)
-            );
-          }
-          // Note: Partial/abandoned webhook is NOT sent on auto-save to avoid excessive triggers
-          
-          // Return with validation errors if any (data was still saved)
-          if (stepValidationErrors.length > 0) {
-            return res.json({
-              ...(finalApp || updatedApp),
-              validationFailed: true,
-              validationErrors: stepValidationErrors,
-              requestedStep: requestedStep
-            });
-          }
-          return res.json(finalApp || updatedApp);
-        }
-        
-        // Only send webhook when full application is explicitly completed (not on every auto-save)
-        if (updatedApp.isFullApplicationCompleted) {
-          ghlService.sendWebhook(updatedApp).catch(err => 
-            console.error("Webhook error (non-blocking):", err)
-          );
-        }
-        // Note: Partial/abandoned webhook is NOT sent on auto-save to avoid excessive triggers
-      } catch (ghlError) {
-        console.error("GHL sync error, but application updated:", ghlError);
+      // Send webhook only (GHL API sync disabled for now)
+      // Only send webhook when full application is explicitly completed (not on every auto-save)
+      if (updatedApp.isFullApplicationCompleted) {
+        ghlService.sendWebhook(updatedApp).catch(err => 
+          console.error("Webhook error (non-blocking):", err)
+        );
       }
 
       // Return with validation errors if any (data was still saved)
