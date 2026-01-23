@@ -57,6 +57,25 @@ const bankStatementUpload = multer({
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Tcg1!tcg";
 const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
 
+// Helper to get the base URL for generating absolute URLs
+function getBaseUrl(req: Request): string {
+  // Check for environment variable first (for production deployments)
+  if (process.env.APP_URL) {
+    return process.env.APP_URL.replace(/\/$/, ''); // Remove trailing slash
+  }
+  
+  // Construct from request headers
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:5000';
+  return `${protocol}://${host}`;
+}
+
+// Generate full application URL for GHL
+function generateApplicationUrl(req: Request, applicationId: number | string): string {
+  const baseUrl = getBaseUrl(req);
+  return `${baseUrl}/agent/application/${applicationId}`;
+}
+
 const loginSchema = z.object({
   credential: z.string().min(1, "Credential is required"),
 });
@@ -738,9 +757,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user already has an incomplete application
       const existingApp = await storage.getLoanApplicationByEmail(applicationData.email);
       if (existingApp && !existingApp.isCompleted) {
-        // Always ensure agent view URL exists for all applications
-        if (!existingApp.agentViewUrl) {
-          applicationData.agentViewUrl = `/agent/application/${existingApp.id}`;
+        // Always ensure agent view URL exists for all applications (use full URL for GHL)
+        if (!existingApp.agentViewUrl || existingApp.agentViewUrl.startsWith('/')) {
+          applicationData.agentViewUrl = generateApplicationUrl(req, existingApp.id);
         }
 
         // Generate funding report URL if intake is being completed
@@ -778,8 +797,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create new application
       const application = await storage.createLoanApplication(applicationData);
 
-      // Always generate agent view URL for all applications (allows viewing incomplete apps too)
-      const agentViewUrl = `/agent/application/${application.id}`;
+      // Always generate agent view URL for all applications (use full URL for GHL)
+      const agentViewUrl = generateApplicationUrl(req, application.id);
 
       // Generate funding report URL if intake is being completed
       let fundingReportUrl: string | undefined;
@@ -1021,9 +1040,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[VALIDATION] Full application APPROVED for ${mergedData.email || id}`);
       }
 
-      // Always ensure agent view URL exists for all applications
-      if (!updates.agentViewUrl) {
-        updates.agentViewUrl = `/agent/application/${id}`;
+      // Always ensure agent view URL exists for all applications (use full URL for GHL)
+      if (!updates.agentViewUrl || updates.agentViewUrl.startsWith('/')) {
+        updates.agentViewUrl = generateApplicationUrl(req, id);
       }
 
       // Filter out empty values to preserve previously entered data
