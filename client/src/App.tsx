@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { GoogleReCaptchaProvider } from "react-google-recaptcha-v3";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useEffect } from "react";
+import { initUTMTracking } from "@/lib/utm";
 import QuizIntake from "@/pages/QuizIntake";
 import IntakeLanding from "@/pages/IntakeLanding";
 import IntakeGoogleAds from "@/pages/IntakeGoogleAds";
@@ -34,6 +36,7 @@ import PartnerDashboard from "@/pages/PartnerDashboard";
 import ReferralLanding from "@/pages/ReferralLanding";
 import Approvals from "@/pages/Approvals";
 import RepConsole from "@/pages/RepConsole";
+import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -91,6 +94,9 @@ function Router() {
       {/* Rep Console - Contact 360 View */}
       <Route path="/rep-console" component={RepConsole} />
       <Route path="/rep-console/:contactId" component={RepConsole} />
+      
+      {/* Lead Source Analytics - Admin Only */}
+      <Route path="/lead-sources" component={LeadSourceAnalytics} />
 
       {/* Partner Portal Routes */}
       <Route path="/partner" component={PartnerDashboard} />
@@ -113,6 +119,11 @@ function Router() {
 }
 
 function App() {
+  // Initialize UTM tracking immediately on app load to capture referrer and URL params
+  useEffect(() => {
+    initUTMTracking();
+  }, []);
+
   const appContent = (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

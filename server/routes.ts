@@ -267,6 +267,156 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // LEAD SOURCE ANALYTICS ENDPOINT
+  // ========================================
+  
+  app.get("/api/analytics/lead-sources", async (req, res) => {
+    try {
+      // Only allow admin access
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+      
+      // Get all applications with UTM data
+      const applications = await storage.getAllLoanApplications();
+      
+      // Parse source patterns from referrer URLs
+      const SOURCE_PATTERNS = [
+        { pattern: /facebook\.com|fb\.com|fb\.me/i, source: "Facebook", medium: "social" },
+        { pattern: /instagram\.com/i, source: "Instagram", medium: "social" },
+        { pattern: /linkedin\.com|lnkd\.in/i, source: "LinkedIn", medium: "social" },
+        { pattern: /twitter\.com|t\.co|x\.com/i, source: "Twitter/X", medium: "social" },
+        { pattern: /tiktok\.com/i, source: "TikTok", medium: "social" },
+        { pattern: /reddit\.com/i, source: "Reddit", medium: "social" },
+        { pattern: /youtube\.com|youtu\.be/i, source: "YouTube", medium: "video" },
+        { pattern: /google\.(com|co\.\w{2})/i, source: "Google", medium: "organic" },
+        { pattern: /bing\.com/i, source: "Bing", medium: "organic" },
+        { pattern: /yahoo\.com/i, source: "Yahoo", medium: "organic" },
+        { pattern: /mail\.google\.com|gmail\.com/i, source: "Gmail", medium: "email" },
+        { pattern: /outlook\.(com|live\.com)|hotmail\.com/i, source: "Outlook", medium: "email" },
+        { pattern: /mailchimp\.com|list-manage\.com/i, source: "Mailchimp", medium: "email" },
+        { pattern: /gohighlevel\.com|leadconnectorhq\.com|msgsndr\.com/i, source: "GoHighLevel", medium: "email" },
+        { pattern: /replit\.com/i, source: "Replit", medium: "direct" },
+      ];
+      
+      const detectSource = (referrer: string | null, utmSource: string | null): string => {
+        // First check explicit UTM source
+        if (utmSource) {
+          return utmSource.charAt(0).toUpperCase() + utmSource.slice(1).toLowerCase();
+        }
+        
+        // Then check referrer URL
+        if (referrer) {
+          for (const { pattern, source } of SOURCE_PATTERNS) {
+            if (pattern.test(referrer)) {
+              return source;
+            }
+          }
+          // Try to extract domain
+          try {
+            const url = new URL(referrer);
+            const domain = url.hostname.replace(/^www\./, '').split('.')[0];
+            if (domain) return domain.charAt(0).toUpperCase() + domain.slice(1);
+          } catch {}
+        }
+        
+        return "Direct/Unknown";
+      };
+      
+      // Build analytics
+      const sourceBreakdown: Record<string, { count: number; completed: number; started: number; statements: number; leads: any[] }> = {};
+      const formTypeBreakdown: Record<string, number> = {};
+      const progressionBreakdown = { started: 0, completed: 0, statements: 0 };
+      const timeline: { date: string; count: number }[] = [];
+      const dateMap: Record<string, number> = {};
+      
+      applications.forEach(app => {
+        const source = detectSource(app.referrerUrl || null, app.utmSource || null);
+        
+        // Initialize source if not exists
+        if (!sourceBreakdown[source]) {
+          sourceBreakdown[source] = { count: 0, completed: 0, started: 0, statements: 0, leads: [] };
+        }
+        
+        // Check if statements exist using plaidItemId
+        const hasStatements = !!app.plaidItemId;
+        
+        sourceBreakdown[source].count++;
+        sourceBreakdown[source].leads.push({
+          id: app.id,
+          email: app.email,
+          businessName: app.businessName,
+          utmSource: app.utmSource,
+          utmMedium: app.utmMedium,
+          utmCampaign: app.utmCampaign,
+          referrerUrl: app.referrerUrl,
+          isCompleted: app.isFullApplicationCompleted,
+          hasStatements,
+          createdAt: app.createdAt,
+        });
+        
+        // Track progression
+        if (app.currentStep && app.currentStep >= 1) {
+          sourceBreakdown[source].started++;
+          progressionBreakdown.started++;
+        }
+        if (app.isFullApplicationCompleted) {
+          sourceBreakdown[source].completed++;
+          progressionBreakdown.completed++;
+        }
+        if (hasStatements) {
+          sourceBreakdown[source].statements++;
+          progressionBreakdown.statements++;
+        }
+        
+        // Form type tracking - use formType field or infer from agentEmail
+        const formTypeValue = (app as any).formType || (app.agentEmail ? 'Agent Application' : 'Full Application');
+        formTypeBreakdown[formTypeValue] = (formTypeBreakdown[formTypeValue] || 0) + 1;
+        
+        // Timeline
+        if (app.createdAt) {
+          const date = new Date(app.createdAt).toISOString().split('T')[0];
+          dateMap[date] = (dateMap[date] || 0) + 1;
+        }
+      });
+      
+      // Convert dateMap to sorted timeline array
+      Object.entries(dateMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([date, count]) => timeline.push({ date, count }));
+      
+      // Convert source breakdown to array and sort by count
+      const sourceStats = Object.entries(sourceBreakdown)
+        .map(([source, data]) => ({
+          source,
+          count: data.count,
+          completed: data.completed,
+          started: data.started,
+          statements: data.statements,
+          conversionRate: data.count > 0 ? ((data.completed / data.count) * 100).toFixed(1) : '0',
+          leads: data.leads.slice(0, 20), // Limit leads to 20 per source
+        }))
+        .sort((a, b) => b.count - a.count);
+      
+      res.json({
+        totalLeads: applications.length,
+        sourceStats,
+        formTypeBreakdown,
+        progressionBreakdown,
+        timeline,
+        utmCoverage: {
+          withUtmSource: applications.filter(a => a.utmSource).length,
+          withReferrer: applications.filter(a => a.referrerUrl).length,
+          withAny: applications.filter(a => a.utmSource || a.referrerUrl).length,
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching lead source analytics:", error);
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  // ========================================
   // AUTHENTICATION ROUTES
   // ========================================
   
