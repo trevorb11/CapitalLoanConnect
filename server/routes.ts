@@ -2389,7 +2389,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[BANK STATEMENTS] Combined view accessed for: ${email} (${statements.length} statements)`);
 
       // Build the base URL for individual PDF viewing
-      const baseUrl = getBaseUrl(req);
+      // Use production domain for all view links
+      const baseUrl = 'https://app.todaycapitalgroup.com';
 
       // Generate HTML page with embedded PDFs
       const statementsHtml = statements
