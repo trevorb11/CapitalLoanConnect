@@ -945,9 +945,25 @@ export class GoHighLevelService {
     phone?: string;
     firstName?: string;
     lastName?: string;
+    statementLinks?: Array<{
+      fileName: string;
+      viewUrl: string;
+    }>;
+    combinedViewUrl?: string; // Single link to view ALL statements in one page
   }): Promise<void> {
     const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/763f2d42-9850-4ed3-acde-9449ef94f9ae';
-    
+
+    // Build statement links object (up to 10 statements)
+    const statementData: Record<string, string> = {};
+    if (contactInfo.statementLinks && contactInfo.statementLinks.length > 0) {
+      contactInfo.statementLinks.slice(0, 10).forEach((link, index) => {
+        const num = index + 1;
+        statementData[`bank_statement_${num}_name`] = link.fileName;
+        statementData[`bank_statement_${num}_url`] = link.viewUrl;
+      });
+      statementData['bank_statement_count'] = String(contactInfo.statementLinks.length);
+    }
+
     const webhookPayload = {
       email: contactInfo.email,
       phone: contactInfo.phone || null,
@@ -957,18 +973,22 @@ export class GoHighLevelService {
       submission_date: new Date().toISOString(),
       source: "Bank Statement Upload",
       tags: ["Statements Uploaded"],
+      // Combined view link - single URL to view ALL statements in one scrollable page
+      bank_statements_view_all_url: contactInfo.combinedViewUrl || null,
+      // Include individual statement view links
+      ...statementData,
     };
 
     try {
       console.log('[GHL] Sending bank statement uploaded webhook to:', BANK_STATEMENT_WEBHOOK_URL);
       console.log('[GHL] Bank statement webhook payload:', JSON.stringify(webhookPayload, null, 2));
-      
+
       const response = await fetch(BANK_STATEMENT_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(webhookPayload),
       });
-      
+
       if (!response.ok) {
         console.error('[GHL] Bank statement webhook failed:', response.status, await response.text());
       } else {

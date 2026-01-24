@@ -68,7 +68,7 @@ export class ObjectStorageService {
 
       // Download as text (base64 encoded)
       const result = await this.client.downloadAsText(objectName);
-      
+
       if (!result.ok) {
         throw new Error(`Download failed: ${result.error?.message || "Unknown error"}`);
       }
@@ -89,6 +89,45 @@ export class ObjectStorageService {
       console.error("Error downloading file:", error);
       if (!res.headersSent) {
         res.status(500).json({ error: "Error downloading file" });
+      }
+    }
+  }
+
+  // View a file inline in the browser (opens PDF in browser tab instead of downloading)
+  async viewFile(objectName: string, res: Response, originalFileName?: string): Promise<void> {
+    try {
+      // Check if file exists first
+      const exists = await this.fileExists(objectName);
+      if (!exists) {
+        if (!res.headersSent) {
+          res.status(404).json({ error: "File not found" });
+        }
+        return;
+      }
+
+      // Download as text (base64 encoded)
+      const result = await this.client.downloadAsText(objectName);
+
+      if (!result.ok) {
+        throw new Error(`View failed: ${result.error?.message || "Unknown error"}`);
+      }
+
+      // Decode from base64 back to binary
+      const binaryBuffer = Buffer.from(result.value, "base64");
+
+      // Set headers for inline viewing (opens in browser)
+      const filename = originalFileName || objectName.split("/").pop() || "document.pdf";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Length", binaryBuffer.length.toString());
+      res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+
+      // Send the binary buffer and end
+      res.end(binaryBuffer);
+    } catch (error) {
+      console.error("Error viewing file:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Error viewing file" });
       }
     }
   }

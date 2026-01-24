@@ -57,6 +57,29 @@ const bankStatementUpload = multer({
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Tcg1!tcg";
 const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY;
 
+// Helper to escape HTML to prevent XSS
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Helper to generate combined view token for an email
+function generateCombinedViewToken(email: string): string {
+  const crypto = require('crypto');
+  const secret = process.env.COMBINED_VIEW_SECRET || process.env.SESSION_SECRET || 'bank-statement-view-secret';
+  const encodedEmail = Buffer.from(email).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(email)
+    .digest('hex')
+    .substring(0, 32);
+  return `${encodedEmail}.${signature}`;
+}
+
 // Helper to get the base URL for generating absolute URLs
 function getBaseUrl(req: Request): string {
   // Check for environment variable first (for production deployments)
@@ -1990,6 +2013,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Generate a unique view token for public access (e.g., for GoHighLevel webhook links)
+      const viewToken = randomBytes(32).toString('hex');
+
       // Save upload record to database
       const upload = await storage.createBankStatementUpload({
         email,
@@ -1999,6 +2025,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storedFileName: storedFileName,
         mimeType: file.mimetype,
         fileSize: file.size,
+        viewToken,
       });
 
       // Check if there's a matching application by email
@@ -2013,7 +2040,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Send webhook to GHL with "Statements Uploaded" tag
+      // Build the base URL for public view links
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
+      const baseUrl = `${protocol}://${host}`;
+
+      // Get all bank statements for this email to include all view links in webhook
+      const allStatements = await storage.getBankStatementUploadsByEmail(email);
+      const statementLinks = allStatements
+        .filter(stmt => stmt.viewToken) // Only include statements with view tokens
+        .map(stmt => ({
+          fileName: stmt.originalFileName,
+          viewUrl: `${baseUrl}/api/bank-statements/public/view/${stmt.viewToken}`,
+        }));
+
+      // Generate the combined view URL (single link to view ALL statements in one page)
+      const combinedViewToken = generateCombinedViewToken(email);
+      const combinedViewUrl = `${baseUrl}/api/bank-statements/public/view-all/${combinedViewToken}`;
+
+      // Send webhook to GHL with "Statements Uploaded" tag and view links
       const nameParts = (matchingApp?.fullName || '').trim().split(' ');
       ghlService.sendBankStatementUploadedWebhook({
         email,
@@ -2021,6 +2066,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone: matchingApp?.phone || undefined,
         firstName: nameParts[0] || undefined,
         lastName: nameParts.slice(1).join(' ') || undefined,
+        statementLinks,
+        combinedViewUrl, // Single link to view ALL statements in one scrollable page
       }).catch(err => console.error('[GHL] Bank statement webhook error:', err));
 
       res.json({
@@ -2122,6 +2169,315 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error downloading bank statement:", error);
       if (!res.headersSent) {
         res.status(500).json({ error: "Failed to download file" });
+      }
+    }
+  });
+
+  // 3a. View bank statement PDF in browser (authenticated - for dashboard)
+  app.get("/api/bank-statements/view/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const upload = await storage.getBankStatementUpload(req.params.id);
+      if (!upload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+
+      // Role-based access check for agents
+      if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        // Verify this agent has access to this bank statement
+        const agentUploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
+        const hasAccess = agentUploads.some(u => u.id === upload.id);
+        if (!hasAccess) {
+          console.log(`[BANK STATEMENTS] Agent ${req.session.user.agentName} denied view access to upload ${upload.id}`);
+          return res.status(403).json({ error: "Access denied - this statement is not from your applications" });
+        }
+      } else if (req.session.user.role !== 'admin') {
+        // Only admins and agents can view
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Check if file is in Object Storage (path contains "bank-statements/")
+      if (upload.storedFileName.includes("bank-statements/")) {
+        // File is in Object Storage - viewFile handles all headers (uses inline disposition)
+        try {
+          await objectStorage.viewFile(upload.storedFileName, res, upload.originalFileName);
+          return;
+        } catch (objError) {
+          console.error("[VIEW] Object Storage view failed:", objError);
+          if (!res.headersSent) {
+            return res.status(404).json({ error: "File not found in storage" });
+          }
+          return;
+        }
+      }
+
+      // Fallback: check local disk
+      const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found on disk" });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${upload.originalFileName}"`);
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Error viewing bank statement:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to view file" });
+      }
+    }
+  });
+
+  // 3b. Public view bank statement PDF via token (for GoHighLevel webhook links)
+  // This endpoint does NOT require authentication - access is granted via secure token
+  app.get("/api/bank-statements/public/view/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      if (!token || token.length !== 64) {
+        return res.status(400).json({ error: "Invalid token format" });
+      }
+
+      const upload = await storage.getBankStatementUploadByViewToken(token);
+      if (!upload) {
+        return res.status(404).json({ error: "Statement not found or link expired" });
+      }
+
+      console.log(`[BANK STATEMENTS] Public view accessed for: ${upload.originalFileName} (${upload.email})`);
+
+      // Check if file is in Object Storage (path contains "bank-statements/")
+      if (upload.storedFileName.includes("bank-statements/")) {
+        // File is in Object Storage - viewFile handles all headers (uses inline disposition)
+        try {
+          await objectStorage.viewFile(upload.storedFileName, res, upload.originalFileName);
+          return;
+        } catch (objError) {
+          console.error("[PUBLIC VIEW] Object Storage view failed:", objError);
+          if (!res.headersSent) {
+            return res.status(404).json({ error: "File not found in storage" });
+          }
+          return;
+        }
+      }
+
+      // Fallback: check local disk
+      const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found on disk" });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${upload.originalFileName}"`);
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Error viewing bank statement via public link:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to view file" });
+      }
+    }
+  });
+
+  // 3c. Combined view - all bank statements for an email in one scrollable page
+  // Token format: base64(email):hmac_signature
+  app.get("/api/bank-statements/public/view-all/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      // Parse the token (format: base64email.signature)
+      const parts = token.split('.');
+      if (parts.length !== 2) {
+        return res.status(400).json({ error: "Invalid token format" });
+      }
+
+      const [encodedEmail, signature] = parts;
+
+      // Decode email
+      let email: string;
+      try {
+        email = Buffer.from(encodedEmail, 'base64url').toString('utf-8');
+      } catch {
+        return res.status(400).json({ error: "Invalid token encoding" });
+      }
+
+      // Verify signature using HMAC
+      const secret = process.env.COMBINED_VIEW_SECRET || process.env.SESSION_SECRET || 'bank-statement-view-secret';
+      const expectedSignature = require('crypto')
+        .createHmac('sha256', secret)
+        .update(email)
+        .digest('hex')
+        .substring(0, 32); // Use first 32 chars for shorter URLs
+
+      if (signature !== expectedSignature) {
+        return res.status(403).json({ error: "Invalid or expired link" });
+      }
+
+      // Get all statements for this email
+      const statements = await storage.getBankStatementUploadsByEmail(email);
+
+      if (statements.length === 0) {
+        return res.status(404).send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>No Statements Found</title>
+            <style>
+              body { font-family: system-ui, -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+              .message { text-align: center; padding: 40px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            </style>
+          </head>
+          <body>
+            <div class="message">
+              <h2>No Bank Statements Found</h2>
+              <p>No bank statements have been uploaded for this contact yet.</p>
+            </div>
+          </body>
+          </html>
+        `);
+      }
+
+      // Get business name from first statement or email
+      const businessName = statements[0].businessName || email;
+
+      console.log(`[BANK STATEMENTS] Combined view accessed for: ${email} (${statements.length} statements)`);
+
+      // Build the base URL for individual PDF viewing
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+      const baseUrl = `${protocol}://${host}`;
+
+      // Generate HTML page with embedded PDFs
+      const statementsHtml = statements
+        .filter(stmt => stmt.viewToken)
+        .map((stmt, index) => `
+          <div class="statement-container">
+            <div class="statement-header">
+              <span class="statement-number">${index + 1}</span>
+              <div class="statement-info">
+                <h3>${escapeHtml(stmt.originalFileName)}</h3>
+                <p>Uploaded: ${stmt.createdAt ? new Date(stmt.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown'}</p>
+              </div>
+            </div>
+            <iframe src="${baseUrl}/api/bank-statements/public/view/${stmt.viewToken}" class="pdf-viewer"></iframe>
+          </div>
+        `).join('');
+
+      const html = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Bank Statements - ${escapeHtml(businessName)}</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body {
+              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: #1a1a2e;
+              color: #eee;
+              min-height: 100vh;
+            }
+            .header {
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              padding: 30px 20px;
+              text-align: center;
+              position: sticky;
+              top: 0;
+              z-index: 100;
+              box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            }
+            .header h1 {
+              font-size: 1.8rem;
+              font-weight: 600;
+              margin-bottom: 8px;
+            }
+            .header p {
+              opacity: 0.9;
+              font-size: 1rem;
+            }
+            .container {
+              max-width: 1200px;
+              margin: 0 auto;
+              padding: 30px 20px;
+            }
+            .statement-container {
+              background: #16213e;
+              border-radius: 12px;
+              margin-bottom: 30px;
+              overflow: hidden;
+              box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            }
+            .statement-header {
+              display: flex;
+              align-items: center;
+              padding: 20px;
+              background: #1a1a2e;
+              border-bottom: 1px solid #333;
+            }
+            .statement-number {
+              width: 40px;
+              height: 40px;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-weight: bold;
+              margin-right: 15px;
+              flex-shrink: 0;
+            }
+            .statement-info h3 {
+              font-size: 1.1rem;
+              font-weight: 500;
+              margin-bottom: 4px;
+              word-break: break-word;
+            }
+            .statement-info p {
+              font-size: 0.85rem;
+              color: #888;
+            }
+            .pdf-viewer {
+              width: 100%;
+              height: 800px;
+              border: none;
+              background: #fff;
+            }
+            .footer {
+              text-align: center;
+              padding: 30px;
+              color: #666;
+              font-size: 0.85rem;
+            }
+            @media (max-width: 768px) {
+              .header h1 { font-size: 1.4rem; }
+              .pdf-viewer { height: 500px; }
+              .statement-header { padding: 15px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Bank Statements</h1>
+            <p>${escapeHtml(businessName)} &bull; ${statements.length} Statement${statements.length !== 1 ? 's' : ''}</p>
+          </div>
+          <div class="container">
+            ${statementsHtml}
+          </div>
+          <div class="footer">
+            <p>Powered by Capital Loan Connect</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      res.setHeader('Content-Type', 'text/html');
+      res.send(html);
+    } catch (error) {
+      console.error("Error viewing combined bank statements:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to load statements" });
       }
     }
   });
