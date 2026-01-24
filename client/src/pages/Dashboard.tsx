@@ -1182,7 +1182,7 @@ function BankStatementsTab() {
                         {uploads.length} {uploads.length === 1 ? 'Statement' : 'Statements'}
                       </Badge>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <Button
                         variant="outline"
                         onClick={() => handleAnalyzeUploads(businessName)}
@@ -1191,6 +1191,29 @@ function BankStatementsTab() {
                       >
                         <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
                         Analyze
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          const email = uploads[0]?.email;
+                          if (!email) return;
+                          try {
+                            const res = await fetch(`/api/bank-statements/view-url?email=${encodeURIComponent(email)}`, {
+                              credentials: 'include'
+                            });
+                            if (res.ok) {
+                              const data = await res.json();
+                              window.open(data.url, '_blank');
+                            }
+                          } catch (err) {
+                            console.error('Failed to get view URL:', err);
+                          }
+                        }}
+                        className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 hover:from-blue-500/20 hover:to-cyan-500/20 border-blue-200 dark:border-blue-800"
+                        data-testid={`button-view-all-${businessName}`}
+                      >
+                        <Eye className="w-4 h-4 mr-2 text-blue-500" />
+                        View All
                       </Button>
                       <Button
                         onClick={() => handleBulkDownload(businessName)}

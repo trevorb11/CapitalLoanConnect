@@ -2115,6 +2115,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 2b. Get combined view URL for all statements by email (for dashboard "View All" button)
+  app.get("/api/bank-statements/view-url", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const email = req.query.email as string;
+    if (!email) {
+      return res.status(400).json({ error: "Email parameter required" });
+    }
+
+    try {
+      // Role-based access check: admin can view all, agents only their accessible uploads
+      if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        const agentUploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
+        const hasAccess = agentUploads.some(u => u.email === email);
+        if (!hasAccess) {
+          return res.status(403).json({ error: "Access denied to this email's statements" });
+        }
+      } else if (req.session.user.role !== 'admin') {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const baseUrl = process.env.REPLIT_DOMAINS 
+        ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+        : `${req.protocol}://${req.get('host')}`;
+      
+      const combinedViewToken = generateCombinedViewToken(email);
+      const viewAllUrl = `${baseUrl}/api/bank-statements/public/view-all/${combinedViewToken}`;
+      
+      res.json({ url: viewAllUrl });
+    } catch (error) {
+      console.error("Error generating view URL:", error);
+      res.status(500).json({ error: "Failed to generate view URL" });
+    }
+  });
+
   // 3. Download bank statement PDF - role-based access control
   app.get("/api/bank-statements/download/:id", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
