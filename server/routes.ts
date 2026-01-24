@@ -2316,6 +2316,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `inline; filename="${upload.originalFileName}"`);
+      // Allow embedding in iframes
+      res.removeHeader("X-Frame-Options");
+      res.setHeader("X-Frame-Options", "ALLOWALL");
+      res.setHeader("Content-Security-Policy", "frame-ancestors *");
       res.sendFile(filePath);
     } catch (error) {
       console.error("Error viewing bank statement via public link:", error);
@@ -2389,8 +2393,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[BANK STATEMENTS] Combined view accessed for: ${email} (${statements.length} statements)`);
 
       // Build the base URL for individual PDF viewing
-      // Use production domain for all view links
-      const baseUrl = 'https://app.todaycapitalgroup.com';
+      // Use the same origin as the current request to avoid cross-origin iframe issues
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const protocolStr = Array.isArray(protocol) ? protocol[0] : protocol;
+      const host = req.headers['host'] || req.headers['x-forwarded-host'] || 'app.todaycapitalgroup.com';
+      const hostStr = Array.isArray(host) ? host[0] : host;
+      const baseUrl = `${protocolStr}://${hostStr}`;
 
       // Generate HTML page with embedded PDFs
       const statementsHtml = statements

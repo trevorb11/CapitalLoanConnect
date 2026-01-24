@@ -121,6 +121,10 @@ export class ObjectStorageService {
       res.setHeader("Content-Length", binaryBuffer.length.toString());
       res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
       res.setHeader("Cache-Control", "private, max-age=3600");
+      // Allow embedding in iframes
+      res.removeHeader("X-Frame-Options");
+      res.setHeader("X-Frame-Options", "ALLOWALL");
+      res.setHeader("Content-Security-Policy", "frame-ancestors *");
 
       // Send the binary buffer and end
       res.end(binaryBuffer);
