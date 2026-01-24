@@ -949,6 +949,7 @@ export class GoHighLevelService {
       fileName: string;
       viewUrl: string;
     }>;
+    combinedViewUrl?: string; // Single link to view ALL statements in one page
   }): Promise<void> {
     const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/763f2d42-9850-4ed3-acde-9449ef94f9ae';
 
@@ -972,7 +973,9 @@ export class GoHighLevelService {
       submission_date: new Date().toISOString(),
       source: "Bank Statement Upload",
       tags: ["Statements Uploaded"],
-      // Include all statement view links
+      // Combined view link - single URL to view ALL statements in one scrollable page
+      bank_statements_view_all_url: contactInfo.combinedViewUrl || null,
+      // Include individual statement view links
       ...statementData,
     };
 
