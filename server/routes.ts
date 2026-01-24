@@ -87,10 +87,18 @@ function getBaseUrl(req: Request): string {
     return process.env.APP_URL.replace(/\/$/, ''); // Remove trailing slash
   }
   
+  // Check for Replit domains (production deployment)
+  if (process.env.REPLIT_DOMAINS) {
+    return `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`;
+  }
+  
   // Construct from request headers
   const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  // Handle array case for x-forwarded-proto
+  const protocolStr = Array.isArray(protocol) ? protocol[0] : protocol;
   const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:5000';
-  return `${protocol}://${host}`;
+  const hostStr = Array.isArray(host) ? host[0] : host;
+  return `${protocolStr}://${hostStr}`;
 }
 
 // Generate full application URL for GHL
@@ -2381,9 +2389,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[BANK STATEMENTS] Combined view accessed for: ${email} (${statements.length} statements)`);
 
       // Build the base URL for individual PDF viewing
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-      const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
-      const baseUrl = `${protocol}://${host}`;
+      const baseUrl = getBaseUrl(req);
 
       // Generate HTML page with embedded PDFs
       const statementsHtml = statements
