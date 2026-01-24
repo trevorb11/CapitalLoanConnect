@@ -1990,6 +1990,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Generate a unique view token for public access (e.g., for GoHighLevel webhook links)
+      const viewToken = randomBytes(32).toString('hex');
+
       // Save upload record to database
       const upload = await storage.createBankStatementUpload({
         email,
@@ -1999,6 +2002,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storedFileName: storedFileName,
         mimeType: file.mimetype,
         fileSize: file.size,
+        viewToken,
       });
 
       // Check if there's a matching application by email
@@ -2013,7 +2017,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Send webhook to GHL with "Statements Uploaded" tag
+      // Build the base URL for public view links
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
+      const baseUrl = `${protocol}://${host}`;
+
+      // Get all bank statements for this email to include all view links in webhook
+      const allStatements = await storage.getBankStatementUploadsByEmail(email);
+      const statementLinks = allStatements
+        .filter(stmt => stmt.viewToken) // Only include statements with view tokens
+        .map(stmt => ({
+          fileName: stmt.originalFileName,
+          viewUrl: `${baseUrl}/api/bank-statements/public/view/${stmt.viewToken}`,
+        }));
+
+      // Send webhook to GHL with "Statements Uploaded" tag and view links
       const nameParts = (matchingApp?.fullName || '').trim().split(' ');
       ghlService.sendBankStatementUploadedWebhook({
         email,
@@ -2021,6 +2039,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone: matchingApp?.phone || undefined,
         firstName: nameParts[0] || undefined,
         lastName: nameParts.slice(1).join(' ') || undefined,
+        statementLinks,
       }).catch(err => console.error('[GHL] Bank statement webhook error:', err));
 
       res.json({
@@ -2122,6 +2141,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error downloading bank statement:", error);
       if (!res.headersSent) {
         res.status(500).json({ error: "Failed to download file" });
+      }
+    }
+  });
+
+  // 3a. View bank statement PDF in browser (authenticated - for dashboard)
+  app.get("/api/bank-statements/view/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const upload = await storage.getBankStatementUpload(req.params.id);
+      if (!upload) {
+        return res.status(404).json({ error: "Upload not found" });
+      }
+
+      // Role-based access check for agents
+      if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
+        // Verify this agent has access to this bank statement
+        const agentUploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
+        const hasAccess = agentUploads.some(u => u.id === upload.id);
+        if (!hasAccess) {
+          console.log(`[BANK STATEMENTS] Agent ${req.session.user.agentName} denied view access to upload ${upload.id}`);
+          return res.status(403).json({ error: "Access denied - this statement is not from your applications" });
+        }
+      } else if (req.session.user.role !== 'admin') {
+        // Only admins and agents can view
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Check if file is in Object Storage (path contains "bank-statements/")
+      if (upload.storedFileName.includes("bank-statements/")) {
+        // File is in Object Storage - viewFile handles all headers (uses inline disposition)
+        try {
+          await objectStorage.viewFile(upload.storedFileName, res, upload.originalFileName);
+          return;
+        } catch (objError) {
+          console.error("[VIEW] Object Storage view failed:", objError);
+          if (!res.headersSent) {
+            return res.status(404).json({ error: "File not found in storage" });
+          }
+          return;
+        }
+      }
+
+      // Fallback: check local disk
+      const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found on disk" });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${upload.originalFileName}"`);
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Error viewing bank statement:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to view file" });
+      }
+    }
+  });
+
+  // 3b. Public view bank statement PDF via token (for GoHighLevel webhook links)
+  // This endpoint does NOT require authentication - access is granted via secure token
+  app.get("/api/bank-statements/public/view/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      if (!token || token.length !== 64) {
+        return res.status(400).json({ error: "Invalid token format" });
+      }
+
+      const upload = await storage.getBankStatementUploadByViewToken(token);
+      if (!upload) {
+        return res.status(404).json({ error: "Statement not found or link expired" });
+      }
+
+      console.log(`[BANK STATEMENTS] Public view accessed for: ${upload.originalFileName} (${upload.email})`);
+
+      // Check if file is in Object Storage (path contains "bank-statements/")
+      if (upload.storedFileName.includes("bank-statements/")) {
+        // File is in Object Storage - viewFile handles all headers (uses inline disposition)
+        try {
+          await objectStorage.viewFile(upload.storedFileName, res, upload.originalFileName);
+          return;
+        } catch (objError) {
+          console.error("[PUBLIC VIEW] Object Storage view failed:", objError);
+          if (!res.headersSent) {
+            return res.status(404).json({ error: "File not found in storage" });
+          }
+          return;
+        }
+      }
+
+      // Fallback: check local disk
+      const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found on disk" });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${upload.originalFileName}"`);
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Error viewing bank statement via public link:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to view file" });
       }
     }
   });

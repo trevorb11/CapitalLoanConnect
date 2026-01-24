@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -975,6 +975,11 @@ function BankStatementsTab() {
     }
   };
 
+  const handleView = (uploadId: string) => {
+    // Open the PDF in a new browser tab for inline viewing
+    window.open(`/api/bank-statements/view/${uploadId}`, '_blank');
+  };
+
   const handleBulkDownload = async (businessName: string) => {
     try {
       const res = await fetch(`/api/bank-statements/download-all/${encodeURIComponent(businessName)}`, {
@@ -1225,15 +1230,26 @@ function BankStatementsTab() {
                               </span>
                             </div>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDownload(upload.id, upload.originalFileName)}
-                            data-testid={`button-download-statement-${upload.id}`}
-                          >
-                            <Download className="w-4 h-4 mr-1" />
-                            Download
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleView(upload.id)}
+                              data-testid={`button-view-statement-${upload.id}`}
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              View
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDownload(upload.id, upload.originalFileName)}
+                              data-testid={`button-download-statement-${upload.id}`}
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              Download
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>

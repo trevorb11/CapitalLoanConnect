@@ -70,6 +70,7 @@ export interface IStorage {
   // Bank Statement Upload methods
   createBankStatementUpload(upload: InsertBankStatementUpload): Promise<BankStatementUpload>;
   getBankStatementUpload(id: string): Promise<BankStatementUpload | undefined>;
+  getBankStatementUploadByViewToken(viewToken: string): Promise<BankStatementUpload | undefined>;
   getAllBankStatementUploads(): Promise<BankStatementUpload[]>;
   getBankStatementUploadsByEmail(email: string): Promise<BankStatementUpload[]>;
   getBankStatementUploadsByAgentEmail(agentEmail: string): Promise<BankStatementUpload[]>;
@@ -289,6 +290,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(bankStatementUploads)
       .where(eq(bankStatementUploads.id, id));
+    return upload || undefined;
+  }
+
+  async getBankStatementUploadByViewToken(viewToken: string): Promise<BankStatementUpload | undefined> {
+    const [upload] = await db
+      .select()
+      .from(bankStatementUploads)
+      .where(eq(bankStatementUploads.viewToken, viewToken));
     return upload || undefined;
   }
 
