@@ -2404,8 +2404,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 <h3>${escapeHtml(stmt.originalFileName)}</h3>
                 <p>Uploaded: ${stmt.createdAt ? new Date(stmt.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown'}</p>
               </div>
+              <a href="/api/bank-statements/public/view/${stmt.viewToken}" target="_blank" class="view-link">Open PDF</a>
             </div>
-            <iframe src="/api/bank-statements/public/view/${stmt.viewToken}" class="pdf-viewer"></iframe>
+            <div class="pdf-wrapper" id="wrapper-${index}">
+              <div class="loading-indicator" id="loading-${index}">Loading PDF...</div>
+              <object data="/api/bank-statements/public/view/${stmt.viewToken}" type="application/pdf" class="pdf-viewer" id="pdf-${index}">
+                <p>Unable to display PDF. <a href="/api/bank-statements/public/view/${stmt.viewToken}" target="_blank">Click here to view</a></p>
+              </object>
+            </div>
           </div>
         `).join('');
 
@@ -2483,9 +2489,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
               font-size: 0.85rem;
               color: #888;
             }
-            .pdf-viewer {
+            .view-link {
+              margin-left: auto;
+              padding: 8px 16px;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 6px;
+              font-size: 0.9rem;
+              font-weight: 500;
+              transition: opacity 0.2s;
+            }
+            .view-link:hover {
+              opacity: 0.9;
+            }
+            .pdf-wrapper {
+              position: relative;
               width: 100%;
               height: 800px;
+              background: #fff;
+            }
+            .loading-indicator {
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              color: #666;
+              font-size: 1.1rem;
+              z-index: 1;
+            }
+            .pdf-viewer {
+              position: relative;
+              z-index: 2;
+              width: 100%;
+              height: 100%;
               border: none;
               background: #fff;
             }
@@ -2497,8 +2534,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             @media (max-width: 768px) {
               .header h1 { font-size: 1.4rem; }
-              .pdf-viewer { height: 500px; }
-              .statement-header { padding: 15px; }
+              .pdf-wrapper { height: 500px; }
+              .statement-header { padding: 15px; flex-wrap: wrap; gap: 10px; }
+              .view-link { margin-left: 0; margin-top: 10px; }
             }
           </style>
         </head>
