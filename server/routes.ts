@@ -2796,6 +2796,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin: Send a test bank statement webhook to GHL (for testing the View All link)
+  app.post("/api/admin/bank-statements/test-webhook", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      // Build base URL for view links
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.headers['x-forwarded-host'] || req.headers.host || 'app.todaycapitalgroup.com';
+      const baseUrl = `${protocol}://${host}`;
+
+      // Get all bank statements for this email
+      const statements = await storage.getBankStatementUploadsByEmail(email);
+      
+      if (statements.length === 0) {
+        return res.status(404).json({ error: `No bank statements found for email: ${email}` });
+      }
+
+      // Build statement links
+      const statementLinks = statements
+        .filter(stmt => stmt.viewToken)
+        .map(stmt => ({
+          fileName: stmt.originalFileName,
+          viewUrl: `${baseUrl}/api/bank-statements/public/view/${stmt.viewToken}`,
+        }));
+
+      // Generate combined view URL
+      const combinedViewToken = generateCombinedViewToken(email);
+      const combinedViewUrl = `${baseUrl}/api/bank-statements/public/view-all/${combinedViewToken}`;
+
+      // Look up matching application for contact details
+      const matchingApp = await storage.getLoanApplicationByEmail(email);
+      const nameParts = (matchingApp?.fullName || '').trim().split(' ');
+
+      console.log('[ADMIN] Sending TEST bank statement webhook for:', email);
+      console.log('[ADMIN] View All URL:', combinedViewUrl);
+      console.log('[ADMIN] Statement count:', statements.length);
+
+      // Force send the webhook (bypass session throttling for testing)
+      // We'll call the webhook URL directly here instead of using ghlService
+      const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/763f2d42-9850-4ed3-acde-9449ef94f9ae';
+
+      const statementData: Record<string, string> = {};
+      statementLinks.slice(0, 10).forEach((link, index) => {
+        const num = index + 1;
+        statementData[`bank_statement_${num}_name`] = link.fileName;
+        statementData[`bank_statement_${num}_url`] = link.viewUrl;
+      });
+      statementData['bank_statement_count'] = String(statementLinks.length);
+
+      const webhookPayload = {
+        email,
+        phone: matchingApp?.phone || null,
+        first_name: nameParts[0] || null,
+        last_name: nameParts.slice(1).join(' ') || null,
+        company_name: matchingApp?.businessName || matchingApp?.legalBusinessName || null,
+        submission_date: new Date().toISOString(),
+        source: "Bank Statement Upload (TEST)",
+        tags: ["Statements Uploaded", "TEST_WEBHOOK"],
+        bank_statements_view_all_url: combinedViewUrl,
+        ...statementData,
+      };
+
+      const response = await fetch(BANK_STATEMENT_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[ADMIN] Test webhook failed:', response.status, errorText);
+        return res.status(500).json({ 
+          error: "Webhook request failed",
+          status: response.status,
+          details: errorText
+        });
+      }
+
+      console.log('[ADMIN] Test webhook sent successfully');
+      res.json({
+        success: true,
+        message: `Test webhook sent for ${email}`,
+        payload: webhookPayload,
+        combinedViewUrl,
+        statementCount: statements.length
+      });
+    } catch (error) {
+      console.error("[ADMIN] Error sending test webhook:", error);
+      res.status(500).json({ error: "Failed to send test webhook" });
+    }
+  });
+
   // 5. Analyze uploaded PDF statements for a business
   app.post("/api/bank-statements/analyze/:businessName", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
@@ -3036,6 +3136,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const applications = await storage.getAllLoanApplications();
       
+      // Get all bank statement uploads to check which applications have statements
+      const allUploads = await storage.getAllBankStatementUploads();
+      
+      // Create a map of email -> has statements
+      const emailsWithStatements = new Set<string>();
+      for (const upload of allUploads) {
+        if (upload.email) {
+          emailsWithStatements.add(upload.email.toLowerCase().trim());
+        }
+      }
+      
+      // Build base URL for view links
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const host = req.headers['x-forwarded-host'] || req.headers.host || 'app.todaycapitalgroup.com';
+      const baseUrl = `${protocol}://${host}`;
+      
       // Define CSV headers matching all application fields
       const headers = [
         'ID',
@@ -3074,6 +3190,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'GHL Contact ID',
         'Agent View URL',
         'Plaid Item ID',
+        'View Statements URL',
         'Created At'
       ];
       
@@ -3088,45 +3205,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       // Build CSV rows
-      const rows = applications.map(app => [
-        escapeCSV(app.id),
-        escapeCSV(app.fullName),
-        escapeCSV(app.email),
-        escapeCSV(app.phone),
-        escapeCSV(app.dateOfBirth),
-        escapeCSV(app.legalBusinessName),
-        escapeCSV(app.doingBusinessAs),
-        escapeCSV(app.industry),
-        escapeCSV(app.ein),
-        escapeCSV(app.businessStartDate),
-        escapeCSV(app.stateOfIncorporation),
-        escapeCSV(app.companyEmail),
-        escapeCSV(app.companyWebsite),
-        escapeCSV(app.businessAddress),
-        escapeCSV(app.city),
-        escapeCSV(app.state),
-        escapeCSV(app.zipCode),
-        escapeCSV(app.ownerAddress1),
-        escapeCSV(app.ownerCity),
-        escapeCSV(app.ownerState),
-        escapeCSV(app.ownerZip),
-        escapeCSV(app.ownership),
-        escapeCSV(app.ficoScoreExact),
-        escapeCSV(app.socialSecurityNumber),
-        escapeCSV(app.doYouProcessCreditCards),
-        escapeCSV(app.requestedAmount),
-        escapeCSV(app.useOfFunds),
-        escapeCSV(app.mcaBalanceAmount),
-        escapeCSV(app.mcaBalanceBankName),
-        escapeCSV(app.currentStep),
-        escapeCSV(app.isCompleted),
-        escapeCSV(app.isFullApplicationCompleted),
-        escapeCSV(app.agentName),
-        escapeCSV(app.ghlContactId),
-        escapeCSV(app.agentViewUrl),
-        escapeCSV(app.plaidItemId),
-        escapeCSV(app.createdAt)
-      ].join(','));
+      const rows = applications.map(app => {
+        // Generate View All link if this application has uploaded statements
+        let viewStatementsUrl = '';
+        if (app.email && emailsWithStatements.has(app.email.toLowerCase().trim())) {
+          const combinedViewToken = generateCombinedViewToken(app.email);
+          viewStatementsUrl = `${baseUrl}/api/bank-statements/public/view-all/${combinedViewToken}`;
+        }
+        
+        return [
+          escapeCSV(app.id),
+          escapeCSV(app.fullName),
+          escapeCSV(app.email),
+          escapeCSV(app.phone),
+          escapeCSV(app.dateOfBirth),
+          escapeCSV(app.legalBusinessName),
+          escapeCSV(app.doingBusinessAs),
+          escapeCSV(app.industry),
+          escapeCSV(app.ein),
+          escapeCSV(app.businessStartDate),
+          escapeCSV(app.stateOfIncorporation),
+          escapeCSV(app.companyEmail),
+          escapeCSV(app.companyWebsite),
+          escapeCSV(app.businessAddress),
+          escapeCSV(app.city),
+          escapeCSV(app.state),
+          escapeCSV(app.zipCode),
+          escapeCSV(app.ownerAddress1),
+          escapeCSV(app.ownerCity),
+          escapeCSV(app.ownerState),
+          escapeCSV(app.ownerZip),
+          escapeCSV(app.ownership),
+          escapeCSV(app.ficoScoreExact),
+          escapeCSV(app.socialSecurityNumber),
+          escapeCSV(app.doYouProcessCreditCards),
+          escapeCSV(app.requestedAmount),
+          escapeCSV(app.useOfFunds),
+          escapeCSV(app.mcaBalanceAmount),
+          escapeCSV(app.mcaBalanceBankName),
+          escapeCSV(app.currentStep),
+          escapeCSV(app.isCompleted),
+          escapeCSV(app.isFullApplicationCompleted),
+          escapeCSV(app.agentName),
+          escapeCSV(app.ghlContactId),
+          escapeCSV(app.agentViewUrl),
+          escapeCSV(app.plaidItemId),
+          escapeCSV(viewStatementsUrl),
+          escapeCSV(app.createdAt)
+        ].join(',');
+      });
       
       const csvContent = [headers.join(','), ...rows].join('\n');
       
