@@ -2393,12 +2393,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[BANK STATEMENTS] Combined view accessed for: ${email} (${statements.length} statements)`);
       
-      // Debug: Log each statement's storage path
+      // Debug: Log each statement's storage path (in single line for log visibility)
+      const statementsWithTokens = statements.filter(s => s.viewToken);
+      console.log(`[COMBINED VIEW DEBUG] Total: ${statements.length}, With tokens: ${statementsWithTokens.length}`);
       statements.forEach((stmt, i) => {
-        console.log(`[COMBINED VIEW] Statement ${i + 1}: ${stmt.originalFileName}`);
-        console.log(`  - Storage: ${stmt.storedFileName}`);
-        console.log(`  - Has prefix: ${stmt.storedFileName?.includes('bank-statements/')}`);
-        console.log(`  - View token: ${stmt.viewToken ? stmt.viewToken.substring(0, 16) + '...' : 'MISSING'}`);
+        const hasPrefix = stmt.storedFileName?.includes('bank-statements/');
+        const hasToken = !!stmt.viewToken;
+        console.log(`[COMBINED VIEW] #${i+1} file="${stmt.originalFileName}" storage="${stmt.storedFileName}" hasPrefix=${hasPrefix} hasToken=${hasToken}`);
       });
 
       // Generate HTML page with embedded PDFs using relative URLs
