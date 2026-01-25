@@ -98,6 +98,12 @@ export class GoHighLevelService {
   private apiKey: string | null;
   private locationId: string | null;
   private isEnabled: boolean;
+  
+  // Session-based webhook throttling: track when the last bank statement webhook was sent per email
+  // This prevents sending multiple webhooks when user uploads many files in quick succession
+  private bankStatementWebhookCache: Map<string, number> = new Map();
+  // Session window in milliseconds (15 minutes) - webhooks within this window are deduplicated
+  private readonly WEBHOOK_SESSION_WINDOW_MS = 15 * 60 * 1000;
 
   constructor() {
     this.apiKey = GHL_API_KEY || null;
@@ -106,6 +112,25 @@ export class GoHighLevelService {
     
     if (!this.isEnabled) {
       console.warn("GoHighLevel integration disabled: GHL_API_KEY or GHL_LOCATION_ID not configured");
+    }
+    
+    // Periodically clean up old cache entries to prevent memory leaks (every hour)
+    setInterval(() => this.cleanupWebhookCache(), 60 * 60 * 1000);
+  }
+  
+  private cleanupWebhookCache(): void {
+    const now = Date.now();
+    let cleaned = 0;
+    const entries = Array.from(this.bankStatementWebhookCache.entries());
+    for (const [email, timestamp] of entries) {
+      // Remove entries older than 2 hours
+      if (now - timestamp > 2 * 60 * 60 * 1000) {
+        this.bankStatementWebhookCache.delete(email);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      console.log(`[GHL] Cleaned up ${cleaned} old webhook cache entries`);
     }
   }
 
@@ -950,8 +975,19 @@ export class GoHighLevelService {
       viewUrl: string;
     }>;
     combinedViewUrl?: string; // Single link to view ALL statements in one page
-  }): Promise<void> {
+  }): Promise<{ sent: boolean; reason?: string }> {
     const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/763f2d42-9850-4ed3-acde-9449ef94f9ae';
+    
+    const emailKey = contactInfo.email.toLowerCase().trim();
+    const now = Date.now();
+    
+    // Check if we already sent a webhook for this email within the session window
+    const lastSent = this.bankStatementWebhookCache.get(emailKey);
+    if (lastSent && (now - lastSent) < this.WEBHOOK_SESSION_WINDOW_MS) {
+      const minutesAgo = Math.round((now - lastSent) / 60000);
+      console.log(`[GHL] Skipping bank statement webhook for ${emailKey} - already sent ${minutesAgo}min ago (session window: ${this.WEBHOOK_SESSION_WINDOW_MS / 60000}min)`);
+      return { sent: false, reason: `Webhook already sent ${minutesAgo} minutes ago in this session` };
+    }
 
     // Build statement links object (up to 10 statements)
     const statementData: Record<string, string> = {};
@@ -991,12 +1027,17 @@ export class GoHighLevelService {
 
       if (!response.ok) {
         console.error('[GHL] Bank statement webhook failed:', response.status, await response.text());
+        return { sent: false, reason: 'Webhook request failed' };
       } else {
-        console.log('[GHL] Bank statement webhook sent successfully');
+        // Mark this email as having received a webhook in this session
+        this.bankStatementWebhookCache.set(emailKey, now);
+        console.log('[GHL] Bank statement webhook sent successfully - session marked for', emailKey);
+        return { sent: true };
       }
     } catch (error) {
       console.error('[GHL] Bank statement webhook error:', error);
       // Don't throw - webhooks are nice-to-have, not critical
+      return { sent: false, reason: 'Network error' };
     }
   }
 

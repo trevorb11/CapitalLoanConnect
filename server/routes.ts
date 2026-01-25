@@ -2067,6 +2067,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const combinedViewUrl = `${baseUrl}/api/bank-statements/public/view-all/${combinedViewToken}`;
 
       // Send webhook to GHL with "Statements Uploaded" tag and view links
+      // Session-based throttling: only sends one webhook per email per 15-minute session
+      // This prevents spam when users upload multiple PDFs at once
       const nameParts = (matchingApp?.fullName || '').trim().split(' ');
       ghlService.sendBankStatementUploadedWebhook({
         email,
@@ -2076,6 +2078,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lastName: nameParts.slice(1).join(' ') || undefined,
         statementLinks,
         combinedViewUrl, // Single link to view ALL statements in one scrollable page
+      }).then(result => {
+        if (result.sent) {
+          console.log(`[BANK UPLOAD] Webhook sent for ${email} with View All link: ${combinedViewUrl}`);
+        } else {
+          console.log(`[BANK UPLOAD] Webhook skipped for ${email}: ${result.reason}`);
+        }
       }).catch(err => console.error('[GHL] Bank statement webhook error:', err));
 
       res.json({
