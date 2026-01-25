@@ -516,9 +516,9 @@ function ActivityTimeline({
       id: `note-${note.id}`,
       type: isCallLog ? "call" : "note",
       title: isCallLog ? "Call Logged" : "Note Added",
-      body: note.body,
+      body: note.body ?? undefined,
       date: note.dateAdded,
-      userName: note.userName,
+      userName: note.userName ?? undefined,
     });
   });
 
@@ -541,7 +541,7 @@ function ActivityTimeline({
         id: `conv-${conv.id}`,
         type: conv.type === "email" ? "email" : "sms",
         title: conv.type === "email" ? "Email Conversation" : "SMS Conversation",
-        body: conv.lastMessageBody,
+        body: conv.lastMessageBody ?? undefined,
         date: conv.lastMessageDate,
         metadata: { unread: conv.unreadCount },
       });
@@ -3972,7 +3972,7 @@ export default function RepConsole() {
               <SalesPathWithData
                 opportunityId={contact360.activeOpportunity.id}
                 pipelineId={contact360.activeOpportunity.pipelineId}
-                currentStageId={contact360.activeOpportunity.pipelineStageId}
+                currentStageId={contact360.activeOpportunity.stageId}
                 onRefresh={() => refetch()}
               />
             )}
