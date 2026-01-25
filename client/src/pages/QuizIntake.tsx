@@ -110,8 +110,8 @@ export default function QuizIntake() {
   const [showLowRevenueOutcome, setShowLowRevenueOutcome] = useState(false);
 
   // Revenue threshold for the main application flow
-  const LOW_REVENUE_THRESHOLD = 12000;
-  const MINIMUM_REVENUE_REQUIREMENT = 15000;
+  const LOW_REVENUE_THRESHOLD = 10000;
+  const MINIMUM_REVENUE_REQUIREMENT = 10000;
 
   const [quizData, setQuizData] = useState<QuizData>({
     financingAmount: 25000,
