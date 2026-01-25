@@ -2392,15 +2392,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[BANK STATEMENTS] Combined view accessed for: ${email} (${statements.length} statements)`);
 
-      // Build the base URL for individual PDF viewing
-      // Use the same origin as the current request to avoid cross-origin iframe issues
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-      const protocolStr = Array.isArray(protocol) ? protocol[0] : protocol;
-      const host = req.headers['host'] || req.headers['x-forwarded-host'] || 'app.todaycapitalgroup.com';
-      const hostStr = Array.isArray(host) ? host[0] : host;
-      const baseUrl = `${protocolStr}://${hostStr}`;
-
-      // Generate HTML page with embedded PDFs
+      // Generate HTML page with embedded PDFs using relative URLs
+      // Relative URLs ensure iframes load from the same origin in both dev and production
       const statementsHtml = statements
         .filter(stmt => stmt.viewToken)
         .map((stmt, index) => `
@@ -2412,7 +2405,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 <p>Uploaded: ${stmt.createdAt ? new Date(stmt.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown'}</p>
               </div>
             </div>
-            <iframe src="${baseUrl}/api/bank-statements/public/view/${stmt.viewToken}" class="pdf-viewer"></iframe>
+            <iframe src="/api/bank-statements/public/view/${stmt.viewToken}" class="pdf-viewer"></iframe>
           </div>
         `).join('');
 
