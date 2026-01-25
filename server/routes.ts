@@ -2732,6 +2732,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin endpoint: Generate missing view tokens for bank statements
+  app.post("/api/admin/bank-statements/generate-view-tokens", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    try {
+      console.log("[ADMIN] Starting view token generation for statements missing tokens...");
+      
+      // Get all uploads
+      const allUploads = await storage.getAllBankStatementUploads();
+      const uploadsWithoutTokens = allUploads.filter(u => !u.viewToken);
+      
+      console.log(`[ADMIN] Found ${uploadsWithoutTokens.length} statements without view tokens`);
+      
+      if (uploadsWithoutTokens.length === 0) {
+        return res.json({ 
+          success: true, 
+          message: "All statements already have view tokens",
+          updated: 0 
+        });
+      }
+
+      let updated = 0;
+      const errors: string[] = [];
+
+      for (const upload of uploadsWithoutTokens) {
+        try {
+          // Generate a secure random 64-character hex token
+          const viewToken = require('crypto').randomBytes(32).toString('hex');
+          
+          await storage.updateBankStatementViewToken(upload.id, viewToken);
+          console.log(`[ADMIN] Generated token for: ${upload.originalFileName} (${upload.email})`);
+          updated++;
+        } catch (error) {
+          const errorMsg = `Failed to update ${upload.id}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          console.error(`[ADMIN] ${errorMsg}`);
+          errors.push(errorMsg);
+        }
+      }
+
+      console.log(`[ADMIN] View token generation complete: ${updated}/${uploadsWithoutTokens.length} updated`);
+      
+      res.json({
+        success: true,
+        message: `Generated view tokens for ${updated} statements`,
+        updated,
+        total: uploadsWithoutTokens.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      console.error("[ADMIN] Error generating view tokens:", error);
+      res.status(500).json({ error: "Failed to generate view tokens" });
+    }
+  });
+
   // 5. Analyze uploaded PDF statements for a business
   app.post("/api/bank-statements/analyze/:businessName", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {

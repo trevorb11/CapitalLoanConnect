@@ -308,6 +308,13 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(bankStatementUploads.createdAt));
   }
 
+  async updateBankStatementViewToken(id: string, viewToken: string): Promise<void> {
+    await db
+      .update(bankStatementUploads)
+      .set({ viewToken })
+      .where(eq(bankStatementUploads.id, id));
+  }
+
   async getBankStatementUploadsByEmail(email: string): Promise<BankStatementUpload[]> {
     return await db
       .select()
