@@ -909,6 +909,12 @@ function BankStatementsTab() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisTitle, setAnalysisTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [generatingTokens, setGeneratingTokens] = useState(false);
+  const [tokenGenResult, setTokenGenResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const { data: authData } = useQuery<AuthState | null>({
+    queryKey: ['/api/auth/check'],
+  });
 
   const { data: bankConnections, isLoading: connectionsLoading } = useQuery<BankConnection[]>({
     queryKey: ['/api/plaid/all'],
@@ -1074,6 +1080,28 @@ function BankStatementsTab() {
     });
   };
 
+  const handleGenerateViewTokens = async () => {
+    setGeneratingTokens(true);
+    setTokenGenResult(null);
+    try {
+      const res = await fetch('/api/admin/bank-statements/generate-view-tokens', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTokenGenResult({ success: true, message: data.message || `Generated tokens for ${data.updated} statements` });
+        queryClient.invalidateQueries({ queryKey: ['/api/bank-statements/uploads'] });
+      } else {
+        setTokenGenResult({ success: false, message: data.error || 'Failed to generate tokens' });
+      }
+    } catch (error) {
+      setTokenGenResult({ success: false, message: 'Network error - please try again' });
+    } finally {
+      setGeneratingTokens(false);
+    }
+  };
+
   // Group uploads by business name
   const uploadsByBusiness = bankUploads?.reduce((acc, upload) => {
     const businessName = upload.businessName || 'Unknown Business';
@@ -1129,17 +1157,48 @@ function BankStatementsTab() {
   return (
     <>
       <div className="space-y-6">
-        {/* Search Bar */}
-        <div className="relative w-full sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search by business name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-            data-testid="input-bank-search"
-          />
+        {/* Search Bar and Admin Actions */}
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by business name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              data-testid="input-bank-search"
+            />
+          </div>
+          
+          {/* Admin: Fix Missing View Tokens */}
+          {authData?.role === 'admin' && (
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                onClick={handleGenerateViewTokens}
+                disabled={generatingTokens}
+                data-testid="button-generate-view-tokens"
+              >
+                {generatingTokens ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Fixing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Fix Missing View Links
+                  </>
+                )}
+              </Button>
+              {tokenGenResult && (
+                <Badge variant={tokenGenResult.success ? "default" : "destructive"} className="text-xs">
+                  {tokenGenResult.message}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
 
         {/* No results message */}
