@@ -2292,6 +2292,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`[BANK STATEMENTS] Public view accessed for: ${upload.originalFileName} (${upload.email})`);
+      console.log(`[PUBLIC VIEW] Storage path: ${upload.storedFileName}, Has prefix: ${upload.storedFileName?.includes('bank-statements/')}`);
 
       // Check if file is in Object Storage (path contains "bank-statements/")
       if (upload.storedFileName.includes("bank-statements/")) {
@@ -2391,6 +2392,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const businessName = statements[0].businessName || email;
 
       console.log(`[BANK STATEMENTS] Combined view accessed for: ${email} (${statements.length} statements)`);
+      
+      // Debug: Log each statement's storage path
+      statements.forEach((stmt, i) => {
+        console.log(`[COMBINED VIEW] Statement ${i + 1}: ${stmt.originalFileName}`);
+        console.log(`  - Storage: ${stmt.storedFileName}`);
+        console.log(`  - Has prefix: ${stmt.storedFileName?.includes('bank-statements/')}`);
+        console.log(`  - View token: ${stmt.viewToken ? stmt.viewToken.substring(0, 16) + '...' : 'MISSING'}`);
+      });
 
       // Generate HTML page with embedded PDFs using relative URLs
       // Relative URLs ensure iframes load from the same origin in both dev and production
