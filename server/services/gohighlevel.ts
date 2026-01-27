@@ -626,7 +626,7 @@ export class GoHighLevelService {
     // Application webhook URL - for full and partial application submissions
     const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
     const BACKUP_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbynygRwYHpg4joyMLY-IC_B_7cqrNlNl92HjHduc5OvUtrUgig7_aHG69CdSTKZ562w/exec';
-    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/3df82b1c-3a5b-4625-a8f8-d2a409370da8';
+    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/483f3c14-ae23-420a-8328-4ef77f0d65db';
     
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
@@ -783,7 +783,7 @@ export class GoHighLevelService {
   // Send partial application data to the application webhook (for incomplete applications)
   async sendPartialApplicationWebhook(application: Partial<LoanApplication>): Promise<void> {
     const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
-    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/3df82b1c-3a5b-4625-a8f8-d2a409370da8';
+    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/483f3c14-ae23-420a-8328-4ef77f0d65db';
     
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
@@ -931,7 +931,7 @@ export class GoHighLevelService {
   // All submissions go to the same webhook regardless of revenue (low revenue are still tagged separately)
   async sendIntakeWebhook(application: Partial<LoanApplication>, pageUrl?: string): Promise<void> {
     const INTAKE_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2a9dd48e-792a-4bdb-8688-fddaf3141ae4';
-    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/3df82b1c-3a5b-4625-a8f8-d2a409370da8';
+    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/483f3c14-ae23-420a-8328-4ef77f0d65db';
     
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
@@ -1010,7 +1010,7 @@ export class GoHighLevelService {
     combinedViewUrl?: string; // Single link to view ALL statements in one page
   }): Promise<{ sent: boolean; reason?: string }> {
     const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/763f2d42-9850-4ed3-acde-9449ef94f9ae';
-    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/3df82b1c-3a5b-4625-a8f8-d2a409370da8';
+    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/483f3c14-ae23-420a-8328-4ef77f0d65db';
     
     const emailKey = contactInfo.email.toLowerCase().trim();
     const now = Date.now();
