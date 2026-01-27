@@ -626,6 +626,7 @@ export class GoHighLevelService {
     // Application webhook URL - for full and partial application submissions
     const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
     const BACKUP_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbynygRwYHpg4joyMLY-IC_B_7cqrNlNl92HjHduc5OvUtrUgig7_aHG69CdSTKZ562w/exec';
+    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/3df82b1c-3a5b-4625-a8f8-d2a409370da8';
     
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
@@ -759,6 +760,16 @@ export class GoHighLevelService {
           }).catch(err => console.error('Backup webhook error:', err))
         );
       }
+      
+      if (SECONDARY_WEBHOOK_URL) {
+        webhookRequests.push(
+          fetch(SECONDARY_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          }).catch(err => console.error('Secondary webhook error:', err))
+        );
+      }
 
       // Wait for webhooks (but don't fail if they error)
       await Promise.allSettled(webhookRequests);
@@ -772,6 +783,7 @@ export class GoHighLevelService {
   // Send partial application data to the application webhook (for incomplete applications)
   async sendPartialApplicationWebhook(application: Partial<LoanApplication>): Promise<void> {
     const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
+    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/3df82b1c-3a5b-4625-a8f8-d2a409370da8';
     
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
@@ -884,21 +896,31 @@ export class GoHighLevelService {
       tags: ["App Started"],
     };
 
+    // Send to both webhooks (non-blocking)
+    const webhookRequests = [];
+    
     try {
       console.log('[GHL] Sending partial application webhook to:', APPLICATION_WEBHOOK_URL);
       console.log('[GHL] Partial application webhook fields count:', Object.keys(webhookPayload).filter(k => webhookPayload[k as keyof typeof webhookPayload]).length);
       
-      const response = await fetch(APPLICATION_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(webhookPayload),
-      });
+      webhookRequests.push(
+        fetch(APPLICATION_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        }).catch(err => console.error('[GHL] Partial application webhook error:', err))
+      );
       
-      if (!response.ok) {
-        console.error('[GHL] Partial application webhook failed:', response.status, await response.text());
-      } else {
-        console.log('[GHL] Partial application webhook sent successfully');
-      }
+      webhookRequests.push(
+        fetch(SECONDARY_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        }).catch(err => console.error('[GHL] Partial application secondary webhook error:', err))
+      );
+      
+      await Promise.allSettled(webhookRequests);
+      console.log('[GHL] Partial application webhooks sent successfully');
     } catch (error) {
       console.error('[GHL] Partial application webhook error:', error);
       // Don't throw - webhooks are nice-to-have, not critical
@@ -909,6 +931,7 @@ export class GoHighLevelService {
   // All submissions go to the same webhook regardless of revenue (low revenue are still tagged separately)
   async sendIntakeWebhook(application: Partial<LoanApplication>, pageUrl?: string): Promise<void> {
     const INTAKE_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2a9dd48e-792a-4bdb-8688-fddaf3141ae4';
+    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/3df82b1c-3a5b-4625-a8f8-d2a409370da8';
     
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
@@ -943,21 +966,31 @@ export class GoHighLevelService {
       tags: ["lead-source-website", "interest form"],
     };
 
+    // Send to both webhooks (non-blocking)
+    const webhookRequests = [];
+    
     try {
       console.log('[GHL] Sending intake webhook to:', INTAKE_WEBHOOK_URL);
       console.log('[GHL] Intake webhook payload:', JSON.stringify(webhookPayload, null, 2));
       
-      const response = await fetch(INTAKE_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(webhookPayload),
-      });
+      webhookRequests.push(
+        fetch(INTAKE_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        }).catch(err => console.error('[GHL] Intake webhook error:', err))
+      );
       
-      if (!response.ok) {
-        console.error('[GHL] Intake webhook failed:', response.status, await response.text());
-      } else {
-        console.log('[GHL] Intake webhook sent successfully');
-      }
+      webhookRequests.push(
+        fetch(SECONDARY_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        }).catch(err => console.error('[GHL] Intake secondary webhook error:', err))
+      );
+      
+      await Promise.allSettled(webhookRequests);
+      console.log('[GHL] Intake webhooks sent successfully');
     } catch (error) {
       console.error('[GHL] Intake webhook error:', error);
       // Don't throw - webhooks are nice-to-have, not critical
@@ -977,6 +1010,7 @@ export class GoHighLevelService {
     combinedViewUrl?: string; // Single link to view ALL statements in one page
   }): Promise<{ sent: boolean; reason?: string }> {
     const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/763f2d42-9850-4ed3-acde-9449ef94f9ae';
+    const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/3df82b1c-3a5b-4625-a8f8-d2a409370da8';
     
     const emailKey = contactInfo.email.toLowerCase().trim();
     const now = Date.now();
@@ -1015,25 +1049,35 @@ export class GoHighLevelService {
       ...statementData,
     };
 
+    // Send to both webhooks (non-blocking)
+    const webhookRequests = [];
+    
     try {
       console.log('[GHL] Sending bank statement uploaded webhook to:', BANK_STATEMENT_WEBHOOK_URL);
       console.log('[GHL] Bank statement webhook payload:', JSON.stringify(webhookPayload, null, 2));
 
-      const response = await fetch(BANK_STATEMENT_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(webhookPayload),
-      });
+      webhookRequests.push(
+        fetch(BANK_STATEMENT_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        }).catch(err => console.error('[GHL] Bank statement webhook error:', err))
+      );
+      
+      webhookRequests.push(
+        fetch(SECONDARY_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        }).catch(err => console.error('[GHL] Bank statement secondary webhook error:', err))
+      );
 
-      if (!response.ok) {
-        console.error('[GHL] Bank statement webhook failed:', response.status, await response.text());
-        return { sent: false, reason: 'Webhook request failed' };
-      } else {
-        // Mark this email as having received a webhook in this session
-        this.bankStatementWebhookCache.set(emailKey, now);
-        console.log('[GHL] Bank statement webhook sent successfully - session marked for', emailKey);
-        return { sent: true };
-      }
+      await Promise.allSettled(webhookRequests);
+      
+      // Mark this email as having received a webhook in this session
+      this.bankStatementWebhookCache.set(emailKey, now);
+      console.log('[GHL] Bank statement webhooks sent successfully - session marked for', emailKey);
+      return { sent: true };
     } catch (error) {
       console.error('[GHL] Bank statement webhook error:', error);
       // Don't throw - webhooks are nice-to-have, not critical
