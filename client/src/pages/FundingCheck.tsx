@@ -80,6 +80,7 @@ export default function FundingCheck() {
   const [timeInBusiness, setTimeInBusiness] = useState<string>("");
   const [industry, setIndustry] = useState<string>("");
   const [email, setEmail] = useState<string>("");
+  const [businessName, setBusinessName] = useState<string>("");
   const [analysisResult, setAnalysisResult] =
     useState<BankStatementAnalysis | null>(null);
 
@@ -102,6 +103,7 @@ export default function FundingCheck() {
       if (timeInBusiness) formData.append("timeInBusiness", timeInBusiness);
       if (industry) formData.append("industry", industry);
       if (email) formData.append("email", email);
+      if (businessName) formData.append("businessName", businessName);
 
       const response = await fetch("/api/funding-check/analyze", {
         method: "POST",
@@ -247,6 +249,8 @@ export default function FundingCheck() {
     setCreditScoreRange("");
     setTimeInBusiness("");
     setIndustry("");
+    setEmail("");
+    setBusinessName("");
   };
 
   // Show results view
@@ -524,19 +528,35 @@ export default function FundingCheck() {
 
         <Card className="p-6 bg-card/95 backdrop-blur">
           <div className="space-y-6">
-            {/* Email for saving statements */}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email (to save statements to your dashboard)</Label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                data-testid="input-email"
-              />
-              <p className="text-xs text-muted-foreground">Optional - if provided, your statements will be saved for later reference</p>
+            {/* Business Name and Email for saving statements */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="businessName">Business Name</Label>
+                  <input
+                    id="businessName"
+                    type="text"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    placeholder="Your Business Name"
+                    className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    data-testid="input-business-name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    data-testid="input-email"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Your information will be used to save your statements to your dashboard</p>
             </div>
 
             {/* Optional Information */}
