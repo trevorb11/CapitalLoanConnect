@@ -835,19 +835,34 @@ export default function QuizIntake() {
           data-testid="low-revenue-outcome"
         >
           <div className="text-center">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-white/10 flex items-center justify-center">
-              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-400/20 to-orange-500/20 flex items-center justify-center border border-amber-400/30 animate-pulse">
+              <svg className="w-12 h-12 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 className="text-white text-2xl md:text-3xl font-semibold mb-4">
+            <h3 className="text-white text-2xl md:text-3xl font-bold mb-4">
               Thank You for Your Interest!
             </h3>
             <p className="text-white/80 mb-4 text-base md:text-lg max-w-md mx-auto leading-relaxed">
               We appreciate you taking the time to complete our intake form.
             </p>
-            <p className="text-white/70 mb-6 text-base max-w-md mx-auto leading-relaxed">
-              Our financing programs currently require a minimum of <span className="text-white font-semibold">${MINIMUM_REVENUE_REQUIREMENT.toLocaleString()}/month</span> in revenue. While you don't quite meet this threshold right now, we'd love to stay in touch!
+            <p className="text-white/70 mb-3 text-base max-w-md mx-auto leading-relaxed">
+              Based on your revenue of <span className="text-amber-400 font-bold">${quizData.monthlyRevenue.toLocaleString()}/month</span>, our financing programs currently require a minimum of <span className="text-white font-semibold">${MINIMUM_REVENUE_REQUIREMENT.toLocaleString()}/month</span>. While you don't quite meet this threshold right now, we'd love to stay in touch!
+            </p>
+            
+            {/* Update Information Link */}
+            <p className="text-white/60 mb-6 text-sm max-w-md mx-auto">
+              Is this incorrect?{" "}
+              <button
+                onClick={() => {
+                  setShowLowRevenueOutcome(false);
+                  setCurrentQuestion(5);
+                }}
+                className="text-cyan-400 underline hover:text-cyan-300 transition-colors font-medium"
+                data-testid="button-update-info"
+              >
+                Update your information here
+              </button>
             </p>
             
             <div className="bg-white/10 rounded-xl p-6 max-w-md mx-auto mb-6 text-left">
@@ -871,27 +886,30 @@ export default function QuizIntake() {
               </ul>
             </div>
 
-            <div className="bg-white/5 rounded-xl p-6 max-w-md mx-auto mb-8 text-left border border-white/10">
-              <h4 className="text-white font-semibold mb-3">Want to See Where You Stand?</h4>
-              <p className="text-white/70 text-sm mb-4">
-                Upload your bank statements to get a detailed breakdown of your funding eligibility and see exactly what factors are affecting your qualification.
+            {/* Primary CTA - More Prominent */}
+            <div className="max-w-md mx-auto mb-6">
+              <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 rounded-xl blur-md opacity-75 group-hover:opacity-100 transition duration-300 animate-pulse"></div>
+                <button
+                  onClick={() => navigate("/funding-check")}
+                  className="relative w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white py-4 px-8 rounded-xl font-bold text-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl flex items-center justify-center gap-3"
+                  data-testid="button-funding-check"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Get Your Free Funding Analysis
+                </button>
+              </div>
+              <p className="text-white/60 text-sm mt-3">
+                Upload your bank statements to see exactly where you stand
               </p>
-              <button
-                onClick={() => navigate("/funding-check")}
-                className="w-full bg-white/10 hover:bg-white/20 text-white py-3 px-6 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2"
-                data-testid="button-funding-check"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Get Your Funding Analysis
-              </button>
             </div>
 
             <div className="flex flex-col gap-3 max-w-md mx-auto">
               <button
                 onClick={() => navigate("/intake")}
-                className="w-full bg-white text-[#192F56] py-4 px-8 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg"
+                className="w-full bg-white/10 hover:bg-white/20 text-white py-3 px-8 rounded-lg font-medium transition-all duration-300 border border-white/20"
                 data-testid="button-back-to-home"
               >
                 Back to Home
