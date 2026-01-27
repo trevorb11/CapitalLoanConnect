@@ -28,6 +28,8 @@ import {
   X,
   Sparkles,
   RefreshCw,
+  Calendar,
+  Phone,
 } from "lucide-react";
 import { Link } from "wouter";
 import tcgLogo from "@assets/TCG_White_logo_1764664150165.png";
@@ -437,6 +439,30 @@ export default function FundingCheck() {
             </Card>
           )}
 
+          {/* Schedule a Call CTA */}
+          <Card className="p-6 mb-6 bg-gradient-to-r from-primary/20 to-primary/10 border-primary/30">
+            <div className="text-center">
+              <h3 className="text-lg font-semibold mb-2 flex items-center justify-center gap-2">
+                <Calendar className="w-5 h-5 text-primary" />
+                Ready to Take the Next Step?
+              </h3>
+              <p className="text-muted-foreground mb-4">
+                Schedule a free consultation with one of our funding specialists to discuss your options and get personalized guidance.
+              </p>
+              <a
+                href="https://api.leadconnectorhq.com/widget/booking/I2Sm1RLch95mBHESK5e2"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="link-schedule-call-results"
+              >
+                <Button size="lg" className="w-full sm:w-auto">
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Schedule a Call with a Funding Specialist
+                </Button>
+              </a>
+            </div>
+          </Card>
+
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-4">
             <Button onClick={resetAnalysis} variant="outline" className="flex-1">
@@ -444,7 +470,7 @@ export default function FundingCheck() {
               Analyze Different Statements
             </Button>
             <Link href="/" className="flex-1">
-              <Button className="w-full">
+              <Button className="w-full" variant="secondary">
                 Apply for Funding Now
               </Button>
             </Link>
@@ -726,6 +752,30 @@ export default function FundingCheck() {
                 </Button>
               </Link>
             </div>
+          </div>
+        </Card>
+
+        {/* Alternative: Schedule a Call */}
+        <Card className="mt-6 p-6 bg-card/60 backdrop-blur border-dashed">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <Phone className="w-5 h-5 text-primary" />
+              <h3 className="font-semibold">Prefer to Talk First?</h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              If you'd rather discuss your funding options with a specialist before uploading your statements, schedule a free consultation call.
+            </p>
+            <a
+              href="https://api.leadconnectorhq.com/widget/booking/I2Sm1RLch95mBHESK5e2"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="link-schedule-call-upload"
+            >
+              <Button variant="outline" className="w-full sm:w-auto">
+                <Calendar className="w-4 h-4 mr-2" />
+                Schedule a Call Instead
+              </Button>
+            </a>
           </div>
         </Card>
 
