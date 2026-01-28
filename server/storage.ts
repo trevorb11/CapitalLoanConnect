@@ -74,6 +74,7 @@ export interface IStorage {
   getAllBankStatementUploads(): Promise<BankStatementUpload[]>;
   getBankStatementUploadsByEmail(email: string): Promise<BankStatementUpload[]>;
   getBankStatementUploadsByAgentEmail(agentEmail: string): Promise<BankStatementUpload[]>;
+  updateBankStatementApproval(id: string, approvalStatus: string | null, approvalNotes: string | null, reviewedBy: string | null): Promise<BankStatementUpload | undefined>;
 
   // Bot Attempts methods
   createBotAttempt(attempt: InsertBotAttempt): Promise<BotAttempt>;
@@ -350,6 +351,25 @@ export class DatabaseStorage implements IStorage {
       applicationIds.includes(upload.loanApplicationId || '') ||
       applicationEmails.includes(upload.email?.toLowerCase() || '')
     );
+  }
+
+  async updateBankStatementApproval(
+    id: string,
+    approvalStatus: string | null,
+    approvalNotes: string | null,
+    reviewedBy: string | null
+  ): Promise<BankStatementUpload | undefined> {
+    const [updated] = await db
+      .update(bankStatementUploads)
+      .set({
+        approvalStatus,
+        approvalNotes,
+        reviewedBy,
+        reviewedAt: approvalStatus ? new Date() : null,
+      })
+      .where(eq(bankStatementUploads.id, id))
+      .returning();
+    return updated || undefined;
   }
 
   // Bot Attempts methods
