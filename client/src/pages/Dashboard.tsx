@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,7 +16,7 @@ import { format } from "date-fns";
 
 interface AuthState {
   isAuthenticated: boolean;
-  role?: 'admin' | 'agent';
+  role?: 'admin' | 'agent' | 'partner' | 'underwriting';
   agentEmail?: string;
   agentName?: string;
 }
@@ -911,6 +911,9 @@ function BankStatementsTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [generatingTokens, setGeneratingTokens] = useState(false);
   const [tokenGenResult, setTokenGenResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [updatingApproval, setUpdatingApproval] = useState<string | null>(null);
+  const [editingNotes, setEditingNotes] = useState<string | null>(null);
+  const [notesInput, setNotesInput] = useState("");
 
   const { data: authData } = useQuery<AuthState | null>({
     queryKey: ['/api/auth/check'],
@@ -1101,6 +1104,78 @@ function BankStatementsTab() {
       setGeneratingTokens(false);
     }
   };
+
+  const handleUpdateApproval = async (uploadId: string, approvalStatus: 'approved' | 'declined', notes?: string) => {
+    setUpdatingApproval(uploadId);
+    try {
+      const res = await fetch(`/api/bank-statements/${uploadId}/approval`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          approvalStatus,
+          approvalNotes: notes || null,
+        }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ['/api/bank-statements/uploads'] });
+        setEditingNotes(null);
+        setNotesInput("");
+      } else {
+        const data = await res.json();
+        console.error('Failed to update approval:', data.error);
+      }
+    } catch (error) {
+      console.error('Error updating approval:', error);
+    } finally {
+      setUpdatingApproval(null);
+    }
+  };
+
+  const handleSaveNotes = async (uploadId: string, currentStatus: string | null, notes: string) => {
+    if (!currentStatus || (currentStatus !== 'approved' && currentStatus !== 'declined')) {
+      console.error('Cannot save notes on pending items - approve or decline first');
+      setEditingNotes(null);
+      setNotesInput("");
+      return;
+    }
+    setUpdatingApproval(uploadId);
+    try {
+      const res = await fetch(`/api/bank-statements/${uploadId}/approval`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          approvalStatus: currentStatus,
+          approvalNotes: notes || null,
+        }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ['/api/bank-statements/uploads'] });
+        setEditingNotes(null);
+        setNotesInput("");
+      } else {
+        const data = await res.json();
+        console.error('Failed to save notes:', data.error);
+      }
+    } catch (error) {
+      console.error('Error saving notes:', error);
+    } finally {
+      setUpdatingApproval(null);
+    }
+  };
+
+  const getApprovalBadge = (status: string | null) => {
+    if (status === 'approved') {
+      return <Badge className="bg-green-600 hover:bg-green-700">Approved</Badge>;
+    }
+    if (status === 'declined') {
+      return <Badge variant="destructive">Declined</Badge>;
+    }
+    return <Badge variant="secondary">Pending Review</Badge>;
+  };
+
+  const canManageApprovals = authData?.role === 'admin' || authData?.role === 'underwriting';
 
   // Group uploads by business name
   const uploadsByBusiness = bankUploads?.reduce((acc, upload) => {
@@ -1302,6 +1377,7 @@ function BankStatementsTab() {
                                   Checker
                                 </Badge>
                               )}
+                              {getApprovalBadge(upload.approvalStatus)}
                             </div>
                             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                               <span>{formatFileSize(upload.fileSize)}</span>
@@ -1310,9 +1386,80 @@ function BankStatementsTab() {
                                 <User className="w-3 h-3" />
                                 {upload.email}
                               </span>
+                              {upload.reviewedBy && upload.reviewedAt && (
+                                <span className="text-xs">
+                                  Reviewed by {upload.reviewedBy} on {format(new Date(upload.reviewedAt), 'MMM d, yyyy')}
+                                </span>
+                              )}
                             </div>
+                            {upload.approvalNotes && (
+                              <div className="mt-2 p-2 bg-muted rounded text-sm">
+                                <span className="font-medium">Notes:</span> {upload.approvalNotes}
+                              </div>
+                            )}
+                            {editingNotes === upload.id && (
+                              <div className="mt-2 flex gap-2 items-center">
+                                <Input
+                                  placeholder="Add notes..."
+                                  value={notesInput}
+                                  onChange={(e) => setNotesInput(e.target.value)}
+                                  className="flex-1"
+                                  data-testid={`input-approval-notes-${upload.id}`}
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSaveNotes(upload.id, upload.approvalStatus, notesInput)}
+                                  disabled={updatingApproval === upload.id}
+                                  data-testid={`button-save-notes-${upload.id}`}
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => { setEditingNotes(null); setNotesInput(""); }}
+                                  data-testid={`button-cancel-notes-${upload.id}`}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
+                            {canManageApprovals && (
+                              <>
+                                <Button
+                                  variant={upload.approvalStatus === 'approved' ? 'default' : 'outline'}
+                                  size="sm"
+                                  onClick={() => handleUpdateApproval(upload.id, 'approved', upload.approvalNotes || undefined)}
+                                  disabled={updatingApproval === upload.id}
+                                  className={upload.approvalStatus === 'approved' ? 'bg-green-600 hover:bg-green-700' : ''}
+                                  data-testid={`button-approve-${upload.id}`}
+                                >
+                                  {updatingApproval === upload.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 mr-1" />}
+                                  Approve
+                                </Button>
+                                <Button
+                                  variant={upload.approvalStatus === 'declined' ? 'destructive' : 'outline'}
+                                  size="sm"
+                                  onClick={() => handleUpdateApproval(upload.id, 'declined', upload.approvalNotes || undefined)}
+                                  disabled={updatingApproval === upload.id}
+                                  data-testid={`button-decline-${upload.id}`}
+                                >
+                                  {updatingApproval === upload.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4 mr-1" />}
+                                  Decline
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => { setEditingNotes(upload.id); setNotesInput(upload.approvalNotes || ""); }}
+                                  data-testid={`button-add-notes-${upload.id}`}
+                                >
+                                  <FileEdit className="w-4 h-4 mr-1" />
+                                  Notes
+                                </Button>
+                              </>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
