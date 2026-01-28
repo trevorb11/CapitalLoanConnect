@@ -1287,7 +1287,7 @@ function BankStatementsTab() {
     return <Badge variant="secondary">Pending Review</Badge>;
   };
 
-  const canManageApprovals = authData?.role === 'admin' || authData?.role === 'underwriting';
+  const canManageApprovals = authData?.role === 'underwriting';
 
   // Group uploads by business name
   const uploadsByBusiness = bankUploads?.reduce((acc, upload) => {
