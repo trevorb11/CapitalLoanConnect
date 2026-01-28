@@ -274,6 +274,13 @@ export const bankStatementUploads = pgTable("bank_statement_uploads", {
   fileSize: integer("file_size").notNull(),
   source: text("source").default("Upload"), // "Upload" for regular uploads, "Checker" for funding check
   viewToken: text("view_token"), // Token for public view links (shareable via webhooks)
+  
+  // Underwriting approval fields
+  approvalStatus: text("approval_status"), // "approved", "declined", or null for pending
+  approvalNotes: text("approval_notes"), // Details about the approval or decline reason
+  reviewedBy: text("reviewed_by"), // Email of the person who reviewed
+  reviewedAt: timestamp("reviewed_at"), // When the review happened
+  
   createdAt: timestamp("created_at").defaultNow(),
 });
 

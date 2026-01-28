@@ -14,7 +14,7 @@ declare module 'express-session' {
   interface SessionData {
     user?: {
       isAuthenticated: boolean;
-      role: 'admin' | 'agent' | 'partner';
+      role: 'admin' | 'agent' | 'partner' | 'underwriting';
       agentEmail?: string;
       agentName?: string;
       partnerId?: string;

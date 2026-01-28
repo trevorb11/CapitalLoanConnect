@@ -494,6 +494,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Check underwriting login
+      const UNDERWRITING_EMAIL = 'underwriting@todaycapitalgroup.com';
+      const UNDERWRITING_PASSWORD = 'Uwrite3!3uwrite';
+      if (credential === UNDERWRITING_PASSWORD || credential.toLowerCase() === UNDERWRITING_EMAIL.toLowerCase()) {
+        req.session.user = {
+          isAuthenticated: true,
+          role: 'underwriting',
+          agentEmail: UNDERWRITING_EMAIL,
+          agentName: 'Underwriting Team',
+        };
+        return res.json({ 
+          success: true, 
+          role: 'underwriting',
+          agentName: 'Underwriting Team',
+          agentEmail: UNDERWRITING_EMAIL,
+          message: 'Logged in as Underwriting'
+        });
+      }
+      
       // Check agent password (format: Tcg[initials], e.g., "Tcgdl" for Dillon LeBlanc)
       const agentPasswordMatch = credential.toLowerCase().match(/^tcg([a-z]{2})$/);
       if (agentPasswordMatch) {
@@ -2112,10 +2131,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let uploads;
       
-      // Admin sees all uploads, agents see only uploads from their applications
-      if (req.session.user.role === 'admin') {
+      // Admin and underwriting see all uploads, agents see only uploads from their applications
+      if (req.session.user.role === 'admin' || req.session.user.role === 'underwriting') {
         uploads = await storage.getAllBankStatementUploads();
-        console.log(`[BANK STATEMENTS] Admin fetching all ${uploads.length} uploads`);
+        console.log(`[BANK STATEMENTS] ${req.session.user.role} fetching all ${uploads.length} uploads`);
       } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
         uploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
         console.log(`[BANK STATEMENTS] Agent ${req.session.user.agentName} fetching ${uploads.length} uploads`);
@@ -2128,6 +2147,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching bank statement uploads:", error);
       res.status(500).json({ error: "Failed to fetch uploads" });
+    }
+  });
+
+  // Update bank statement approval status (underwriting and admin only)
+  app.patch("/api/bank-statements/:id/approval", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Only underwriting and admin can update approval status
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only underwriting team can update approval status" });
+    }
+
+    const { id } = req.params;
+    const { approvalStatus, approvalNotes } = req.body;
+
+    if (!approvalStatus || !['approved', 'declined', 'pending'].includes(approvalStatus)) {
+      return res.status(400).json({ error: "Invalid approval status. Must be 'approved', 'declined', or 'pending'" });
+    }
+
+    try {
+      const reviewerEmail = req.session.user.agentEmail || 'admin';
+      const updatedUpload = await storage.updateBankStatementApproval(
+        id,
+        approvalStatus === 'pending' ? null : approvalStatus,
+        approvalNotes || null,
+        approvalStatus === 'pending' ? null : reviewerEmail
+      );
+
+      if (!updatedUpload) {
+        return res.status(404).json({ error: "Bank statement not found" });
+      }
+
+      console.log(`[BANK STATEMENTS] ${reviewerEmail} set approval status to ${approvalStatus} for upload ${id}`);
+      res.json(updatedUpload);
+    } catch (error) {
+      console.error("Error updating bank statement approval:", error);
+      res.status(500).json({ error: "Failed to update approval status" });
     }
   });
 
