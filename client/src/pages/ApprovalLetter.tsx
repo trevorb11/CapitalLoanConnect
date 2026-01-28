@@ -7,6 +7,7 @@ interface ApprovalData {
   businessName: string | null;
   advanceAmount: string | null;
   term: string | null;
+  paymentFrequency: string | null;
   factorRate: string | null;
   totalPayback: string | null;
   netAfterFees: string | null;
@@ -39,14 +40,52 @@ function formatCurrencyWithCents(value: string | null | undefined): string {
   }).format(num);
 }
 
-function calculateWeeklyPayment(totalPayback: string | null, term: string | null): string {
+function calculatePaymentAmount(totalPayback: string | null, term: string | null, frequency: string | null): string {
   if (!totalPayback || !term) return "$0";
   const total = parseFloat(totalPayback);
   if (isNaN(total)) return "$0";
   const termMonths = parseInt(term.match(/\d+/)?.[0] || "12");
-  const weeks = termMonths * 4.33;
-  const weekly = total / weeks;
-  return formatCurrency(weekly.toString());
+  
+  let periods: number;
+  switch (frequency) {
+    case 'daily':
+      periods = termMonths * 22; // ~22 business days per month
+      break;
+    case 'monthly':
+      periods = termMonths;
+      break;
+    case 'weekly':
+    default:
+      periods = termMonths * 4.33;
+      break;
+  }
+  
+  const payment = total / periods;
+  return formatCurrency(payment.toString());
+}
+
+function getFrequencyLabel(frequency: string | null): string {
+  switch (frequency) {
+    case 'daily':
+      return 'per day';
+    case 'monthly':
+      return 'per month';
+    case 'weekly':
+    default:
+      return 'per week';
+  }
+}
+
+function getPaymentTypeLabel(frequency: string | null): string {
+  switch (frequency) {
+    case 'daily':
+      return 'Daily Payments';
+    case 'monthly':
+      return 'Monthly Payments';
+    case 'weekly':
+    default:
+      return 'Weekly Payments';
+  }
 }
 
 function calculateTotalFees(advanceAmount: string | null, netAfterFees: string | null): string {
@@ -89,7 +128,9 @@ export default function ApprovalLetter() {
   const advanceAmount = formatCurrency(approval.advanceAmount);
   const netAfterFees = formatCurrency(approval.netAfterFees);
   const totalPayback = formatCurrency(approval.totalPayback);
-  const weeklyPayment = calculateWeeklyPayment(approval.totalPayback, approval.term);
+  const paymentAmount = calculatePaymentAmount(approval.totalPayback, approval.term, approval.paymentFrequency);
+  const frequencyLabel = getFrequencyLabel(approval.paymentFrequency);
+  const paymentTypeLabel = getPaymentTypeLabel(approval.paymentFrequency);
   const totalFees = calculateTotalFees(approval.advanceAmount, approval.netAfterFees);
   const businessName = approval.businessName || "Valued Customer";
   const term = approval.term || "12 mo";
@@ -163,10 +204,10 @@ export default function ApprovalLetter() {
           </div>
 
           <div style={{ textAlign: "center", paddingBottom: "32px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", marginBottom: "28px" }}>
-            <div style={{ fontSize: "3.5rem", fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1 }} data-testid="text-weekly-payment">
-              {weeklyPayment}
+            <div style={{ fontSize: "3.5rem", fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1 }} data-testid="text-payment-amount">
+              {paymentAmount}
             </div>
-            <div style={{ marginTop: "8px", fontSize: "0.9375rem", color: "#14B8A6", fontWeight: 600 }}>per week</div>
+            <div style={{ marginTop: "8px", fontSize: "0.9375rem", color: "#14B8A6", fontWeight: 600 }} data-testid="text-frequency-label">{frequencyLabel}</div>
           </div>
 
           <div style={{ display: "flex", justifyContent: "center", gap: "48px" }}>
@@ -228,7 +269,7 @@ export default function ApprovalLetter() {
               <line x1="8" y1="2" x2="8" y2="6" />
               <line x1="3" y1="10" x2="21" y2="10" />
             </svg>
-            Weekly Payments
+            {paymentTypeLabel}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#9CA3AF", fontSize: "0.875rem" }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="#14B8A6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: "18px", height: "18px" }}>

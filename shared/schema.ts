@@ -395,6 +395,7 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   // Approval fields (populated when status = "approved")
   advanceAmount: decimal("advance_amount", { precision: 12, scale: 2 }),
   term: text("term"), // e.g., "6 months", "12 months"
+  paymentFrequency: text("payment_frequency"), // "daily", "weekly", or "monthly"
   factorRate: decimal("factor_rate", { precision: 5, scale: 4 }), // e.g., 1.25
   totalPayback: decimal("total_payback", { precision: 12, scale: 2 }),
   netAfterFees: decimal("net_after_fees", { precision: 12, scale: 2 }),

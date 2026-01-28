@@ -929,6 +929,7 @@ function BankStatementsTab() {
   const [decisionForm, setDecisionForm] = useState({
     advanceAmount: '',
     term: '',
+    paymentFrequency: 'weekly',
     factorRate: '',
     totalPayback: '',
     netAfterFees: '',
@@ -994,6 +995,7 @@ function BankStatementsTab() {
     setDecisionForm({
       advanceAmount: existing?.advanceAmount?.toString() || '',
       term: existing?.term || '',
+      paymentFrequency: existing?.paymentFrequency || 'weekly',
       factorRate: existing?.factorRate?.toString() || '',
       totalPayback: existing?.totalPayback?.toString() || '',
       netAfterFees: existing?.netAfterFees?.toString() || '',
@@ -1020,6 +1022,7 @@ function BankStatementsTab() {
           status: decisionDialog.mode === 'approve' ? 'approved' : 'declined',
           advanceAmount: decisionForm.advanceAmount ? parseFloat(decisionForm.advanceAmount) : null,
           term: decisionForm.term || null,
+          paymentFrequency: decisionForm.paymentFrequency || null,
           factorRate: decisionForm.factorRate ? parseFloat(decisionForm.factorRate) : null,
           totalPayback: decisionForm.totalPayback ? parseFloat(decisionForm.totalPayback) : null,
           netAfterFees: decisionForm.netAfterFees ? parseFloat(decisionForm.netAfterFees) : null,
@@ -1786,6 +1789,22 @@ function BankStatementsTab() {
                       onChange={(e) => setDecisionForm(prev => ({ ...prev, term: e.target.value }))}
                       data-testid="input-term"
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="paymentFrequency">Payment Frequency</Label>
+                    <Select
+                      value={decisionForm.paymentFrequency}
+                      onValueChange={(value) => setDecisionForm(prev => ({ ...prev, paymentFrequency: value }))}
+                    >
+                      <SelectTrigger data-testid="select-payment-frequency">
+                        <SelectValue placeholder="Select frequency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                        <SelectItem value="monthly">Monthly</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
