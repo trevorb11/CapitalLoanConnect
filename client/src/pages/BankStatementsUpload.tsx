@@ -16,7 +16,9 @@ import {
   Building2,
   Mail,
   X,
-  ArrowRight
+  ArrowRight,
+  Calendar,
+  Phone
 } from "lucide-react";
 import { Link, useSearch, useLocation } from "wouter";
 import tcgLogo from "@assets/TCG_White_logo_1764664150165.png";
@@ -224,8 +226,28 @@ export default function BankStatementsUpload() {
             </ul>
           </div>
 
+          {/* Schedule a Call CTA - Primary action after upload */}
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-4">
+            <h3 className="font-semibold text-center mb-2">What's Next?</h3>
+            <p className="text-sm text-muted-foreground text-center mb-4">
+              Schedule a call with one of our funding specialists to discuss your options and get answers to any questions.
+            </p>
+            <a 
+              href="https://bit.ly/3Zxj0Kq" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <Button className="w-full" data-testid="button-schedule-call-success">
+                <Calendar className="w-4 h-4 mr-2" />
+                Schedule a Call with a Funding Specialist
+              </Button>
+            </a>
+          </div>
+
           <div className="flex flex-col gap-3">
             <Button 
+              variant="outline"
               onClick={() => {
                 setIsSubmitted(false);
                 setUploadedFiles([]);
@@ -237,7 +259,7 @@ export default function BankStatementsUpload() {
             </Button>
             
             <Link href="/">
-              <Button variant="outline" className="w-full" data-testid="button-back-home">
+              <Button variant="ghost" className="w-full" data-testid="button-back-home">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Home
               </Button>
@@ -446,6 +468,25 @@ export default function BankStatementsUpload() {
                   </>
                 )}
               </Button>
+
+              {/* Secondary CTA - Schedule a call */}
+              <div className="relative flex items-center justify-center my-1">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-muted-foreground/20"></div>
+                </div>
+                <span className="relative bg-card px-3 text-sm text-muted-foreground">or</span>
+              </div>
+
+              <a 
+                href="https://bit.ly/3Zxj0Kq" 
+                target="_blank" 
+                rel="noopener noreferrer"
+              >
+                <Button variant="outline" className="w-full" data-testid="button-schedule-call">
+                  <Phone className="w-4 h-4 mr-2" />
+                  Schedule a Call with a Funding Specialist
+                </Button>
+              </a>
 
               <Link href="/">
                 <Button variant="ghost" className="w-full text-muted-foreground" data-testid="button-cancel">

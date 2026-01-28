@@ -20,7 +20,9 @@ import {
   X,
   Lock,
   Landmark,
-  ExternalLink
+  ExternalLink,
+  Calendar,
+  Phone
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import tcgLogo from "@assets/TCG_White_logo_1764664150165.png";
@@ -304,25 +306,37 @@ export default function Statements() {
             Your bank account has been securely connected. We can now access your statements for verification.
           </p>
 
+          {/* Schedule a Call CTA - Primary action after bank connection */}
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-4">
+            <h3 className="font-semibold text-center mb-2">What's Next?</h3>
+            <p className="text-sm text-muted-foreground text-center mb-4">
+              Schedule a call with one of our funding specialists to discuss your options and get answers to any questions.
+            </p>
+            <a 
+              href="https://bit.ly/3Zxj0Kq" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <Button className="w-full" data-testid="button-schedule-call-plaid-success">
+                <Calendar className="w-4 h-4 mr-2" />
+                Schedule a Call with a Funding Specialist
+              </Button>
+            </a>
+          </div>
+
           <div className="flex flex-col gap-3">
             <Link href="/">
-              <Button className="w-full" data-testid="button-go-to-application">
+              <Button variant="outline" className="w-full" data-testid="button-go-to-application">
                 <FileText className="w-4 h-4 mr-2" />
                 Go to Application
               </Button>
             </Link>
             
             <a href="https://www.todaycapitalgroup.com/#contact-us" target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" className="w-full" data-testid="button-contact-team">
+              <Button variant="ghost" className="w-full" data-testid="button-contact-team">
                 <Mail className="w-4 h-4 mr-2" />
                 Get in Touch with Our Team
-              </Button>
-            </a>
-            
-            <a href="https://fund.todaycapitalgroup.com" target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" className="w-full" data-testid="button-view-offerings">
-                <ExternalLink className="w-4 h-4 mr-2" />
-                View Offerings
               </Button>
             </a>
           </div>
@@ -364,8 +378,28 @@ export default function Statements() {
             </ul>
           </div>
 
+          {/* Schedule a Call CTA - Primary action after upload */}
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-4">
+            <h3 className="font-semibold text-center mb-2">What's Next?</h3>
+            <p className="text-sm text-muted-foreground text-center mb-4">
+              Schedule a call with one of our funding specialists to discuss your options and get answers to any questions.
+            </p>
+            <a 
+              href="https://bit.ly/3Zxj0Kq" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <Button className="w-full" data-testid="button-schedule-call-success">
+                <Calendar className="w-4 h-4 mr-2" />
+                Schedule a Call with a Funding Specialist
+              </Button>
+            </a>
+          </div>
+
           <div className="flex flex-col gap-3">
             <Button 
+              variant="outline"
               onClick={() => {
                 setIsSubmitted(false);
                 setUploadedFiles([]);
@@ -377,7 +411,7 @@ export default function Statements() {
             </Button>
             
             <Link href="/">
-              <Button variant="outline" className="w-full" data-testid="button-back-home">
+              <Button variant="ghost" className="w-full" data-testid="button-back-home">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Home
               </Button>
@@ -631,7 +665,24 @@ export default function Statements() {
               </div>
             )}
 
-            <div className="pt-4">
+            {/* Secondary CTA - Schedule a call */}
+            <div className="pt-4 border-t">
+              <div className="text-center mb-3">
+                <span className="text-sm text-muted-foreground">Prefer to talk to someone first?</span>
+              </div>
+              <a 
+                href="https://bit.ly/3Zxj0Kq" 
+                target="_blank" 
+                rel="noopener noreferrer"
+              >
+                <Button variant="outline" className="w-full" data-testid="button-schedule-call">
+                  <Phone className="w-4 h-4 mr-2" />
+                  Schedule a Call with a Funding Specialist
+                </Button>
+              </a>
+            </div>
+
+            <div className="pt-3">
               <Link href="/">
                 <Button variant="ghost" className="w-full text-muted-foreground" data-testid="button-cancel">
                   <ArrowLeft className="w-4 h-4 mr-2" />
