@@ -203,7 +203,7 @@ export default function ApprovalLetter() {
             <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#14B8A6" }}>+ {formatCurrencyWithCents(approval.advanceAmount)}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid rgba(255, 255, 255, 0.08)" }}>
-            <span style={{ color: "#9CA3AF", fontSize: "0.875rem" }}>Fees</span>
+            <span style={{ color: "#9CA3AF", fontSize: "0.875rem" }}>Origination and Application Fees</span>
             <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#6B7280" }}>- {totalFees}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0 12px", marginTop: "4px", borderTop: "2px solid #374151" }}>
