@@ -49,11 +49,12 @@ function calculateWeeklyPayment(totalPayback: string | null, term: string | null
   return formatCurrency(weekly.toString());
 }
 
-function calculateOriginationFee(advanceAmount: string | null): string {
-  if (!advanceAmount) return "$0.00";
-  const amount = parseFloat(advanceAmount);
-  if (isNaN(amount)) return "$0.00";
-  return formatCurrencyWithCents((amount * 0.03).toString());
+function calculateTotalFees(advanceAmount: string | null, netAfterFees: string | null): string {
+  if (!advanceAmount || !netAfterFees) return "$0.00";
+  const advance = parseFloat(advanceAmount);
+  const net = parseFloat(netAfterFees);
+  if (isNaN(advance) || isNaN(net)) return "$0.00";
+  return formatCurrencyWithCents((advance - net).toString());
 }
 
 const SCHEDULING_LINK = "https://bit.ly/3Zxj0Kq";
@@ -88,7 +89,7 @@ export default function ApprovalLetter() {
   const netAfterFees = formatCurrency(approval.netAfterFees);
   const totalPayback = formatCurrency(approval.totalPayback);
   const weeklyPayment = calculateWeeklyPayment(approval.totalPayback, approval.term);
-  const originationFee = calculateOriginationFee(approval.advanceAmount);
+  const totalFees = calculateTotalFees(approval.advanceAmount, approval.netAfterFees);
   const businessName = approval.businessName || "Valued Customer";
   const term = approval.term || "12 mo";
   const factorRate = approval.factorRate || "1.25";
@@ -202,12 +203,8 @@ export default function ApprovalLetter() {
             <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#14B8A6" }}>+ {formatCurrencyWithCents(approval.advanceAmount)}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid rgba(255, 255, 255, 0.08)" }}>
-            <span style={{ color: "#9CA3AF", fontSize: "0.875rem" }}>Origination Fee (3%)</span>
-            <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#6B7280" }}>- {originationFee}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid rgba(255, 255, 255, 0.08)" }}>
-            <span style={{ color: "#9CA3AF", fontSize: "0.875rem" }}>Application Fee</span>
-            <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#6B7280" }}>- $499.00</span>
+            <span style={{ color: "#9CA3AF", fontSize: "0.875rem" }}>Fees</span>
+            <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#6B7280" }}>- {totalFees}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0 12px", marginTop: "4px", borderTop: "2px solid #374151" }}>
             <span style={{ fontSize: "0.9375rem", fontWeight: 700, color: "#fff" }}>You Receive</span>
