@@ -58,7 +58,8 @@ function calculateTotalFees(advanceAmount: string | null, netAfterFees: string |
 }
 
 const SCHEDULING_LINK = "https://bit.ly/3Zxj0Kq";
-const PHONE_NUMBER = "1-800-555-FUND";
+const PHONE_NUMBER = "(818) 351-0225";
+const EMAIL_ADDRESS = "admin@todaycapitalgroup.com";
 
 export default function ApprovalLetter() {
   const { slug } = useParams<{ slug: string }>();
@@ -292,7 +293,7 @@ export default function ApprovalLetter() {
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                 <polyline points="22,6 12,13 2,6" />
               </svg>
-              info@todaycapitalgroup.com
+              {EMAIL_ADDRESS}
             </span>
           </div>
         </footer>
