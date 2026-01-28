@@ -2189,6 +2189,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============= Business Underwriting Decisions =============
+  
+  // Get all business underwriting decisions
+  app.get("/api/underwriting-decisions", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    
+    // Only underwriting and admin can view decisions
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    
+    try {
+      const decisions = await storage.getAllBusinessUnderwritingDecisions();
+      res.json(decisions);
+    } catch (error) {
+      console.error("Error fetching underwriting decisions:", error);
+      res.status(500).json({ error: "Failed to fetch decisions" });
+    }
+  });
+  
+  // Get underwriting decision by business email
+  app.get("/api/underwriting-decisions/by-email", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    
+    // Only underwriting and admin can view decisions
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    
+    const email = req.query.email as string;
+    if (!email) {
+      return res.status(400).json({ error: "Email parameter required" });
+    }
+    
+    try {
+      const decision = await storage.getBusinessUnderwritingDecisionByEmail(email);
+      res.json(decision || null);
+    } catch (error) {
+      console.error("Error fetching underwriting decision:", error);
+      res.status(500).json({ error: "Failed to fetch decision" });
+    }
+  });
+  
+  // Create or update business underwriting decision
+  app.post("/api/underwriting-decisions", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    
+    // Only underwriting and admin can create/update decisions
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only underwriting team can manage decisions" });
+    }
+    
+    const {
+      businessEmail,
+      businessName,
+      status,
+      advanceAmount,
+      term,
+      factorRate,
+      totalPayback,
+      netAfterFees,
+      lender,
+      notes,
+      approvalDate,
+      declineReason
+    } = req.body;
+    
+    if (!businessEmail) {
+      return res.status(400).json({ error: "Business email is required" });
+    }
+    
+    if (!status || !['approved', 'declined'].includes(status)) {
+      return res.status(400).json({ error: "Status must be 'approved' or 'declined'" });
+    }
+    
+    try {
+      const reviewerEmail = req.session.user.agentEmail || 'admin';
+      
+      const decision = await storage.createOrUpdateBusinessUnderwritingDecision({
+        businessEmail,
+        businessName: businessName || null,
+        status,
+        advanceAmount: advanceAmount || null,
+        term: term || null,
+        factorRate: factorRate || null,
+        totalPayback: totalPayback || null,
+        netAfterFees: netAfterFees || null,
+        lender: lender || null,
+        notes: notes || null,
+        approvalDate: approvalDate ? new Date(approvalDate) : new Date(),
+        declineReason: declineReason || null,
+        reviewedBy: reviewerEmail,
+      });
+      
+      console.log(`[UNDERWRITING] ${reviewerEmail} set ${status} for business ${businessEmail}`);
+      res.json(decision);
+    } catch (error) {
+      console.error("Error saving underwriting decision:", error);
+      res.status(500).json({ error: "Failed to save decision" });
+    }
+  });
+  
+  // Delete business underwriting decision (reset to no decision)
+  app.delete("/api/underwriting-decisions/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    
+    // Only underwriting and admin can delete decisions
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only underwriting team can manage decisions" });
+    }
+    
+    const { id } = req.params;
+    
+    try {
+      const deleted = await storage.deleteBusinessUnderwritingDecision(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Decision not found" });
+      }
+      
+      console.log(`[UNDERWRITING] Decision ${id} deleted by ${req.session.user.agentEmail || 'admin'}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting underwriting decision:", error);
+      res.status(500).json({ error: "Failed to delete decision" });
+    }
+  });
+
   // 2b. Get combined view URL for all statements by email (for dashboard "View All" button)
   app.get("/api/bank-statements/view-url", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
