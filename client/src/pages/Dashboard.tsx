@@ -1358,8 +1358,8 @@ function BankStatementsTab() {
             />
           </div>
           
-          {/* Admin: Fix Missing View Tokens */}
-          {authData?.role === 'admin' && (
+          {/* Admin/Underwriting: Fix Missing View Tokens */}
+          {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
@@ -2350,7 +2350,7 @@ export default function Dashboard() {
                 <Landmark className="w-4 h-4 mr-2" />
                 Bank Statements
               </TabsTrigger>
-              {authData?.role === 'admin' && (
+              {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
                 <TabsTrigger value="bot-attempts" data-testid="tab-bot-attempts">
                   <Bot className="w-4 h-4 mr-2" />
                   Bot Attempts
