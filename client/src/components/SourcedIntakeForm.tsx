@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import { Loader2 } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
+import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 
 const BUSINESS_AGE_OPTIONS = [
   "Less than 3 months",
@@ -139,6 +140,7 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
   // Track page view on mount
   useEffect(() => {
     trackPageView(`/intake/${source}`, `Intake Form - ${source}`);
+    initUTMTracking();
   }, [source]);
 
   const parseRevenueToNumber = (revenueRange: string): string => {
@@ -160,6 +162,8 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
     mutationFn: async (data: QuizData & { recaptchaToken?: string }) => {
       // Check for referral partner ID from localStorage (set when visiting /r/:code)
       const referralPartnerId = localStorage.getItem("referralPartnerId");
+      // Get stored UTM parameters
+      const utmParams = getStoredUTMParams();
 
       const response = await apiRequest("POST", "/api/applications", {
         email: data.email,
@@ -179,6 +183,14 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
         faxNumber: data.faxNumber,
         // Track the source of this intake submission
         referralSource: source,
+        sourcePage: `intake_${source}`,
+        // Include UTM tracking data
+        utmSource: utmParams.utmSource || null,
+        utmMedium: utmParams.utmMedium || null,
+        utmCampaign: utmParams.utmCampaign || null,
+        utmTerm: utmParams.utmTerm || null,
+        utmContent: utmParams.utmContent || null,
+        referrerUrl: utmParams.referrerUrl || null,
         // Include referral partner ID if from partner link
         ...(referralPartnerId && { referralPartnerId }),
       });

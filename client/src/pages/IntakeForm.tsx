@@ -1,4 +1,4 @@
-import { useState, forwardRef, useRef } from "react";
+import { useState, forwardRef, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -6,6 +6,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Check } from "lucide-react";
+import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 
 // US States list
 const US_STATES = [
@@ -95,6 +96,11 @@ export default function IntakeForm() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
+  // Initialize UTM tracking on mount
+  useEffect(() => {
+    initUTMTracking();
+  }, []);
+
   // Step 1 form
   const form1 = useForm<Step1Data>({
     resolver: zodResolver(step1Schema),
@@ -140,6 +146,8 @@ export default function IntakeForm() {
     mutationFn: async (data: Step1Data) => {
       // Check for referral partner ID from localStorage (set when visiting /r/:code)
       const referralPartnerId = localStorage.getItem("referralPartnerId");
+      // Get stored UTM parameters
+      const utmParams = getStoredUTMParams();
 
       const response = await apiRequest("POST", "/api/applications", {
         email: data.email,
@@ -162,6 +170,14 @@ export default function IntakeForm() {
         mcaBalanceAmount: data.mcaBalanceAmount?.replace(/[^0-9.]/g, "") || "",
         mcaBalanceBankName: data.mcaBalanceBankName || "",
         currentStep: 1,
+        sourcePage: "intake_form",
+        // Include UTM tracking data
+        utmSource: utmParams.utmSource || null,
+        utmMedium: utmParams.utmMedium || null,
+        utmCampaign: utmParams.utmCampaign || null,
+        utmTerm: utmParams.utmTerm || null,
+        utmContent: utmParams.utmContent || null,
+        referrerUrl: utmParams.referrerUrl || null,
         // Include referral partner ID if from partner link
         ...(referralPartnerId && { referralPartnerId }),
       }) as Response;
