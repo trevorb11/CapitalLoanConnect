@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { type LoanApplication, type BankStatementUpload } from "@shared/schema";
+import { type LoanApplication, type BankStatementUpload, type BusinessUnderwritingDecision } from "@shared/schema";
 import { queryClient, getQueryFn } from "@/lib/queryClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -899,6 +899,12 @@ const INDUSTRIES = [
   "Retail Stores", "Professional Services", "Restaurants & Food Services", "Other"
 ];
 
+interface BusinessDecisionDialogData {
+  businessEmail: string;
+  businessName: string;
+  mode: 'approve' | 'decline';
+}
+
 function BankStatementsTab() {
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
   const [selectedAssetReport, setSelectedAssetReport] = useState<BankConnection | null>(null);
@@ -914,6 +920,21 @@ function BankStatementsTab() {
   const [updatingApproval, setUpdatingApproval] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [notesInput, setNotesInput] = useState("");
+  
+  // Business-level underwriting decision state
+  const [decisionDialog, setDecisionDialog] = useState<BusinessDecisionDialogData | null>(null);
+  const [savingDecision, setSavingDecision] = useState(false);
+  const [decisionForm, setDecisionForm] = useState({
+    advanceAmount: '',
+    term: '',
+    factorRate: '',
+    totalPayback: '',
+    netAfterFees: '',
+    lender: '',
+    notes: '',
+    approvalDate: new Date().toISOString().split('T')[0],
+    declineReason: '',
+  });
 
   const { data: authData } = useQuery<AuthState | null>({
     queryKey: ['/api/auth/check'],
@@ -944,6 +965,95 @@ function BankStatementsTab() {
       return res.json();
     },
   });
+
+  // Fetch business-level underwriting decisions
+  const { data: underwritingDecisions } = useQuery<BusinessUnderwritingDecision[]>({
+    queryKey: ['/api/underwriting-decisions'],
+    queryFn: async () => {
+      const res = await fetch('/api/underwriting-decisions', {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        return [];
+      }
+      return res.json();
+    },
+    enabled: authData?.role === 'admin' || authData?.role === 'underwriting',
+  });
+
+  // Helper to get decision for a business by email
+  const getBusinessDecision = (email: string): BusinessUnderwritingDecision | undefined => {
+    return underwritingDecisions?.find(d => d.businessEmail === email);
+  };
+
+  // Open decision dialog
+  const openDecisionDialog = (businessEmail: string, businessName: string, mode: 'approve' | 'decline') => {
+    const existing = getBusinessDecision(businessEmail);
+    setDecisionForm({
+      advanceAmount: existing?.advanceAmount?.toString() || '',
+      term: existing?.term || '',
+      factorRate: existing?.factorRate?.toString() || '',
+      totalPayback: existing?.totalPayback?.toString() || '',
+      netAfterFees: existing?.netAfterFees?.toString() || '',
+      lender: existing?.lender || '',
+      notes: existing?.notes || '',
+      approvalDate: existing?.approvalDate ? new Date(existing.approvalDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      declineReason: existing?.declineReason || '',
+    });
+    setDecisionDialog({ businessEmail, businessName, mode });
+  };
+
+  // Save underwriting decision
+  const handleSaveDecision = async () => {
+    if (!decisionDialog) return;
+    setSavingDecision(true);
+    try {
+      const res = await fetch('/api/underwriting-decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          businessEmail: decisionDialog.businessEmail,
+          businessName: decisionDialog.businessName,
+          status: decisionDialog.mode === 'approve' ? 'approved' : 'declined',
+          advanceAmount: decisionForm.advanceAmount ? parseFloat(decisionForm.advanceAmount) : null,
+          term: decisionForm.term || null,
+          factorRate: decisionForm.factorRate ? parseFloat(decisionForm.factorRate) : null,
+          totalPayback: decisionForm.totalPayback ? parseFloat(decisionForm.totalPayback) : null,
+          netAfterFees: decisionForm.netAfterFees ? parseFloat(decisionForm.netAfterFees) : null,
+          lender: decisionForm.lender || null,
+          notes: decisionForm.notes || null,
+          approvalDate: decisionForm.approvalDate || null,
+          declineReason: decisionForm.declineReason || null,
+        }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
+        setDecisionDialog(null);
+      } else {
+        console.error('Failed to save decision');
+      }
+    } catch (error) {
+      console.error('Error saving decision:', error);
+    } finally {
+      setSavingDecision(false);
+    }
+  };
+
+  // Reset/delete business decision
+  const handleResetDecision = async (decisionId: string) => {
+    try {
+      const res = await fetch(`/api/underwriting-decisions/${decisionId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
+      }
+    } catch (error) {
+      console.error('Error resetting decision:', error);
+    }
+  };
 
   const getStatusIcon = (status: string) => {
     if (status === 'High') return <TrendingUp className="w-4 h-4 text-green-600" />;
@@ -1297,7 +1407,7 @@ function BankStatementsTab() {
                 <Card key={businessName} className="p-6 hover-elevate" data-testid={`card-business-${businessName}`}>
                   {/* Business Header */}
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <button
                         onClick={() => toggleBusinessExpanded(businessName)}
                         className="flex items-center gap-2 hover:opacity-70 transition-opacity"
@@ -1315,6 +1425,73 @@ function BankStatementsTab() {
                         <FileText className="w-3 h-3" />
                         {uploads.length} {uploads.length === 1 ? 'Statement' : 'Statements'}
                       </Badge>
+                      
+                      {/* Business-level Underwriting Decision Status & Toggle */}
+                      {canManageApprovals && (() => {
+                        const businessEmail = uploads[0]?.email;
+                        if (!businessEmail) return null;
+                        const decision = getBusinessDecision(businessEmail);
+                        
+                        if (decision) {
+                          return (
+                            <div className="flex items-center gap-2">
+                              {decision.status === 'approved' ? (
+                                <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1">
+                                  <ThumbsUp className="w-3 h-3" />
+                                  Approved
+                                </Badge>
+                              ) : (
+                                <Badge variant="destructive" className="flex items-center gap-1">
+                                  <ThumbsDown className="w-3 h-3" />
+                                  Declined
+                                </Badge>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openDecisionDialog(businessEmail, businessName, decision.status === 'approved' ? 'approve' : 'decline')}
+                                data-testid={`button-edit-decision-${businessEmail}`}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleResetDecision(decision.id)}
+                                className="text-muted-foreground"
+                                data-testid={`button-reset-decision-${businessEmail}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openDecisionDialog(businessEmail, businessName, 'approve')}
+                              className="text-green-600 border-green-200 hover:bg-green-50 dark:border-green-800 dark:hover:bg-green-900/20"
+                              data-testid={`button-approve-business-${businessEmail}`}
+                            >
+                              <ThumbsUp className="w-3 h-3 mr-1" />
+                              Approve
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openDecisionDialog(businessEmail, businessName, 'decline')}
+                              className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
+                              data-testid={`button-decline-business-${businessEmail}`}
+                            >
+                              <ThumbsDown className="w-3 h-3 mr-1" />
+                              Decline
+                            </Button>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       <Button
@@ -1377,7 +1554,6 @@ function BankStatementsTab() {
                                   Checker
                                 </Badge>
                               )}
-                              {getApprovalBadge(upload.approvalStatus)}
                             </div>
                             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                               <span>{formatFileSize(upload.fileSize)}</span>
@@ -1386,80 +1562,9 @@ function BankStatementsTab() {
                                 <User className="w-3 h-3" />
                                 {upload.email}
                               </span>
-                              {upload.reviewedBy && upload.reviewedAt && (
-                                <span className="text-xs">
-                                  Reviewed by {upload.reviewedBy} on {format(new Date(upload.reviewedAt), 'MMM d, yyyy')}
-                                </span>
-                              )}
                             </div>
-                            {upload.approvalNotes && (
-                              <div className="mt-2 p-2 bg-muted rounded text-sm">
-                                <span className="font-medium">Notes:</span> {upload.approvalNotes}
-                              </div>
-                            )}
-                            {editingNotes === upload.id && (
-                              <div className="mt-2 flex gap-2 items-center">
-                                <Input
-                                  placeholder="Add notes..."
-                                  value={notesInput}
-                                  onChange={(e) => setNotesInput(e.target.value)}
-                                  className="flex-1"
-                                  data-testid={`input-approval-notes-${upload.id}`}
-                                />
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleSaveNotes(upload.id, upload.approvalStatus, notesInput)}
-                                  disabled={updatingApproval === upload.id}
-                                  data-testid={`button-save-notes-${upload.id}`}
-                                >
-                                  Save
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => { setEditingNotes(null); setNotesInput(""); }}
-                                  data-testid={`button-cancel-notes-${upload.id}`}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            )}
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            {canManageApprovals && (
-                              <>
-                                <Button
-                                  variant={upload.approvalStatus === 'approved' ? 'default' : 'outline'}
-                                  size="sm"
-                                  onClick={() => handleUpdateApproval(upload.id, 'approved', upload.approvalNotes || undefined)}
-                                  disabled={updatingApproval === upload.id}
-                                  className={upload.approvalStatus === 'approved' ? 'bg-green-600 hover:bg-green-700' : ''}
-                                  data-testid={`button-approve-${upload.id}`}
-                                >
-                                  {updatingApproval === upload.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 mr-1" />}
-                                  Approve
-                                </Button>
-                                <Button
-                                  variant={upload.approvalStatus === 'declined' ? 'destructive' : 'outline'}
-                                  size="sm"
-                                  onClick={() => handleUpdateApproval(upload.id, 'declined', upload.approvalNotes || undefined)}
-                                  disabled={updatingApproval === upload.id}
-                                  data-testid={`button-decline-${upload.id}`}
-                                >
-                                  {updatingApproval === upload.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4 mr-1" />}
-                                  Decline
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => { setEditingNotes(upload.id); setNotesInput(upload.approvalNotes || ""); }}
-                                  data-testid={`button-add-notes-${upload.id}`}
-                                >
-                                  <FileEdit className="w-4 h-4 mr-1" />
-                                  Notes
-                                </Button>
-                              </>
-                            )}
                             <Button
                               variant="outline"
                               size="sm"
@@ -1611,6 +1716,167 @@ function BankStatementsTab() {
         error={analysisError}
         title={analysisTitle}
       />
+
+      {/* Business Underwriting Decision Dialog */}
+      <Dialog open={!!decisionDialog} onOpenChange={(open) => !open && setDecisionDialog(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {decisionDialog?.mode === 'approve' ? (
+                <>
+                  <ThumbsUp className="w-5 h-5 text-green-600" />
+                  Approve: {decisionDialog?.businessName}
+                </>
+              ) : (
+                <>
+                  <ThumbsDown className="w-5 h-5 text-red-600" />
+                  Decline: {decisionDialog?.businessName}
+                </>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            {decisionDialog?.mode === 'approve' ? (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="advanceAmount">Advance Amount</Label>
+                    <Input
+                      id="advanceAmount"
+                      type="number"
+                      placeholder="$50,000"
+                      value={decisionForm.advanceAmount}
+                      onChange={(e) => setDecisionForm(prev => ({ ...prev, advanceAmount: e.target.value }))}
+                      data-testid="input-advance-amount"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="term">Term</Label>
+                    <Input
+                      id="term"
+                      placeholder="6 months"
+                      value={decisionForm.term}
+                      onChange={(e) => setDecisionForm(prev => ({ ...prev, term: e.target.value }))}
+                      data-testid="input-term"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="factorRate">Factor Rate</Label>
+                    <Input
+                      id="factorRate"
+                      type="number"
+                      step="0.01"
+                      placeholder="1.25"
+                      value={decisionForm.factorRate}
+                      onChange={(e) => setDecisionForm(prev => ({ ...prev, factorRate: e.target.value }))}
+                      data-testid="input-factor-rate"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="totalPayback">Total Payback</Label>
+                    <Input
+                      id="totalPayback"
+                      type="number"
+                      placeholder="$62,500"
+                      value={decisionForm.totalPayback}
+                      onChange={(e) => setDecisionForm(prev => ({ ...prev, totalPayback: e.target.value }))}
+                      data-testid="input-total-payback"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="netAfterFees">Net After Fees</Label>
+                    <Input
+                      id="netAfterFees"
+                      type="number"
+                      placeholder="$48,500"
+                      value={decisionForm.netAfterFees}
+                      onChange={(e) => setDecisionForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
+                      data-testid="input-net-after-fees"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="lender">Lender</Label>
+                    <Input
+                      id="lender"
+                      placeholder="Lender name"
+                      value={decisionForm.lender}
+                      onChange={(e) => setDecisionForm(prev => ({ ...prev, lender: e.target.value }))}
+                      data-testid="input-lender"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="approvalDate">Approval Date</Label>
+                  <Input
+                    id="approvalDate"
+                    type="date"
+                    value={decisionForm.approvalDate}
+                    onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDate: e.target.value }))}
+                    data-testid="input-approval-date"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="notes">Notes</Label>
+                  <Input
+                    id="notes"
+                    placeholder="Additional notes..."
+                    value={decisionForm.notes}
+                    onChange={(e) => setDecisionForm(prev => ({ ...prev, notes: e.target.value }))}
+                    data-testid="input-notes"
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <Label htmlFor="declineReason">Reason for Decline</Label>
+                <Input
+                  id="declineReason"
+                  placeholder="Enter reason for declining..."
+                  value={decisionForm.declineReason}
+                  onChange={(e) => setDecisionForm(prev => ({ ...prev, declineReason: e.target.value }))}
+                  data-testid="input-decline-reason"
+                />
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setDecisionDialog(null)}
+                data-testid="button-cancel-decision"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveDecision}
+                disabled={savingDecision}
+                className={decisionDialog?.mode === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+                data-testid="button-save-decision"
+              >
+                {savingDecision ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : decisionDialog?.mode === 'approve' ? (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Approve Business
+                  </>
+                ) : (
+                  <>
+                    <X className="w-4 h-4 mr-2" />
+                    Decline Business
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
