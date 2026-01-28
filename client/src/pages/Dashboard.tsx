@@ -907,6 +907,7 @@ interface BusinessDecisionDialogData {
 }
 
 function BankStatementsTab() {
+  const { toast } = useToast();
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
   const [selectedAssetReport, setSelectedAssetReport] = useState<BankConnection | null>(null);
   const [expandedBusinesses, setExpandedBusinesses] = useState<Set<string>>(new Set());
