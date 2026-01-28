@@ -1,11 +1,12 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
   type BotAttempt, type InsertBotAttempt,
   type Partner, type InsertPartner,
-  type LenderApproval, type InsertLenderApproval
+  type LenderApproval, type InsertLenderApproval,
+  type BusinessUnderwritingDecision, type InsertBusinessUnderwritingDecision
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -98,6 +99,13 @@ export interface IStorage {
   getLenderApprovalsByBusinessName(businessName: string): Promise<LenderApproval[]>;
   getLenderApprovalsByLender(lenderName: string): Promise<LenderApproval[]>;
   updateLenderApproval(id: string, updates: Partial<InsertLenderApproval>): Promise<LenderApproval | undefined>;
+
+  // Business Underwriting Decision methods
+  createOrUpdateBusinessUnderwritingDecision(decision: InsertBusinessUnderwritingDecision): Promise<BusinessUnderwritingDecision>;
+  getBusinessUnderwritingDecision(id: string): Promise<BusinessUnderwritingDecision | undefined>;
+  getBusinessUnderwritingDecisionByEmail(email: string): Promise<BusinessUnderwritingDecision | undefined>;
+  getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]>;
+  deleteBusinessUnderwritingDecision(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -511,6 +519,63 @@ export class DatabaseStorage implements IStorage {
       .where(eq(lenderApprovals.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  // Business Underwriting Decision methods
+  async createOrUpdateBusinessUnderwritingDecision(decision: InsertBusinessUnderwritingDecision): Promise<BusinessUnderwritingDecision> {
+    // Check if a decision already exists for this business email
+    const existing = await this.getBusinessUnderwritingDecisionByEmail(decision.businessEmail);
+    
+    if (existing) {
+      // Update existing decision
+      const [updated] = await db
+        .update(businessUnderwritingDecisions)
+        .set({
+          ...decision,
+          updatedAt: new Date(),
+        })
+        .where(eq(businessUnderwritingDecisions.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      // Create new decision
+      const [newDecision] = await db
+        .insert(businessUnderwritingDecisions)
+        .values(decision)
+        .returning();
+      return newDecision;
+    }
+  }
+
+  async getBusinessUnderwritingDecision(id: string): Promise<BusinessUnderwritingDecision | undefined> {
+    const [decision] = await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(eq(businessUnderwritingDecisions.id, id));
+    return decision || undefined;
+  }
+
+  async getBusinessUnderwritingDecisionByEmail(email: string): Promise<BusinessUnderwritingDecision | undefined> {
+    const [decision] = await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(sql`LOWER(${businessUnderwritingDecisions.businessEmail}) = LOWER(${email})`);
+    return decision || undefined;
+  }
+
+  async getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]> {
+    return await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .orderBy(desc(businessUnderwritingDecisions.updatedAt));
+  }
+
+  async deleteBusinessUnderwritingDecision(id: string): Promise<boolean> {
+    const result = await db
+      .delete(businessUnderwritingDecisions)
+      .where(eq(businessUnderwritingDecisions.id, id))
+      .returning();
+    return result.length > 0;
   }
 }
 

@@ -380,3 +380,42 @@ export const insertLenderApprovalSchema = createInsertSchema(lenderApprovals).om
 
 export type InsertLenderApproval = z.infer<typeof insertLenderApprovalSchema>;
 export type LenderApproval = typeof lenderApprovals.$inferSelect;
+
+// Business Underwriting Decisions - Store approval/decline decisions at business level
+export const businessUnderwritingDecisions = pgTable("business_underwriting_decisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Business identifier (using email as the unique key for the business)
+  businessEmail: text("business_email").notNull().unique(),
+  businessName: text("business_name"),
+  
+  // Decision status
+  status: text("status").notNull(), // "approved" or "declined"
+  
+  // Approval fields (populated when status = "approved")
+  advanceAmount: decimal("advance_amount", { precision: 12, scale: 2 }),
+  term: text("term"), // e.g., "6 months", "12 months"
+  factorRate: decimal("factor_rate", { precision: 5, scale: 4 }), // e.g., 1.25
+  totalPayback: decimal("total_payback", { precision: 12, scale: 2 }),
+  netAfterFees: decimal("net_after_fees", { precision: 12, scale: 2 }),
+  lender: text("lender"),
+  notes: text("notes"),
+  approvalDate: timestamp("approval_date"),
+  
+  // Decline fields (populated when status = "declined")
+  declineReason: text("decline_reason"),
+  
+  // Audit fields
+  reviewedBy: text("reviewed_by"), // Email of underwriter who made the decision
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBusinessUnderwritingDecisionSchema = createInsertSchema(businessUnderwritingDecisions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertBusinessUnderwritingDecision = z.infer<typeof insertBusinessUnderwritingDecisionSchema>;
+export type BusinessUnderwritingDecision = typeof businessUnderwritingDecisions.$inferSelect;
