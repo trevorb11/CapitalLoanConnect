@@ -63,7 +63,7 @@ export default function ApprovalLetter() {
   const { slug } = useParams<{ slug: string }>();
 
   const { data: approval, isLoading, error } = useQuery<ApprovalData>({
-    queryKey: ["/api/approval-letter", slug],
+    queryKey: [`/api/approval-letter/${slug}`],
     enabled: !!slug,
   });
 
