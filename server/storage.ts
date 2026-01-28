@@ -104,6 +104,7 @@ export interface IStorage {
   createOrUpdateBusinessUnderwritingDecision(decision: InsertBusinessUnderwritingDecision): Promise<BusinessUnderwritingDecision>;
   getBusinessUnderwritingDecision(id: string): Promise<BusinessUnderwritingDecision | undefined>;
   getBusinessUnderwritingDecisionByEmail(email: string): Promise<BusinessUnderwritingDecision | undefined>;
+  getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined>;
   getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]>;
   deleteBusinessUnderwritingDecision(id: string): Promise<boolean>;
 }
@@ -522,26 +523,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Business Underwriting Decision methods
+  private generateApprovalSlug(businessName: string | null, businessEmail: string): string {
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const businessIndicator = businessName 
+      ? businessName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15)
+      : businessEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15);
+    const approvalCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `${businessIndicator}-${dateStr}-${approvalCode}`;
+  }
+
   async createOrUpdateBusinessUnderwritingDecision(decision: InsertBusinessUnderwritingDecision): Promise<BusinessUnderwritingDecision> {
-    // Check if a decision already exists for this business email
     const existing = await this.getBusinessUnderwritingDecisionByEmail(decision.businessEmail);
     
+    let approvalSlug = existing?.approvalSlug;
+    if (decision.status === 'approved' && !approvalSlug) {
+      approvalSlug = this.generateApprovalSlug(decision.businessName || null, decision.businessEmail);
+    } else if (decision.status === 'declined') {
+      approvalSlug = null;
+    }
+    
     if (existing) {
-      // Update existing decision
       const [updated] = await db
         .update(businessUnderwritingDecisions)
         .set({
           ...decision,
+          approvalSlug,
           updatedAt: new Date(),
         })
         .where(eq(businessUnderwritingDecisions.id, existing.id))
         .returning();
       return updated;
     } else {
-      // Create new decision
       const [newDecision] = await db
         .insert(businessUnderwritingDecisions)
-        .values(decision)
+        .values({ ...decision, approvalSlug })
         .returning();
       return newDecision;
     }
@@ -560,6 +576,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(businessUnderwritingDecisions)
       .where(sql`LOWER(${businessUnderwritingDecisions.businessEmail}) = LOWER(${email})`);
+    return decision || undefined;
+  }
+
+  async getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined> {
+    const [decision] = await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(eq(businessUnderwritingDecisions.approvalSlug, slug));
     return decision || undefined;
   }
 

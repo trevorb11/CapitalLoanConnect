@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { type LoanApplication, type BankStatementUpload, type BusinessUnderwritingDecision } from "@shared/schema";
 import { queryClient, getQueryFn } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1433,13 +1434,38 @@ function BankStatementsTab() {
                         const decision = getBusinessDecision(businessEmail);
                         
                         if (decision) {
+                          const approvalUrl = decision.approvalSlug 
+                            ? `${window.location.origin}/approved/${decision.approvalSlug}`
+                            : null;
+                          
+                          const copyApprovalUrl = () => {
+                            if (approvalUrl) {
+                              navigator.clipboard.writeText(approvalUrl);
+                              toast({ title: "URL Copied", description: "Approval letter URL copied to clipboard" });
+                            }
+                          };
+                          
                           return (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               {decision.status === 'approved' ? (
-                                <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1">
-                                  <ThumbsUp className="w-3 h-3" />
-                                  Approved
-                                </Badge>
+                                <>
+                                  <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1">
+                                    <ThumbsUp className="w-3 h-3" />
+                                    Approved
+                                  </Badge>
+                                  {approvalUrl && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={copyApprovalUrl}
+                                      className="text-primary border-primary/30 hover:bg-primary/10"
+                                      data-testid={`button-copy-approval-url-${businessEmail}`}
+                                    >
+                                      <Copy className="w-3 h-3 mr-1" />
+                                      Copy Letter URL
+                                    </Button>
+                                  )}
+                                </>
                               ) : (
                                 <Badge variant="destructive" className="flex items-center gap-1">
                                   <ThumbsDown className="w-3 h-3" />
@@ -1977,6 +2003,7 @@ function BotAttemptsTab() {
 }
 
 export default function Dashboard() {
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial" | "low-revenue">("all");
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>("all");

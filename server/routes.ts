@@ -2324,6 +2324,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get approval letter by slug (public route for approved businesses)
+  app.get("/api/approval-letter/:slug", async (req, res) => {
+    const { slug } = req.params;
+    
+    try {
+      const decision = await storage.getBusinessUnderwritingDecisionBySlug(slug);
+      
+      if (!decision) {
+        return res.status(404).json({ error: "Approval letter not found" });
+      }
+      
+      if (decision.status !== 'approved') {
+        return res.status(404).json({ error: "No valid approval found" });
+      }
+      
+      // Return approval details for the letter page
+      res.json({
+        businessName: decision.businessName,
+        advanceAmount: decision.advanceAmount,
+        term: decision.term,
+        factorRate: decision.factorRate,
+        totalPayback: decision.totalPayback,
+        netAfterFees: decision.netAfterFees,
+        lender: decision.lender,
+        approvalDate: decision.approvalDate,
+        notes: decision.notes,
+      });
+    } catch (error) {
+      console.error("Error fetching approval letter:", error);
+      res.status(500).json({ error: "Failed to fetch approval letter" });
+    }
+  });
+
   // 2b. Get combined view URL for all statements by email (for dashboard "View All" button)
   app.get("/api/bank-statements/view-url", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {

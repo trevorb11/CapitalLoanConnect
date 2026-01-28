@@ -405,6 +405,9 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   // Decline fields (populated when status = "declined")
   declineReason: text("decline_reason"),
   
+  // Approval letter page slug (generated when approved)
+  approvalSlug: text("approval_slug").unique(),
+  
   // Audit fields
   reviewedBy: text("reviewed_by"), // Email of underwriter who made the decision
   createdAt: timestamp("created_at").defaultNow(),

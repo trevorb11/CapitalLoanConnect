@@ -37,6 +37,7 @@ import ReferralLanding from "@/pages/ReferralLanding";
 import Approvals from "@/pages/Approvals";
 import RepConsole from "@/pages/RepConsole";
 import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
+import ApprovalLetter from "@/pages/ApprovalLetter";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -97,6 +98,9 @@ function Router() {
       
       {/* Lead Source Analytics - Admin Only */}
       <Route path="/lead-sources" component={LeadSourceAnalytics} />
+
+      {/* Approval Letter - Public page for approved businesses */}
+      <Route path="/approved/:slug" component={ApprovalLetter} />
 
       {/* Partner Portal Routes */}
       <Route path="/partner" component={PartnerDashboard} />
