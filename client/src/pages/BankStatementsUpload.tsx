@@ -16,9 +16,7 @@ import {
   Building2,
   Mail,
   X,
-  ArrowRight,
-  Calendar,
-  Phone
+  ArrowRight
 } from "lucide-react";
 import { Link, useSearch, useLocation } from "wouter";
 import tcgLogo from "@assets/TCG_White_logo_1764664150165.png";
@@ -226,25 +224,6 @@ export default function BankStatementsUpload() {
             </ul>
           </div>
 
-          {/* Schedule a Call CTA - Primary action after upload */}
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-4">
-            <h3 className="font-semibold text-center mb-2">What's Next?</h3>
-            <p className="text-sm text-muted-foreground text-center mb-4">
-              Schedule a call with one of our funding specialists to discuss your options and get answers to any questions.
-            </p>
-            <a 
-              href="https://bit.ly/3Zxj0Kq" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="block"
-            >
-              <Button className="w-full" data-testid="button-schedule-call-success">
-                <Calendar className="w-4 h-4 mr-2" />
-                Schedule a Call with a Funding Specialist
-              </Button>
-            </a>
-          </div>
-
           <div className="flex flex-col gap-3">
             <Button 
               variant="outline"
@@ -265,6 +244,20 @@ export default function BankStatementsUpload() {
               </Button>
             </Link>
           </div>
+
+          {/* Subtle schedule call link */}
+          <p className="text-xs text-muted-foreground text-center mt-4">
+            Have questions?{" "}
+            <a 
+              href="https://bit.ly/3Zxj0Kq" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+              data-testid="link-schedule-call-success"
+            >
+              Schedule a call with a funding specialist
+            </a>
+          </p>
         </Card>
       </div>
     );
@@ -469,25 +462,6 @@ export default function BankStatementsUpload() {
                 )}
               </Button>
 
-              {/* Secondary CTA - Schedule a call */}
-              <div className="relative flex items-center justify-center my-1">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-muted-foreground/20"></div>
-                </div>
-                <span className="relative bg-card px-3 text-sm text-muted-foreground">or</span>
-              </div>
-
-              <a 
-                href="https://bit.ly/3Zxj0Kq" 
-                target="_blank" 
-                rel="noopener noreferrer"
-              >
-                <Button variant="outline" className="w-full" data-testid="button-schedule-call">
-                  <Phone className="w-4 h-4 mr-2" />
-                  Schedule a Call with a Funding Specialist
-                </Button>
-              </a>
-
               <Link href="/">
                 <Button variant="ghost" className="w-full text-muted-foreground" data-testid="button-cancel">
                   <ArrowLeft className="w-4 h-4 mr-2" />
@@ -512,6 +486,18 @@ export default function BankStatementsUpload() {
         <div className="mt-6 text-center">
           <p className="text-sm text-white/50">
             We recommend uploading your last 3-6 months of business bank statements
+          </p>
+          <p className="text-xs text-white/40 mt-3">
+            Have questions?{" "}
+            <a 
+              href="https://bit.ly/3Zxj0Kq" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary/80 hover:text-primary hover:underline"
+              data-testid="link-schedule-call"
+            >
+              Schedule a call with a funding specialist
+            </a>
           </p>
         </div>
       </div>
