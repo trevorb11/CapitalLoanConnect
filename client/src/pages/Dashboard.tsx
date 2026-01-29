@@ -6,10 +6,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -938,6 +939,9 @@ function BankStatementsTab() {
     approvalDate: new Date().toISOString().split('T')[0],
     declineReason: '',
   });
+  const [additionalApprovals, setAdditionalApprovals] = useState<Array<{ lender: string; amount: string; term: string; factorRate: string }>>([]);
+  const [showAddApprovalForm, setShowAddApprovalForm] = useState(false);
+  const [newApproval, setNewApproval] = useState({ lender: '', amount: '', term: '', factorRate: '' });
 
   const { data: authData } = useQuery<AuthState | null>({
     queryKey: ['/api/auth/check'],
@@ -1004,6 +1008,11 @@ function BankStatementsTab() {
       approvalDate: existing?.approvalDate ? new Date(existing.approvalDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       declineReason: existing?.declineReason || '',
     });
+    // Load existing additional approvals
+    const existingAdditional = existing?.additionalApprovals as Array<{ lender: string; amount: string; term: string; factorRate: string }> | null;
+    setAdditionalApprovals(existingAdditional || []);
+    setShowAddApprovalForm(false);
+    setNewApproval({ lender: '', amount: '', term: '', factorRate: '' });
     setDecisionDialog({ businessEmail, businessName, mode });
   };
 
@@ -1030,6 +1039,7 @@ function BankStatementsTab() {
           notes: decisionForm.notes || null,
           approvalDate: decisionForm.approvalDate || null,
           declineReason: decisionForm.declineReason || null,
+          additionalApprovals: additionalApprovals.length > 0 ? additionalApprovals : null,
         }),
       });
       if (res.ok) {
@@ -1867,13 +1877,158 @@ function BankStatementsTab() {
                 </div>
                 <div>
                   <Label htmlFor="notes">Notes</Label>
-                  <Input
+                  <Textarea
                     id="notes"
                     placeholder="Additional notes..."
+                    rows={3}
                     value={decisionForm.notes}
                     onChange={(e) => setDecisionForm(prev => ({ ...prev, notes: e.target.value }))}
                     data-testid="input-notes"
                   />
+                </div>
+
+                {/* Additional Approvals Section */}
+                <div className="border-t pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <Label className="text-base font-semibold">Additional Approvals</Label>
+                    {!showAddApprovalForm && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAddApprovalForm(true)}
+                        data-testid="button-add-additional-approval"
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Add
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* List of existing additional approvals */}
+                  {additionalApprovals.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {additionalApprovals.map((appr, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg text-sm">
+                          <div className="flex-1 grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-muted-foreground">Lender: </span>
+                              <span className="font-medium">{appr.lender}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Amount: </span>
+                              <span className="font-medium text-green-600">${parseFloat(appr.amount).toLocaleString()}</span>
+                            </div>
+                            {appr.term && (
+                              <div>
+                                <span className="text-muted-foreground">Term: </span>
+                                <span className="font-medium">{appr.term}</span>
+                              </div>
+                            )}
+                            {appr.factorRate && (
+                              <div>
+                                <span className="text-muted-foreground">Rate: </span>
+                                <span className="font-medium">{appr.factorRate}x</span>
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setAdditionalApprovals(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-red-500 hover:text-red-700 ml-2"
+                            data-testid={`button-remove-additional-${idx}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add new additional approval form */}
+                  {showAddApprovalForm && (
+                    <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor="new-appr-lender" className="text-xs">Lender *</Label>
+                          <Input
+                            id="new-appr-lender"
+                            placeholder="Lender name"
+                            value={newApproval.lender}
+                            onChange={(e) => setNewApproval(prev => ({ ...prev, lender: e.target.value }))}
+                            data-testid="input-new-appr-lender"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="new-appr-amount" className="text-xs">Amount *</Label>
+                          <Input
+                            id="new-appr-amount"
+                            type="number"
+                            placeholder="$25,000"
+                            value={newApproval.amount}
+                            onChange={(e) => setNewApproval(prev => ({ ...prev, amount: e.target.value }))}
+                            data-testid="input-new-appr-amount"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="new-appr-term" className="text-xs">Term Length</Label>
+                          <Input
+                            id="new-appr-term"
+                            placeholder="6 months"
+                            value={newApproval.term}
+                            onChange={(e) => setNewApproval(prev => ({ ...prev, term: e.target.value }))}
+                            data-testid="input-new-appr-term"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="new-appr-rate" className="text-xs">Factor Rate</Label>
+                          <Input
+                            id="new-appr-rate"
+                            type="number"
+                            step="0.01"
+                            placeholder="1.25"
+                            value={newApproval.factorRate}
+                            onChange={(e) => setNewApproval(prev => ({ ...prev, factorRate: e.target.value }))}
+                            data-testid="input-new-appr-rate"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowAddApprovalForm(false);
+                            setNewApproval({ lender: '', amount: '', term: '', factorRate: '' });
+                          }}
+                          data-testid="button-cancel-new-appr"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={!newApproval.lender.trim() || !newApproval.amount.trim()}
+                          onClick={() => {
+                            setAdditionalApprovals(prev => [...prev, { ...newApproval }]);
+                            setNewApproval({ lender: '', amount: '', term: '', factorRate: '' });
+                            setShowAddApprovalForm(false);
+                          }}
+                          data-testid="button-save-new-appr"
+                        >
+                          <Save className="w-3 h-3 mr-1" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {additionalApprovals.length === 0 && !showAddApprovalForm && (
+                    <p className="text-xs text-muted-foreground">No additional approvals added</p>
+                  )}
                 </div>
               </>
             ) : (

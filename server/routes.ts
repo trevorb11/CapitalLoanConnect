@@ -2260,20 +2260,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       lender,
       notes,
       approvalDate,
-      declineReason
+      declineReason,
+      additionalApprovals
     } = req.body;
-    
+
     if (!businessEmail) {
       return res.status(400).json({ error: "Business email is required" });
     }
-    
+
     if (!status || !['approved', 'declined'].includes(status)) {
       return res.status(400).json({ error: "Status must be 'approved' or 'declined'" });
     }
-    
+
     try {
       const reviewerEmail = req.session.user.agentEmail || 'admin';
-      
+
       const decision = await storage.createOrUpdateBusinessUnderwritingDecision({
         businessEmail,
         businessName: businessName || null,
@@ -2288,6 +2289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notes: notes || null,
         approvalDate: approvalDate ? new Date(approvalDate) : new Date(),
         declineReason: declineReason || null,
+        additionalApprovals: additionalApprovals || null,
         reviewedBy: reviewerEmail,
       });
       

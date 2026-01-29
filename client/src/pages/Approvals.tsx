@@ -30,13 +30,24 @@ import {
   Calendar,
   Save,
   X,
+  Plus,
+  Trash2,
+  Landmark,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import type { BusinessUnderwritingDecision } from "@shared/schema";
 
 interface AuthState {
   isAuthenticated: boolean;
   role?: 'admin' | 'agent' | 'underwriting';
+}
+
+interface AdditionalApproval {
+  lender: string;
+  amount: string;
+  term: string;
+  factorRate: string;
 }
 
 function formatCurrency(value: string | number | null | undefined): string {
@@ -80,6 +91,10 @@ export default function Approvals() {
     approvalDate: '',
   });
   const [saving, setSaving] = useState(false);
+  // Additional approvals editing state
+  const [editAdditionalApprovals, setEditAdditionalApprovals] = useState<AdditionalApproval[]>([]);
+  const [showEditAddForm, setShowEditAddForm] = useState(false);
+  const [newEditApproval, setNewEditApproval] = useState<AdditionalApproval>({ lender: '', amount: '', term: '', factorRate: '' });
 
   // Check authentication first
   useEffect(() => {
@@ -176,6 +191,10 @@ export default function Approvals() {
       notes: decision.notes || '',
       approvalDate: decision.approvalDate ? new Date(decision.approvalDate).toISOString().split('T')[0] : '',
     });
+    const existing = decision.additionalApprovals as AdditionalApproval[] | null;
+    setEditAdditionalApprovals(existing || []);
+    setShowEditAddForm(false);
+    setNewEditApproval({ lender: '', amount: '', term: '', factorRate: '' });
     setEditingDecision(decision);
   };
 
@@ -195,6 +214,7 @@ export default function Approvals() {
           lender: editForm.lender || null,
           notes: editForm.notes || null,
           approvalDate: editForm.approvalDate || null,
+          additionalApprovals: editAdditionalApprovals.length > 0 ? editAdditionalApprovals : null,
         },
       });
     } finally {
@@ -357,133 +377,162 @@ export default function Approvals() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {filteredDecisions.map((decision) => (
-              <Card key={decision.id} className="p-6 hover-elevate" data-testid={`card-approval-${decision.id}`}>
-                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                  {/* Left: Business info */}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3 flex-wrap">
-                      <h3 className="font-semibold text-lg flex items-center gap-2">
-                        <Building2 className="w-5 h-5 text-primary" />
-                        {decision.businessName || decision.businessEmail}
-                      </h3>
-                      <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Approved
-                      </Badge>
-                      {decision.approvalSlug && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyApprovalUrl(decision.approvalSlug!)}
-                          className="text-primary border-primary/30 hover:bg-primary/10"
-                          data-testid={`button-copy-url-${decision.id}`}
-                        >
-                          <Copy className="w-3 h-3 mr-1" />
-                          Copy Letter URL
-                        </Button>
-                      )}
-                      {decision.approvalSlug && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => window.open(`/approved/${decision.approvalSlug}`, '_blank')}
-                          data-testid={`button-view-letter-${decision.id}`}
-                        >
-                          <Link2 className="w-3 h-3 mr-1" />
-                          View Letter
-                        </Button>
-                      )}
-                    </div>
+            {filteredDecisions.map((decision) => {
+              const additionalApprovals = (decision.additionalApprovals as AdditionalApproval[] | null) || [];
+              return (
+                <Card key={decision.id} className="p-6 hover-elevate" data-testid={`card-approval-${decision.id}`}>
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                    {/* Left: Business info */}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3 flex-wrap">
+                        <h3 className="font-semibold text-lg flex items-center gap-2">
+                          <Building2 className="w-5 h-5 text-primary" />
+                          {decision.businessName || decision.businessEmail}
+                        </h3>
+                        <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Approved
+                        </Badge>
+                        {decision.approvalSlug && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyApprovalUrl(decision.approvalSlug!)}
+                            className="text-primary border-primary/30 hover:bg-primary/10"
+                            data-testid={`button-copy-url-${decision.id}`}
+                          >
+                            <Copy className="w-3 h-3 mr-1" />
+                            Copy Letter URL
+                          </Button>
+                        )}
+                        {decision.approvalSlug && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => window.open(`/approved/${decision.approvalSlug}`, '_blank')}
+                            data-testid={`button-view-letter-${decision.id}`}
+                          >
+                            <Link2 className="w-3 h-3 mr-1" />
+                            View Letter
+                          </Button>
+                        )}
+                      </div>
 
-                    <div className="text-sm text-muted-foreground mb-3">
-                      {decision.businessEmail}
-                    </div>
+                      <div className="text-sm text-muted-foreground mb-3">
+                        {decision.businessEmail}
+                      </div>
 
-                    {/* Approval Details Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <div className="text-muted-foreground">Advance Amount</div>
-                        <div className="font-semibold text-green-600 dark:text-green-400">
-                          {formatCurrency(decision.advanceAmount)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Term</div>
-                        <div className="font-medium">{decision.term || "N/A"}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Factor Rate</div>
-                        <div className="font-medium">
-                          {decision.factorRate ? `${decision.factorRate}x` : "N/A"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Payment Frequency</div>
-                        <div className="font-medium capitalize">{decision.paymentFrequency || "N/A"}</div>
-                      </div>
-                    </div>
-
-                    {(decision.totalPayback || decision.netAfterFees || decision.lender) && (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3 pt-3 border-t">
+                      {/* Primary Approval Details Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
-                          <div className="text-muted-foreground">Total Payback</div>
-                          <div className="font-medium">{formatCurrency(decision.totalPayback)}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Net After Fees</div>
-                          <div className="font-medium">{formatCurrency(decision.netAfterFees)}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Lender</div>
-                          <div className="font-medium">{decision.lender || "N/A"}</div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Approval Date</div>
-                          <div className="font-medium flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {formatDate(decision.approvalDate)}
+                          <div className="text-muted-foreground">Advance Amount</div>
+                          <div className="font-semibold text-green-600 dark:text-green-400">
+                            {formatCurrency(decision.advanceAmount)}
                           </div>
                         </div>
+                        <div>
+                          <div className="text-muted-foreground">Term</div>
+                          <div className="font-medium">{decision.term || "N/A"}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Factor Rate</div>
+                          <div className="font-medium">
+                            {decision.factorRate ? `${decision.factorRate}x` : "N/A"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Payment Frequency</div>
+                          <div className="font-medium capitalize">{decision.paymentFrequency || "N/A"}</div>
+                        </div>
                       </div>
-                    )}
 
-                    {decision.notes && (
-                      <div className="mt-3 pt-3 border-t text-sm">
-                        <div className="text-muted-foreground mb-1">Notes</div>
-                        <div>{decision.notes}</div>
-                      </div>
-                    )}
+                      {(decision.totalPayback || decision.netAfterFees || decision.lender) && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3 pt-3 border-t">
+                          <div>
+                            <div className="text-muted-foreground">Total Payback</div>
+                            <div className="font-medium">{formatCurrency(decision.totalPayback)}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Net After Fees</div>
+                            <div className="font-medium">{formatCurrency(decision.netAfterFees)}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Lender</div>
+                            <div className="font-medium">{decision.lender || "N/A"}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Approval Date</div>
+                            <div className="font-medium flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {formatDate(decision.approvalDate)}
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
-                    {decision.reviewedBy && (
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        Reviewed by: {decision.reviewedBy} | Updated: {formatDate(decision.updatedAt)}
-                      </div>
-                    )}
+                      {/* Additional Approvals */}
+                      {additionalApprovals.length > 0 && (
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="text-sm text-muted-foreground mb-2 font-medium">Additional Approvals</div>
+                          <div className="space-y-2">
+                            {additionalApprovals.map((appr, idx) => (
+                              <div key={idx} className="flex items-center gap-4 p-2 bg-muted/50 rounded-lg text-sm">
+                                <div className="flex items-center gap-1">
+                                  <Landmark className="w-3 h-3 text-muted-foreground" />
+                                  <span className="font-medium">{appr.lender}</span>
+                                </div>
+                                <div className="font-semibold text-green-600 dark:text-green-400">
+                                  {formatCurrency(appr.amount)}
+                                </div>
+                                {appr.term && (
+                                  <div className="text-muted-foreground">{appr.term}</div>
+                                )}
+                                {appr.factorRate && (
+                                  <div className="text-muted-foreground">{appr.factorRate}x</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {decision.notes && (
+                        <div className="mt-3 pt-3 border-t text-sm">
+                          <div className="text-muted-foreground mb-1">Notes</div>
+                          <div className="whitespace-pre-wrap">{decision.notes}</div>
+                        </div>
+                      )}
+
+                      {decision.reviewedBy && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Reviewed by: {decision.reviewedBy} | Updated: {formatDate(decision.updatedAt)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right: Edit button */}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditDialog(decision)}
+                        data-testid={`button-edit-${decision.id}`}
+                      >
+                        <Pencil className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+                    </div>
                   </div>
-
-                  {/* Right: Edit button */}
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEditDialog(decision)}
-                      data-testid={`button-edit-${decision.id}`}
-                    >
-                      <Pencil className="w-4 h-4 mr-1" />
-                      Edit
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
 
       {/* Edit Dialog */}
       <Dialog open={!!editingDecision} onOpenChange={(open) => !open && setEditingDecision(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="w-5 h-5 text-primary" />
@@ -590,14 +639,158 @@ export default function Approvals() {
             </div>
             <div>
               <Label htmlFor="edit-notes">Notes</Label>
-              <Input
+              <Textarea
                 id="edit-notes"
                 placeholder="Additional notes..."
+                rows={3}
                 value={editForm.notes}
                 onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
                 data-testid="input-edit-notes"
               />
             </div>
+
+            {/* Additional Approvals Section in Edit Dialog */}
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-base font-semibold">Additional Approvals</Label>
+                {!showEditAddForm && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowEditAddForm(true)}
+                    data-testid="button-edit-add-additional"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add
+                  </Button>
+                )}
+              </div>
+
+              {editAdditionalApprovals.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {editAdditionalApprovals.map((appr, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg text-sm">
+                      <div className="flex-1 grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-muted-foreground">Lender: </span>
+                          <span className="font-medium">{appr.lender}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Amount: </span>
+                          <span className="font-medium text-green-600">${parseFloat(appr.amount).toLocaleString()}</span>
+                        </div>
+                        {appr.term && (
+                          <div>
+                            <span className="text-muted-foreground">Term: </span>
+                            <span className="font-medium">{appr.term}</span>
+                          </div>
+                        )}
+                        {appr.factorRate && (
+                          <div>
+                            <span className="text-muted-foreground">Rate: </span>
+                            <span className="font-medium">{appr.factorRate}x</span>
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditAdditionalApprovals(prev => prev.filter((_, i) => i !== idx))}
+                        className="text-red-500 hover:text-red-700 ml-2"
+                        data-testid={`button-edit-remove-additional-${idx}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showEditAddForm && (
+                <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="edit-new-appr-lender" className="text-xs">Lender *</Label>
+                      <Input
+                        id="edit-new-appr-lender"
+                        placeholder="Lender name"
+                        value={newEditApproval.lender}
+                        onChange={(e) => setNewEditApproval(prev => ({ ...prev, lender: e.target.value }))}
+                        data-testid="input-edit-new-appr-lender"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-new-appr-amount" className="text-xs">Amount *</Label>
+                      <Input
+                        id="edit-new-appr-amount"
+                        type="number"
+                        placeholder="$25,000"
+                        value={newEditApproval.amount}
+                        onChange={(e) => setNewEditApproval(prev => ({ ...prev, amount: e.target.value }))}
+                        data-testid="input-edit-new-appr-amount"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-new-appr-term" className="text-xs">Term Length</Label>
+                      <Input
+                        id="edit-new-appr-term"
+                        placeholder="6 months"
+                        value={newEditApproval.term}
+                        onChange={(e) => setNewEditApproval(prev => ({ ...prev, term: e.target.value }))}
+                        data-testid="input-edit-new-appr-term"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-new-appr-rate" className="text-xs">Factor Rate</Label>
+                      <Input
+                        id="edit-new-appr-rate"
+                        type="number"
+                        step="0.01"
+                        placeholder="1.25"
+                        value={newEditApproval.factorRate}
+                        onChange={(e) => setNewEditApproval(prev => ({ ...prev, factorRate: e.target.value }))}
+                        data-testid="input-edit-new-appr-rate"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowEditAddForm(false);
+                        setNewEditApproval({ lender: '', amount: '', term: '', factorRate: '' });
+                      }}
+                      data-testid="button-edit-cancel-new-appr"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!newEditApproval.lender.trim() || !newEditApproval.amount.trim()}
+                      onClick={() => {
+                        setEditAdditionalApprovals(prev => [...prev, { ...newEditApproval }]);
+                        setNewEditApproval({ lender: '', amount: '', term: '', factorRate: '' });
+                        setShowEditAddForm(false);
+                      }}
+                      data-testid="button-edit-save-new-appr"
+                    >
+                      <Save className="w-3 h-3 mr-1" />
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {editAdditionalApprovals.length === 0 && !showEditAddForm && (
+                <p className="text-xs text-muted-foreground">No additional approvals added</p>
+              )}
+            </div>
+
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"
