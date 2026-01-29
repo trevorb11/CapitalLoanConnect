@@ -426,6 +426,7 @@ export class GoHighLevelService {
     }
     
     // Check for low revenue contacts (threshold: $12,000/month)
+    // Skip low revenue tagging for full applications - they should be stored with regular applications
     const LOW_REVENUE_THRESHOLD = 12000;
     const monthlyRevenueValue = application.monthlyRevenue 
       ? parseFloat(application.monthlyRevenue.toString().replace(/[^0-9.]/g, ''))
@@ -433,7 +434,7 @@ export class GoHighLevelService {
         ? parseFloat(application.averageMonthlyRevenue.toString().replace(/[^0-9.]/g, ''))
         : null;
     
-    if (monthlyRevenueValue !== null && monthlyRevenueValue < LOW_REVENUE_THRESHOLD) {
+    if (monthlyRevenueValue !== null && monthlyRevenueValue < LOW_REVENUE_THRESHOLD && !application.isFullApplicationCompleted) {
       tags.push("Low Revenue");
     }
     
