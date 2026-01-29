@@ -106,6 +106,7 @@ export interface IStorage {
   getBusinessUnderwritingDecisionByEmail(email: string): Promise<BusinessUnderwritingDecision | undefined>;
   getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined>;
   getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]>;
+  updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision>): Promise<BusinessUnderwritingDecision | undefined>;
   deleteBusinessUnderwritingDecision(id: string): Promise<boolean>;
 }
 
@@ -592,6 +593,18 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(businessUnderwritingDecisions)
       .orderBy(desc(businessUnderwritingDecisions.updatedAt));
+  }
+
+  async updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision>): Promise<BusinessUnderwritingDecision | undefined> {
+    const [updated] = await db
+      .update(businessUnderwritingDecisions)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(businessUnderwritingDecisions.id, id))
+      .returning();
+    return updated || undefined;
   }
 
   async deleteBusinessUnderwritingDecision(id: string): Promise<boolean> {

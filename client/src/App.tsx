@@ -35,6 +35,7 @@ import ProgressTracker from "@/pages/ProgressTracker";
 import PartnerDashboard from "@/pages/PartnerDashboard";
 import ReferralLanding from "@/pages/ReferralLanding";
 import Approvals from "@/pages/Approvals";
+import Declines from "@/pages/Declines";
 import RepConsole from "@/pages/RepConsole";
 import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
 import ApprovalLetter from "@/pages/ApprovalLetter";
@@ -90,6 +91,7 @@ function Router() {
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/approvals" component={Approvals} />
+      <Route path="/declines" component={Declines} />
       <Route path="/agents" component={AgentSelector} />
 
       {/* Rep Console - Contact 360 View */}

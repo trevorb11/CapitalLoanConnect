@@ -2299,6 +2299,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Update business underwriting decision by ID (partial update)
+  app.patch("/api/underwriting-decisions/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only underwriting team can manage decisions" });
+    }
+
+    const { id } = req.params;
+    const updates = req.body;
+
+    try {
+      // Convert approvalDate string to Date if provided
+      if (updates.approvalDate && typeof updates.approvalDate === 'string') {
+        updates.approvalDate = new Date(updates.approvalDate);
+      }
+
+      updates.reviewedBy = req.session.user.agentEmail || 'admin';
+
+      const updated = await storage.updateBusinessUnderwritingDecision(id, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Decision not found" });
+      }
+
+      console.log(`[UNDERWRITING] Decision ${id} updated by ${req.session.user.agentEmail || 'admin'}`);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating underwriting decision:", error);
+      res.status(500).json({ error: "Failed to update decision" });
+    }
+  });
+
   // Delete business underwriting decision (reset to no decision)
   app.delete("/api/underwriting-decisions/:id", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {

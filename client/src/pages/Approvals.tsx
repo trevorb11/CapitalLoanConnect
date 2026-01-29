@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { queryClient } from "@/lib/queryClient";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -14,68 +13,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  FileSpreadsheet,
-  RefreshCw,
   Building2,
-  Landmark,
   DollarSign,
-  ChevronDown,
-  ChevronRight,
-  Clock,
   CheckCircle2,
-  XCircle,
-  AlertCircle,
   Loader2,
-  CalendarClock,
   ShieldAlert,
   ArrowLeft,
-  History,
   Search,
-  ArrowUpDown
+  Pencil,
+  Copy,
+  Link2,
+  ThumbsDown,
+  Calendar,
+  Save,
+  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import type { BusinessUnderwritingDecision } from "@shared/schema";
 
-interface LenderApproval {
-  id: string;
-  businessName: string;
-  businessEmail: string | null;
-  loanApplicationId: string | null;
-  lenderName: string;
-  lenderEmail: string | null;
-  approvedAmount: string | null;
-  termLength: string | null;
-  factorRate: string | null;
-  paybackAmount: string | null;
-  paymentFrequency: string | null;
-  paymentAmount: string | null;
-  interestRate: string | null;
-  productType: string | null;
-  status: string;
-  expirationDate: string | null;
-  conditions: string | null;
-  notes: string | null;
-  emailId: string | null;
-  emailSubject: string | null;
-  emailReceivedAt: string | null;
-  createdAt: string;
+interface AuthState {
+  isAuthenticated: boolean;
+  role?: 'admin' | 'agent' | 'underwriting';
 }
 
-interface ApprovalStats {
-  totalApprovals: number;
-  pendingApprovals: number;
-  acceptedApprovals: number;
-  totalApprovedAmount: number;
-  uniqueBusinesses: number;
-  uniqueLenders: number;
-}
-
-function formatCurrency(value: string | number | null): string {
+function formatCurrency(value: string | number | null | undefined): string {
   if (!value) return "N/A";
   const num = typeof value === "string" ? parseFloat(value) : value;
   if (isNaN(num)) return "N/A";
@@ -87,7 +51,7 @@ function formatCurrency(value: string | number | null): string {
   }).format(num);
 }
 
-function formatDate(date: string | null): string {
+function formatDate(date: string | Date | null | undefined): string {
   if (!date) return "N/A";
   return new Date(date).toLocaleDateString("en-US", {
     month: "short",
@@ -96,278 +60,26 @@ function formatDate(date: string | null): string {
   });
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const variants: Record<string, { className: string; icon: React.ReactNode }> = {
-    pending: { className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100", icon: <Clock className="w-3 h-3" /> },
-    accepted: { className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100", icon: <CheckCircle2 className="w-3 h-3" /> },
-    declined: { className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100", icon: <XCircle className="w-3 h-3" /> },
-    expired: { className: "bg-muted text-muted-foreground", icon: <AlertCircle className="w-3 h-3" /> },
-  };
-  
-  const variant = variants[status] || variants.pending;
-  
-  return (
-    <Badge className={`${variant.className} flex items-center gap-1`}>
-      {variant.icon}
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </Badge>
-  );
-}
-
-function ApprovalCard({ 
-  approval, 
-  showBusiness = true,
-  showLender = true,
-  onStatusChange 
-}: { 
-  approval: LenderApproval; 
-  showBusiness?: boolean;
-  showLender?: boolean;
-  onStatusChange: (id: string, status: string) => void;
-}) {
-  return (
-    <div className="border rounded-lg p-4 bg-card hover-elevate" data-testid={`card-approval-${approval.id}`}>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-3">
-        <div>
-          {showBusiness && (
-            <div className="font-semibold text-lg flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-muted-foreground" />
-              {approval.businessName}
-            </div>
-          )}
-          {showLender && (
-            <div className="text-sm text-muted-foreground flex items-center gap-2">
-              <Landmark className="w-4 h-4" />
-              {approval.lenderName}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <StatusBadge status={approval.status} />
-          <Select
-            value={approval.status}
-            onValueChange={(value) => onStatusChange(approval.id, value)}
-          >
-            <SelectTrigger className="w-[120px] h-8" data-testid={`select-status-${approval.id}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="accepted">Accepted</SelectItem>
-              <SelectItem value="declined">Declined</SelectItem>
-              <SelectItem value="expired">Expired</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-        <div>
-          <div className="text-muted-foreground">Approved Amount</div>
-          <div className="font-semibold text-green-600 dark:text-green-400" data-testid={`text-amount-${approval.id}`}>
-            {formatCurrency(approval.approvedAmount)}
-          </div>
-        </div>
-        <div>
-          <div className="text-muted-foreground">Term</div>
-          <div className="font-medium">{approval.termLength || "N/A"}</div>
-        </div>
-        <div>
-          <div className="text-muted-foreground">Product</div>
-          <div className="font-medium">{approval.productType || "N/A"}</div>
-        </div>
-        <div>
-          <div className="text-muted-foreground">Rate</div>
-          <div className="font-medium">
-            {approval.factorRate ? `${approval.factorRate}x` : approval.interestRate || "N/A"}
-          </div>
-        </div>
-      </div>
-      
-      {(approval.paymentAmount || approval.paybackAmount) && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3 pt-3 border-t">
-          <div>
-            <div className="text-muted-foreground">Payment</div>
-            <div className="font-medium">
-              {formatCurrency(approval.paymentAmount)} {approval.paymentFrequency || ""}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">Payback Amount</div>
-            <div className="font-medium">{formatCurrency(approval.paybackAmount)}</div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">Expires</div>
-            <div className="font-medium">{approval.expirationDate || "N/A"}</div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">Received</div>
-            <div className="font-medium">{formatDate(approval.emailReceivedAt)}</div>
-          </div>
-        </div>
-      )}
-      
-      {approval.conditions && (
-        <div className="mt-3 pt-3 border-t text-sm">
-          <div className="text-muted-foreground mb-1">Conditions</div>
-          <div>{approval.conditions}</div>
-        </div>
-      )}
-      
-      {approval.emailSubject && (
-        <div className="mt-3 pt-3 border-t text-xs text-muted-foreground flex items-center gap-1">
-          <FileSpreadsheet className="w-3 h-3" />
-          {approval.emailSubject}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function GroupedApprovals({
-  grouped,
-  groupKey,
-  icon,
-  showBusiness,
-  showLender,
-  onStatusChange,
-  sortBy = "name"
-}: {
-  grouped: Record<string, LenderApproval[]>;
-  groupKey: "business" | "lender";
-  icon: React.ReactNode;
-  showBusiness: boolean;
-  showLender: boolean;
-  onStatusChange: (id: string, status: string) => void;
-  sortBy?: "name" | "date";
-}) {
-  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(Object.keys(grouped)));
-  
-  const toggleGroup = (key: string) => {
-    setOpenGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-  
-  // Get the most recent date from a group's approvals
-  const getMostRecentDate = (approvals: LenderApproval[]): Date => {
-    const dates = approvals
-      .map(a => new Date(a.createdAt || a.emailReceivedAt || 0))
-      .filter(d => !isNaN(d.getTime()));
-    return dates.length > 0 ? new Date(Math.max(...dates.map(d => d.getTime()))) : new Date(0);
-  };
-  
-  // Sort keys based on sortBy option
-  const sortedKeys = Object.keys(grouped).sort((a, b) => {
-    if (sortBy === "date") {
-      const dateA = getMostRecentDate(grouped[a]);
-      const dateB = getMostRecentDate(grouped[b]);
-      return dateB.getTime() - dateA.getTime(); // Most recent first
-    }
-    return a.localeCompare(b); // Alphabetical
-  });
-  
-  if (sortedKeys.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 opacity-50" />
-        <p>No approvals found</p>
-        <p className="text-sm">Click "Sync from Sheet" to import approvals from Google Sheets</p>
-      </div>
-    );
-  }
-  
-  return (
-    <div className="space-y-4">
-      {sortedKeys.map(key => {
-        const approvals = grouped[key];
-        const totalAmount = approvals.reduce((sum, a) => sum + (parseFloat(a.approvedAmount || "0") || 0), 0);
-        const isOpen = openGroups.has(key);
-        
-        return (
-          <Collapsible key={key} open={isOpen} onOpenChange={() => toggleGroup(key)}>
-            <CollapsibleTrigger className="w-full" data-testid={`trigger-group-${key}`}>
-              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
-                <div className="flex items-center gap-3">
-                  {isOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                  <div className="flex items-center gap-2">
-                    {icon}
-                    <span className="font-semibold">{key}</span>
-                  </div>
-                  <Badge variant="secondary">{approvals.length} approval{approvals.length !== 1 ? "s" : ""}</Badge>
-                </div>
-                <div className="text-green-600 font-semibold">
-                  {formatCurrency(totalAmount)}
-                </div>
-              </div>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="space-y-3 mt-3 pl-8">
-                {approvals.map(approval => (
-                  <ApprovalCard
-                    key={approval.id}
-                    approval={approval}
-                    showBusiness={showBusiness}
-                    showLender={showLender}
-                    onStatusChange={onStatusChange}
-                  />
-                ))}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        );
-      })}
-    </div>
-  );
-}
-
-interface AuthState {
-  isAuthenticated: boolean;
-  role?: 'admin' | 'agent';
-}
-
-function filterGroupedApprovals(
-  grouped: Record<string, LenderApproval[]>,
-  query: string
-): Record<string, LenderApproval[]> {
-  if (!query.trim()) return grouped;
-  
-  const lowerQuery = query.toLowerCase().trim();
-  const filtered: Record<string, LenderApproval[]> = {};
-  
-  for (const [key, approvals] of Object.entries(grouped)) {
-    // Filter approvals that match the search query
-    const matchingApprovals = approvals.filter(approval =>
-      approval.businessName.toLowerCase().includes(lowerQuery) ||
-      approval.lenderName.toLowerCase().includes(lowerQuery)
-    );
-    
-    // Only include groups that have matching approvals
-    if (matchingApprovals.length > 0) {
-      filtered[key] = matchingApprovals;
-    }
-  }
-  
-  return filtered;
-}
-
 export default function Approvals() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [activeTab, setActiveTab] = useState("business");
   const [accessDenied, setAccessDenied] = useState(false);
-  const [hoursBack, setHoursBack] = useState("24");
-  const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "date">("name");
+  const [editingDecision, setEditingDecision] = useState<BusinessUnderwritingDecision | null>(null);
+  const [editForm, setEditForm] = useState({
+    advanceAmount: '',
+    term: '',
+    paymentFrequency: 'weekly',
+    factorRate: '',
+    totalPayback: '',
+    netAfterFees: '',
+    lender: '',
+    notes: '',
+    approvalDate: '',
+  });
+  const [saving, setSaving] = useState(false);
 
   // Check authentication first
   useEffect(() => {
@@ -375,9 +87,9 @@ export default function Approvals() {
       try {
         const res = await fetch("/api/auth/check", { credentials: "include" });
         const data: AuthState = await res.json();
-        if (data.isAuthenticated && data.role === "admin") {
+        if (data.isAuthenticated && (data.role === "admin" || data.role === "underwriting")) {
           setIsAuthenticated(true);
-        } else if (data.isAuthenticated && data.role !== "admin") {
+        } else if (data.isAuthenticated) {
           setAccessDenied(true);
         } else {
           setLocation("/dashboard");
@@ -390,100 +102,118 @@ export default function Approvals() {
     }
     checkAuth();
   }, [setLocation]);
-  
-  // Fetch Google Sheets status - only after auth is confirmed
-  const { data: sheetsStatus, error: sheetsError } = useQuery<{ connected: boolean; source?: string }>({
-    queryKey: ["/api/approvals/gmail-status"],
-    retry: false,
-    enabled: isAuthenticated,
-  });
-  
-  // Fetch stats
-  const { data: stats, error: statsError } = useQuery<ApprovalStats>({
-    queryKey: ["/api/approvals/stats"],
-    retry: false,
-    enabled: isAuthenticated,
-  });
-  
-  // Fetch approvals by business
-  const { data: byBusiness, isLoading: loadingBusiness, error: businessError } = useQuery<Record<string, LenderApproval[]>>({
-    queryKey: ["/api/approvals/by-business"],
-    retry: false,
-    enabled: isAuthenticated,
-  });
-  
-  // Fetch approvals by lender
-  const { data: byLender, isLoading: loadingLender, error: lenderError } = useQuery<Record<string, LenderApproval[]>>({
-    queryKey: ["/api/approvals/by-lender"],
+
+  // Fetch all underwriting decisions
+  const { data: allDecisions, isLoading, error: decisionsError } = useQuery<BusinessUnderwritingDecision[]>({
+    queryKey: ["/api/underwriting-decisions"],
+    queryFn: async () => {
+      const res = await fetch("/api/underwriting-decisions", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch decisions");
+      return res.json();
+    },
     retry: false,
     enabled: isAuthenticated,
   });
 
-  // Scan mutation - must be before any conditional returns
-  const scanMutation = useMutation({
-    mutationFn: async (hours: number) => {
-      const res = await apiRequest("POST", "/api/approvals/scan", { hoursBack: hours });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setLastScanTime(new Date());
-      queryClient.invalidateQueries({ queryKey: ["/api/approvals"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/approvals/by-business"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/approvals/by-lender"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/approvals/stats"] });
-      
-      toast({
-        title: "Scan Complete",
-        description: `Synced ${data.scanned} rows from sheet. Found ${data.newApprovals} new approval${data.newApprovals !== 1 ? "s" : ""}.`
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Scan Failed",
-        description: error.message || "Failed to scan for approvals",
-        variant: "destructive"
-      });
-    }
+  // Filter to only approved decisions, sorted by most recent first
+  const approvedDecisions = (allDecisions || [])
+    .filter(d => d.status === "approved")
+    .sort((a, b) => {
+      const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+  // Filter by search
+  const filteredDecisions = approvedDecisions.filter(d => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      (d.businessName || "").toLowerCase().includes(q) ||
+      (d.businessEmail || "").toLowerCase().includes(q) ||
+      (d.lender || "").toLowerCase().includes(q)
+    );
   });
-  
-  // Update status mutation
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const res = await apiRequest("PATCH", `/api/approvals/${id}`, { status });
+
+  // Compute stats from approved decisions
+  const stats = {
+    totalApproved: approvedDecisions.length,
+    totalAmount: approvedDecisions.reduce((sum, d) => sum + (parseFloat(d.advanceAmount?.toString() || "0") || 0), 0),
+    totalDeclined: (allDecisions || []).filter(d => d.status === "declined").length,
+  };
+
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Record<string, any> }) => {
+      const res = await fetch(`/api/underwriting-decisions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error("Failed to update");
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/approvals"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/approvals/by-business"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/approvals/by-lender"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/approvals/stats"] });
-      toast({
-        title: "Status Updated",
-        description: "Approval status has been updated."
-      });
-    }
+      queryClient.invalidateQueries({ queryKey: ["/api/underwriting-decisions"] });
+      toast({ title: "Updated", description: "Approval details have been saved." });
+      setEditingDecision(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update approval details.", variant: "destructive" });
+    },
   });
 
-  // Check for 403 errors (non-admin access)
-  useEffect(() => {
-    const errors = [sheetsError, statsError, businessError, lenderError];
-    for (const error of errors) {
-      if (error && (error as any).message?.includes("403")) {
-        setAccessDenied(true);
-        break;
-      }
+  const openEditDialog = (decision: BusinessUnderwritingDecision) => {
+    setEditForm({
+      advanceAmount: decision.advanceAmount?.toString() || '',
+      term: decision.term || '',
+      paymentFrequency: decision.paymentFrequency || 'weekly',
+      factorRate: decision.factorRate?.toString() || '',
+      totalPayback: decision.totalPayback?.toString() || '',
+      netAfterFees: decision.netAfterFees?.toString() || '',
+      lender: decision.lender || '',
+      notes: decision.notes || '',
+      approvalDate: decision.approvalDate ? new Date(decision.approvalDate).toISOString().split('T')[0] : '',
+    });
+    setEditingDecision(decision);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingDecision) return;
+    setSaving(true);
+    try {
+      await updateMutation.mutateAsync({
+        id: editingDecision.id,
+        updates: {
+          advanceAmount: editForm.advanceAmount ? parseFloat(editForm.advanceAmount) : null,
+          term: editForm.term || null,
+          paymentFrequency: editForm.paymentFrequency || null,
+          factorRate: editForm.factorRate ? parseFloat(editForm.factorRate) : null,
+          totalPayback: editForm.totalPayback ? parseFloat(editForm.totalPayback) : null,
+          netAfterFees: editForm.netAfterFees ? parseFloat(editForm.netAfterFees) : null,
+          lender: editForm.lender || null,
+          notes: editForm.notes || null,
+          approvalDate: editForm.approvalDate || null,
+        },
+      });
+    } finally {
+      setSaving(false);
     }
-  }, [sheetsError, statsError, businessError, lenderError]);
-  
-  const handleStatusChange = (id: string, status: string) => {
-    updateStatusMutation.mutate({ id, status });
   };
-  
-  const handleScan = () => {
-    scanMutation.mutate(parseInt(hoursBack));
+
+  const copyApprovalUrl = (slug: string) => {
+    const url = `${window.location.origin}/approved/${slug}`;
+    navigator.clipboard.writeText(url);
+    toast({ title: "URL Copied", description: "Approval letter URL copied to clipboard" });
   };
-  
-  const isLoading = loadingBusiness || loadingLender;
+
+  // Check for 403 errors
+  useEffect(() => {
+    if (decisionsError && (decisionsError as any).message?.includes("403")) {
+      setAccessDenied(true);
+    }
+  }, [decisionsError]);
 
   // Show loading while checking auth
   if (!authChecked) {
@@ -511,216 +241,394 @@ export default function Approvals() {
       </div>
     );
   }
-  
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="ghost" 
-              size="icon"
-              onClick={() => setLocation("/dashboard")}
-              data-testid="button-back"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold" data-testid="heading-approvals">
-                Lender Approvals
-              </h1>
-              <p className="text-muted-foreground">
-                Track funding approvals from Google Sheets
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap items-center gap-3">
-            {sheetsStatus?.connected ? (
-              <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 flex items-center gap-1">
-                <FileSpreadsheet className="w-3 h-3" />
-                Google Sheets Connected
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="flex items-center gap-1">
-                <FileSpreadsheet className="w-3 h-3" />
-                Google Sheets Not Connected
-              </Badge>
-            )}
-            
-            {lastScanTime && (
-              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                <History className="w-3 h-3" />
-                Last sync: {lastScanTime.toLocaleTimeString()}
-              </div>
-            )}
-            
-            <div className="flex items-center gap-2 ml-auto">
-              <Button 
-                onClick={handleScan}
-                disabled={scanMutation.isPending || !sheetsStatus?.connected}
-                className="flex items-center gap-2"
-                data-testid="button-scan"
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setLocation("/dashboard")}
+                data-testid="button-back"
               >
-                {scanMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                Sync from Sheet
+                <ArrowLeft className="w-5 h-5" />
               </Button>
+              <div>
+                <h1 className="text-2xl font-bold" data-testid="heading-approvals">
+                  Approved Businesses
+                </h1>
+                <p className="text-muted-foreground">
+                  Businesses approved from the bank statements review
+                </p>
+              </div>
             </div>
+            <Button
+              variant="outline"
+              onClick={() => setLocation("/declines")}
+              className="flex items-center gap-2"
+              data-testid="button-view-declines"
+            >
+              <ThumbsDown className="w-4 h-4" />
+              View Declines ({stats.totalDeclined})
+            </Button>
           </div>
         </div>
-        
+
         {/* Stats Cards */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-900">
-                    <FileSpreadsheet className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 rounded-lg dark:bg-green-900">
+                  <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold" data-testid="text-total-approvals">
+                    {stats.totalApproved}
                   </div>
-                  <div>
-                    <div className="text-2xl font-bold" data-testid="text-total-approvals">
-                      {stats.totalApprovals}
+                  <div className="text-sm text-muted-foreground">Approved Businesses</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-900">
+                  <DollarSign className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold" data-testid="text-total-amount">
+                    {formatCurrency(stats.totalAmount)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Total Approved Amount</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 rounded-lg dark:bg-red-900">
+                  <ThumbsDown className="w-5 h-5 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold" data-testid="text-total-declines">
+                    {stats.totalDeclined}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Declined Businesses</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Search */}
+        <div className="relative w-full sm:w-96">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search by business name, email, or lender..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+            data-testid="input-search"
+          />
+        </div>
+
+        {/* Approvals List */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : filteredDecisions.length === 0 ? (
+          <Card className="p-12 text-center">
+            <CheckCircle2 className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
+            <p className="text-muted-foreground">
+              {searchQuery ? "No approved businesses match your search" : "No approved businesses yet"}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Approvals are managed from the bank statements section of the dashboard
+            </p>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {filteredDecisions.map((decision) => (
+              <Card key={decision.id} className="p-6 hover-elevate" data-testid={`card-approval-${decision.id}`}>
+                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                  {/* Left: Business info */}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3 flex-wrap">
+                      <h3 className="font-semibold text-lg flex items-center gap-2">
+                        <Building2 className="w-5 h-5 text-primary" />
+                        {decision.businessName || decision.businessEmail}
+                      </h3>
+                      <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Approved
+                      </Badge>
+                      {decision.approvalSlug && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyApprovalUrl(decision.approvalSlug!)}
+                          className="text-primary border-primary/30 hover:bg-primary/10"
+                          data-testid={`button-copy-url-${decision.id}`}
+                        >
+                          <Copy className="w-3 h-3 mr-1" />
+                          Copy Letter URL
+                        </Button>
+                      )}
+                      {decision.approvalSlug && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => window.open(`/approved/${decision.approvalSlug}`, '_blank')}
+                          data-testid={`button-view-letter-${decision.id}`}
+                        >
+                          <Link2 className="w-3 h-3 mr-1" />
+                          View Letter
+                        </Button>
+                      )}
                     </div>
-                    <div className="text-sm text-muted-foreground">Total Approvals</div>
+
+                    <div className="text-sm text-muted-foreground mb-3">
+                      {decision.businessEmail}
+                    </div>
+
+                    {/* Approval Details Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <div className="text-muted-foreground">Advance Amount</div>
+                        <div className="font-semibold text-green-600 dark:text-green-400">
+                          {formatCurrency(decision.advanceAmount)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Term</div>
+                        <div className="font-medium">{decision.term || "N/A"}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Factor Rate</div>
+                        <div className="font-medium">
+                          {decision.factorRate ? `${decision.factorRate}x` : "N/A"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Payment Frequency</div>
+                        <div className="font-medium capitalize">{decision.paymentFrequency || "N/A"}</div>
+                      </div>
+                    </div>
+
+                    {(decision.totalPayback || decision.netAfterFees || decision.lender) && (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3 pt-3 border-t">
+                        <div>
+                          <div className="text-muted-foreground">Total Payback</div>
+                          <div className="font-medium">{formatCurrency(decision.totalPayback)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Net After Fees</div>
+                          <div className="font-medium">{formatCurrency(decision.netAfterFees)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Lender</div>
+                          <div className="font-medium">{decision.lender || "N/A"}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Approval Date</div>
+                          <div className="font-medium flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {formatDate(decision.approvalDate)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {decision.notes && (
+                      <div className="mt-3 pt-3 border-t text-sm">
+                        <div className="text-muted-foreground mb-1">Notes</div>
+                        <div>{decision.notes}</div>
+                      </div>
+                    )}
+
+                    {decision.reviewedBy && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        Reviewed by: {decision.reviewedBy} | Updated: {formatDate(decision.updatedAt)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: Edit button */}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditDialog(decision)}
+                      data-testid={`button-edit-${decision.id}`}
+                    >
+                      <Pencil className="w-4 h-4 mr-1" />
+                      Edit
+                    </Button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <DollarSign className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold" data-testid="text-total-amount">
-                      {formatCurrency(stats.totalApprovedAmount)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Total Approved</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-yellow-100 rounded-lg">
-                    <Clock className="w-5 h-5 text-yellow-600" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold" data-testid="text-pending-approvals">
-                      {stats.pendingApprovals}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Pending</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <Building2 className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold">
-                      {stats.uniqueBusinesses} / {stats.uniqueLenders}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Businesses / Lenders</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+              </Card>
+            ))}
           </div>
         )}
-        
-        {/* Tabs */}
-        <Card>
-          <CardHeader className="pb-2 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full max-w-md grid-cols-2">
-                  <TabsTrigger value="business" className="flex items-center gap-2" data-testid="tab-business">
-                    <Building2 className="w-4 h-4" />
-                    By Business
-                  </TabsTrigger>
-                  <TabsTrigger value="lender" className="flex items-center gap-2" data-testid="tab-lender">
-                    <Landmark className="w-4 h-4" />
-                    By Lender
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <div className="flex items-center gap-2">
-                <div className="relative w-full sm:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Search business or lender..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                    data-testid="input-search"
-                  />
-                </div>
-                <Select value={sortBy} onValueChange={(value: "name" | "date") => setSortBy(value)}>
-                  <SelectTrigger className="w-[140px]" data-testid="select-sort">
-                    <ArrowUpDown className="w-4 h-4 mr-2" />
-                    <SelectValue placeholder="Sort by" />
+      </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingDecision} onOpenChange={(open) => !open && setEditingDecision(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-primary" />
+              Edit Approval: {editingDecision?.businessName || editingDecision?.businessEmail}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-advanceAmount">Advance Amount</Label>
+                <Input
+                  id="edit-advanceAmount"
+                  type="number"
+                  placeholder="$50,000"
+                  value={editForm.advanceAmount}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, advanceAmount: e.target.value }))}
+                  data-testid="input-edit-advance-amount"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-term">Term</Label>
+                <Input
+                  id="edit-term"
+                  placeholder="6 months"
+                  value={editForm.term}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, term: e.target.value }))}
+                  data-testid="input-edit-term"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-paymentFrequency">Payment Frequency</Label>
+                <Select
+                  value={editForm.paymentFrequency}
+                  onValueChange={(value) => setEditForm(prev => ({ ...prev, paymentFrequency: value }))}
+                >
+                  <SelectTrigger data-testid="select-edit-payment-frequency">
+                    <SelectValue placeholder="Select frequency" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="name">Sort by Name</SelectItem>
-                    <SelectItem value="date">Sort by Date</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-factorRate">Factor Rate</Label>
+                <Input
+                  id="edit-factorRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={editForm.factorRate}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, factorRate: e.target.value }))}
+                  data-testid="input-edit-factor-rate"
+                />
               </div>
-            ) : (
-              <>
-                {activeTab === "business" && byBusiness && (
-                  <GroupedApprovals
-                    grouped={filterGroupedApprovals(byBusiness, searchQuery)}
-                    groupKey="business"
-                    icon={<Building2 className="w-5 h-5 text-blue-600" />}
-                    showBusiness={false}
-                    showLender={true}
-                    onStatusChange={handleStatusChange}
-                    sortBy={sortBy}
-                  />
+              <div>
+                <Label htmlFor="edit-totalPayback">Total Payback</Label>
+                <Input
+                  id="edit-totalPayback"
+                  type="number"
+                  placeholder="$62,500"
+                  value={editForm.totalPayback}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, totalPayback: e.target.value }))}
+                  data-testid="input-edit-total-payback"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-netAfterFees">Net After Fees</Label>
+                <Input
+                  id="edit-netAfterFees"
+                  type="number"
+                  placeholder="$48,500"
+                  value={editForm.netAfterFees}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
+                  data-testid="input-edit-net-after-fees"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-lender">Lender</Label>
+                <Input
+                  id="edit-lender"
+                  placeholder="Lender name"
+                  value={editForm.lender}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, lender: e.target.value }))}
+                  data-testid="input-edit-lender"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="edit-approvalDate">Approval Date</Label>
+              <Input
+                id="edit-approvalDate"
+                type="date"
+                value={editForm.approvalDate}
+                onChange={(e) => setEditForm(prev => ({ ...prev, approvalDate: e.target.value }))}
+                data-testid="input-edit-approval-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Input
+                id="edit-notes"
+                placeholder="Additional notes..."
+                value={editForm.notes}
+                onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                data-testid="input-edit-notes"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setEditingDecision(null)}
+                data-testid="button-cancel-edit"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="bg-primary"
+                data-testid="button-save-edit"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-1" />
+                    Save Changes
+                  </>
                 )}
-                {activeTab === "lender" && byLender && (
-                  <GroupedApprovals
-                    grouped={filterGroupedApprovals(byLender, searchQuery)}
-                    groupKey="lender"
-                    icon={<Landmark className="w-5 h-5 text-purple-600" />}
-                    showBusiness={true}
-                    showLender={false}
-                    onStatusChange={handleStatusChange}
-                    sortBy={sortBy}
-                  />
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-        
-        {/* Scan info */}
-        <div className="text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
-          <CalendarClock className="w-4 h-4" />
-          Emails are automatically scanned every hour
-        </div>
-      </div>
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
