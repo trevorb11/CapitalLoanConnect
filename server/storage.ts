@@ -1,12 +1,13 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
   type BotAttempt, type InsertBotAttempt,
   type Partner, type InsertPartner,
   type LenderApproval, type InsertLenderApproval,
-  type BusinessUnderwritingDecision, type InsertBusinessUnderwritingDecision
+  type BusinessUnderwritingDecision, type InsertBusinessUnderwritingDecision,
+  type Lender, type InsertLender
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -108,6 +109,13 @@ export interface IStorage {
   getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]>;
   updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision>): Promise<BusinessUnderwritingDecision | undefined>;
   deleteBusinessUnderwritingDecision(id: string): Promise<boolean>;
+
+  // Lender methods
+  createLender(lender: InsertLender): Promise<Lender>;
+  getLender(id: string): Promise<Lender | undefined>;
+  getLenderByName(name: string): Promise<Lender | undefined>;
+  getAllLenders(): Promise<Lender[]>;
+  upsertLender(lender: InsertLender): Promise<Lender>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -613,6 +621,53 @@ export class DatabaseStorage implements IStorage {
       .where(eq(businessUnderwritingDecisions.id, id))
       .returning();
     return result.length > 0;
+  }
+
+  // Lender methods
+  async createLender(lender: InsertLender): Promise<Lender> {
+    const [created] = await db.insert(lenders).values(lender).returning();
+    return created;
+  }
+
+  async getLender(id: string): Promise<Lender | undefined> {
+    const [lender] = await db.select().from(lenders).where(eq(lenders.id, id));
+    return lender || undefined;
+  }
+
+  async getLenderByName(name: string): Promise<Lender | undefined> {
+    const [lender] = await db
+      .select()
+      .from(lenders)
+      .where(sql`LOWER(${lenders.name}) = LOWER(${name})`);
+    return lender || undefined;
+  }
+
+  async getAllLenders(): Promise<Lender[]> {
+    return await db
+      .select()
+      .from(lenders)
+      .where(eq(lenders.isActive, true))
+      .orderBy(lenders.name);
+  }
+
+  async upsertLender(lender: InsertLender): Promise<Lender> {
+    const existing = await this.getLenderByName(lender.name);
+    if (existing) {
+      const [updated] = await db
+        .update(lenders)
+        .set({
+          contactInfo: lender.contactInfo,
+          requirements: lender.requirements,
+          notes: lender.notes,
+          tier: lender.tier,
+          isActive: lender.isActive ?? true,
+          updatedAt: new Date(),
+        })
+        .where(eq(lenders.id, existing.id))
+        .returning();
+      return updated;
+    }
+    return await this.createLender(lender);
   }
 }
 

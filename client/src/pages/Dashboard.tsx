@@ -942,60 +942,32 @@ function BankStatementsTab() {
   });
   const [lenderSearch, setLenderSearch] = useState('');
   const [showLenderSuggestions, setShowLenderSuggestions] = useState(false);
+
+  // Type for Lender from API
+  interface Lender {
+    id: string;
+    name: string;
+    contactInfo: string | null;
+    requirements: string | null;
+    notes: string | null;
+    tier: string | null;
+    isActive: boolean;
+  }
+
+  // Fetch lenders from API for autocomplete
+  const { data: lendersData } = useQuery<Lender[]>({
+    queryKey: ['/api/lenders'],
+    queryFn: async () => {
+      const res = await fetch('/api/lenders', {
+        credentials: 'include',
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
   
-  // List of known lenders for autocomplete
-  const LENDERS_LIST = [
-    "Elevate Funding",
-    "Forward Financing", 
-    "Greenbox Capital",
-    "Credibly",
-    "Libertas Funding",
-    "Fox Business Funding",
-    "Rapid Finance",
-    "Fora Financial",
-    "Celtic Capital",
-    "Fundbox",
-    "BlueVine",
-    "OnDeck",
-    "Kabbage",
-    "Funding Circle",
-    "National Funding",
-    "Business Backer",
-    "PayPal Working Capital",
-    "Square Capital",
-    "Amazon Lending",
-    "CAN Capital",
-    "Mulligan Funding",
-    "American Express Business Blueprint",
-    "Headway Capital",
-    "Expansion Capital Group",
-    "Become Capital",
-    "United Capital Source",
-    "Lendr",
-    "LendingTree",
-    "BFS Capital",
-    "Yellowstone Capital",
-    "Pearl Capital",
-    "Capify",
-    "Balboa Capital",
-    "Corporation",
-    "ARF Financial",
-    "Reliant Funding",
-    "Complete Business Solutions",
-    "Breakout Capital",
-    "Lenio",
-    "Mantis Funding",
-    "SBG Funding",
-    "CapFront",
-    "Lendio",
-    "Pango Financial",
-    "CFG Merchant Solutions",
-    "Clear Skies Capital",
-    "Merchant Cash Group",
-    "Kalamata Capital",
-    "AdvancePoint Capital",
-    "Melius Funding"
-  ];
+  // Get list of lender names for autocomplete
+  const LENDERS_LIST = (lendersData || []).map(l => l.name);
   const [additionalApprovals, setAdditionalApprovals] = useState<Array<{ lender: string; amount: string; term: string; factorRate: string }>>([]);
   const [showAddApprovalForm, setShowAddApprovalForm] = useState(false);
   const [newApproval, setNewApproval] = useState({ lender: '', amount: '', term: '', factorRate: '' });

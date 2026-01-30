@@ -2364,6 +2364,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============= Lenders API =============
+  
+  // Get all lenders (for autocomplete)
+  app.get("/api/lenders", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    
+    try {
+      const allLenders = await storage.getAllLenders();
+      res.json(allLenders);
+    } catch (error) {
+      console.error("Error fetching lenders:", error);
+      res.status(500).json({ error: "Failed to fetch lenders" });
+    }
+  });
+
   // Get approval letter by slug (public route for approved businesses)
   app.get("/api/approval-letter/:slug", async (req, res) => {
     const { slug } = req.params;
@@ -5430,5 +5447,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Seed lenders data on startup
+  seedLenders();
+
   return httpServer;
+}
+
+// Lender seed data from CSV
+const LENDER_SEED_DATA = [
+  { name: "American Financial Center", contactInfo: "underwriting@afincen.com\nmarkc@afincen.com\n818-981-1034", requirements: "Term: 8 to 10 months", notes: "Trucking: Minimum of two trucks and average monthly revenue of $30K", tier: "A-B" },
+  { name: "Bizpoint", contactInfo: "underwriting@bizpointcapital.com", requirements: "Minimum Monthly Revenue: 20k / Minimum # of Deposits: 5 / TIB: 9 Months / FICO: 500", notes: "Straight Funding: 50k Max\nReverse: 350K Max / Up to 4 positions\nNo Clawbacks", tier: "A-C" },
+  { name: "BHB Funding", contactInfo: "ISObiz@bhbfunding.com\nsabina@bhbfunding.com", requirements: "Minimum Monthly Revenue: $15K / Positions: 1-3 / Min # of Deposits: 4 Per Month / Min # of Negative Days: 5 Per Month / TIB: 1 year / Term: 11 months / FICO: Minimum 550 / Funding Amount: Max $125K / NOT Funding CA / Funding in TEXAS 1st positions only w/UCC / Decision Logic / 5% Fee", notes: "Trucking: 1st: Min per month (not Avg) $75K / 5 Trucks / TIB: 3 years / FICO: 600\nConstruction: 1st Position: Min Per month (Not Avg) $125K / TIB: 3 years / FICO: 600", tier: "B" },
+  { name: "Backd", contactInfo: "submissions@backd.com\nvy@backd.com", requirements: "Minimum Monthly Revenue: 100k\nPositions: Mainly 1st Position / can consider 2nd and 3rd on strong files\nMinimum # of Deposits: 10 Per Month\nAverage Deal Size: $350K\nTerms: Typically 10-14 months (max 16 months)\nMinimum Credit: 650", notes: "Target Industries: Retail / Food & Beverage / Restaurants / Bars / Cafes / Medical / Manufacturing\nProhibited: Financial Services / Car Dealerships / Consulting / Real Estate Services / Legal Services / Cannabis / Firearms / Trucking / Solar", tier: "A-B" },
+  { name: "Capitalize Group", contactInfo: "subs@capitalizegroup.com\nisaac@capitalizegroup.com", requirements: "Minimum Monthly Revenue: 50k (100k for Trucking)\nPositions: 1+\nMaximum Negative Days Per Month: 5 Days\nMinimum Time In Business: 1 year\nMinimum # of Deposits: 4 Per Month\nProhibited States: Utah\nTerms: Max 140 Days / 32 weeks", notes: "Funding Range: 25k - 500k\nNo funding behind reverses\nProhibited: Auto Dealers / Financial / Real Estate / Agriculture/Farming / Gas Stations / Accounting/CPA / Staffing / Energy/Solar\nBuy Rate: 1.34 - 1.38", tier: "B-C" },
+  { name: "Capybara Capital", contactInfo: "deals@capybarausa.com\ncbianco@capybarausa.com\n561.404.1674", requirements: "Minimum Monthly Revenue: 25K\nMinimum Time In Business: 1 Year\nTerms: 3-10 Months\nFICO: 525\nProhibited States: Virginia / Utah / California / Texas", notes: "Prohibited Industries: Non-Profit / Banks & Lending / Law Firms / House Flipping / Airbnb / Real Estate / Auto Sales / Trucking / Transportation / Logistics / Staffing / Entertainment", tier: "A-C" },
+  { name: "Clear Fund / Lite Fund", contactInfo: "deals@litefund.co\naron@litefund.co\nfrank@litefund.co", requirements: "Minimum Monthly Revenue: 150K (or 15K for lower tier)\nPositions: 1-6 (or 1-10)\nMinimum Daily Balance: 5K (or $500)\nMaximum Negative Days Per Month: 4-7 Days\nMinimum Time In Business: 1-2 Years\nMinimum # of deposits: 5\nMinimum Credit: 500-600", notes: "General Buy Rate: 1.35 max upsell 1.45\nOrigination fees: Generally 5%, high risk 10%\nProhibited Industries: 1st Position Trucker", tier: "A-D" },
+  { name: "DLP", contactInfo: "submissions@dlpfunding.com", requirements: "Minimum Monthly Revenue: 40K\nPositions: 2nd+\nMinimum Funding: 10K\nMinimum Time In Business: 2 Years\nMinimum # of Deposits: 8 Per Month\nProhibited States: Utah / Virginia", notes: "Max Leverage 50% - Max Reverse Leverage 70%\nMin Construction 60K - 2 Month Payment History\nProhibited Industries: Trucking / Auto Sales\nOffers up to 250k, over 250k needs full financials", tier: "C" },
+  { name: "Evolve Capital", contactInfo: "tony@evolvecapitalfinance.com", requirements: "Equipment Financing", notes: "", tier: "" },
+  { name: "Fenix Capital Funding", contactInfo: "newdeals@fenixcapitalfunding.com\nolegz@fenixcapitalfunding.com", requirements: "Minimum Monthly Revenue: 10k\nPositions: 1-4\nProhibited States: California / Hawaii / Alaska / Puerto Rico\nMaximum Funding: 150K / Maximum Funding (Reverse): 350K\nMinimum # of Deposits: 5 Per Month\nMinimum Time In Business: 1 Year\nFICO: 500\nTerms: Max 8-9 months", notes: "Prohibited Industries: Auto Dealerships / Bail Bonds / Check Cashing / Collection Agencies / Gambling / Law Firms / Oil Field Services / Gas Stations / Trucking\nBuy rates: 1.25-1.35 (12 points built in)\nEarly renewal at 25% paid in", tier: "B-D" },
+  { name: "Fintegra", contactInfo: "Submissions@getfintegra.com\nsamanthai@getfintegra.com", requirements: "Minimum time in business: 12 months\nMinimum avg. monthly revenue: $10,000\nMinimum avg. bank balance: $1,000\nMinimum FICO score: 550\nMinimum # of deposits per month: 5\nMaximum NSFs (3-month avg.): 5\nNo Texas", notes: "Solid B paper funder (1st, 2nd and 3rd positions)\nFunding amounts: $10,000 to $250,000\nAverage term: 8-10 months (up to 15 months)\nTypical turnaround time: <2 hours", tier: "B" },
+  { name: "Fox", contactInfo: "Underwriting@foxbusinessfunding.com\navner@foxbusinessfunding.com", requirements: "Minimum Monthly Revenue: 45K\nPositions: 2nd-5th (Firm)\nMaximum Negative Days Per Month: 4 Days\nConsider higher risk 2nd position merchants (A level)\nTerms: Average 6-8 months", notes: "Prohibited Industries: Lawyers / Debt Collectors\nAverage funding size $60K (range $20K-$500K)\nOffer daily (more common) & weekly payment plans\nHigh risk industries (trucking) require min $150k-200k monthly revenue\nAuto sales: min 200k deposits/month", tier: "B-C" },
+  { name: "Fuji", contactInfo: "michael@fujifunding.com\nMichael - 847-606-1979", requirements: "Minimum Monthly Revenue: 20K\nPositions: 2nd+ (Firm)\nFunds Defaults", notes: "Prohibited Industries: Trucking", tier: "A-C" },
+  { name: "Fundworks", contactInfo: "newdeals@thefundworks.com\ncweiner@thefundworks.com", requirements: "Minimum Monthly Revenue: 10K\n4+ deposits\nMinimum Time in Business: 12 Months", notes: "Avg Daily Balance: 1K+\nFICO: 550\nRestricted industries: attorneys / real estate investors / firearms / debt consolidation / used auto dealerships / trucking / wholesale", tier: "A-B" },
+  { name: "GFE", contactInfo: "underwriting@ufcapitalexperts.com\nMatt@ezrevenuefinance.com", requirements: "Minimum Monthly Revenue: 20K\nMaximum Negative Days Per Month: 4-5 Days\nTerms: Max 120 Days\nPositions: No more than 6\nMinimum # of Deposits: 4 Per Month\nTIB: 6 months\nFICO: 500\nFunds Texas and California", notes: "Prohibited Industries: Bail Bond Services, Check Cashing, Debt Collection, Trucking, Auto Sales\nConstruction - min 80k in true deposits accepted\nNo previous Defaults", tier: "C-D" },
+  { name: "I Got Funded", contactInfo: "Submit@i-gotfunded.com\nMai@i-gotfunded.com", requirements: "1st Position Deals: Merchant must have at least 60 days seasoning on prior MCA\nStandard Terms: 40-140 business days; daily or weekly repayment\nMinimum Monthly Revenue: $75,000\nFunds up to 60-75% of verified average deposits\nMinimum 15+ transactions and $200+ daily deposits\nDefaults: 3 consecutive missed payments", notes: "Base: 12 points at 1.50 factor / 10% fee\nMinimum Terms: 1.40 factor / 5% fee", tier: "" },
+  { name: "Kapitus", contactInfo: "newcontracts@kapitus.com\nteambyler@kapitus.com\nBraden Byler (814) 602-0991\nAllysa 863-370-4569", requirements: "Minimum Monthly Revenue: 10K\nPositions: 1-2 (2nd has 100k / 12-month max)\nMinimum # of Deposits: 5 Per Month\nMaximum Negative Days Per Month: 3 Days\nMinimum TIB: 1-2 yrs (strong credit) or 3+ yrs\nRestaurants (3) / Construction (4) / Trucking (10) yrs\nTerms: 6-36 months, 48mo. max for preferred healthcare", notes: "Origination Fee: 2.5%\nRestaurants / General Contractors: 150k max\nTrucking: 125k max\nProhibited: Real Estate / Credit Repair / Auto Dealers / Finance / Insurance / Cell Phone Stores / CBD/Marijuana\nMinimum Credit: 625", tier: "A-B" },
+  { name: "Legend", contactInfo: "apps@legendfunding.com\ndcaro@legendfunding.com\nDavid Caro - 559-474-5233", requirements: "Minimum Monthly Revenue: 20K\nPositions: 1-3\nTerms: 12 Months\nMaximum Negative Days Per Month: 3 Days", notes: "Funding Amount: 20-350k\nProhibited Industries: Auto Dealership / Financial Services / Gambling / Law Firms & Attorneys / Travel Agencies / Transportation (Passenger)", tier: "A-B" },
+  { name: "Pearl", contactInfo: "submitpearl@pearlcash.com\nbrett.spass@revenued.com", requirements: "Grades A-D (A 12.5 mo 1.25x → D 5 mo 1.36x)\nMin $20k-$50k deposits\nStips: DL, Voided Check, A/R, Login (+Financials > $150k, +Tax Guard > $250k)", notes: "Preferred: Manufacturing, Medical, Tech, Construction, Auto\nHigh Risk: Insurance, Real Estate, Home-based, Lawyers, Lenders\nProhibited: Marijuana (CBD/Hemp OK)", tier: "" },
+  { name: "Pirs", contactInfo: "Submissions@pirscapital.com\nMitchell@pirscapital.com", requirements: "Minimum Monthly Revenue: 20K\nPositions: 1st (Will do 2nd Position Only Behind Another Tier 1 Lender)\nMinimum Time In Business: 1-2 Years", notes: "Minimum Credit: 650\nProhibited Industries: Trucking & Logistics / Automotive Sales / Supermarkets & Convenient Stores / Gas Stations / Law Firms / Travel Agencies / Cannabis / Casino & Gambling / Accounting Services / Real Estate & Property Management", tier: "A-B" },
+  { name: "Radiance Funding", contactInfo: "Subs@RadianceFunding.com\nSimon@radiancefunding.com", requirements: "Positions: 1-3\nTIB: 6 Months\nMinimum # of Deposits: 4\nMaximum Negative Days: 4\nMax Amount Funded: 400K\nOffer Biweekly", notes: "Prohibited Industries: Law Firms, Auto Sales, Travel Agents, Trucking, Brokers, Non-Profits, Oil, Gas, Real Estate, Limos, Solar", tier: "A-C" },
+  { name: "Rapid", contactInfo: "https://login.rapidfinance.com/Account/Login?ticket=88338553a520413693c88aaab54adb6b&userType=Partner", requirements: "Minimum Monthly Revenue: 20K\nMinimum Time In Business: 1-2 Years\nPositions: 1st (Strong 2nd or 3rd If There's Room)", notes: "Prohibited Industries: California Construction\nMinimum Credit: 615\nTerm Loan and LOC Option Available", tier: "A-B" },
+  { name: "Revenued", contactInfo: "submitrevenued@revenued.com\nbrett.spass@revenued.com\n908-400-2740", requirements: "Line Of Credit Program\nMinimum Monthly Revenue: 20K\nPositions: 1-3\nTIB: 6 Months\nTerm: 12 Months", notes: "FICO: 400\nNo sole props", tier: "" },
+  { name: "River Advance", contactInfo: "iso@riveradvance.com\nEli@riveradvance.com\nSarah@riveradvance.com", requirements: "Positions Funded: 2nd to 6th position\nNew deals: $750,000\nRenewals: Up to $1,000,000\nMax Term: 180 payments\nBuy Rates: 1.29-1.379\nMinimum Deposits: 3 per month\nMinimum FICO: No minimum\nMinimum Monthly Revenue: $40,000 (except construction: $100,000)", notes: "Restricted Industries: Cannabis, legal services, auto sales, trucking\nSweet Spot: 2nd-4th position deals with healthy balances, high revenue, few/no negative days, decent credit", tier: "" },
+  { name: "Silverline", contactInfo: "submissions@silverlinefunding.com", requirements: "Minimum Monthly Revenue: 45K\nPositions: 2nd-6th & Reverse (Firm no 1st position)\nMinimum Time In Business: 5 Months", notes: "", tier: "" },
+  { name: "Vital Cap", contactInfo: "submissions@vitalcapfund.com\npooja.nene@vitalcapfund.com", requirements: "Positions: 1-4 (2-3 preferred)\nMinimum # of Deposits: 5\nMaximum Negative Days Per Month: 5\nTIB: 1 year\nFICO: 520\nMax Term: 12 Months\nMax Amount Funded: 400K\nProhibited States: UT, AK, HI (TX case by case)", notes: "PREFERRED: Restaurants, Wholesalers, Liquor Stores, Retail, Medical, Manufacturers - Min. 15k avg monthly\nNON-PREFERRED: Construction, Landscaping, Auto Repair, Insurance, Law Firm - Min. 70k avg monthly, no 1st pos\nRESTRICTED: Financial Institutions, Collection Agencies, Gas Stations, Auto Sales, Trucking, Non-for-Profit, Bail Bonds, Check-Cashing, Real Estate Investment, Staffing, Travel, Childcare, Oil", tier: "B" },
+  { name: "Vox", contactInfo: "submissions@voxfunding.com\nnvarner@voxfunding.com\njscavuzzo@voxfunding.com (150k+)", requirements: "Minimum Monthly Revenue: 15k\nPositions: 1-3\nMaximum Negative Days Per Month: 5 Days\nMinimum Time In Business: 1 Year\nMinimum # of Deposits: 5 Per Month", notes: "Minimum Credit: 600\nProhibited Industries: Adult Entertainment / Cash Advance / Credit Card Protection / Credit Restoration / Escort Services / Mortgage Lenders / Pawn Shops / Check Cashier / Wire Transfer / State or Government Agencies / Used Car Dealerships / Sole Proprietors / Trucking\nFunding up to 1.5 mil\n2 point upsell", tier: "A-C" },
+  { name: "Westwood Funding", contactInfo: "Masoncap@westwoodfunding.com\nJuan Monegro 954-350-0331 ext 1032 | 347-865-7773", requirements: "Positions: 1-7 (No reverses)\nAll states/industries", notes: "Funding up to 2mil\nStarter program for tiny deals", tier: "C" },
+  { name: "Elevate Funding", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Forward Financing", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Greenbox Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Fundfi", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "OnDeck", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "BlueVine", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Kabbage", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "CAN Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Credibly", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "National Funding", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "PayPal Working Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Square Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Shopify Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Amazon Lending", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Fora Financial", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Breakout Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Business Backer", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Lendistry", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Clearco", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Biz2Credit", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Fundbox", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Celtic Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "United Capital Source", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Mulligan Funding", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "SmartBiz", contactInfo: "", requirements: "", notes: "", tier: "" },
+  { name: "Lendio", contactInfo: "", requirements: "", notes: "", tier: "" }
+];
+
+async function seedLenders() {
+  console.log("[LENDERS] Seeding lenders data...");
+  try {
+    for (const lenderData of LENDER_SEED_DATA) {
+      await storage.upsertLender({
+        name: lenderData.name,
+        contactInfo: lenderData.contactInfo || null,
+        requirements: lenderData.requirements || null,
+        notes: lenderData.notes || null,
+        tier: lenderData.tier || null,
+        isActive: true,
+      });
+    }
+    console.log(`[LENDERS] Successfully seeded ${LENDER_SEED_DATA.length} lenders`);
+  } catch (error) {
+    console.error("[LENDERS] Error seeding lenders:", error);
+  }
 }

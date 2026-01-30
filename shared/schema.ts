@@ -427,3 +427,25 @@ export const insertBusinessUnderwritingDecisionSchema = createInsertSchema(busin
 
 export type InsertBusinessUnderwritingDecision = z.infer<typeof insertBusinessUnderwritingDecisionSchema>;
 export type BusinessUnderwritingDecision = typeof businessUnderwritingDecisions.$inferSelect;
+
+// Lenders table for storing lender information
+export const lenders = pgTable("lenders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  contactInfo: text("contact_info"), // Email/Phone info
+  requirements: text("requirements"), // Base criteria / requirements
+  notes: text("notes"), // Additional notes
+  tier: text("tier"), // A-D rating
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLenderSchema = createInsertSchema(lenders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLender = z.infer<typeof insertLenderSchema>;
+export type Lender = typeof lenders.$inferSelect;
