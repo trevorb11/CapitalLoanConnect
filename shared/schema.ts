@@ -395,13 +395,14 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   // Approval fields (populated when status = "approved")
   advanceAmount: decimal("advance_amount", { precision: 12, scale: 2 }),
   term: text("term"), // e.g., "6 months", "12 months"
-  paymentFrequency: text("payment_frequency"), // "daily", "weekly", or "monthly"
+  paymentFrequency: text("payment_frequency"), // "daily", "weekly", "biweekly", or "monthly"
   factorRate: decimal("factor_rate", { precision: 5, scale: 4 }), // e.g., 1.25
   totalPayback: decimal("total_payback", { precision: 12, scale: 2 }),
   netAfterFees: decimal("net_after_fees", { precision: 12, scale: 2 }),
   lender: text("lender"),
   notes: text("notes"),
   approvalDate: timestamp("approval_date"),
+  approvalDeadline: timestamp("approval_deadline"), // Deadline for the approval offer
 
   // Additional approvals (secondary lender offers)
   additionalApprovals: jsonb("additional_approvals"), // Array of { lender, amount, term?, factorRate? }

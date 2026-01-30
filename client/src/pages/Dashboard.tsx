@@ -937,8 +937,65 @@ function BankStatementsTab() {
     lender: '',
     notes: '',
     approvalDate: new Date().toISOString().split('T')[0],
+    approvalDeadline: '',
     declineReason: '',
   });
+  const [lenderSearch, setLenderSearch] = useState('');
+  const [showLenderSuggestions, setShowLenderSuggestions] = useState(false);
+  
+  // List of known lenders for autocomplete
+  const LENDERS_LIST = [
+    "Elevate Funding",
+    "Forward Financing", 
+    "Greenbox Capital",
+    "Credibly",
+    "Libertas Funding",
+    "Fox Business Funding",
+    "Rapid Finance",
+    "Fora Financial",
+    "Celtic Capital",
+    "Fundbox",
+    "BlueVine",
+    "OnDeck",
+    "Kabbage",
+    "Funding Circle",
+    "National Funding",
+    "Business Backer",
+    "PayPal Working Capital",
+    "Square Capital",
+    "Amazon Lending",
+    "CAN Capital",
+    "Mulligan Funding",
+    "American Express Business Blueprint",
+    "Headway Capital",
+    "Expansion Capital Group",
+    "Become Capital",
+    "United Capital Source",
+    "Lendr",
+    "LendingTree",
+    "BFS Capital",
+    "Yellowstone Capital",
+    "Pearl Capital",
+    "Capify",
+    "Balboa Capital",
+    "Corporation",
+    "ARF Financial",
+    "Reliant Funding",
+    "Complete Business Solutions",
+    "Breakout Capital",
+    "Lenio",
+    "Mantis Funding",
+    "SBG Funding",
+    "CapFront",
+    "Lendio",
+    "Pango Financial",
+    "CFG Merchant Solutions",
+    "Clear Skies Capital",
+    "Merchant Cash Group",
+    "Kalamata Capital",
+    "AdvancePoint Capital",
+    "Melius Funding"
+  ];
   const [additionalApprovals, setAdditionalApprovals] = useState<Array<{ lender: string; amount: string; term: string; factorRate: string }>>([]);
   const [showAddApprovalForm, setShowAddApprovalForm] = useState(false);
   const [newApproval, setNewApproval] = useState({ lender: '', amount: '', term: '', factorRate: '' });
@@ -1006,8 +1063,10 @@ function BankStatementsTab() {
       lender: existing?.lender || '',
       notes: existing?.notes || '',
       approvalDate: existing?.approvalDate ? new Date(existing.approvalDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      approvalDeadline: (existing as any)?.approvalDeadline ? new Date((existing as any).approvalDeadline).toISOString().split('T')[0] : '',
       declineReason: existing?.declineReason || '',
     });
+    setLenderSearch(existing?.lender || '');
     // Load existing additional approvals
     const existingAdditional = existing?.additionalApprovals as Array<{ lender: string; amount: string; term: string; factorRate: string }> | null;
     setAdditionalApprovals(existingAdditional || []);
@@ -1038,6 +1097,7 @@ function BankStatementsTab() {
           lender: decisionForm.lender || null,
           notes: decisionForm.notes || null,
           approvalDate: decisionForm.approvalDate || null,
+          approvalDeadline: decisionForm.approvalDeadline || null,
           declineReason: decisionForm.declineReason || null,
           additionalApprovals: additionalApprovals.length > 0 ? additionalApprovals : null,
         }),
@@ -1812,6 +1872,7 @@ function BankStatementsTab() {
                       <SelectContent>
                         <SelectItem value="daily">Daily</SelectItem>
                         <SelectItem value="weekly">Weekly</SelectItem>
+                        <SelectItem value="biweekly">Bi-Weekly</SelectItem>
                         <SelectItem value="monthly">Monthly</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1854,26 +1915,69 @@ function BankStatementsTab() {
                       data-testid="input-net-after-fees"
                     />
                   </div>
-                  <div>
+                  <div className="relative">
                     <Label htmlFor="lender">Lender</Label>
                     <Input
                       id="lender"
-                      placeholder="Lender name"
-                      value={decisionForm.lender}
-                      onChange={(e) => setDecisionForm(prev => ({ ...prev, lender: e.target.value }))}
+                      placeholder="Type to search lenders..."
+                      value={lenderSearch}
+                      onChange={(e) => {
+                        setLenderSearch(e.target.value);
+                        setDecisionForm(prev => ({ ...prev, lender: e.target.value }));
+                        setShowLenderSuggestions(true);
+                      }}
+                      onFocus={() => setShowLenderSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowLenderSuggestions(false), 200)}
                       data-testid="input-lender"
                     />
+                    {showLenderSuggestions && lenderSearch && (
+                      <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                        {LENDERS_LIST
+                          .filter(l => l.toLowerCase().includes(lenderSearch.toLowerCase()))
+                          .slice(0, 8)
+                          .map(lender => (
+                            <div
+                              key={lender}
+                              className="px-3 py-2 cursor-pointer hover:bg-accent text-sm"
+                              onMouseDown={() => {
+                                setLenderSearch(lender);
+                                setDecisionForm(prev => ({ ...prev, lender }));
+                                setShowLenderSuggestions(false);
+                              }}
+                            >
+                              {lender}
+                            </div>
+                          ))}
+                        {LENDERS_LIST.filter(l => l.toLowerCase().includes(lenderSearch.toLowerCase())).length === 0 && (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            No matching lenders - custom entry will be used
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div>
-                  <Label htmlFor="approvalDate">Approval Date</Label>
-                  <Input
-                    id="approvalDate"
-                    type="date"
-                    value={decisionForm.approvalDate}
-                    onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDate: e.target.value }))}
-                    data-testid="input-approval-date"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="approvalDate">Approval Date</Label>
+                    <Input
+                      id="approvalDate"
+                      type="date"
+                      value={decisionForm.approvalDate}
+                      onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDate: e.target.value }))}
+                      data-testid="input-approval-date"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="approvalDeadline">Approval Deadline</Label>
+                    <Input
+                      id="approvalDeadline"
+                      type="date"
+                      value={decisionForm.approvalDeadline}
+                      onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDeadline: e.target.value }))}
+                      data-testid="input-approval-deadline"
+                    />
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="notes">Notes</Label>
@@ -2222,6 +2326,23 @@ export default function Dashboard() {
       return res.json();
     },
   });
+
+  const { data: underwritingDecisions } = useQuery<BusinessUnderwritingDecision[]>({
+    queryKey: ['/api/underwriting-decisions'],
+    enabled: authData?.isAuthenticated === true,
+    queryFn: async () => {
+      const res = await fetch('/api/underwriting-decisions', {
+        credentials: 'include',
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Helper to get underwriting decision for a business by email
+  const getBusinessDecision = (email: string): BusinessUnderwritingDecision | undefined => {
+    return underwritingDecisions?.find(d => d.businessEmail?.toLowerCase() === email?.toLowerCase());
+  };
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
@@ -2648,12 +2769,32 @@ export default function Dashboard() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <h3 className="font-semibold text-lg flex items-center gap-1" data-testid={`text-business-name-${app.id}`}>
-                        {app.legalBusinessName || app.businessName || "No business name"}
-                        {Number(app.monthlyRevenue || app.averageMonthlyRevenue) >= 20000 && (
-                          <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" data-testid={`icon-high-revenue-${app.id}`} />
-                        )}
-                      </h3>
+                      <div>
+                        <h3 className="font-semibold text-lg flex items-center gap-1" data-testid={`text-business-name-${app.id}`}>
+                          {app.legalBusinessName || app.businessName || "No business name"}
+                          {Number(app.monthlyRevenue || app.averageMonthlyRevenue) >= 20000 && (
+                            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" data-testid={`icon-high-revenue-${app.id}`} />
+                          )}
+                        </h3>
+                        {(() => {
+                          const decision = getBusinessDecision(app.email || '');
+                          if (decision?.status === 'declined' && decision.declineReason) {
+                            return (
+                              <p className="text-xs text-red-500 mt-0.5" data-testid={`text-decline-reason-${app.id}`}>
+                                Declined: {decision.declineReason}
+                              </p>
+                            );
+                          }
+                          if (decision?.status === 'approved' && decision.advanceAmount) {
+                            return (
+                              <p className="text-xs text-green-600 mt-0.5" data-testid={`text-approved-amount-${app.id}`}>
+                                Approved: ${Number(decision.advanceAmount).toLocaleString()}
+                              </p>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
                       {app.isFullApplicationCompleted && hasUploadedStatements(app.email) ? (
                         <Badge variant="default" className="bg-blue-600 hover:bg-blue-700" data-testid={`badge-status-statements-${app.id}`}>
                           <Upload className="w-3 h-3 mr-1" />

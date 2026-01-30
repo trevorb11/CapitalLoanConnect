@@ -54,6 +54,9 @@ function calculatePaymentAmount(totalPayback: string | null, term: string | null
     case 'monthly':
       periods = termMonths;
       break;
+    case 'biweekly':
+      periods = termMonths * 2.17; // ~2.17 bi-weekly periods per month
+      break;
     case 'weekly':
     default:
       periods = termMonths * 4.33;
@@ -70,6 +73,8 @@ function getFrequencyLabel(frequency: string | null): string {
       return 'per day';
     case 'monthly':
       return 'per month';
+    case 'biweekly':
+      return 'bi-weekly';
     case 'weekly':
     default:
       return 'per week';
@@ -82,6 +87,8 @@ function getPaymentTypeLabel(frequency: string | null): string {
       return 'Daily Payments';
     case 'monthly':
       return 'Monthly Payments';
+    case 'biweekly':
+      return 'Bi-Weekly Payments';
     case 'weekly':
     default:
       return 'Weekly Payments';

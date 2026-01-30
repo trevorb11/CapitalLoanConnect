@@ -2260,6 +2260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       lender,
       notes,
       approvalDate,
+      approvalDeadline,
       declineReason,
       additionalApprovals
     } = req.body;
@@ -2288,6 +2289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lender: lender || null,
         notes: notes || null,
         approvalDate: approvalDate ? new Date(approvalDate) : new Date(),
+        approvalDeadline: approvalDeadline ? new Date(approvalDeadline) : null,
         declineReason: declineReason || null,
         additionalApprovals: additionalApprovals || null,
         reviewedBy: reviewerEmail,
