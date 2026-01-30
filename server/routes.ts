@@ -2275,19 +2275,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const reviewerEmail = req.session.user.agentEmail || 'admin';
 
+      // Sync primary approval data from additionalApprovals JSONB to top-level columns
+      let syncedAdvanceAmount = advanceAmount || null;
+      let syncedTerm = term || null;
+      let syncedPaymentFrequency = paymentFrequency || null;
+      let syncedFactorRate = factorRate || null;
+      let syncedTotalPayback = totalPayback || null;
+      let syncedNetAfterFees = netAfterFees || null;
+      let syncedLender = lender || null;
+      let syncedNotes = notes || null;
+      let syncedApprovalDate = approvalDate ? new Date(approvalDate) : new Date();
+
+      if (additionalApprovals && Array.isArray(additionalApprovals)) {
+        const primary = additionalApprovals.find((a: any) => a.isPrimary);
+        if (primary) {
+          syncedAdvanceAmount = primary.advanceAmount ? parseFloat(primary.advanceAmount) : null;
+          syncedTerm = primary.term || null;
+          syncedPaymentFrequency = primary.paymentFrequency || null;
+          syncedFactorRate = primary.factorRate ? parseFloat(primary.factorRate) : null;
+          syncedTotalPayback = primary.totalPayback ? parseFloat(primary.totalPayback) : null;
+          syncedNetAfterFees = primary.netAfterFees ? parseFloat(primary.netAfterFees) : null;
+          syncedLender = primary.lender || null;
+          syncedNotes = primary.notes || null;
+          syncedApprovalDate = primary.approvalDate ? new Date(primary.approvalDate) : new Date();
+        }
+      }
+
       const decision = await storage.createOrUpdateBusinessUnderwritingDecision({
         businessEmail,
         businessName: businessName || null,
         status,
-        advanceAmount: advanceAmount || null,
-        term: term || null,
-        paymentFrequency: paymentFrequency || null,
-        factorRate: factorRate || null,
-        totalPayback: totalPayback || null,
-        netAfterFees: netAfterFees || null,
-        lender: lender || null,
-        notes: notes || null,
-        approvalDate: approvalDate ? new Date(approvalDate) : new Date(),
+        advanceAmount: syncedAdvanceAmount,
+        term: syncedTerm,
+        paymentFrequency: syncedPaymentFrequency,
+        factorRate: syncedFactorRate,
+        totalPayback: syncedTotalPayback,
+        netAfterFees: syncedNetAfterFees,
+        lender: syncedLender,
+        notes: syncedNotes,
+        approvalDate: syncedApprovalDate,
         declineReason: declineReason || null,
         additionalApprovals: additionalApprovals || null,
         reviewedBy: reviewerEmail,
@@ -2318,6 +2344,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert approvalDate string to Date if provided
       if (updates.approvalDate && typeof updates.approvalDate === 'string') {
         updates.approvalDate = new Date(updates.approvalDate);
+      }
+
+      // Sync primary approval data from additionalApprovals JSONB to top-level columns
+      if (updates.additionalApprovals && Array.isArray(updates.additionalApprovals)) {
+        const primary = updates.additionalApprovals.find((a: any) => a.isPrimary);
+        if (primary) {
+          updates.advanceAmount = primary.advanceAmount ? parseFloat(primary.advanceAmount) : null;
+          updates.term = primary.term || null;
+          updates.paymentFrequency = primary.paymentFrequency || null;
+          updates.factorRate = primary.factorRate ? parseFloat(primary.factorRate) : null;
+          updates.totalPayback = primary.totalPayback ? parseFloat(primary.totalPayback) : null;
+          updates.netAfterFees = primary.netAfterFees ? parseFloat(primary.netAfterFees) : null;
+          updates.lender = primary.lender || null;
+          updates.notes = primary.notes || null;
+          updates.approvalDate = primary.approvalDate ? new Date(primary.approvalDate) : null;
+        }
       }
 
       updates.reviewedBy = req.session.user.agentEmail || 'admin';
@@ -2377,7 +2419,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No valid approval found" });
       }
       
-      // Return approval details for the letter page
+      // Return approval details for the letter page (includes all approvals)
       res.json({
         businessName: decision.businessName,
         advanceAmount: decision.advanceAmount,
@@ -2389,6 +2431,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lender: decision.lender,
         approvalDate: decision.approvalDate,
         notes: decision.notes,
+        additionalApprovals: decision.additionalApprovals,
       });
     } catch (error) {
       console.error("Error fetching approval letter:", error);
