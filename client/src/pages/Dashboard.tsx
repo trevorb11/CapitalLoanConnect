@@ -2340,6 +2340,17 @@ export default function Dashboard() {
         .sort((a, b) => (a || "").localeCompare(b || ""))
     : [];
 
+  // Create a Set of emails that have uploaded bank statements
+  const emailsWithStatements = new Set(
+    bankUploads?.map(upload => upload.email.toLowerCase()) || []
+  );
+
+  // Helper to check if an application has uploaded statements
+  const hasUploadedStatements = (email: string | null | undefined) => {
+    if (!email) return false;
+    return emailsWithStatements.has(email.toLowerCase());
+  };
+
   const filteredApplications = applications
     ? applications
         .filter((app) => {
@@ -2643,7 +2654,12 @@ export default function Dashboard() {
                           <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" data-testid={`icon-high-revenue-${app.id}`} />
                         )}
                       </h3>
-                      {app.isFullApplicationCompleted ? (
+                      {app.isFullApplicationCompleted && hasUploadedStatements(app.email) ? (
+                        <Badge variant="default" className="bg-blue-600 hover:bg-blue-700" data-testid={`badge-status-statements-${app.id}`}>
+                          <Upload className="w-3 h-3 mr-1" />
+                          Statements Uploaded
+                        </Badge>
+                      ) : app.isFullApplicationCompleted ? (
                         <Badge variant="default" className="bg-green-600 hover:bg-green-700" data-testid={`badge-status-full-${app.id}`}>
                           <CheckCircle2 className="w-3 h-3 mr-1" />
                           Full App
@@ -2793,7 +2809,12 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 flex-wrap">
               {isEditMode ? "Edit Application" : "Application Details"}
-              {selectedAppDetails?.isFullApplicationCompleted ? (
+              {selectedAppDetails?.isFullApplicationCompleted && hasUploadedStatements(selectedAppDetails?.email) ? (
+                <Badge variant="default" className="bg-blue-600">
+                  <Upload className="w-3 h-3 mr-1" />
+                  Statements Uploaded
+                </Badge>
+              ) : selectedAppDetails?.isFullApplicationCompleted ? (
                 <Badge variant="default" className="bg-green-600">
                   <CheckCircle2 className="w-3 h-3 mr-1" />
                   Full App
