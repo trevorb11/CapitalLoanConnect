@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2 } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, ChevronUp, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -927,6 +927,26 @@ function BankStatementsTab() {
   // Business-level underwriting decision state
   const [decisionDialog, setDecisionDialog] = useState<BusinessDecisionDialogData | null>(null);
   const [savingDecision, setSavingDecision] = useState(false);
+  
+  // Packaged approvals - list of approvals entered in the current dialog session
+  interface PackagedApproval {
+    id: string;
+    advanceAmount: string;
+    term: string;
+    paymentFrequency: string;
+    factorRate: string;
+    totalPayback: string;
+    netAfterFees: string;
+    lender: string;
+    notes: string;
+    approvalDate: string;
+    approvalDeadline: string;
+  }
+  const [packagedApprovals, setPackagedApprovals] = useState<PackagedApproval[]>([]);
+  const [editingApprovalId, setEditingApprovalId] = useState<string | null>(null);
+  const [showApprovalForm, setShowApprovalForm] = useState(true);
+  const [expandedApprovalIds, setExpandedApprovalIds] = useState<Set<string>>(new Set());
+  
   const [decisionForm, setDecisionForm] = useState({
     advanceAmount: '',
     term: '',
@@ -1025,31 +1045,196 @@ function BankStatementsTab() {
   // Open decision dialog
   const openDecisionDialog = (businessEmail: string, businessName: string, mode: 'approve' | 'decline') => {
     const existing = getBusinessDecision(businessEmail);
-    setDecisionForm({
-      advanceAmount: existing?.advanceAmount?.toString() || '',
-      term: existing?.term || '',
-      paymentFrequency: existing?.paymentFrequency || 'weekly',
-      factorRate: existing?.factorRate?.toString() || '',
-      totalPayback: existing?.totalPayback?.toString() || '',
-      netAfterFees: existing?.netAfterFees?.toString() || '',
-      lender: existing?.lender || '',
-      notes: existing?.notes || '',
-      approvalDate: existing?.approvalDate ? new Date(existing.approvalDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-      approvalDeadline: (existing as any)?.approvalDeadline ? new Date((existing as any).approvalDeadline).toISOString().split('T')[0] : '',
+    
+    // Reset form to empty for new approval entry
+    const resetForm = () => ({
+      advanceAmount: '',
+      term: '',
+      paymentFrequency: 'weekly',
+      factorRate: '',
+      totalPayback: '',
+      netAfterFees: '',
+      lender: '',
+      notes: '',
+      approvalDate: new Date().toISOString().split('T')[0],
+      approvalDeadline: '',
       declineReason: existing?.declineReason || '',
     });
-    setLenderSearch(existing?.lender || '');
-    // Load existing additional approvals
-    const existingAdditional = existing?.additionalApprovals as Array<{ lender: string; amount: string; term: string; factorRate: string }> | null;
-    setAdditionalApprovals(existingAdditional || []);
+    
+    // Load existing approvals into packaged format
+    const loadedApprovals: PackagedApproval[] = [];
+    if (existing && mode === 'approve') {
+      // Load primary approval if exists
+      if (existing.advanceAmount || existing.lender) {
+        loadedApprovals.push({
+          id: 'existing-primary',
+          advanceAmount: existing.advanceAmount?.toString() || '',
+          term: existing.term || '',
+          paymentFrequency: existing.paymentFrequency || 'weekly',
+          factorRate: existing.factorRate?.toString() || '',
+          totalPayback: existing.totalPayback?.toString() || '',
+          netAfterFees: existing.netAfterFees?.toString() || '',
+          lender: existing.lender || '',
+          notes: existing.notes || '',
+          approvalDate: existing.approvalDate ? new Date(existing.approvalDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          approvalDeadline: (existing as any)?.approvalDeadline ? new Date((existing as any).approvalDeadline).toISOString().split('T')[0] : '',
+        });
+      }
+      // Load additional approvals
+      const existingAdditional = existing?.additionalApprovals as Array<{ lender: string; amount: string; term: string; factorRate: string }> | null;
+      if (existingAdditional) {
+        existingAdditional.forEach((appr, idx) => {
+          loadedApprovals.push({
+            id: `existing-additional-${idx}`,
+            advanceAmount: appr.amount || '',
+            term: appr.term || '',
+            paymentFrequency: 'weekly',
+            factorRate: appr.factorRate || '',
+            totalPayback: '',
+            netAfterFees: '',
+            lender: appr.lender || '',
+            notes: '',
+            approvalDate: new Date().toISOString().split('T')[0],
+            approvalDeadline: '',
+          });
+        });
+      }
+    }
+    
+    setPackagedApprovals(loadedApprovals);
+    setEditingApprovalId(null);
+    setShowApprovalForm(loadedApprovals.length === 0); // Show form if no existing approvals
+    setExpandedApprovalIds(new Set());
+    setDecisionForm(resetForm());
+    setLenderSearch('');
+    setAdditionalApprovals([]);
     setShowAddApprovalForm(false);
     setNewApproval({ lender: '', amount: '', term: '', factorRate: '' });
     setDecisionDialog({ businessEmail, businessName, mode });
   };
+  
+  // Package current form into an approval entry
+  const handlePackageApproval = () => {
+    if (!decisionForm.lender.trim() && !decisionForm.advanceAmount.trim()) {
+      return; // Need at least lender or amount
+    }
+    
+    const newApprovalEntry: PackagedApproval = {
+      id: editingApprovalId || `approval-${Date.now()}`,
+      advanceAmount: decisionForm.advanceAmount,
+      term: decisionForm.term,
+      paymentFrequency: decisionForm.paymentFrequency,
+      factorRate: decisionForm.factorRate,
+      totalPayback: decisionForm.totalPayback,
+      netAfterFees: decisionForm.netAfterFees,
+      lender: decisionForm.lender,
+      notes: decisionForm.notes,
+      approvalDate: decisionForm.approvalDate,
+      approvalDeadline: decisionForm.approvalDeadline,
+    };
+    
+    if (editingApprovalId) {
+      // Update existing
+      setPackagedApprovals(prev => prev.map(a => a.id === editingApprovalId ? newApprovalEntry : a));
+    } else {
+      // Add new
+      setPackagedApprovals(prev => [...prev, newApprovalEntry]);
+    }
+    
+    // Reset form for next entry
+    setDecisionForm({
+      advanceAmount: '',
+      term: '',
+      paymentFrequency: 'weekly',
+      factorRate: '',
+      totalPayback: '',
+      netAfterFees: '',
+      lender: '',
+      notes: '',
+      approvalDate: new Date().toISOString().split('T')[0],
+      approvalDeadline: '',
+      declineReason: decisionForm.declineReason,
+    });
+    setLenderSearch('');
+    setEditingApprovalId(null);
+    setShowApprovalForm(false);
+  };
+  
+  // Edit a packaged approval
+  const handleEditPackagedApproval = (approval: PackagedApproval) => {
+    setDecisionForm({
+      advanceAmount: approval.advanceAmount,
+      term: approval.term,
+      paymentFrequency: approval.paymentFrequency,
+      factorRate: approval.factorRate,
+      totalPayback: approval.totalPayback,
+      netAfterFees: approval.netAfterFees,
+      lender: approval.lender,
+      notes: approval.notes,
+      approvalDate: approval.approvalDate,
+      approvalDeadline: approval.approvalDeadline,
+      declineReason: decisionForm.declineReason,
+    });
+    setLenderSearch(approval.lender);
+    setEditingApprovalId(approval.id);
+    setShowApprovalForm(true);
+  };
+  
+  // Delete a packaged approval
+  const handleDeletePackagedApproval = (id: string) => {
+    setPackagedApprovals(prev => prev.filter(a => a.id !== id));
+    if (editingApprovalId === id) {
+      setEditingApprovalId(null);
+      setShowApprovalForm(packagedApprovals.length <= 1);
+    }
+  };
+  
+  // Toggle expand/collapse for a packaged approval
+  const toggleApprovalExpanded = (id: string) => {
+    setExpandedApprovalIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
 
-  // Save underwriting decision
+  // Save underwriting decision (submit all packaged approvals)
   const handleSaveDecision = async () => {
     if (!decisionDialog) return;
+    
+    // For approve mode, use packaged approvals
+    // First approval becomes primary, rest become additional
+    const allApprovals = [...packagedApprovals];
+    
+    // If there's unsaved form data, package it first
+    if (showApprovalForm && (decisionForm.lender.trim() || decisionForm.advanceAmount.trim())) {
+      allApprovals.push({
+        id: `approval-${Date.now()}`,
+        advanceAmount: decisionForm.advanceAmount,
+        term: decisionForm.term,
+        paymentFrequency: decisionForm.paymentFrequency,
+        factorRate: decisionForm.factorRate,
+        totalPayback: decisionForm.totalPayback,
+        netAfterFees: decisionForm.netAfterFees,
+        lender: decisionForm.lender,
+        notes: decisionForm.notes,
+        approvalDate: decisionForm.approvalDate,
+        approvalDeadline: decisionForm.approvalDeadline,
+      });
+    }
+    
+    const primaryApproval = allApprovals[0];
+    const additionalApprovalsFormatted = allApprovals.slice(1).map(a => ({
+      lender: a.lender,
+      amount: a.advanceAmount,
+      term: a.term,
+      factorRate: a.factorRate,
+    }));
+    
     setSavingDecision(true);
     try {
       const res = await fetch('/api/underwriting-decisions', {
@@ -1060,23 +1245,24 @@ function BankStatementsTab() {
           businessEmail: decisionDialog.businessEmail,
           businessName: decisionDialog.businessName,
           status: decisionDialog.mode === 'approve' ? 'approved' : 'declined',
-          advanceAmount: decisionForm.advanceAmount ? parseFloat(decisionForm.advanceAmount) : null,
-          term: decisionForm.term || null,
-          paymentFrequency: decisionForm.paymentFrequency || null,
-          factorRate: decisionForm.factorRate ? parseFloat(decisionForm.factorRate) : null,
-          totalPayback: decisionForm.totalPayback ? parseFloat(decisionForm.totalPayback) : null,
-          netAfterFees: decisionForm.netAfterFees ? parseFloat(decisionForm.netAfterFees) : null,
-          lender: decisionForm.lender || null,
-          notes: decisionForm.notes || null,
-          approvalDate: decisionForm.approvalDate || null,
-          approvalDeadline: decisionForm.approvalDeadline || null,
+          advanceAmount: primaryApproval?.advanceAmount ? parseFloat(primaryApproval.advanceAmount) : null,
+          term: primaryApproval?.term || null,
+          paymentFrequency: primaryApproval?.paymentFrequency || null,
+          factorRate: primaryApproval?.factorRate ? parseFloat(primaryApproval.factorRate) : null,
+          totalPayback: primaryApproval?.totalPayback ? parseFloat(primaryApproval.totalPayback) : null,
+          netAfterFees: primaryApproval?.netAfterFees ? parseFloat(primaryApproval.netAfterFees) : null,
+          lender: primaryApproval?.lender || null,
+          notes: primaryApproval?.notes || null,
+          approvalDate: primaryApproval?.approvalDate || null,
+          approvalDeadline: primaryApproval?.approvalDeadline || null,
           declineReason: decisionForm.declineReason || null,
-          additionalApprovals: additionalApprovals.length > 0 ? additionalApprovals : null,
+          additionalApprovals: additionalApprovalsFormatted.length > 0 ? additionalApprovalsFormatted : null,
         }),
       });
       if (res.ok) {
         queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
         setDecisionDialog(null);
+        setPackagedApprovals([]);
       } else {
         console.error('Failed to save decision');
       }
@@ -1807,305 +1993,315 @@ function BankStatementsTab() {
               )}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-4">
+          <div className="space-y-4 pt-4 max-h-[70vh] overflow-y-auto">
             {decisionDialog?.mode === 'approve' ? (
               <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="advanceAmount">Advance Amount</Label>
-                    <Input
-                      id="advanceAmount"
-                      type="number"
-                      placeholder="$50,000"
-                      value={decisionForm.advanceAmount}
-                      onChange={(e) => setDecisionForm(prev => ({ ...prev, advanceAmount: e.target.value }))}
-                      data-testid="input-advance-amount"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="term">Term</Label>
-                    <Input
-                      id="term"
-                      placeholder="6 months"
-                      value={decisionForm.term}
-                      onChange={(e) => setDecisionForm(prev => ({ ...prev, term: e.target.value }))}
-                      data-testid="input-term"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="paymentFrequency">Payment Frequency</Label>
-                    <Select
-                      value={decisionForm.paymentFrequency}
-                      onValueChange={(value) => setDecisionForm(prev => ({ ...prev, paymentFrequency: value }))}
-                    >
-                      <SelectTrigger data-testid="select-payment-frequency">
-                        <SelectValue placeholder="Select frequency" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="daily">Daily</SelectItem>
-                        <SelectItem value="weekly">Weekly</SelectItem>
-                        <SelectItem value="biweekly">Bi-Weekly</SelectItem>
-                        <SelectItem value="monthly">Monthly</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="factorRate">Factor Rate</Label>
-                    <Input
-                      id="factorRate"
-                      type="number"
-                      step="0.01"
-                      placeholder="1.25"
-                      value={decisionForm.factorRate}
-                      onChange={(e) => setDecisionForm(prev => ({ ...prev, factorRate: e.target.value }))}
-                      data-testid="input-factor-rate"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="totalPayback">Total Payback</Label>
-                    <Input
-                      id="totalPayback"
-                      type="number"
-                      placeholder="$62,500"
-                      value={decisionForm.totalPayback}
-                      onChange={(e) => setDecisionForm(prev => ({ ...prev, totalPayback: e.target.value }))}
-                      data-testid="input-total-payback"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="netAfterFees">Net After Fees</Label>
-                    <Input
-                      id="netAfterFees"
-                      type="number"
-                      placeholder="$48,500"
-                      value={decisionForm.netAfterFees}
-                      onChange={(e) => setDecisionForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
-                      data-testid="input-net-after-fees"
-                    />
-                  </div>
-                  <div className="relative">
-                    <Label htmlFor="lender">Lender</Label>
-                    <Input
-                      id="lender"
-                      placeholder="Type to search lenders..."
-                      value={lenderSearch}
-                      onChange={(e) => {
-                        setLenderSearch(e.target.value);
-                        setDecisionForm(prev => ({ ...prev, lender: e.target.value }));
-                        setShowLenderSuggestions(true);
-                      }}
-                      onFocus={() => setShowLenderSuggestions(true)}
-                      onBlur={() => setTimeout(() => setShowLenderSuggestions(false), 200)}
-                      data-testid="input-lender"
-                    />
-                    {showLenderSuggestions && lenderSearch && (
-                      <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                        {LENDERS_LIST
-                          .filter(l => l.toLowerCase().includes(lenderSearch.toLowerCase()))
-                          .slice(0, 8)
-                          .map(lender => (
-                            <div
-                              key={lender}
-                              className="px-3 py-2 cursor-pointer hover:bg-accent text-sm"
-                              onMouseDown={() => {
-                                setLenderSearch(lender);
-                                setDecisionForm(prev => ({ ...prev, lender }));
-                                setShowLenderSuggestions(false);
+                {/* Packaged Approvals List */}
+                {packagedApprovals.length > 0 && (
+                  <div className="space-y-2">
+                    {packagedApprovals.map((approval, idx) => (
+                      <div 
+                        key={approval.id} 
+                        className={`border rounded-lg overflow-hidden ${editingApprovalId === approval.id ? 'border-primary ring-1 ring-primary' : ''}`}
+                      >
+                        <div 
+                          className="flex items-center justify-between p-3 bg-muted/50 cursor-pointer hover:bg-muted/70"
+                          onClick={() => toggleApprovalExpanded(approval.id)}
+                          data-testid={`approval-header-${idx}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                              Approval #{idx + 1}
+                            </Badge>
+                            <span className="font-medium text-sm">{approval.lender || 'No lender'}</span>
+                            {approval.advanceAmount && (
+                              <span className="text-green-600 font-semibold text-sm">
+                                ${parseFloat(approval.advanceAmount).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditPackagedApproval(approval);
                               }}
+                              data-testid={`button-edit-approval-${idx}`}
                             >
-                              {lender}
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeletePackagedApproval(approval.id);
+                              }}
+                              className="text-red-500 hover:text-red-700"
+                              data-testid={`button-delete-approval-${idx}`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                            {expandedApprovalIds.has(approval.id) ? (
+                              <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                            )}
+                          </div>
+                        </div>
+                        {expandedApprovalIds.has(approval.id) && (
+                          <div className="p-3 bg-background border-t text-sm space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div><span className="text-muted-foreground">Amount:</span> <span className="font-medium">${parseFloat(approval.advanceAmount || '0').toLocaleString()}</span></div>
+                              <div><span className="text-muted-foreground">Term:</span> <span className="font-medium">{approval.term || '-'}</span></div>
+                              <div><span className="text-muted-foreground">Factor Rate:</span> <span className="font-medium">{approval.factorRate ? `${approval.factorRate}x` : '-'}</span></div>
+                              <div><span className="text-muted-foreground">Frequency:</span> <span className="font-medium capitalize">{approval.paymentFrequency || '-'}</span></div>
+                              <div><span className="text-muted-foreground">Total Payback:</span> <span className="font-medium">{approval.totalPayback ? `$${parseFloat(approval.totalPayback).toLocaleString()}` : '-'}</span></div>
+                              <div><span className="text-muted-foreground">Net After Fees:</span> <span className="font-medium">{approval.netAfterFees ? `$${parseFloat(approval.netAfterFees).toLocaleString()}` : '-'}</span></div>
                             </div>
-                          ))}
-                        {LENDERS_LIST.filter(l => l.toLowerCase().includes(lenderSearch.toLowerCase())).length === 0 && (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">
-                            No matching lenders - custom entry will be used
+                            {approval.notes && (
+                              <div><span className="text-muted-foreground">Notes:</span> <span className="font-medium">{approval.notes}</span></div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
+                    ))}
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="approvalDate">Approval Date</Label>
-                    <Input
-                      id="approvalDate"
-                      type="date"
-                      value={decisionForm.approvalDate}
-                      onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDate: e.target.value }))}
-                      data-testid="input-approval-date"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="approvalDeadline">Approval Deadline</Label>
-                    <Input
-                      id="approvalDeadline"
-                      type="date"
-                      value={decisionForm.approvalDeadline}
-                      onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDeadline: e.target.value }))}
-                      data-testid="input-approval-deadline"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="notes">Notes</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Additional notes..."
-                    rows={3}
-                    value={decisionForm.notes}
-                    onChange={(e) => setDecisionForm(prev => ({ ...prev, notes: e.target.value }))}
-                    data-testid="input-notes"
-                  />
-                </div>
+                )}
 
-                {/* Additional Approvals Section */}
-                <div className="border-t pt-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Label className="text-base font-semibold">Additional Approvals</Label>
-                    {!showAddApprovalForm && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowAddApprovalForm(true)}
-                        data-testid="button-add-additional-approval"
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Add
-                      </Button>
-                    )}
-                  </div>
+                {/* Add New Approval Button (when form is hidden) */}
+                {!showApprovalForm && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      setEditingApprovalId(null);
+                      setDecisionForm({
+                        advanceAmount: '',
+                        term: '',
+                        paymentFrequency: 'weekly',
+                        factorRate: '',
+                        totalPayback: '',
+                        netAfterFees: '',
+                        lender: '',
+                        notes: '',
+                        approvalDate: new Date().toISOString().split('T')[0],
+                        approvalDeadline: '',
+                        declineReason: decisionForm.declineReason,
+                      });
+                      setLenderSearch('');
+                      setShowApprovalForm(true);
+                    }}
+                    data-testid="button-add-new-approval"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add New Approval
+                  </Button>
+                )}
 
-                  {/* List of existing additional approvals */}
-                  {additionalApprovals.length > 0 && (
-                    <div className="space-y-2 mb-3">
-                      {additionalApprovals.map((appr, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg text-sm">
-                          <div className="flex-1 grid grid-cols-2 gap-2">
-                            <div>
-                              <span className="text-muted-foreground">Lender: </span>
-                              <span className="font-medium">{appr.lender}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Amount: </span>
-                              <span className="font-medium text-green-600">${parseFloat(appr.amount).toLocaleString()}</span>
-                            </div>
-                            {appr.term && (
-                              <div>
-                                <span className="text-muted-foreground">Term: </span>
-                                <span className="font-medium">{appr.term}</span>
-                              </div>
-                            )}
-                            {appr.factorRate && (
-                              <div>
-                                <span className="text-muted-foreground">Rate: </span>
-                                <span className="font-medium">{appr.factorRate}x</span>
-                              </div>
-                            )}
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setAdditionalApprovals(prev => prev.filter((_, i) => i !== idx))}
-                            className="text-red-500 hover:text-red-700 ml-2"
-                            data-testid={`button-remove-additional-${idx}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Add new additional approval form */}
-                  {showAddApprovalForm && (
-                    <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label htmlFor="new-appr-lender" className="text-xs">Lender *</Label>
-                          <Input
-                            id="new-appr-lender"
-                            placeholder="Lender name"
-                            value={newApproval.lender}
-                            onChange={(e) => setNewApproval(prev => ({ ...prev, lender: e.target.value }))}
-                            data-testid="input-new-appr-lender"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="new-appr-amount" className="text-xs">Amount *</Label>
-                          <Input
-                            id="new-appr-amount"
-                            type="number"
-                            placeholder="$25,000"
-                            value={newApproval.amount}
-                            onChange={(e) => setNewApproval(prev => ({ ...prev, amount: e.target.value }))}
-                            data-testid="input-new-appr-amount"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="new-appr-term" className="text-xs">Term Length</Label>
-                          <Input
-                            id="new-appr-term"
-                            placeholder="6 months"
-                            value={newApproval.term}
-                            onChange={(e) => setNewApproval(prev => ({ ...prev, term: e.target.value }))}
-                            data-testid="input-new-appr-term"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="new-appr-rate" className="text-xs">Factor Rate</Label>
-                          <Input
-                            id="new-appr-rate"
-                            type="number"
-                            step="0.01"
-                            placeholder="1.25"
-                            value={newApproval.factorRate}
-                            onChange={(e) => setNewApproval(prev => ({ ...prev, factorRate: e.target.value }))}
-                            data-testid="input-new-appr-rate"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-2">
+                {/* Approval Entry Form */}
+                {showApprovalForm && (
+                  <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base font-semibold">
+                        {editingApprovalId ? 'Edit Approval' : (packagedApprovals.length > 0 ? 'New Approval' : 'Approval Details')}
+                      </Label>
+                      {packagedApprovals.length > 0 && (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setShowAddApprovalForm(false);
-                            setNewApproval({ lender: '', amount: '', term: '', factorRate: '' });
+                            setShowApprovalForm(false);
+                            setEditingApprovalId(null);
                           }}
-                          data-testid="button-cancel-new-appr"
+                          data-testid="button-cancel-form"
                         >
-                          Cancel
+                          <X className="w-4 h-4" />
                         </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={!newApproval.lender.trim() || !newApproval.amount.trim()}
-                          onClick={() => {
-                            setAdditionalApprovals(prev => [...prev, { ...newApproval }]);
-                            setNewApproval({ lender: '', amount: '', term: '', factorRate: '' });
-                            setShowAddApprovalForm(false);
-                          }}
-                          data-testid="button-save-new-appr"
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="advanceAmount">Advance Amount</Label>
+                        <Input
+                          id="advanceAmount"
+                          type="number"
+                          placeholder="$50,000"
+                          value={decisionForm.advanceAmount}
+                          onChange={(e) => setDecisionForm(prev => ({ ...prev, advanceAmount: e.target.value }))}
+                          data-testid="input-advance-amount"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="term">Term</Label>
+                        <Input
+                          id="term"
+                          placeholder="6 months"
+                          value={decisionForm.term}
+                          onChange={(e) => setDecisionForm(prev => ({ ...prev, term: e.target.value }))}
+                          data-testid="input-term"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="paymentFrequency">Payment Frequency</Label>
+                        <Select
+                          value={decisionForm.paymentFrequency}
+                          onValueChange={(value) => setDecisionForm(prev => ({ ...prev, paymentFrequency: value }))}
                         >
-                          <Save className="w-3 h-3 mr-1" />
-                          Save
-                        </Button>
+                          <SelectTrigger data-testid="select-payment-frequency">
+                            <SelectValue placeholder="Select frequency" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="daily">Daily</SelectItem>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="biweekly">Bi-Weekly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
-                  )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="factorRate">Factor Rate</Label>
+                        <Input
+                          id="factorRate"
+                          type="number"
+                          step="0.01"
+                          placeholder="1.25"
+                          value={decisionForm.factorRate}
+                          onChange={(e) => setDecisionForm(prev => ({ ...prev, factorRate: e.target.value }))}
+                          data-testid="input-factor-rate"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="totalPayback">Total Payback</Label>
+                        <Input
+                          id="totalPayback"
+                          type="number"
+                          placeholder="$62,500"
+                          value={decisionForm.totalPayback}
+                          onChange={(e) => setDecisionForm(prev => ({ ...prev, totalPayback: e.target.value }))}
+                          data-testid="input-total-payback"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="netAfterFees">Net After Fees</Label>
+                        <Input
+                          id="netAfterFees"
+                          type="number"
+                          placeholder="$48,500"
+                          value={decisionForm.netAfterFees}
+                          onChange={(e) => setDecisionForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
+                          data-testid="input-net-after-fees"
+                        />
+                      </div>
+                      <div className="relative">
+                        <Label htmlFor="lender">Lender</Label>
+                        <Input
+                          id="lender"
+                          placeholder="Type to search lenders..."
+                          value={lenderSearch}
+                          onChange={(e) => {
+                            setLenderSearch(e.target.value);
+                            setDecisionForm(prev => ({ ...prev, lender: e.target.value }));
+                            setShowLenderSuggestions(true);
+                          }}
+                          onFocus={() => setShowLenderSuggestions(true)}
+                          onBlur={() => setTimeout(() => setShowLenderSuggestions(false), 200)}
+                          data-testid="input-lender"
+                        />
+                        {showLenderSuggestions && lenderSearch && (
+                          <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                            {LENDERS_LIST
+                              .filter(l => l.toLowerCase().includes(lenderSearch.toLowerCase()))
+                              .slice(0, 8)
+                              .map(lender => (
+                                <div
+                                  key={lender}
+                                  className="px-3 py-2 cursor-pointer hover:bg-accent text-sm"
+                                  onMouseDown={() => {
+                                    setLenderSearch(lender);
+                                    setDecisionForm(prev => ({ ...prev, lender }));
+                                    setShowLenderSuggestions(false);
+                                  }}
+                                >
+                                  {lender}
+                                </div>
+                              ))}
+                            {LENDERS_LIST.filter(l => l.toLowerCase().includes(lenderSearch.toLowerCase())).length === 0 && (
+                              <div className="px-3 py-2 text-sm text-muted-foreground">
+                                No matching lenders - custom entry will be used
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="approvalDate">Approval Date</Label>
+                        <Input
+                          id="approvalDate"
+                          type="date"
+                          value={decisionForm.approvalDate}
+                          onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDate: e.target.value }))}
+                          data-testid="input-approval-date"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="approvalDeadline">Approval Deadline</Label>
+                        <Input
+                          id="approvalDeadline"
+                          type="date"
+                          value={decisionForm.approvalDeadline}
+                          onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDeadline: e.target.value }))}
+                          data-testid="input-approval-deadline"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="notes">Notes</Label>
+                      <Textarea
+                        id="notes"
+                        placeholder="Additional notes..."
+                        rows={2}
+                        value={decisionForm.notes}
+                        onChange={(e) => setDecisionForm(prev => ({ ...prev, notes: e.target.value }))}
+                        data-testid="input-notes"
+                      />
+                    </div>
+                    
+                    {/* Save This Approval Button */}
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        onClick={handlePackageApproval}
+                        disabled={!decisionForm.lender.trim() && !decisionForm.advanceAmount.trim()}
+                        className="bg-blue-600 hover:bg-blue-700"
+                        data-testid="button-package-approval"
+                      >
+                        <Check className="w-4 h-4 mr-2" />
+                        {editingApprovalId ? 'Update Approval' : 'Save Approval'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
-                  {additionalApprovals.length === 0 && !showAddApprovalForm && (
-                    <p className="text-xs text-muted-foreground">No additional approvals added</p>
-                  )}
-                </div>
+                {/* Summary */}
+                {packagedApprovals.length > 0 && !showApprovalForm && (
+                  <div className="text-sm text-muted-foreground text-center py-2">
+                    {packagedApprovals.length} approval{packagedApprovals.length !== 1 ? 's' : ''} ready to submit
+                  </div>
+                )}
               </>
             ) : (
               <div>
@@ -2119,29 +2315,32 @@ function BankStatementsTab() {
                 />
               </div>
             )}
-            <div className="flex justify-end gap-2 pt-4">
+            <div className="flex justify-end gap-2 pt-4 border-t">
               <Button
                 variant="outline"
-                onClick={() => setDecisionDialog(null)}
+                onClick={() => {
+                  setDecisionDialog(null);
+                  setPackagedApprovals([]);
+                }}
                 data-testid="button-cancel-decision"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSaveDecision}
-                disabled={savingDecision}
+                disabled={savingDecision || (decisionDialog?.mode === 'approve' && packagedApprovals.length === 0 && !decisionForm.lender.trim() && !decisionForm.advanceAmount.trim())}
                 className={decisionDialog?.mode === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
                 data-testid="button-save-decision"
               >
                 {savingDecision ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
+                    Submitting...
                   </>
                 ) : decisionDialog?.mode === 'approve' ? (
                   <>
                     <Check className="w-4 h-4 mr-2" />
-                    Approve Business
+                    Done - Submit {packagedApprovals.length + (showApprovalForm && (decisionForm.lender.trim() || decisionForm.advanceAmount.trim()) ? 1 : 0)} Approval{(packagedApprovals.length + (showApprovalForm && (decisionForm.lender.trim() || decisionForm.advanceAmount.trim()) ? 1 : 0)) !== 1 ? 's' : ''}
                   </>
                 ) : (
                   <>
