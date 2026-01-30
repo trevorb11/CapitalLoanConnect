@@ -2419,7 +2419,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No valid approval found" });
       }
       
-      // Return approval details for the letter page
+      // Return approval details for the letter page (includes all approvals)
       res.json({
         businessName: decision.businessName,
         advanceAmount: decision.advanceAmount,
@@ -2431,6 +2431,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lender: decision.lender,
         approvalDate: decision.approvalDate,
         notes: decision.notes,
+        additionalApprovals: decision.additionalApprovals,
       });
     } catch (error) {
       console.error("Error fetching approval letter:", error);
