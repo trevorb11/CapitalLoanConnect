@@ -259,13 +259,16 @@ export default function ApprovalLetter() {
               onClick={handlePrevOffer}
               style={{ 
                 width: "48px", height: "48px", borderRadius: "50%", 
-                background: "rgba(255, 255, 255, 0.1)", border: "1px solid rgba(255, 255, 255, 0.2)",
+                background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.1)",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", color: "#fff", transition: "all 0.3s ease",
                 flexShrink: 0,
                 position: "absolute",
-                left: "-80px"
+                left: "-80px",
+                opacity: 0.4
               }}
+              onMouseOver={(e) => e.currentTarget.style.opacity = "0.8"}
+              onMouseOut={(e) => e.currentTarget.style.opacity = "0.4"}
               data-testid="button-prev-offer"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -312,13 +315,16 @@ export default function ApprovalLetter() {
               onClick={handleNextOffer}
               style={{ 
                 width: "48px", height: "48px", borderRadius: "50%", 
-                background: "rgba(255, 255, 255, 0.1)", border: "1px solid rgba(255, 255, 255, 0.2)",
+                background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.1)",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", color: "#fff", transition: "all 0.3s ease",
                 flexShrink: 0,
                 position: "absolute",
-                right: "-80px"
+                right: "-80px",
+                opacity: 0.4
               }}
+              onMouseOver={(e) => e.currentTarget.style.opacity = "0.8"}
+              onMouseOut={(e) => e.currentTarget.style.opacity = "0.4"}
               data-testid="button-next-offer"
             >
               <ChevronRight className="w-5 h-5" />
