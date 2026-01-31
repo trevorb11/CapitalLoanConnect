@@ -941,6 +941,7 @@ function BankStatementsTab() {
     notes: string;
     approvalDate: string;
     approvalDeadline: string;
+    showOnLetter: boolean; // Whether this approval appears on the public approval letter page
   }
   const [packagedApprovals, setPackagedApprovals] = useState<PackagedApproval[]>([]);
   const [editingApprovalId, setEditingApprovalId] = useState<string | null>(null);
@@ -1078,6 +1079,7 @@ function BankStatementsTab() {
           notes: existing.notes || '',
           approvalDate: existing.approvalDate ? new Date(existing.approvalDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
           approvalDeadline: (existing as any)?.approvalDeadline ? new Date((existing as any).approvalDeadline).toISOString().split('T')[0] : '',
+          showOnLetter: (existing as any)?.showOnLetter !== false, // Default to true
         });
       }
       // Load additional approvals
@@ -1096,6 +1098,7 @@ function BankStatementsTab() {
             notes: '',
             approvalDate: new Date().toISOString().split('T')[0],
             approvalDeadline: '',
+            showOnLetter: (appr as any)?.showOnLetter !== false, // Default to true
           });
         });
       }
@@ -1119,6 +1122,8 @@ function BankStatementsTab() {
       return; // Need at least lender or amount
     }
     
+    // When editing, preserve existing showOnLetter; when creating new, default to true
+    const existingApproval = editingApprovalId ? packagedApprovals.find(a => a.id === editingApprovalId) : null;
     const newApprovalEntry: PackagedApproval = {
       id: editingApprovalId || `approval-${Date.now()}`,
       advanceAmount: decisionForm.advanceAmount,
@@ -1131,6 +1136,7 @@ function BankStatementsTab() {
       notes: decisionForm.notes,
       approvalDate: decisionForm.approvalDate,
       approvalDeadline: decisionForm.approvalDeadline,
+      showOnLetter: existingApproval?.showOnLetter ?? true,
     };
     
     if (editingApprovalId) {
@@ -1244,6 +1250,7 @@ function BankStatementsTab() {
         notes: decisionForm.notes,
         approvalDate: decisionForm.approvalDate,
         approvalDeadline: decisionForm.approvalDeadline,
+        showOnLetter: true,
       });
     }
     
@@ -1253,6 +1260,13 @@ function BankStatementsTab() {
       amount: a.advanceAmount,
       term: a.term,
       factorRate: a.factorRate,
+      totalPayback: a.totalPayback,
+      netAfterFees: a.netAfterFees,
+      paymentFrequency: a.paymentFrequency,
+      notes: a.notes,
+      approvalDate: a.approvalDate,
+      approvalDeadline: a.approvalDeadline,
+      showOnLetter: a.showOnLetter,
     }));
     
     setSavingDecision(true);
@@ -1275,6 +1289,7 @@ function BankStatementsTab() {
           notes: primaryApproval?.notes || null,
           approvalDate: primaryApproval?.approvalDate || null,
           approvalDeadline: primaryApproval?.approvalDeadline || null,
+          showOnLetter: primaryApproval?.showOnLetter ?? true,
           declineReason: decisionForm.declineReason || null,
           additionalApprovals: additionalApprovalsFormatted.length > 0 ? additionalApprovalsFormatted : null,
         }),
