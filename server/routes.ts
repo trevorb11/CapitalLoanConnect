@@ -2458,6 +2458,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // If no visible offers, return 404
+      if (allOffers.length === 0) {
+        return res.status(404).json({ error: "No visible offers available" });
+      }
+      
       // Return approval details for the letter page with all visible offers
       res.json({
         businessName: decision.businessName,
