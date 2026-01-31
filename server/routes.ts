@@ -2398,7 +2398,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No valid approval found" });
       }
       
-      // Return approval details for the letter page
+      // Build list of all visible offers (primary + additional with showOnLetter = true)
+      const allOffers: Array<{
+        advanceAmount: string | null;
+        term: string | null;
+        paymentFrequency: string | null;
+        factorRate: string | null;
+        totalPayback: string | null;
+        netAfterFees: string | null;
+        lender: string | null;
+        approvalDate: string | null;
+        notes: string | null;
+      }> = [];
+      
+      // Add primary approval if showOnLetter is true
+      if (decision.showOnLetter !== false) {
+        allOffers.push({
+          advanceAmount: decision.advanceAmount,
+          term: decision.term,
+          paymentFrequency: decision.paymentFrequency,
+          factorRate: decision.factorRate,
+          totalPayback: decision.totalPayback,
+          netAfterFees: decision.netAfterFees,
+          lender: decision.lender,
+          approvalDate: decision.approvalDate?.toISOString() || null,
+          notes: decision.notes,
+        });
+      }
+      
+      // Add additional approvals with showOnLetter = true
+      const additionalApprovals = decision.additionalApprovals as Array<{
+        lender?: string;
+        amount?: string;
+        term?: string;
+        factorRate?: string;
+        totalPayback?: string;
+        netAfterFees?: string;
+        paymentFrequency?: string;
+        notes?: string;
+        approvalDate?: string;
+        showOnLetter?: boolean;
+      }> | null;
+      
+      if (additionalApprovals && Array.isArray(additionalApprovals)) {
+        for (const add of additionalApprovals) {
+          if (add.showOnLetter !== false) {
+            allOffers.push({
+              advanceAmount: add.amount || null,
+              term: add.term || null,
+              paymentFrequency: add.paymentFrequency || null,
+              factorRate: add.factorRate || null,
+              totalPayback: add.totalPayback || null,
+              netAfterFees: add.netAfterFees || null,
+              lender: add.lender || null,
+              approvalDate: add.approvalDate || decision.approvalDate?.toISOString() || null,
+              notes: add.notes || null,
+            });
+          }
+        }
+      }
+      
+      // Return approval details for the letter page with all visible offers
       res.json({
         businessName: decision.businessName,
         advanceAmount: decision.advanceAmount,
@@ -2410,6 +2470,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lender: decision.lender,
         approvalDate: decision.approvalDate,
         notes: decision.notes,
+        // New field: all visible offers for multi-offer display
+        offers: allOffers,
       });
     } catch (error) {
       console.error("Error fetching approval letter:", error);
