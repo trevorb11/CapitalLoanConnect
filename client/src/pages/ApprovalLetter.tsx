@@ -291,7 +291,7 @@ export default function ApprovalLetter() {
         )}
 
         {/* Your Offer section with pagination arrows on edges */}
-        <div style={{ display: "flex", alignItems: "center", gap: "24px", marginBottom: "24px" }} data-testid="section-offer-container">
+        <div style={{ display: "flex", alignItems: "center", gap: "50px", marginBottom: "24px" }} data-testid="section-offer-container">
           {/* Left arrow */}
           {hasMultipleOffers && (
             <button 
