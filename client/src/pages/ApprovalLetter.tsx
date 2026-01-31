@@ -270,57 +270,7 @@ export default function ApprovalLetter() {
           </div>
         </section>
 
-        {/* Pagination controls for multiple offers */}
-        {hasMultipleOffers && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px", marginBottom: "24px" }} data-testid="section-pagination">
-            <button 
-              onClick={handlePrevOffer}
-              style={{ 
-                width: "40px", height: "40px", borderRadius: "50%", 
-                background: "rgba(255, 255, 255, 0.1)", border: "1px solid rgba(255, 255, 255, 0.2)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", color: "#fff", transition: "all 0.3s ease"
-              }}
-              data-testid="button-prev-offer"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            
-            <div style={{ display: "flex", gap: "8px" }}>
-              {offers.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentOfferIndex(idx)}
-                  style={{
-                    width: idx === currentOfferIndex ? "24px" : "8px",
-                    height: "8px",
-                    borderRadius: "4px",
-                    background: idx === currentOfferIndex ? colorScheme.primary : "rgba(255, 255, 255, 0.3)",
-                    border: "none",
-                    cursor: "pointer",
-                    transition: "all 0.3s ease"
-                  }}
-                  data-testid={`button-offer-dot-${idx}`}
-                />
-              ))}
-            </div>
-
-            <button 
-              onClick={handleNextOffer}
-              style={{ 
-                width: "40px", height: "40px", borderRadius: "50%", 
-                background: "rgba(255, 255, 255, 0.1)", border: "1px solid rgba(255, 255, 255, 0.2)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", color: "#fff", transition: "all 0.3s ease"
-              }}
-              data-testid="button-next-offer"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-        )}
-
-        {/* Offer indicator */}
+        {/* Offer indicator badge */}
         {hasMultipleOffers && (
           <div style={{ textAlign: "center", marginBottom: "24px" }}>
             <span style={{ 
@@ -340,38 +290,97 @@ export default function ApprovalLetter() {
           </div>
         )}
 
-        <section style={{ 
-          background: "#111827", border: `1px solid ${colorScheme.secondary.replace('0.25', '0.15')}`,
-          borderRadius: "16px", padding: "32px", marginBottom: "24px",
-          transition: "border-color 0.5s ease"
-        }} data-testid="section-offer">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "32px" }}>
-            <span style={{ fontSize: "0.8125rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "#6B7280" }}>Your Offer</span>
-            <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: colorScheme.primary, transition: "color 0.5s ease" }} data-testid="text-lender">{lender}</span>
-          </div>
+        {/* Your Offer section with pagination arrows on edges */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }} data-testid="section-offer-container">
+          {/* Left arrow */}
+          {hasMultipleOffers && (
+            <button 
+              onClick={handlePrevOffer}
+              style={{ 
+                width: "48px", height: "48px", borderRadius: "50%", 
+                background: "rgba(255, 255, 255, 0.1)", border: "1px solid rgba(255, 255, 255, 0.2)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: "#fff", transition: "all 0.3s ease",
+                flexShrink: 0
+              }}
+              data-testid="button-prev-offer"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
+          
+          <section style={{ 
+            background: "#111827", border: `1px solid ${colorScheme.secondary.replace('0.25', '0.15')}`,
+            borderRadius: "16px", padding: "32px", flex: 1,
+            transition: "border-color 0.5s ease"
+          }} data-testid="section-offer">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "32px" }}>
+              <span style={{ fontSize: "0.8125rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "#6B7280" }}>Your Offer</span>
+              <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: colorScheme.primary, transition: "color 0.5s ease" }} data-testid="text-lender">{lender}</span>
+            </div>
 
-          <div style={{ textAlign: "center", paddingBottom: "32px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", marginBottom: "28px" }}>
-            <div style={{ fontSize: "3.5rem", fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1 }} data-testid="text-payment-amount">
-              {paymentAmount}
+            <div style={{ textAlign: "center", paddingBottom: "32px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", marginBottom: "28px" }}>
+              <div style={{ fontSize: "3.5rem", fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1 }} data-testid="text-payment-amount">
+                {paymentAmount}
+              </div>
+              <div style={{ marginTop: "8px", fontSize: "0.9375rem", color: colorScheme.primary, fontWeight: 600, transition: "color 0.5s ease" }} data-testid="text-frequency-label">{frequencyLabel}</div>
             </div>
-            <div style={{ marginTop: "8px", fontSize: "0.9375rem", color: colorScheme.primary, fontWeight: 600, transition: "color 0.5s ease" }} data-testid="text-frequency-label">{frequencyLabel}</div>
-          </div>
 
-          <div style={{ display: "flex", justifyContent: "center", gap: "48px" }}>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-term">{term}</div>
-              <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Term</div>
+            <div style={{ display: "flex", justifyContent: "center", gap: "48px" }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-term">{term}</div>
+                <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Term</div>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-factor-rate">{factorRate}</div>
+                <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Factor Rate</div>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-total-payback">{totalPayback}</div>
+                <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Total Payback</div>
+              </div>
             </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-factor-rate">{factorRate}</div>
-              <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Factor Rate</div>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-total-payback">{totalPayback}</div>
-              <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Total Payback</div>
-            </div>
+          </section>
+          
+          {/* Right arrow */}
+          {hasMultipleOffers && (
+            <button 
+              onClick={handleNextOffer}
+              style={{ 
+                width: "48px", height: "48px", borderRadius: "50%", 
+                background: "rgba(255, 255, 255, 0.1)", border: "1px solid rgba(255, 255, 255, 0.2)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: "#fff", transition: "all 0.3s ease",
+                flexShrink: 0
+              }}
+              data-testid="button-next-offer"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+        
+        {/* Pagination dots */}
+        {hasMultipleOffers && (
+          <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginBottom: "24px" }} data-testid="section-pagination">
+            {offers.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentOfferIndex(idx)}
+                style={{
+                  width: idx === currentOfferIndex ? "24px" : "8px",
+                  height: "8px",
+                  borderRadius: "4px",
+                  background: idx === currentOfferIndex ? colorScheme.primary : "rgba(255, 255, 255, 0.3)",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "all 0.3s ease"
+                }}
+                data-testid={`button-offer-dot-${idx}`}
+              />
+            ))}
           </div>
-        </section>
+        )}
 
         <div style={{ 
           background: "#111827", border: "1px solid rgba(255, 255, 255, 0.08)",

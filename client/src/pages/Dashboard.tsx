@@ -1713,10 +1713,9 @@ function BankStatementsTab() {
                             ? `${window.location.origin}/approved/${decision.approvalSlug}`
                             : null;
                           
-                          const copyApprovalUrl = () => {
+                          const openApprovalLetter = () => {
                             if (approvalUrl) {
-                              navigator.clipboard.writeText(approvalUrl);
-                              toast({ title: "URL Copied", description: "Approval letter URL copied to clipboard" });
+                              window.open(approvalUrl, '_blank');
                             }
                           };
                           
@@ -1732,12 +1731,12 @@ function BankStatementsTab() {
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={copyApprovalUrl}
+                                      onClick={openApprovalLetter}
                                       className="text-primary border-primary/30 hover:bg-primary/10"
-                                      data-testid={`button-copy-approval-url-${businessEmail}`}
+                                      data-testid={`button-view-approval-letter-${businessEmail}`}
                                     >
-                                      <Copy className="w-3 h-3 mr-1" />
-                                      Copy Letter URL
+                                      <ExternalLink className="w-3 h-3 mr-1" />
+                                      View Approval Letter
                                     </Button>
                                   )}
                                 </>
