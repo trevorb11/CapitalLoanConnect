@@ -403,9 +403,10 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   notes: text("notes"),
   approvalDate: timestamp("approval_date"),
   approvalDeadline: timestamp("approval_deadline"), // Deadline for the approval offer
+  showOnLetter: boolean("show_on_letter").default(true), // Whether to show primary approval on public letter
 
   // Additional approvals (secondary lender offers)
-  additionalApprovals: jsonb("additional_approvals"), // Array of { lender, amount, term?, factorRate? }
+  additionalApprovals: jsonb("additional_approvals"), // Array of { lender, amount, term?, factorRate?, showOnLetter? }
 
   // Decline fields (populated when status = "declined")
   declineReason: text("decline_reason"),

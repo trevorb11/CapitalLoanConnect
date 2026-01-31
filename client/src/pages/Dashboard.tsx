@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, ChevronUp, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
@@ -1227,6 +1228,13 @@ function BankStatementsTab() {
       return newList;
     });
   };
+  
+  // Toggle show on letter visibility for an approval
+  const handleToggleShowOnLetter = (approvalId: string) => {
+    setPackagedApprovals(prev => 
+      prev.map(a => a.id === approvalId ? { ...a, showOnLetter: !a.showOnLetter } : a)
+    );
+  };
 
   // Save underwriting decision (submit all packaged approvals)
   const handleSaveDecision = async () => {
@@ -2045,6 +2053,24 @@ function BankStatementsTab() {
                           data-testid={`approval-header-${idx}`}
                         >
                           <div className="flex items-center gap-3">
+                            <div 
+                              className="flex items-center gap-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Checkbox
+                                id={`show-on-letter-${approval.id}`}
+                                checked={approval.showOnLetter}
+                                onCheckedChange={() => handleToggleShowOnLetter(approval.id)}
+                                data-testid={`checkbox-show-on-letter-${idx}`}
+                              />
+                              <Label
+                                htmlFor={`show-on-letter-${approval.id}`}
+                                className="text-xs text-muted-foreground cursor-pointer"
+                              >
+                                Show on letter
+                              </Label>
+                            </div>
+                            <div className="w-px h-4 bg-border" />
                             <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
                               Approval #{idx + 1}
                             </Badge>
