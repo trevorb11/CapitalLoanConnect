@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, ChevronUp, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2 } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, ChevronUp, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1201,6 +1201,26 @@ function BankStatementsTab() {
       return newSet;
     });
   };
+  
+  // Move a packaged approval up in the list
+  const handleMoveApprovalUp = (index: number) => {
+    if (index <= 0) return;
+    setPackagedApprovals(prev => {
+      const newList = [...prev];
+      [newList[index - 1], newList[index]] = [newList[index], newList[index - 1]];
+      return newList;
+    });
+  };
+  
+  // Move a packaged approval down in the list
+  const handleMoveApprovalDown = (index: number) => {
+    setPackagedApprovals(prev => {
+      if (index >= prev.length - 1) return prev;
+      const newList = [...prev];
+      [newList[index], newList[index + 1]] = [newList[index + 1], newList[index]];
+      return newList;
+    });
+  };
 
   // Save underwriting decision (submit all packaged approvals)
   const handleSaveDecision = async () => {
@@ -2020,7 +2040,37 @@ function BankStatementsTab() {
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1">
+                            {/* Reorder buttons */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveApprovalUp(idx);
+                              }}
+                              disabled={idx === 0}
+                              className={idx === 0 ? 'opacity-30' : ''}
+                              data-testid={`button-move-up-${idx}`}
+                            >
+                              <ArrowUp className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveApprovalDown(idx);
+                              }}
+                              disabled={idx === packagedApprovals.length - 1}
+                              className={idx === packagedApprovals.length - 1 ? 'opacity-30' : ''}
+                              data-testid={`button-move-down-${idx}`}
+                            >
+                              <ArrowDown className="w-3 h-3" />
+                            </Button>
+                            <div className="w-px h-4 bg-border mx-1" />
                             <Button
                               type="button"
                               variant="ghost"
