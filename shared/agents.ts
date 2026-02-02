@@ -54,6 +54,12 @@ export const AGENTS: Agent[] = [
     email: "sage@todaycapitalgroup.com",
     ghlId: "GxuuCIet62gbUyac6acX",
   },
+  {
+    initials: "gj",
+    name: "Bryce Jennings",
+    email: "bryce@todaycapitalgroup.com",
+    ghlId: "",
+  },
 ];
 
 export function getAgentByInitials(initials: string): Agent | undefined {
