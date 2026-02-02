@@ -55,7 +55,7 @@ export const AGENTS: Agent[] = [
     ghlId: "GxuuCIet62gbUyac6acX",
   },
   {
-    initials: "gj",
+    initials: "bj",
     name: "Bryce Jennings",
     email: "bryce@todaycapitalgroup.com",
     ghlId: "",
