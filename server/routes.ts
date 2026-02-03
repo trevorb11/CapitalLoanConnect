@@ -467,6 +467,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // VISIT TRACKING ENDPOINT
+  // ========================================
+  app.post("/api/analytics/track-visit", async (req, res) => {
+    try {
+      const { email, phone, pagePath, fullUrl, referrer } = req.body;
+      
+      if (!email && !phone) {
+        return res.status(400).json({ error: "Email or phone is required for tracking" });
+      }
+
+      const log = await storage.createVisitLog({
+        email: email ? email.toLowerCase() : null,
+        phone: phone || null,
+        pagePath: pagePath || "/",
+        fullUrl: fullUrl || null,
+        referrer: referrer || req.headers.referer || null,
+        userAgent: req.headers["user-agent"] || null,
+        ipAddress: req.ip || null,
+      });
+
+      res.json({ success: true, logId: log.id });
+    } catch (error) {
+      console.error("Error tracking visit:", error);
+      res.status(500).json({ error: "Failed to track visit" });
+    }
+  });
+
+  // ========================================
   // AUTHENTICATION ROUTES
   // ========================================
   

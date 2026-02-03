@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -7,7 +7,8 @@ import {
   type Partner, type InsertPartner,
   type LenderApproval, type InsertLenderApproval,
   type BusinessUnderwritingDecision, type InsertBusinessUnderwritingDecision,
-  type Lender, type InsertLender
+  type Lender, type InsertLender,
+  type VisitLog, type InsertVisitLog
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -116,6 +117,9 @@ export interface IStorage {
   getLenderByName(name: string): Promise<Lender | undefined>;
   getAllLenders(): Promise<Lender[]>;
   upsertLender(lender: InsertLender): Promise<Lender>;
+  createVisitLog(log: InsertVisitLog): Promise<VisitLog>;
+  getVisitLogsByEmail(email: string): Promise<VisitLog[]>;
+  getVisitLogsByPhone(phone: string): Promise<VisitLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -668,6 +672,30 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     return await this.createLender(lender);
+  }
+
+  async createVisitLog(log: InsertVisitLog): Promise<VisitLog> {
+    const [visitLog] = await db
+      .insert(visitLogs)
+      .values(log)
+      .returning();
+    return visitLog;
+  }
+
+  async getVisitLogsByEmail(email: string): Promise<VisitLog[]> {
+    return await db
+      .select()
+      .from(visitLogs)
+      .where(eq(visitLogs.email, email.toLowerCase()))
+      .orderBy(desc(visitLogs.createdAt));
+  }
+
+  async getVisitLogsByPhone(phone: string): Promise<VisitLog[]> {
+    return await db
+      .select()
+      .from(visitLogs)
+      .where(eq(visitLogs.phone, phone))
+      .orderBy(desc(visitLogs.createdAt));
   }
 }
 

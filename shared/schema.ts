@@ -450,3 +450,24 @@ export const insertLenderSchema = createInsertSchema(lenders).omit({
 
 export type InsertLender = z.infer<typeof insertLenderSchema>;
 export type Lender = typeof lenders.$inferSelect;
+
+// Visit Logs - Track when contacts visit specific pages via URL parameters
+export const visitLogs = pgTable("visit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email"),
+  phone: text("phone"),
+  pagePath: text("page_path").notNull(),
+  fullUrl: text("full_url"),
+  referrer: text("referrer"),
+  userAgent: text("user_agent"),
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertVisitLogSchema = createInsertSchema(visitLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertVisitLog = z.infer<typeof insertVisitLogSchema>;
+export type VisitLog = typeof visitLogs.$inferSelect;

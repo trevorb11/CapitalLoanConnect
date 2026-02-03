@@ -130,6 +130,25 @@ function App() {
   // Initialize UTM tracking immediately on app load to capture referrer and URL params
   useEffect(() => {
     initUTMTracking();
+    
+    // Track visits from URL parameters (email or phone)
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get('email');
+    const phone = params.get('phone');
+    
+    if (email || phone) {
+      fetch('/api/analytics/track-visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          phone,
+          pagePath: window.location.pathname,
+          fullUrl: window.location.href,
+          referrer: document.referrer
+        })
+      }).catch(err => console.error('Failed to track visit:', err));
+    }
   }, []);
 
   const appContent = (
