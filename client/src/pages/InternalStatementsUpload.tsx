@@ -233,14 +233,12 @@ export default function InternalStatementsUpload() {
             </div>
             
             <h1 className="text-2xl font-bold mb-3" data-testid="text-upload-success-title">
-              Statements Uploaded Successfully
+              Thank you!
             </h1>
-            
-            {selectedApplication && (
-              <p className="text-muted-foreground mb-4">
-                Uploaded for: <span className="font-medium text-foreground">{selectedApplication.businessName}</span>
-              </p>
-            )}
+
+            <p className="text-muted-foreground mb-6">
+              The bank statements have been received. We should have an answer on financing options within 48 hours.
+            </p>
 
             <div className="bg-muted/50 rounded-lg p-4 mb-6">
               <h3 className="font-medium mb-3 text-left">Uploaded Files:</h3>

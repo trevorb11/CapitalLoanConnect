@@ -200,11 +200,11 @@ export default function BankStatementsUpload() {
           </div>
           
           <h1 className="text-2xl font-bold mb-3" data-testid="text-upload-success-title">
-            Statements Uploaded Successfully
+            Thank you!
           </h1>
           
           <p className="text-muted-foreground mb-6">
-            Your bank statements have been received and will be reviewed by our team.
+            Your bank statements have been received. We should have an answer on financing options for you within 48 hours.
           </p>
 
           <div className="bg-muted/50 rounded-lg p-4 mb-6">
