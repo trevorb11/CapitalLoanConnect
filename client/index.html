@@ -26,9 +26,7 @@
       gtag('config', 'G-CR5Q49Y3J5');
 
       // Google Ads Enhanced Conversions setup
-      // IMPORTANT: Replace AW-XXXXXXXXX with your actual Google Ads Conversion ID
-      // and AW-XXXXXXXXX/YYYYYYYYYY with your full conversion send_to value
-      gtag('config', 'AW-XXXXXXXXX', {
+      gtag('config', 'AW-17757343789', {
         allow_enhanced_conversions: true
       });
 
@@ -115,10 +113,9 @@
         });
       };
 
-      // Google Ads Enhanced Conversion - fires ONLY for qualified intake leads (revenue >= $10k/month)
-      // This sets enhanced_conversion_data on the window for Google to read,
-      // then fires the conversion event.
-      // IMPORTANT: Replace 'AW-XXXXXXXXX/YYYYYYYYYY' with your actual send_to value from Google Ads.
+      // Google Ads Enhanced Conversion data - sets user data for qualified intake leads (revenue >= $10k/month)
+      // This sets enhanced_conversion_data on the window BEFORE navigation to /
+      // so the existing page-load conversion picks up the enhanced data automatically.
       window.trackQualifiedIntakeConversion = function(params) {
         // Split full name into first and last for enhanced conversions
         var nameParts = (params.fullName || '').trim().split(/\s+/);
@@ -126,7 +123,7 @@
         var lastName = nameParts.slice(1).join(' ') || '';
 
         // Set enhanced conversion data as JavaScript variables on the window
-        // These are the variables Google Ads will read for Enhanced Conversions
+        // The existing page-load conversion on app.todaycapitalgroup.com/ will read these
         window.enhanced_conversion_data = {
           email: params.email || '',
           phone_number: params.phone ? '+1' + params.phone.replace(/\D/g, '') : '',
@@ -134,13 +131,7 @@
           last_name: lastName
         };
 
-        // Fire the Google Ads conversion event
-        gtag('event', 'conversion', {
-          send_to: 'AW-XXXXXXXXX/YYYYYYYYYY',
-          transport_type: 'beacon'
-        });
-
-        // Also fire a GA4 event for reporting
+        // Fire a GA4 event for reporting
         gtag('event', 'qualified_intake_conversion', {
           event_category: 'conversion',
           event_label: 'Qualified Intake Lead',
