@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Link, useSearch } from "wouter";
 import tcgLogo from "@assets/TCG_White_logo_1764664150165.png";
+import plaidLogo from "@assets/plaid_logo_1770240188710.png";
 
 interface UploadedFile {
   id: string;
@@ -521,9 +522,11 @@ export default function Statements() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
                 <div className="border-2 border-[#5FBFB8] rounded-xl p-6 hover-elevate transition-all">
                   <div className="text-center mb-4">
-                    <div className="w-12 h-12 bg-[#5FBFB8]/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <Lock className="w-6 h-6 text-[#5FBFB8]" />
-                    </div>
+                    <img 
+                      src={plaidLogo} 
+                      alt="Plaid" 
+                      className="h-8 mx-auto mb-3"
+                    />
                     <h4 className="font-semibold">Instant Connect</h4>
                     <p className="text-sm text-muted-foreground mt-1">
                       Securely connect via Plaid

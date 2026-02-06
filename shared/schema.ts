@@ -262,6 +262,30 @@ export type PlaidItem = typeof plaidItems.$inferSelect;
 export type InsertFundingAnalysis = z.infer<typeof insertFundingAnalysisSchema>;
 export type FundingAnalysis = typeof fundingAnalyses.$inferSelect;
 
+// Plaid Statements - Store metadata for statements fetched from Plaid
+export const plaidStatements = pgTable("plaid_statements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  plaidItemId: text("plaid_item_id").notNull(),
+  statementId: text("statement_id").notNull().unique(),
+  accountId: text("account_id").notNull(),
+  accountName: text("account_name"),
+  accountType: text("account_type"),
+  accountMask: text("account_mask"),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  institutionId: text("institution_id"),
+  institutionName: text("institution_name"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPlaidStatementSchema = createInsertSchema(plaidStatements).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPlaidStatement = z.infer<typeof insertPlaidStatementSchema>;
+export type PlaidStatement = typeof plaidStatements.$inferSelect;
+
 // Bank Statement Uploads - Store uploaded PDF bank statements
 export const bankStatementUploads = pgTable("bank_statement_uploads", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -274,12 +298,15 @@ export const bankStatementUploads = pgTable("bank_statement_uploads", {
   fileSize: integer("file_size").notNull(),
   source: text("source").default("Upload"), // "Upload" for regular uploads, "Checker" for funding check
   viewToken: text("view_token"), // Token for public view links (shareable via webhooks)
+  receivedAt: timestamp("received_at"), // Date statements were actually received (for internal uploads)
   
   // Underwriting approval fields
   approvalStatus: text("approval_status"), // "approved", "declined", or null for pending
   approvalNotes: text("approval_notes"), // Details about the approval or decline reason
   reviewedBy: text("reviewed_by"), // Email of the person who reviewed
   reviewedAt: timestamp("reviewed_at"), // When the review happened
+  lenderId: varchar("lender_id").references(() => lenders.id), // The lender who approved/declined
+  lenderName: text("lender_name"), // Denormalized lender name for quick access
   
   createdAt: timestamp("created_at").defaultNow(),
 });

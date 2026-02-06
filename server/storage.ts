@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -8,7 +8,8 @@ import {
   type LenderApproval, type InsertLenderApproval,
   type BusinessUnderwritingDecision, type InsertBusinessUnderwritingDecision,
   type Lender, type InsertLender,
-  type VisitLog, type InsertVisitLog
+  type VisitLog, type InsertVisitLog,
+  type PlaidStatement as PlaidStatementRecord, type InsertPlaidStatement
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -69,6 +70,12 @@ export interface IStorage {
   createFundingAnalysis(analysis: InsertFundingAnalysis): Promise<FundingAnalysis>;
   getFundingAnalysisByEmail(email: string): Promise<FundingAnalysis | undefined>;
   getAllFundingAnalyses(): Promise<FundingAnalysis[]>;
+  
+  // Plaid Statements methods
+  createPlaidStatement(statement: InsertPlaidStatement): Promise<PlaidStatementRecord>;
+  getPlaidStatementsByItemId(plaidItemId: string): Promise<PlaidStatementRecord[]>;
+  getPlaidStatementByStatementId(statementId: string): Promise<PlaidStatementRecord | undefined>;
+  deletePlaidStatementsByItemId(plaidItemId: string): Promise<void>;
   
   // Bank Statement Upload methods
   createBankStatementUpload(upload: InsertBankStatementUpload): Promise<BankStatementUpload>;
@@ -299,6 +306,45 @@ export class DatabaseStorage implements IStorage {
     return application || undefined;
   }
 
+  // Plaid Statements methods
+  async createPlaidStatement(statement: InsertPlaidStatement): Promise<PlaidStatementRecord> {
+    const [created] = await db
+      .insert(plaidStatements)
+      .values(statement)
+      .onConflictDoUpdate({
+        target: plaidStatements.statementId,
+        set: {
+          accountName: statement.accountName,
+          accountType: statement.accountType,
+          institutionName: statement.institutionName,
+        }
+      })
+      .returning();
+    return created;
+  }
+
+  async getPlaidStatementsByItemId(plaidItemId: string): Promise<PlaidStatementRecord[]> {
+    return await db
+      .select()
+      .from(plaidStatements)
+      .where(eq(plaidStatements.plaidItemId, plaidItemId))
+      .orderBy(desc(plaidStatements.year), desc(plaidStatements.month));
+  }
+
+  async getPlaidStatementByStatementId(statementId: string): Promise<PlaidStatementRecord | undefined> {
+    const [statement] = await db
+      .select()
+      .from(plaidStatements)
+      .where(eq(plaidStatements.statementId, statementId));
+    return statement || undefined;
+  }
+
+  async deletePlaidStatementsByItemId(plaidItemId: string): Promise<void> {
+    await db
+      .delete(plaidStatements)
+      .where(eq(plaidStatements.plaidItemId, plaidItemId));
+  }
+
   // Bank Statement Upload methods
   async createBankStatementUpload(upload: InsertBankStatementUpload): Promise<BankStatementUpload> {
     const [bankUpload] = await db
@@ -328,7 +374,7 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(bankStatementUploads)
-      .orderBy(desc(bankStatementUploads.createdAt));
+      .orderBy(desc(sql`COALESCE(${bankStatementUploads.receivedAt}, ${bankStatementUploads.createdAt})`));
   }
 
   async updateBankStatementViewToken(id: string, viewToken: string): Promise<void> {
@@ -343,7 +389,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(bankStatementUploads)
       .where(eq(bankStatementUploads.email, email))
-      .orderBy(desc(bankStatementUploads.createdAt));
+      .orderBy(desc(sql`COALESCE(${bankStatementUploads.receivedAt}, ${bankStatementUploads.createdAt})`));
   }
 
   async getBankStatementUploadsByAgentEmail(agentEmail: string): Promise<BankStatementUpload[]> {
@@ -367,7 +413,7 @@ export class DatabaseStorage implements IStorage {
     const allUploads = await db
       .select()
       .from(bankStatementUploads)
-      .orderBy(desc(bankStatementUploads.createdAt));
+      .orderBy(desc(sql`COALESCE(${bankStatementUploads.receivedAt}, ${bankStatementUploads.createdAt})`));
     
     return allUploads.filter(upload => 
       applicationIds.includes(upload.loanApplicationId || '') ||
@@ -552,7 +598,7 @@ export class DatabaseStorage implements IStorage {
     let approvalSlug = existing?.approvalSlug;
     if (decision.status === 'approved' && !approvalSlug) {
       approvalSlug = this.generateApprovalSlug(decision.businessName || null, decision.businessEmail);
-    } else if (decision.status === 'declined') {
+    } else if (decision.status === 'declined' || decision.status === 'unqualified') {
       approvalSlug = null;
     }
     

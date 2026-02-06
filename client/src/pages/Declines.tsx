@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,8 +13,22 @@ import {
   Search,
   CheckCircle2,
   Calendar,
+  Trash2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { BusinessUnderwritingDecision } from "@shared/schema";
 
 interface AuthState {
@@ -37,6 +51,28 @@ export default function Declines() {
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const { toast } = useToast();
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/underwriting-decisions/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/underwriting-decisions"] });
+      toast({
+        title: "Decline deleted",
+        description: "The decline record has been removed.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete the decline record.",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Check authentication first
   useEffect(() => {
@@ -269,6 +305,46 @@ export default function Declines() {
                         {formatDate(decision.updatedAt)}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Delete button */}
+                  <div className="flex items-start">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-destructive"
+                          data-testid={`button-delete-decline-${decision.id}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Decline Record</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete the decline record for{" "}
+                            <strong>{decision.businessName || decision.businessEmail}</strong>?
+                            This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteMutation.mutate(decision.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            data-testid="button-confirm-delete"
+                          >
+                            {deleteMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              "Delete"
+                            )}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </Card>

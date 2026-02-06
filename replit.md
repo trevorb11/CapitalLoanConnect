@@ -74,3 +74,13 @@ An internal tool for sales representatives and admins to view comprehensive GoHi
 - **Two Search Modes**: Direct search by email/phone/business name and AI Smart Search using natural language queries.
 - **AI-Powered Query Parsing**: Utilizes OpenAI to convert natural language into GHL search filters.
 - **Authentication**: Requires admin or agent role.
+
+### Approvals Admin Page
+
+The Approvals admin page (`/approvals`) provides underwriting team members with tools to manage business approvals:
+- **Multi-Approval Entry**: Package multiple lender offers per business with primary selection.
+- **CSV Bulk Import**: Upload or paste CSV files to import multiple approvals at once.
+  - Supports columns: Business Name, Overall Status, Best Lender/Amount/Factor Rate/Term/Payment Freq/Commission/Date, Lender 2-5 details, Declined Lender 1-3 with reasons.
+  - Creates synthetic email format (`businessname@imported.local`) for imported records.
+- **Approval Letter Generation**: Public URLs for approved businesses to view their approval letters.
+- **Visit Tracking**: Analytics for approval letter page visits.

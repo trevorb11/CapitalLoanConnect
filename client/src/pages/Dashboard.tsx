@@ -8,10 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, ChevronUp, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,7 +18,7 @@ import { format } from "date-fns";
 
 interface AuthState {
   isAuthenticated: boolean;
-  role?: 'admin' | 'agent' | 'partner' | 'underwriting';
+  role?: 'admin' | 'agent' | 'partner' | 'underwriting' | 'user';
   agentEmail?: string;
   agentName?: string;
 }
@@ -407,6 +406,171 @@ function ItemStatementsModal({
               </div>
             </div>
           ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface PlaidStatementData {
+  id: string;
+  plaidItemId: string;
+  statementId: string;
+  accountId: string;
+  accountName: string | null;
+  accountType: string | null;
+  accountMask: string | null;
+  month: number;
+  year: number;
+  institutionId: string | null;
+  institutionName: string | null;
+}
+
+function PlaidStatementsModal({ 
+  plaidItemId, 
+  institutionName,
+  isOpen,
+  onClose 
+}: { 
+  plaidItemId: string;
+  institutionName: string;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  
+  const { data, isLoading, error, refetch } = useQuery<{ statements: PlaidStatementData[] }>({
+    queryKey: ['/api/plaid/stored-statements', plaidItemId],
+    queryFn: async () => {
+      const res = await fetch(`/api/plaid/stored-statements/${plaidItemId}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to fetch statements');
+      }
+      return res.json();
+    },
+    enabled: isOpen && !!plaidItemId,
+    retry: 1,
+  });
+
+  const handleDownload = async (statementId: string, month: number, year: number) => {
+    setDownloadingId(statementId);
+    try {
+      const res = await fetch(`/api/plaid/statements/${plaidItemId}/download/${statementId}`, {
+        credentials: 'include',
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to download statement');
+      }
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bank-statement-${year}-${String(month).padStart(2, '0')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast({ title: "Success", description: "Statement downloaded successfully" });
+    } catch (err: any) {
+      toast({ 
+        title: "Download Failed", 
+        description: err.message || "Could not download statement",
+        variant: "destructive"
+      });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const getMonthName = (month: number) => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[month - 1] || 'Unknown';
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" data-testid="dialog-plaid-statements">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5" />
+            Bank Statements - {institutionName}
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Download official bank statements from your connected account
+          </p>
+        </DialogHeader>
+        
+        <div className="flex-1 overflow-auto">
+          {isLoading ? (
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Loading statements...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <p className="text-destructive">{(error as Error).message}</p>
+              <div className="flex gap-2 mt-4">
+                <Button variant="default" onClick={() => refetch()} data-testid="button-retry-plaid-statements">
+                  Retry
+                </Button>
+                <Button variant="outline" onClick={onClose}>Close</Button>
+              </div>
+            </div>
+          ) : data?.statements && data.statements.length > 0 ? (
+            <div className="space-y-3">
+              {data.statements.map((stmt) => (
+                <Card key={stmt.id} className="p-4 hover-elevate" data-testid={`card-statement-${stmt.id}`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <FileText className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">
+                          {getMonthName(stmt.month)} {stmt.year}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {stmt.accountName || 'Account'} {stmt.accountMask ? `••${stmt.accountMask}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownload(stmt.statementId, stmt.month, stmt.year)}
+                      disabled={downloadingId === stmt.statementId}
+                      data-testid={`button-download-statement-${stmt.id}`}
+                    >
+                      {downloadingId === stmt.statementId ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4 mr-2" />
+                          Download
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 flex flex-col items-center gap-3">
+              <FileText className="w-12 h-12 text-muted-foreground opacity-50" />
+              <p className="text-muted-foreground">No statements available yet</p>
+              <p className="text-sm text-muted-foreground">
+                Statements may take a few minutes to become available after connecting your bank.
+              </p>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -902,16 +1066,13 @@ const INDUSTRIES = [
   "Retail Stores", "Professional Services", "Restaurants & Food Services", "Other"
 ];
 
-interface BusinessDecisionDialogData {
-  businessEmail: string;
-  businessName: string;
-  mode: 'approve' | 'decline';
-}
+// BusinessDecisionDialogData removed - approvals and declines now use separate dialogs
 
 function BankStatementsTab() {
   const { toast } = useToast();
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
   const [selectedAssetReport, setSelectedAssetReport] = useState<BankConnection | null>(null);
+  const [selectedStatements, setSelectedStatements] = useState<BankConnection | null>(null);
   const [expandedBusinesses, setExpandedBusinesses] = useState<Set<string>>(new Set());
   const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
@@ -926,30 +1087,33 @@ function BankStatementsTab() {
   const [notesInput, setNotesInput] = useState("");
   
   // Business-level underwriting decision state
-  const [decisionDialog, setDecisionDialog] = useState<BusinessDecisionDialogData | null>(null);
+  const [declineDialog, setDeclineDialog] = useState<{ businessEmail: string; businessName: string } | null>(null);
+  const [declineReason, setDeclineReason] = useState('');
+  const [unqualifiedDialog, setUnqualifiedDialog] = useState<{ businessEmail: string; businessName: string } | null>(null);
+  const [unqualifiedReason, setUnqualifiedReason] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
-  
-  // Packaged approvals - list of approvals entered in the current dialog session
-  interface PackagedApproval {
+
+  // Approval form dialog state (for adding/editing a single approval)
+  interface FullApprovalEntry {
     id: string;
+    lender: string;
     advanceAmount: string;
     term: string;
     paymentFrequency: string;
     factorRate: string;
     totalPayback: string;
     netAfterFees: string;
-    lender: string;
     notes: string;
     approvalDate: string;
-    approvalDeadline: string;
-    showOnLetter: boolean; // Whether this approval appears on the public approval letter page
+    isPrimary: boolean;
+    createdAt: string;
   }
-  const [packagedApprovals, setPackagedApprovals] = useState<PackagedApproval[]>([]);
-  const [editingApprovalId, setEditingApprovalId] = useState<string | null>(null);
-  const [showApprovalForm, setShowApprovalForm] = useState(true);
-  const [expandedApprovalIds, setExpandedApprovalIds] = useState<Set<string>>(new Set());
-  
-  const [decisionForm, setDecisionForm] = useState({
+  const [approvalFormDialog, setApprovalFormDialog] = useState<{
+    businessEmail: string;
+    businessName: string;
+    editingApprovalId?: string;
+  } | null>(null);
+  const [approvalForm, setApprovalForm] = useState({
     advanceAmount: '',
     term: '',
     paymentFrequency: 'weekly',
@@ -959,40 +1123,7 @@ function BankStatementsTab() {
     lender: '',
     notes: '',
     approvalDate: new Date().toISOString().split('T')[0],
-    approvalDeadline: '',
-    declineReason: '',
   });
-  const [lenderSearch, setLenderSearch] = useState('');
-  const [showLenderSuggestions, setShowLenderSuggestions] = useState(false);
-
-  // Type for Lender from API
-  interface Lender {
-    id: string;
-    name: string;
-    contactInfo: string | null;
-    requirements: string | null;
-    notes: string | null;
-    tier: string | null;
-    isActive: boolean;
-  }
-
-  // Fetch lenders from API for autocomplete
-  const { data: lendersData } = useQuery<Lender[]>({
-    queryKey: ['/api/lenders'],
-    queryFn: async () => {
-      const res = await fetch('/api/lenders', {
-        credentials: 'include',
-      });
-      if (!res.ok) return [];
-      return res.json();
-    },
-  });
-  
-  // Get list of lender names for autocomplete
-  const LENDERS_LIST = (lendersData || []).map(l => l.name);
-  const [additionalApprovals, setAdditionalApprovals] = useState<Array<{ lender: string; amount: string; term: string; factorRate: string }>>([]);
-  const [showAddApprovalForm, setShowAddApprovalForm] = useState(false);
-  const [newApproval, setNewApproval] = useState({ lender: '', amount: '', term: '', factorRate: '' });
 
   const { data: authData } = useQuery<AuthState | null>({
     queryKey: ['/api/auth/check'],
@@ -1044,239 +1175,254 @@ function BankStatementsTab() {
     return underwritingDecisions?.find(d => d.businessEmail === email);
   };
 
-  // Open decision dialog
-  const openDecisionDialog = (businessEmail: string, businessName: string, mode: 'approve' | 'decline') => {
-    const existing = getBusinessDecision(businessEmail);
-    
-    // Reset form to empty for new approval entry
-    const resetForm = () => ({
-      advanceAmount: '',
-      term: '',
-      paymentFrequency: 'weekly',
-      factorRate: '',
-      totalPayback: '',
-      netAfterFees: '',
-      lender: '',
-      notes: '',
-      approvalDate: new Date().toISOString().split('T')[0],
-      approvalDeadline: '',
-      declineReason: existing?.declineReason || '',
-    });
-    
-    // Load existing approvals into packaged format
-    const loadedApprovals: PackagedApproval[] = [];
-    if (existing && mode === 'approve') {
-      // Load primary approval if exists
-      if (existing.advanceAmount || existing.lender) {
-        loadedApprovals.push({
-          id: 'existing-primary',
-          advanceAmount: existing.advanceAmount?.toString() || '',
-          term: existing.term || '',
-          paymentFrequency: existing.paymentFrequency || 'weekly',
-          factorRate: existing.factorRate?.toString() || '',
-          totalPayback: existing.totalPayback?.toString() || '',
-          netAfterFees: existing.netAfterFees?.toString() || '',
-          lender: existing.lender || '',
-          notes: existing.notes || '',
-          approvalDate: existing.approvalDate ? new Date(existing.approvalDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          approvalDeadline: (existing as any)?.approvalDeadline ? new Date((existing as any).approvalDeadline).toISOString().split('T')[0] : '',
-          showOnLetter: (existing as any)?.showOnLetter !== false, // Default to true
-        });
-      }
-      // Load additional approvals
-      const existingAdditional = existing?.additionalApprovals as Array<{ lender: string; amount: string; term: string; factorRate: string }> | null;
-      if (existingAdditional) {
-        existingAdditional.forEach((appr, idx) => {
-          loadedApprovals.push({
-            id: `existing-additional-${idx}`,
-            advanceAmount: appr.amount || '',
-            term: appr.term || '',
-            paymentFrequency: 'weekly',
-            factorRate: appr.factorRate || '',
-            totalPayback: '',
-            netAfterFees: '',
-            lender: appr.lender || '',
-            notes: '',
-            approvalDate: new Date().toISOString().split('T')[0],
-            approvalDeadline: '',
-            showOnLetter: (appr as any)?.showOnLetter !== false, // Default to true
-          });
-        });
-      }
-    }
-    
-    setPackagedApprovals(loadedApprovals);
-    setEditingApprovalId(null);
-    setShowApprovalForm(loadedApprovals.length === 0); // Show form if no existing approvals
-    setExpandedApprovalIds(new Set());
-    setDecisionForm(resetForm());
-    setLenderSearch('');
-    setAdditionalApprovals([]);
-    setShowAddApprovalForm(false);
-    setNewApproval({ lender: '', amount: '', term: '', factorRate: '' });
-    setDecisionDialog({ businessEmail, businessName, mode });
-  };
-  
-  // Package current form into an approval entry
-  const handlePackageApproval = () => {
-    if (!decisionForm.lender.trim() && !decisionForm.advanceAmount.trim()) {
-      return; // Need at least lender or amount
-    }
-    
-    // When editing, preserve existing showOnLetter; when creating new, default to true
-    const existingApproval = editingApprovalId ? packagedApprovals.find(a => a.id === editingApprovalId) : null;
-    const newApprovalEntry: PackagedApproval = {
-      id: editingApprovalId || `approval-${Date.now()}`,
-      advanceAmount: decisionForm.advanceAmount,
-      term: decisionForm.term,
-      paymentFrequency: decisionForm.paymentFrequency,
-      factorRate: decisionForm.factorRate,
-      totalPayback: decisionForm.totalPayback,
-      netAfterFees: decisionForm.netAfterFees,
-      lender: decisionForm.lender,
-      notes: decisionForm.notes,
-      approvalDate: decisionForm.approvalDate,
-      approvalDeadline: decisionForm.approvalDeadline,
-      showOnLetter: existingApproval?.showOnLetter ?? true,
-    };
-    
-    if (editingApprovalId) {
-      // Update existing
-      setPackagedApprovals(prev => prev.map(a => a.id === editingApprovalId ? newApprovalEntry : a));
-    } else {
-      // Add new
-      setPackagedApprovals(prev => [...prev, newApprovalEntry]);
-    }
-    
-    // Reset form for next entry
-    setDecisionForm({
-      advanceAmount: '',
-      term: '',
-      paymentFrequency: 'weekly',
-      factorRate: '',
-      totalPayback: '',
-      netAfterFees: '',
-      lender: '',
-      notes: '',
-      approvalDate: new Date().toISOString().split('T')[0],
-      approvalDeadline: '',
-      declineReason: decisionForm.declineReason,
-    });
-    setLenderSearch('');
-    setEditingApprovalId(null);
-    setShowApprovalForm(false);
-  };
-  
-  // Edit a packaged approval
-  const handleEditPackagedApproval = (approval: PackagedApproval) => {
-    setDecisionForm({
-      advanceAmount: approval.advanceAmount,
-      term: approval.term,
-      paymentFrequency: approval.paymentFrequency,
-      factorRate: approval.factorRate,
-      totalPayback: approval.totalPayback,
-      netAfterFees: approval.netAfterFees,
-      lender: approval.lender,
-      notes: approval.notes,
-      approvalDate: approval.approvalDate,
-      approvalDeadline: approval.approvalDeadline,
-      declineReason: decisionForm.declineReason,
-    });
-    setLenderSearch(approval.lender);
-    setEditingApprovalId(approval.id);
-    setShowApprovalForm(true);
-  };
-  
-  // Delete a packaged approval
-  const handleDeletePackagedApproval = (id: string) => {
-    setPackagedApprovals(prev => prev.filter(a => a.id !== id));
-    if (editingApprovalId === id) {
-      setEditingApprovalId(null);
-      setShowApprovalForm(packagedApprovals.length <= 1);
-    }
-  };
-  
-  // Toggle expand/collapse for a packaged approval
-  const toggleApprovalExpanded = (id: string) => {
-    setExpandedApprovalIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
-  };
-  
-  // Move a packaged approval up in the list
-  const handleMoveApprovalUp = (index: number) => {
-    if (index <= 0) return;
-    setPackagedApprovals(prev => {
-      const newList = [...prev];
-      [newList[index - 1], newList[index]] = [newList[index], newList[index - 1]];
-      return newList;
-    });
-  };
-  
-  // Move a packaged approval down in the list
-  const handleMoveApprovalDown = (index: number) => {
-    setPackagedApprovals(prev => {
-      if (index >= prev.length - 1) return prev;
-      const newList = [...prev];
-      [newList[index], newList[index + 1]] = [newList[index + 1], newList[index]];
-      return newList;
-    });
-  };
-  
-  // Toggle show on letter visibility for an approval
-  const handleToggleShowOnLetter = (approvalId: string) => {
-    setPackagedApprovals(prev => 
-      prev.map(a => a.id === approvalId ? { ...a, showOnLetter: !a.showOnLetter } : a)
-    );
-  };
+  // Helper: get all approvals for a business from the decision's JSONB (migration-aware)
+  const getApprovalsForBusiness = (email: string): FullApprovalEntry[] => {
+    const decision = getBusinessDecision(email);
+    if (!decision || decision.status !== 'approved') return [];
 
-  // Save underwriting decision (submit all packaged approvals)
-  const handleSaveDecision = async () => {
-    if (!decisionDialog) return;
-    
-    // For approve mode, use packaged approvals
-    // First approval becomes primary, rest become additional
-    const allApprovals = [...packagedApprovals];
-    
-    // If there's unsaved form data, package it first
-    if (showApprovalForm && (decisionForm.lender.trim() || decisionForm.advanceAmount.trim())) {
-      allApprovals.push({
-        id: `approval-${Date.now()}`,
-        advanceAmount: decisionForm.advanceAmount,
-        term: decisionForm.term,
-        paymentFrequency: decisionForm.paymentFrequency,
-        factorRate: decisionForm.factorRate,
-        totalPayback: decisionForm.totalPayback,
-        netAfterFees: decisionForm.netAfterFees,
-        lender: decisionForm.lender,
-        notes: decisionForm.notes,
-        approvalDate: decisionForm.approvalDate,
-        approvalDeadline: decisionForm.approvalDeadline,
-        showOnLetter: true,
+    const raw = decision.additionalApprovals as any[] | null;
+
+    // Check if already in new format (has isPrimary field)
+    if (raw && raw.length > 0 && raw[0].isPrimary !== undefined) {
+      return raw as FullApprovalEntry[];
+    }
+
+    // Migration: convert old format to new
+    const result: FullApprovalEntry[] = [];
+
+    // Add the primary (top-level columns) as the first entry
+    if (decision.advanceAmount || decision.lender) {
+      result.push({
+        id: 'primary-' + decision.id,
+        lender: decision.lender || '',
+        advanceAmount: decision.advanceAmount?.toString() || '',
+        term: decision.term || '',
+        paymentFrequency: decision.paymentFrequency || 'weekly',
+        factorRate: decision.factorRate?.toString() || '',
+        totalPayback: decision.totalPayback?.toString() || '',
+        netAfterFees: decision.netAfterFees?.toString() || '',
+        notes: decision.notes || '',
+        approvalDate: decision.approvalDate ? new Date(decision.approvalDate).toISOString().split('T')[0] : '',
+        isPrimary: true,
+        createdAt: decision.createdAt ? new Date(decision.createdAt).toISOString() : new Date().toISOString(),
       });
     }
-    
-    const primaryApproval = allApprovals[0];
-    const additionalApprovalsFormatted = allApprovals.slice(1).map(a => ({
-      lender: a.lender,
-      amount: a.advanceAmount,
-      term: a.term,
-      factorRate: a.factorRate,
-      totalPayback: a.totalPayback,
-      netAfterFees: a.netAfterFees,
-      paymentFrequency: a.paymentFrequency,
-      notes: a.notes,
-      approvalDate: a.approvalDate,
-      approvalDeadline: a.approvalDeadline,
-      showOnLetter: a.showOnLetter,
+
+    // Add old-format additional approvals
+    if (raw) {
+      raw.forEach((old: any, idx: number) => {
+        result.push({
+          id: 'migrated-' + idx,
+          lender: old.lender || '',
+          advanceAmount: old.amount || old.advanceAmount || '',
+          term: old.term || '',
+          paymentFrequency: old.paymentFrequency || 'weekly',
+          factorRate: old.factorRate || '',
+          totalPayback: old.totalPayback || '',
+          netAfterFees: old.netAfterFees || '',
+          notes: old.notes || '',
+          approvalDate: old.approvalDate || '',
+          isPrimary: false,
+          createdAt: new Date().toISOString(),
+        });
+      });
+    }
+
+    return result;
+  };
+
+  const generateApprovalId = () => `appr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+  // Open approval form dialog (for adding or editing a single approval)
+  const openApprovalForm = (businessEmail: string, businessName: string, editingId?: string) => {
+    if (editingId) {
+      const approvals = getApprovalsForBusiness(businessEmail);
+      const existing = approvals.find(a => a.id === editingId);
+      if (existing) {
+        setApprovalForm({
+          advanceAmount: existing.advanceAmount,
+          term: existing.term,
+          paymentFrequency: existing.paymentFrequency || 'weekly',
+          factorRate: existing.factorRate,
+          totalPayback: existing.totalPayback,
+          netAfterFees: existing.netAfterFees,
+          lender: existing.lender,
+          notes: existing.notes,
+          approvalDate: existing.approvalDate || new Date().toISOString().split('T')[0],
+        });
+      }
+    } else {
+      setApprovalForm({
+        advanceAmount: '',
+        term: '',
+        paymentFrequency: 'weekly',
+        factorRate: '',
+        totalPayback: '',
+        netAfterFees: '',
+        lender: '',
+        notes: '',
+        approvalDate: new Date().toISOString().split('T')[0],
+      });
+    }
+    setApprovalFormDialog({ businessEmail, businessName, editingApprovalId: editingId });
+  };
+
+  // Open decline dialog
+  const openDeclineDialog = (businessEmail: string, businessName: string) => {
+    const existing = getBusinessDecision(businessEmail);
+    setDeclineReason(existing?.declineReason || '');
+    setDeclineDialog({ businessEmail, businessName });
+  };
+
+  // Open unqualified dialog (didn't even get sent to lenders)
+  const openUnqualifiedDialog = (businessEmail: string, businessName: string) => {
+    const existing = getBusinessDecision(businessEmail);
+    setUnqualifiedReason(existing?.declineReason || '');
+    setUnqualifiedDialog({ businessEmail, businessName });
+  };
+
+  // Save a single approval (add new or edit existing)
+  const handleSaveApproval = async () => {
+    if (!approvalFormDialog) return;
+    setSavingDecision(true);
+    try {
+      const { businessEmail, businessName, editingApprovalId } = approvalFormDialog;
+      const decision = getBusinessDecision(businessEmail);
+      let approvals = getApprovalsForBusiness(businessEmail);
+
+      const newEntry: FullApprovalEntry = {
+        id: editingApprovalId || generateApprovalId(),
+        lender: approvalForm.lender,
+        advanceAmount: approvalForm.advanceAmount,
+        term: approvalForm.term,
+        paymentFrequency: approvalForm.paymentFrequency,
+        factorRate: approvalForm.factorRate,
+        totalPayback: approvalForm.totalPayback,
+        netAfterFees: approvalForm.netAfterFees,
+        notes: approvalForm.notes,
+        approvalDate: approvalForm.approvalDate,
+        isPrimary: approvals.length === 0, // First approval is automatically primary
+        createdAt: editingApprovalId
+          ? (approvals.find(a => a.id === editingApprovalId)?.createdAt || new Date().toISOString())
+          : new Date().toISOString(),
+      };
+
+      if (editingApprovalId) {
+        // Replace existing
+        const wasEdited = approvals.find(a => a.id === editingApprovalId);
+        newEntry.isPrimary = wasEdited?.isPrimary || false;
+        approvals = approvals.map(a => a.id === editingApprovalId ? newEntry : a);
+      } else {
+        approvals.push(newEntry);
+      }
+
+      if (decision) {
+        // Update existing decision
+        const res = await fetch(`/api/underwriting-decisions/${decision.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ additionalApprovals: approvals }),
+        });
+        if (!res.ok) {
+          console.error('Failed to update approval');
+          return;
+        }
+      } else {
+        // Create new decision
+        const res = await fetch('/api/underwriting-decisions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            businessEmail,
+            businessName,
+            status: 'approved',
+            additionalApprovals: approvals,
+          }),
+        });
+        if (!res.ok) {
+          console.error('Failed to create approval');
+          return;
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
+      setApprovalFormDialog(null);
+      toast({ title: "Approval Saved", description: `Approval ${editingApprovalId ? 'updated' : 'added'} for ${businessName}` });
+    } catch (error) {
+      console.error('Error saving approval:', error);
+    } finally {
+      setSavingDecision(false);
+    }
+  };
+
+  // Set an approval as primary
+  const handleSetPrimary = async (businessEmail: string, approvalId: string) => {
+    const decision = getBusinessDecision(businessEmail);
+    if (!decision) return;
+    const approvals = getApprovalsForBusiness(businessEmail).map(a => ({
+      ...a,
+      isPrimary: a.id === approvalId,
     }));
-    
+    try {
+      const res = await fetch(`/api/underwriting-decisions/${decision.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ additionalApprovals: approvals }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
+        toast({ title: "Primary Updated", description: "Primary approval has been changed" });
+      }
+    } catch (error) {
+      console.error('Error setting primary:', error);
+    }
+  };
+
+  // Delete an individual approval
+  const handleDeleteApproval = async (businessEmail: string, approvalId: string) => {
+    const decision = getBusinessDecision(businessEmail);
+    if (!decision) return;
+    let approvals = getApprovalsForBusiness(businessEmail).filter(a => a.id !== approvalId);
+
+    // If deleted the primary and others remain, make the first one primary
+    if (approvals.length > 0 && !approvals.some(a => a.isPrimary)) {
+      approvals[0].isPrimary = true;
+    }
+
+    try {
+      if (approvals.length === 0) {
+        // No approvals left, delete the decision entirely
+        const res = await fetch(`/api/underwriting-decisions/${decision.id}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        if (res.ok) {
+          queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
+          toast({ title: "Approval Removed", description: "All approvals removed" });
+        }
+      } else {
+        const res = await fetch(`/api/underwriting-decisions/${decision.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ additionalApprovals: approvals }),
+        });
+        if (res.ok) {
+          queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
+          toast({ title: "Approval Removed", description: "Approval has been removed" });
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting approval:', error);
+    }
+  };
+
+  // Save decline decision
+  const handleSaveDecline = async () => {
+    if (!declineDialog) return;
     setSavingDecision(true);
     try {
       const res = await fetch('/api/underwriting-decisions', {
@@ -1284,33 +1430,47 @@ function BankStatementsTab() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          businessEmail: decisionDialog.businessEmail,
-          businessName: decisionDialog.businessName,
-          status: decisionDialog.mode === 'approve' ? 'approved' : 'declined',
-          advanceAmount: primaryApproval?.advanceAmount ? parseFloat(primaryApproval.advanceAmount) : null,
-          term: primaryApproval?.term || null,
-          paymentFrequency: primaryApproval?.paymentFrequency || null,
-          factorRate: primaryApproval?.factorRate ? parseFloat(primaryApproval.factorRate) : null,
-          totalPayback: primaryApproval?.totalPayback ? parseFloat(primaryApproval.totalPayback) : null,
-          netAfterFees: primaryApproval?.netAfterFees ? parseFloat(primaryApproval.netAfterFees) : null,
-          lender: primaryApproval?.lender || null,
-          notes: primaryApproval?.notes || null,
-          approvalDate: primaryApproval?.approvalDate || null,
-          approvalDeadline: primaryApproval?.approvalDeadline || null,
-          showOnLetter: primaryApproval?.showOnLetter ?? true,
-          declineReason: decisionForm.declineReason || null,
-          additionalApprovals: additionalApprovalsFormatted.length > 0 ? additionalApprovalsFormatted : null,
+          businessEmail: declineDialog.businessEmail,
+          businessName: declineDialog.businessName,
+          status: 'declined',
+          declineReason: declineReason || null,
         }),
       });
       if (res.ok) {
         queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
-        setDecisionDialog(null);
-        setPackagedApprovals([]);
-      } else {
-        console.error('Failed to save decision');
+        setDeclineDialog(null);
+        toast({ title: "Business Declined", description: `${declineDialog.businessName} has been declined` });
       }
     } catch (error) {
-      console.error('Error saving decision:', error);
+      console.error('Error saving decline:', error);
+    } finally {
+      setSavingDecision(false);
+    }
+  };
+
+  // Save unqualified decision (didn't even get sent to lenders)
+  const handleSaveUnqualified = async () => {
+    if (!unqualifiedDialog) return;
+    setSavingDecision(true);
+    try {
+      const res = await fetch('/api/underwriting-decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          businessEmail: unqualifiedDialog.businessEmail,
+          businessName: unqualifiedDialog.businessName,
+          status: 'unqualified',
+          declineReason: unqualifiedReason || null,
+        }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
+        setUnqualifiedDialog(null);
+        toast({ title: "Marked Unqualified", description: `${unqualifiedDialog.businessName} has been marked as unqualified` });
+      }
+    } catch (error) {
+      console.error('Error saving unqualified:', error);
     } finally {
       setSavingDecision(false);
     }
@@ -1707,21 +1867,22 @@ function BankStatementsTab() {
                         const businessEmail = uploads[0]?.email;
                         if (!businessEmail) return null;
                         const decision = getBusinessDecision(businessEmail);
-                        
+
                         if (decision) {
-                          const approvalUrl = decision.approvalSlug 
+                          const approvalUrl = decision.approvalSlug
                             ? `${window.location.origin}/approved/${decision.approvalSlug}`
                             : null;
-                          
-                          const openApprovalLetter = () => {
+
+                          const copyApprovalUrl = () => {
                             if (approvalUrl) {
-                              window.open(approvalUrl, '_blank');
+                              navigator.clipboard.writeText(approvalUrl);
+                              toast({ title: "URL Copied", description: "Approval letter URL copied to clipboard" });
                             }
                           };
-                          
+
                           return (
                             <div className="flex items-center gap-2 flex-wrap">
-                              {decision.status === 'approved' ? (
+                              {decision.status === 'approved' && (
                                 <>
                                   <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1">
                                     <ThumbsUp className="w-3 h-3" />
@@ -1731,29 +1892,58 @@ function BankStatementsTab() {
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={openApprovalLetter}
+                                      onClick={copyApprovalUrl}
                                       className="text-primary border-primary/30 hover:bg-primary/10"
-                                      data-testid={`button-view-approval-letter-${businessEmail}`}
+                                      data-testid={`button-copy-approval-url-${businessEmail}`}
                                     >
-                                      <ExternalLink className="w-3 h-3 mr-1" />
-                                      View Approval Letter
+                                      <Copy className="w-3 h-3 mr-1" />
+                                      Copy Letter URL
                                     </Button>
                                   )}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openApprovalForm(businessEmail, businessName)}
+                                    className="text-green-600 border-green-200 hover:bg-green-50 dark:border-green-800 dark:hover:bg-green-900/20"
+                                    data-testid={`button-add-approval-${businessEmail}`}
+                                  >
+                                    <Plus className="w-3 h-3 mr-1" />
+                                    Add Approval
+                                  </Button>
                                 </>
-                              ) : (
-                                <Badge variant="destructive" className="flex items-center gap-1">
-                                  <ThumbsDown className="w-3 h-3" />
-                                  Declined
-                                </Badge>
                               )}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => openDecisionDialog(businessEmail, businessName, decision.status === 'approved' ? 'approve' : 'decline')}
-                                data-testid={`button-edit-decision-${businessEmail}`}
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </Button>
+                              {decision.status === 'declined' && (
+                                <>
+                                  <Badge variant="destructive" className="flex items-center gap-1">
+                                    <ThumbsDown className="w-3 h-3" />
+                                    Declined
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openDeclineDialog(businessEmail, businessName)}
+                                    data-testid={`button-edit-decision-${businessEmail}`}
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </Button>
+                                </>
+                              )}
+                              {decision.status === 'unqualified' && (
+                                <>
+                                  <Badge className="bg-orange-600 hover:bg-orange-700 flex items-center gap-1">
+                                    <AlertCircle className="w-3 h-3" />
+                                    Unqualified
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openUnqualifiedDialog(businessEmail, businessName)}
+                                    data-testid={`button-edit-unqualified-${businessEmail}`}
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </Button>
+                                </>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1766,13 +1956,13 @@ function BankStatementsTab() {
                             </div>
                           );
                         }
-                        
+
                         return (
                           <div className="flex items-center gap-1">
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => openDecisionDialog(businessEmail, businessName, 'approve')}
+                              onClick={() => openApprovalForm(businessEmail, businessName)}
                               className="text-green-600 border-green-200 hover:bg-green-50 dark:border-green-800 dark:hover:bg-green-900/20"
                               data-testid={`button-approve-business-${businessEmail}`}
                             >
@@ -1782,12 +1972,22 @@ function BankStatementsTab() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => openDecisionDialog(businessEmail, businessName, 'decline')}
+                              onClick={() => openDeclineDialog(businessEmail, businessName)}
                               className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
                               data-testid={`button-decline-business-${businessEmail}`}
                             >
                               <ThumbsDown className="w-3 h-3 mr-1" />
                               Decline
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openUnqualifiedDialog(businessEmail, businessName)}
+                              className="text-orange-600 border-orange-200 hover:bg-orange-50 dark:border-orange-800 dark:hover:bg-orange-900/20"
+                              data-testid={`button-unqualified-business-${businessEmail}`}
+                            >
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              Unqualified
                             </Button>
                           </div>
                         );
@@ -1836,6 +2036,75 @@ function BankStatementsTab() {
                       </Button>
                     </div>
                   </div>
+
+                  {/* Inline Approvals List */}
+                  {canManageApprovals && (() => {
+                    const businessEmail = uploads[0]?.email;
+                    if (!businessEmail) return null;
+                    const decision = getBusinessDecision(businessEmail);
+                    if (!decision || decision.status !== 'approved') return null;
+                    const approvals = getApprovalsForBusiness(businessEmail);
+                    if (approvals.length === 0) return null;
+
+                    return (
+                      <div className="mb-4 space-y-2">
+                        {approvals.map((appr) => (
+                          <div
+                            key={appr.id}
+                            className={`flex items-center justify-between gap-3 p-3 rounded-lg text-sm ${
+                              appr.isPrimary
+                                ? 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                                : 'bg-muted/50 border border-transparent'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0 flex-wrap">
+                              <button
+                                onClick={() => handleSetPrimary(businessEmail, appr.id)}
+                                className={`flex-shrink-0 ${appr.isPrimary ? 'text-yellow-500' : 'text-muted-foreground hover:text-yellow-500'}`}
+                                title={appr.isPrimary ? 'Primary approval' : 'Set as primary'}
+                                data-testid={`button-set-primary-${appr.id}`}
+                              >
+                                <Star className={`w-4 h-4 ${appr.isPrimary ? 'fill-yellow-500' : ''}`} />
+                              </button>
+                              {appr.isPrimary && (
+                                <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 text-xs">
+                                  Primary
+                                </Badge>
+                              )}
+                              <span className="font-medium">{appr.lender || 'No lender'}</span>
+                              {appr.advanceAmount && (
+                                <span className="text-green-600 dark:text-green-400 font-semibold">
+                                  ${parseFloat(appr.advanceAmount).toLocaleString()}
+                                </span>
+                              )}
+                              {appr.term && <span className="text-muted-foreground">{appr.term}</span>}
+                              {appr.factorRate && <span className="text-muted-foreground">{appr.factorRate}x</span>}
+                              {appr.paymentFrequency && <span className="text-muted-foreground capitalize">{appr.paymentFrequency}</span>}
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openApprovalForm(businessEmail, businessName, appr.id)}
+                                data-testid={`button-edit-approval-${appr.id}`}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteApproval(businessEmail, appr.id)}
+                                className="text-red-500 hover:text-red-700"
+                                data-testid={`button-delete-approval-${appr.id}`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
 
                   {/* Individual Files - Collapsible */}
                   {expandedBusinesses.has(businessName) && (
@@ -1962,6 +2231,14 @@ function BankStatementsTab() {
 
                     <div className="flex flex-col gap-2">
                       <Button
+                        onClick={() => setSelectedStatements(connection)}
+                        data-testid={`button-view-statements-${connection.id}`}
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        Bank Statements
+                      </Button>
+                      <Button
+                        variant="outline"
                         onClick={() => setSelectedAssetReport(connection)}
                         data-testid={`button-view-asset-report-${connection.id}`}
                       >
@@ -2004,6 +2281,15 @@ function BankStatementsTab() {
         />
       )}
 
+      {selectedStatements && (
+        <PlaidStatementsModal
+          plaidItemId={selectedStatements.plaidItemId}
+          institutionName={selectedStatements.institutionName}
+          isOpen={!!selectedStatements}
+          onClose={() => setSelectedStatements(null)}
+        />
+      )}
+
       <AnalysisModal
         isOpen={analysisModalOpen}
         onClose={() => {
@@ -2017,425 +2303,252 @@ function BankStatementsTab() {
         title={analysisTitle}
       />
 
-      {/* Business Underwriting Decision Dialog */}
-      <Dialog open={!!decisionDialog} onOpenChange={(open) => !open && setDecisionDialog(null)}>
-        <DialogContent className="max-w-lg">
+      {/* Approval Form Dialog - For adding/editing a single approval */}
+      <Dialog open={!!approvalFormDialog} onOpenChange={(open) => !open && setApprovalFormDialog(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {decisionDialog?.mode === 'approve' ? (
-                <>
-                  <ThumbsUp className="w-5 h-5 text-green-600" />
-                  Approve: {decisionDialog?.businessName}
-                </>
-              ) : (
-                <>
-                  <ThumbsDown className="w-5 h-5 text-red-600" />
-                  Decline: {decisionDialog?.businessName}
-                </>
-              )}
+              <ThumbsUp className="w-5 h-5 text-green-600" />
+              {approvalFormDialog?.editingApprovalId ? 'Edit' : 'Add'} Approval: {approvalFormDialog?.businessName}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-4 max-h-[70vh] overflow-y-auto">
-            {decisionDialog?.mode === 'approve' ? (
-              <>
-                {/* Packaged Approvals List */}
-                {packagedApprovals.length > 0 && (
-                  <div className="space-y-2">
-                    {packagedApprovals.map((approval, idx) => (
-                      <div 
-                        key={approval.id} 
-                        className={`border rounded-lg overflow-hidden ${editingApprovalId === approval.id ? 'border-primary ring-1 ring-primary' : ''}`}
-                      >
-                        <div 
-                          className="flex items-center justify-between p-3 bg-muted/50 cursor-pointer hover:bg-muted/70"
-                          onClick={() => toggleApprovalExpanded(approval.id)}
-                          data-testid={`approval-header-${idx}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div 
-                              className="flex items-center gap-2"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Checkbox
-                                id={`show-on-letter-${approval.id}`}
-                                checked={approval.showOnLetter}
-                                onCheckedChange={() => handleToggleShowOnLetter(approval.id)}
-                                data-testid={`checkbox-show-on-letter-${idx}`}
-                              />
-                              <Label
-                                htmlFor={`show-on-letter-${approval.id}`}
-                                className="text-xs text-muted-foreground cursor-pointer"
-                              >
-                                Show on letter
-                              </Label>
-                            </div>
-                            <div className="w-px h-4 bg-border" />
-                            <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                              Approval #{idx + 1}
-                            </Badge>
-                            <span className="font-medium text-sm">{approval.lender || 'No lender'}</span>
-                            {approval.advanceAmount && (
-                              <span className="text-green-600 font-semibold text-sm">
-                                ${parseFloat(approval.advanceAmount).toLocaleString()}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {/* Reorder buttons */}
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMoveApprovalUp(idx);
-                              }}
-                              disabled={idx === 0}
-                              className={idx === 0 ? 'opacity-30' : ''}
-                              data-testid={`button-move-up-${idx}`}
-                            >
-                              <ArrowUp className="w-3 h-3" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMoveApprovalDown(idx);
-                              }}
-                              disabled={idx === packagedApprovals.length - 1}
-                              className={idx === packagedApprovals.length - 1 ? 'opacity-30' : ''}
-                              data-testid={`button-move-down-${idx}`}
-                            >
-                              <ArrowDown className="w-3 h-3" />
-                            </Button>
-                            <div className="w-px h-4 bg-border mx-1" />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditPackagedApproval(approval);
-                              }}
-                              data-testid={`button-edit-approval-${idx}`}
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeletePackagedApproval(approval.id);
-                              }}
-                              className="text-red-500 hover:text-red-700"
-                              data-testid={`button-delete-approval-${idx}`}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                            {expandedApprovalIds.has(approval.id) ? (
-                              <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                            )}
-                          </div>
-                        </div>
-                        {expandedApprovalIds.has(approval.id) && (
-                          <div className="p-3 bg-background border-t text-sm space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div><span className="text-muted-foreground">Amount:</span> <span className="font-medium">${parseFloat(approval.advanceAmount || '0').toLocaleString()}</span></div>
-                              <div><span className="text-muted-foreground">Term:</span> <span className="font-medium">{approval.term || '-'}</span></div>
-                              <div><span className="text-muted-foreground">Factor Rate:</span> <span className="font-medium">{approval.factorRate ? `${approval.factorRate}x` : '-'}</span></div>
-                              <div><span className="text-muted-foreground">Frequency:</span> <span className="font-medium capitalize">{approval.paymentFrequency || '-'}</span></div>
-                              <div><span className="text-muted-foreground">Total Payback:</span> <span className="font-medium">{approval.totalPayback ? `$${parseFloat(approval.totalPayback).toLocaleString()}` : '-'}</span></div>
-                              <div><span className="text-muted-foreground">Net After Fees:</span> <span className="font-medium">{approval.netAfterFees ? `$${parseFloat(approval.netAfterFees).toLocaleString()}` : '-'}</span></div>
-                            </div>
-                            {approval.notes && (
-                              <div><span className="text-muted-foreground">Notes:</span> <span className="font-medium">{approval.notes}</span></div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Add New Approval Button (when form is hidden) */}
-                {!showApprovalForm && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      setEditingApprovalId(null);
-                      setDecisionForm({
-                        advanceAmount: '',
-                        term: '',
-                        paymentFrequency: 'weekly',
-                        factorRate: '',
-                        totalPayback: '',
-                        netAfterFees: '',
-                        lender: '',
-                        notes: '',
-                        approvalDate: new Date().toISOString().split('T')[0],
-                        approvalDeadline: '',
-                        declineReason: decisionForm.declineReason,
-                      });
-                      setLenderSearch('');
-                      setShowApprovalForm(true);
-                    }}
-                    data-testid="button-add-new-approval"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add New Approval
-                  </Button>
-                )}
-
-                {/* Approval Entry Form */}
-                {showApprovalForm && (
-                  <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-base font-semibold">
-                        {editingApprovalId ? 'Edit Approval' : (packagedApprovals.length > 0 ? 'New Approval' : 'Approval Details')}
-                      </Label>
-                      {packagedApprovals.length > 0 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setShowApprovalForm(false);
-                            setEditingApprovalId(null);
-                          }}
-                          data-testid="button-cancel-form"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="advanceAmount">Advance Amount</Label>
-                        <Input
-                          id="advanceAmount"
-                          type="number"
-                          placeholder="$50,000"
-                          value={decisionForm.advanceAmount}
-                          onChange={(e) => setDecisionForm(prev => ({ ...prev, advanceAmount: e.target.value }))}
-                          data-testid="input-advance-amount"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="term">Term</Label>
-                        <Input
-                          id="term"
-                          placeholder="6 months"
-                          value={decisionForm.term}
-                          onChange={(e) => setDecisionForm(prev => ({ ...prev, term: e.target.value }))}
-                          data-testid="input-term"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="paymentFrequency">Payment Frequency</Label>
-                        <Select
-                          value={decisionForm.paymentFrequency}
-                          onValueChange={(value) => setDecisionForm(prev => ({ ...prev, paymentFrequency: value }))}
-                        >
-                          <SelectTrigger data-testid="select-payment-frequency">
-                            <SelectValue placeholder="Select frequency" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="daily">Daily</SelectItem>
-                            <SelectItem value="weekly">Weekly</SelectItem>
-                            <SelectItem value="biweekly">Bi-Weekly</SelectItem>
-                            <SelectItem value="monthly">Monthly</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="factorRate">Factor Rate</Label>
-                        <Input
-                          id="factorRate"
-                          type="number"
-                          step="0.01"
-                          placeholder="1.25"
-                          value={decisionForm.factorRate}
-                          onChange={(e) => setDecisionForm(prev => ({ ...prev, factorRate: e.target.value }))}
-                          data-testid="input-factor-rate"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="totalPayback">Total Payback</Label>
-                        <Input
-                          id="totalPayback"
-                          type="number"
-                          placeholder="$62,500"
-                          value={decisionForm.totalPayback}
-                          onChange={(e) => setDecisionForm(prev => ({ ...prev, totalPayback: e.target.value }))}
-                          data-testid="input-total-payback"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="netAfterFees">Net After Fees</Label>
-                        <Input
-                          id="netAfterFees"
-                          type="number"
-                          placeholder="$48,500"
-                          value={decisionForm.netAfterFees}
-                          onChange={(e) => setDecisionForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
-                          data-testid="input-net-after-fees"
-                        />
-                      </div>
-                      <div className="relative">
-                        <Label htmlFor="lender">Lender</Label>
-                        <Input
-                          id="lender"
-                          placeholder="Type to search lenders..."
-                          value={lenderSearch}
-                          onChange={(e) => {
-                            setLenderSearch(e.target.value);
-                            setDecisionForm(prev => ({ ...prev, lender: e.target.value }));
-                            setShowLenderSuggestions(true);
-                          }}
-                          onFocus={() => setShowLenderSuggestions(true)}
-                          onBlur={() => setTimeout(() => setShowLenderSuggestions(false), 200)}
-                          data-testid="input-lender"
-                        />
-                        {showLenderSuggestions && lenderSearch && (
-                          <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                            {LENDERS_LIST
-                              .filter(l => l.toLowerCase().includes(lenderSearch.toLowerCase()))
-                              .slice(0, 8)
-                              .map(lender => (
-                                <div
-                                  key={lender}
-                                  className="px-3 py-2 cursor-pointer hover:bg-accent text-sm"
-                                  onMouseDown={() => {
-                                    setLenderSearch(lender);
-                                    setDecisionForm(prev => ({ ...prev, lender }));
-                                    setShowLenderSuggestions(false);
-                                  }}
-                                >
-                                  {lender}
-                                </div>
-                              ))}
-                            {LENDERS_LIST.filter(l => l.toLowerCase().includes(lenderSearch.toLowerCase())).length === 0 && (
-                              <div className="px-3 py-2 text-sm text-muted-foreground">
-                                No matching lenders - custom entry will be used
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="approvalDate">Approval Date</Label>
-                        <Input
-                          id="approvalDate"
-                          type="date"
-                          value={decisionForm.approvalDate}
-                          onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDate: e.target.value }))}
-                          data-testid="input-approval-date"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="approvalDeadline">Approval Deadline</Label>
-                        <Input
-                          id="approvalDeadline"
-                          type="date"
-                          value={decisionForm.approvalDeadline}
-                          onChange={(e) => setDecisionForm(prev => ({ ...prev, approvalDeadline: e.target.value }))}
-                          data-testid="input-approval-deadline"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="notes">Notes</Label>
-                      <Textarea
-                        id="notes"
-                        placeholder="Additional notes..."
-                        rows={2}
-                        value={decisionForm.notes}
-                        onChange={(e) => setDecisionForm(prev => ({ ...prev, notes: e.target.value }))}
-                        data-testid="input-notes"
-                      />
-                    </div>
-                    
-                    {/* Save This Approval Button */}
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        onClick={handlePackageApproval}
-                        disabled={!decisionForm.lender.trim() && !decisionForm.advanceAmount.trim()}
-                        className="bg-blue-600 hover:bg-blue-700"
-                        data-testid="button-package-approval"
-                      >
-                        <Check className="w-4 h-4 mr-2" />
-                        {editingApprovalId ? 'Update Approval' : 'Save Approval'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Summary */}
-                {packagedApprovals.length > 0 && !showApprovalForm && (
-                  <div className="text-sm text-muted-foreground text-center py-2">
-                    {packagedApprovals.length} approval{packagedApprovals.length !== 1 ? 's' : ''} ready to submit
-                  </div>
-                )}
-              </>
-            ) : (
+          <div className="space-y-4 pt-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="declineReason">Reason for Decline</Label>
+                <Label htmlFor="advanceAmount">Advance Amount</Label>
                 <Input
-                  id="declineReason"
-                  placeholder="Enter reason for declining..."
-                  value={decisionForm.declineReason}
-                  onChange={(e) => setDecisionForm(prev => ({ ...prev, declineReason: e.target.value }))}
-                  data-testid="input-decline-reason"
+                  id="advanceAmount"
+                  type="number"
+                  placeholder="$50,000"
+                  value={approvalForm.advanceAmount}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, advanceAmount: e.target.value }))}
+                  data-testid="input-advance-amount"
                 />
               </div>
-            )}
-            <div className="flex justify-end gap-2 pt-4 border-t">
+              <div>
+                <Label htmlFor="term">Term</Label>
+                <Input
+                  id="term"
+                  placeholder="6 months"
+                  value={approvalForm.term}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, term: e.target.value }))}
+                  data-testid="input-term"
+                />
+              </div>
+              <div>
+                <Label htmlFor="paymentFrequency">Payment Frequency</Label>
+                <Select
+                  value={approvalForm.paymentFrequency}
+                  onValueChange={(value) => setApprovalForm(prev => ({ ...prev, paymentFrequency: value }))}
+                >
+                  <SelectTrigger data-testid="select-payment-frequency">
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="factorRate">Factor Rate</Label>
+                <Input
+                  id="factorRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={approvalForm.factorRate}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, factorRate: e.target.value }))}
+                  data-testid="input-factor-rate"
+                />
+              </div>
+              <div>
+                <Label htmlFor="totalPayback">Total Payback</Label>
+                <Input
+                  id="totalPayback"
+                  type="number"
+                  placeholder="$62,500"
+                  value={approvalForm.totalPayback}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, totalPayback: e.target.value }))}
+                  data-testid="input-total-payback"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="netAfterFees">Net After Fees</Label>
+                <Input
+                  id="netAfterFees"
+                  type="number"
+                  placeholder="$48,500"
+                  value={approvalForm.netAfterFees}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
+                  data-testid="input-net-after-fees"
+                />
+              </div>
+              <div>
+                <Label htmlFor="lender">Lender</Label>
+                <Input
+                  id="lender"
+                  placeholder="Lender name"
+                  value={approvalForm.lender}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, lender: e.target.value }))}
+                  data-testid="input-lender"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="approvalDate">Approval Date</Label>
+              <Input
+                id="approvalDate"
+                type="date"
+                value={approvalForm.approvalDate}
+                onChange={(e) => setApprovalForm(prev => ({ ...prev, approvalDate: e.target.value }))}
+                data-testid="input-approval-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                placeholder="Additional notes..."
+                rows={3}
+                value={approvalForm.notes}
+                onChange={(e) => setApprovalForm(prev => ({ ...prev, notes: e.target.value }))}
+                data-testid="input-notes"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setDecisionDialog(null);
-                  setPackagedApprovals([]);
-                }}
-                data-testid="button-cancel-decision"
+                onClick={() => setApprovalFormDialog(null)}
+                data-testid="button-cancel-approval"
               >
                 Cancel
               </Button>
               <Button
-                onClick={handleSaveDecision}
-                disabled={savingDecision || (decisionDialog?.mode === 'approve' && packagedApprovals.length === 0 && !decisionForm.lender.trim() && !decisionForm.advanceAmount.trim())}
-                className={decisionDialog?.mode === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-                data-testid="button-save-decision"
+                onClick={handleSaveApproval}
+                disabled={savingDecision}
+                className="bg-green-600 hover:bg-green-700"
+                data-testid="button-save-approval"
               >
                 {savingDecision ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Submitting...
+                    Saving...
                   </>
-                ) : decisionDialog?.mode === 'approve' ? (
+                ) : (
                   <>
-                    <Check className="w-4 h-4 mr-2" />
-                    Done - Submit {packagedApprovals.length + (showApprovalForm && (decisionForm.lender.trim() || decisionForm.advanceAmount.trim()) ? 1 : 0)} Approval{(packagedApprovals.length + (showApprovalForm && (decisionForm.lender.trim() || decisionForm.advanceAmount.trim()) ? 1 : 0)) !== 1 ? 's' : ''}
+                    <Save className="w-4 h-4 mr-2" />
+                    {approvalFormDialog?.editingApprovalId ? 'Update Approval' : 'Save Approval'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Decline Dialog */}
+      <Dialog open={!!declineDialog} onOpenChange={(open) => !open && setDeclineDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ThumbsDown className="w-5 h-5 text-red-600" />
+              Decline: {declineDialog?.businessName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label htmlFor="declineReason">Reason for Decline</Label>
+              <Input
+                id="declineReason"
+                placeholder="Enter reason for declining..."
+                value={declineReason}
+                onChange={(e) => setDeclineReason(e.target.value)}
+                data-testid="input-decline-reason"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setDeclineDialog(null)}
+                data-testid="button-cancel-decline"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveDecline}
+                disabled={savingDecision}
+                className="bg-red-600 hover:bg-red-700"
+                data-testid="button-save-decline"
+              >
+                {savingDecision ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
                   </>
                 ) : (
                   <>
                     <X className="w-4 h-4 mr-2" />
                     Decline Business
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unqualified Dialog */}
+      <Dialog open={!!unqualifiedDialog} onOpenChange={(open) => !open && setUnqualifiedDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-orange-600" />
+              Unqualified: {unqualifiedDialog?.businessName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <p className="text-sm text-muted-foreground">
+              This applicant did not qualify to be sent out to lenders.
+            </p>
+            <div>
+              <Label htmlFor="unqualifiedReason">Reason (Optional)</Label>
+              <Input
+                id="unqualifiedReason"
+                placeholder="Enter reason for not qualifying..."
+                value={unqualifiedReason}
+                onChange={(e) => setUnqualifiedReason(e.target.value)}
+                data-testid="input-unqualified-reason"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setUnqualifiedDialog(null)}
+                data-testid="button-cancel-unqualified"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveUnqualified}
+                disabled={savingDecision}
+                className="bg-orange-600 hover:bg-orange-700"
+                data-testid="button-save-unqualified"
+              >
+                {savingDecision ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-4 h-4 mr-2" />
+                    Mark Unqualified
                   </>
                 )}
               </Button>
@@ -2588,23 +2701,6 @@ export default function Dashboard() {
     },
   });
 
-  const { data: underwritingDecisions } = useQuery<BusinessUnderwritingDecision[]>({
-    queryKey: ['/api/underwriting-decisions'],
-    enabled: authData?.isAuthenticated === true,
-    queryFn: async () => {
-      const res = await fetch('/api/underwriting-decisions', {
-        credentials: 'include',
-      });
-      if (!res.ok) return [];
-      return res.json();
-    },
-  });
-
-  // Helper to get underwriting decision for a business by email
-  const getBusinessDecision = (email: string): BusinessUnderwritingDecision | undefined => {
-    return underwritingDecisions?.find(d => d.businessEmail?.toLowerCase() === email?.toLowerCase());
-  };
-
   const logoutMutation = useMutation({
     mutationFn: async () => {
       await fetch("/api/auth/logout", {
@@ -2722,17 +2818,6 @@ export default function Dashboard() {
         .sort((a, b) => (a || "").localeCompare(b || ""))
     : [];
 
-  // Create a Set of emails that have uploaded bank statements
-  const emailsWithStatements = new Set(
-    bankUploads?.map(upload => upload.email.toLowerCase()) || []
-  );
-
-  // Helper to check if an application has uploaded statements
-  const hasUploadedStatements = (email: string | null | undefined) => {
-    if (!email) return false;
-    return emailsWithStatements.has(email.toLowerCase());
-  };
-
   const filteredApplications = applications
     ? applications
         .filter((app) => {
@@ -2804,12 +2889,17 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center gap-3 mb-2 flex-wrap">
                 <h1 className="text-3xl font-bold">
-                  {authData.role === "admin" ? "Admin Dashboard" : "Agent Dashboard"}
+                  {authData.role === "admin" ? "Admin Dashboard" : authData.role === "user" ? "My Dashboard" : "Agent Dashboard"}
                 </h1>
                 {authData.role === "admin" ? (
                   <Badge variant="default" className="bg-primary" data-testid="badge-role-admin">
                     <Shield className="w-3 h-3 mr-1" />
                     Admin
+                  </Badge>
+                ) : authData.role === "user" ? (
+                  <Badge variant="outline" data-testid="badge-role-user">
+                    <User className="w-3 h-3 mr-1" />
+                    User
                   </Badge>
                 ) : (
                   <Badge variant="secondary" data-testid="badge-role-agent">
@@ -2821,16 +2911,21 @@ export default function Dashboard() {
               <p className="text-muted-foreground">
                 {authData.role === "admin" 
                   ? "Viewing all loan applications" 
-                  : `Viewing applications for ${authData.agentName}`}
+                  : authData.role === "user"
+                    ? `Viewing your submissions, ${authData.agentName}`
+                    : `Viewing applications for ${authData.agentName}`}
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Link href="/rep-console">
-                <Button variant="outline" data-testid="button-rep-console">
-                  <User className="w-4 h-4 mr-2" />
-                  Rep Console
-                </Button>
-              </Link>
+              {/* Rep Console and Approvals only visible to admin and agents, not users */}
+              {(authData.role === "admin" || authData.role === "agent") && (
+                <Link href="/rep-console">
+                  <Button variant="outline" data-testid="button-rep-console">
+                    <User className="w-4 h-4 mr-2" />
+                    Rep Console
+                  </Button>
+                </Link>
+              )}
               {authData.role === "admin" && (
                 <Link href="/approvals">
                   <Button variant="outline" data-testid="button-approvals">
@@ -3030,38 +3125,13 @@ export default function Dashboard() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <div>
-                        <h3 className="font-semibold text-lg flex items-center gap-1" data-testid={`text-business-name-${app.id}`}>
-                          {app.legalBusinessName || app.businessName || "No business name"}
-                          {Number(app.monthlyRevenue || app.averageMonthlyRevenue) >= 20000 && (
-                            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" data-testid={`icon-high-revenue-${app.id}`} />
-                          )}
-                        </h3>
-                        {(() => {
-                          const decision = getBusinessDecision(app.email || '');
-                          if (decision?.status === 'declined' && decision.declineReason) {
-                            return (
-                              <p className="text-xs text-red-500 mt-0.5" data-testid={`text-decline-reason-${app.id}`}>
-                                Declined: {decision.declineReason}
-                              </p>
-                            );
-                          }
-                          if (decision?.status === 'approved' && decision.advanceAmount) {
-                            return (
-                              <p className="text-xs text-green-600 mt-0.5" data-testid={`text-approved-amount-${app.id}`}>
-                                Approved: ${Number(decision.advanceAmount).toLocaleString()}
-                              </p>
-                            );
-                          }
-                          return null;
-                        })()}
-                      </div>
-                      {app.isFullApplicationCompleted && hasUploadedStatements(app.email) ? (
-                        <Badge variant="default" className="bg-blue-600 hover:bg-blue-700" data-testid={`badge-status-statements-${app.id}`}>
-                          <Upload className="w-3 h-3 mr-1" />
-                          Statements Uploaded
-                        </Badge>
-                      ) : app.isFullApplicationCompleted ? (
+                      <h3 className="font-semibold text-lg flex items-center gap-1" data-testid={`text-business-name-${app.id}`}>
+                        {app.legalBusinessName || app.businessName || "No business name"}
+                        {Number(app.monthlyRevenue || app.averageMonthlyRevenue) >= 20000 && (
+                          <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" data-testid={`icon-high-revenue-${app.id}`} />
+                        )}
+                      </h3>
+                      {app.isFullApplicationCompleted ? (
                         <Badge variant="default" className="bg-green-600 hover:bg-green-700" data-testid={`badge-status-full-${app.id}`}>
                           <CheckCircle2 className="w-3 h-3 mr-1" />
                           Full App
@@ -3211,12 +3281,7 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 flex-wrap">
               {isEditMode ? "Edit Application" : "Application Details"}
-              {selectedAppDetails?.isFullApplicationCompleted && hasUploadedStatements(selectedAppDetails?.email) ? (
-                <Badge variant="default" className="bg-blue-600">
-                  <Upload className="w-3 h-3 mr-1" />
-                  Statements Uploaded
-                </Badge>
-              ) : selectedAppDetails?.isFullApplicationCompleted ? (
+              {selectedAppDetails?.isFullApplicationCompleted ? (
                 <Badge variant="default" className="bg-green-600">
                   <CheckCircle2 className="w-3 h-3 mr-1" />
                   Full App

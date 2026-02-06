@@ -56,14 +56,39 @@ export interface BankStatement {
   };
 }
 
+export interface PlaidStatement {
+  statementId: string;
+  month: number;
+  year: number;
+  accountId: string;
+  accountName: string;
+  accountType: string;
+  accountMask?: string;
+}
+
+export interface PlaidStatementsListResult {
+  institutionId: string;
+  institutionName: string;
+  statements: PlaidStatement[];
+}
+
 export class PlaidService {
   async createLinkToken(userId: string) {
+    // Calculate date range for statements (last 6 months)
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - 6);
+    
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: userId },
       client_name: 'Today Capital Group',
-      products: [Products.Assets],
+      products: [Products.Statements],
       country_codes: [CountryCode.Us],
       language: 'en',
+      statements: {
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0],
+      },
     });
     return response.data;
   }
@@ -423,6 +448,74 @@ export class PlaidService {
       ...report,
       assetReportToken // Include token for PDF download
     };
+  }
+
+  // Statements API Methods
+  async listStatements(accessToken: string): Promise<PlaidStatementsListResult> {
+    console.log('[PLAID] Fetching statements list...');
+    
+    const response = await plaidClient.statementsList({
+      access_token: accessToken,
+    });
+    
+    const data = response.data;
+    const statements: PlaidStatement[] = [];
+    
+    // Flatten the accounts and their statements into a single list
+    for (const account of data.accounts) {
+      for (const stmt of account.statements) {
+        statements.push({
+          statementId: stmt.statement_id,
+          month: stmt.month,
+          year: stmt.year,
+          accountId: account.account_id,
+          accountName: account.account_name || 'Unknown Account',
+          accountType: account.account_type || 'depository',
+          accountMask: account.account_mask || undefined,
+        });
+      }
+    }
+    
+    console.log(`[PLAID] Found ${statements.length} statements across ${data.accounts.length} accounts`);
+    
+    return {
+      institutionId: data.institution_id,
+      institutionName: data.institution_name,
+      statements,
+    };
+  }
+
+  async downloadStatement(accessToken: string, statementId: string): Promise<Buffer> {
+    console.log(`[PLAID] Downloading statement: ${statementId}`);
+    
+    const response = await plaidClient.statementsDownload({
+      access_token: accessToken,
+      statement_id: statementId,
+    }, {
+      responseType: 'arraybuffer'
+    });
+    
+    return Buffer.from(response.data as any);
+  }
+
+  async refreshStatements(accessToken: string, startDate?: string, endDate?: string): Promise<void> {
+    // Default to last 6 months if no dates provided
+    const end = endDate || new Date().toISOString().split('T')[0];
+    const start = startDate || (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 6);
+      return d.toISOString().split('T')[0];
+    })();
+    
+    console.log(`[PLAID] Refreshing statements from ${start} to ${end}`);
+    
+    await plaidClient.statementsRefresh({
+      access_token: accessToken,
+      start_date: start,
+      end_date: end,
+    });
+    
+    console.log('[PLAID] Statements refresh requested');
   }
 }
 

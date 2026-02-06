@@ -18,7 +18,7 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
-import { AGENTS } from "../shared/agents";
+import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
 
@@ -467,34 +467,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
-  // VISIT TRACKING ENDPOINT
-  // ========================================
-  app.post("/api/analytics/track-visit", async (req, res) => {
-    try {
-      const { email, phone, pagePath, fullUrl, referrer } = req.body;
-      
-      if (!email && !phone) {
-        return res.status(400).json({ error: "Email or phone is required for tracking" });
-      }
-
-      const log = await storage.createVisitLog({
-        email: email ? email.toLowerCase() : null,
-        phone: phone || null,
-        pagePath: pagePath || "/",
-        fullUrl: fullUrl || null,
-        referrer: referrer || req.headers.referer || null,
-        userAgent: req.headers["user-agent"] || null,
-        ipAddress: req.ip || null,
-      });
-
-      res.json({ success: true, logId: log.id });
-    } catch (error) {
-      console.error("Error tracking visit:", error);
-      res.status(500).json({ error: "Failed to track visit" });
-    }
-  });
-
-  // ========================================
   // AUTHENTICATION ROUTES
   // ========================================
   
@@ -550,15 +522,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
         
         if (agent) {
+          // Check if this agent should have restricted "user" role
+          const role = isRestrictedAgent(agent.email) ? 'user' : 'agent';
           req.session.user = {
             isAuthenticated: true,
-            role: 'agent',
+            role,
             agentEmail: agent.email,
             agentName: agent.name,
           };
           return res.json({ 
             success: true, 
-            role: 'agent',
+            role,
             agentName: agent.name,
             agentEmail: agent.email,
             message: `Logged in as ${agent.name}`
@@ -572,15 +546,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       
       if (agent) {
+        // Check if this agent should have restricted "user" role
+        const role = isRestrictedAgent(agent.email) ? 'user' : 'agent';
         req.session.user = {
           isAuthenticated: true,
-          role: 'agent',
+          role,
           agentEmail: agent.email,
           agentName: agent.name,
         };
         return res.json({ 
           success: true, 
-          role: 'agent',
+          role,
           agentName: agent.name,
           agentEmail: agent.email,
           message: `Logged in as ${agent.name}`
@@ -1250,6 +1226,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
         console.log(`[DASHBOARD] Returning ${filteredApplications.length} applications for agent ${agentEmail}`);
         return res.json(filteredApplications);
+      } else if (req.session.user.role === 'user' && req.session.user.agentEmail) {
+        // User role - can only see applications they submitted (restricted access)
+        const userEmail = req.session.user.agentEmail.toLowerCase();
+        const filteredApplications = allApplications.filter(
+          (app) => (app.agentEmail || '').toLowerCase() === userEmail
+        );
+        console.log(`[DASHBOARD] Returning ${filteredApplications.length} applications for user ${userEmail}`);
+        return res.json(filteredApplications);
       }
       
       return res.status(403).json({ error: "Access denied" });
@@ -1337,6 +1321,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           plaidItemId: tokenResponse.item_id 
         });
         console.log(`Linked Plaid item ${tokenResponse.item_id} to application ${matchingApp.id}`);
+      }
+
+      // C2. Fetch and store statements from Plaid
+      try {
+        console.log(`[PLAID EXCHANGE] Fetching statements for ${email}...`);
+        const statementsData = await plaidService.listStatements(tokenResponse.access_token);
+        
+        for (const stmt of statementsData.statements) {
+          await storage.createPlaidStatement({
+            plaidItemId: tokenResponse.item_id,
+            statementId: stmt.statementId,
+            accountId: stmt.accountId,
+            accountName: stmt.accountName,
+            accountType: stmt.accountType,
+            accountMask: stmt.accountMask,
+            month: stmt.month,
+            year: stmt.year,
+            institutionId: statementsData.institutionId,
+            institutionName: statementsData.institutionName,
+          });
+        }
+        console.log(`[PLAID EXCHANGE] Stored ${statementsData.statements.length} statements for ${email}`);
+      } catch (stmtError: any) {
+        console.log(`[PLAID EXCHANGE] Could not fetch statements (may not be available): ${stmtError.message}`);
+        // Non-fatal - continue with the rest of the exchange process
       }
 
       // D. Run AI-powered Asset Report Analysis if enabled
@@ -1818,7 +1827,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 7. Link Plaid data to an existing application by email
+  // 7. List Plaid Statements for a connected bank
+  app.get("/api/plaid/statements/:plaidItemId", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { plaidItemId } = req.params;
+      
+      const plaidItem = await storage.getPlaidItem(plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Bank connection not found" });
+      }
+
+      const statementsData = await plaidService.listStatements(plaidItem.accessToken);
+      res.json(statementsData);
+    } catch (error: any) {
+      console.error("Error listing statements:", error);
+      
+      if (error?.response?.data?.error_code) {
+        const plaidError = error.response.data;
+        return res.status(400).json({ 
+          error: "Plaid error", 
+          errorCode: plaidError.error_code,
+          message: plaidError.error_message || "Failed to list statements"
+        });
+      }
+      
+      res.status(500).json({ error: "Failed to list statements" });
+    }
+  });
+
+  // 8. Download a specific Plaid Statement PDF
+  app.get("/api/plaid/statements/:plaidItemId/download/:statementId", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { plaidItemId, statementId } = req.params;
+      
+      const plaidItem = await storage.getPlaidItem(plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Bank connection not found" });
+      }
+
+      const pdfBuffer = await plaidService.downloadStatement(plaidItem.accessToken, statementId);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="bank-statement-${statementId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("Error downloading statement:", error);
+      
+      if (error?.response?.data?.error_code) {
+        const plaidError = error.response.data;
+        return res.status(400).json({ 
+          error: "Plaid error", 
+          errorCode: plaidError.error_code,
+          message: plaidError.error_message || "Failed to download statement"
+        });
+      }
+      
+      res.status(500).json({ error: "Failed to download statement" });
+    }
+  });
+
+  // 9. Refresh Plaid Statements (request fresh statements)
+  app.post("/api/plaid/statements/:plaidItemId/refresh", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { plaidItemId } = req.params;
+      const { startDate, endDate } = req.body;
+      
+      const plaidItem = await storage.getPlaidItem(plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Bank connection not found" });
+      }
+
+      await plaidService.refreshStatements(plaidItem.accessToken, startDate, endDate);
+      res.json({ success: true, message: "Statement refresh requested. New statements may take a few minutes to appear." });
+    } catch (error: any) {
+      console.error("Error refreshing statements:", error);
+      
+      if (error?.response?.data?.error_code) {
+        const plaidError = error.response.data;
+        return res.status(400).json({ 
+          error: "Plaid error", 
+          errorCode: plaidError.error_code,
+          message: plaidError.error_message || "Failed to refresh statements"
+        });
+      }
+      
+      res.status(500).json({ error: "Failed to refresh statements" });
+    }
+  });
+
+  // 10. Get stored Plaid statements from database for a plaid item
+  app.get("/api/plaid/stored-statements/:plaidItemId", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { plaidItemId } = req.params;
+      
+      const statements = await storage.getPlaidStatementsByItemId(plaidItemId);
+      res.json({ statements });
+    } catch (error: any) {
+      console.error("Error fetching stored statements:", error);
+      res.status(500).json({ error: "Failed to fetch stored statements" });
+    }
+  });
+
+  // 11. Link Plaid data to an existing application by email
   app.post("/api/plaid/link-to-application", async (req, res) => {
     try {
       const { email, plaidItemId } = req.body;
@@ -2001,6 +2127,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // LENDERS API
+  // ========================================
+  
+  // Get all active lenders
+  app.get("/api/lenders", async (req, res) => {
+    try {
+      const lenders = await storage.getAllLenders();
+      res.json(lenders);
+    } catch (error) {
+      console.error("Error fetching lenders:", error);
+      res.status(500).json({ error: "Failed to fetch lenders" });
+    }
+  });
+
+  // ========================================
   // BANK STATEMENT UPLOAD ROUTES
   // ========================================
 
@@ -2025,11 +2166,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      const { email, businessName, applicationId } = req.body;
+      const { 
+        email, businessName, applicationId, receivedAt, approvalStatus, approvalNotes, 
+        lenderId, lenderName,
+        // Approval form fields
+        advanceAmount, term, paymentFrequency, factorRate, totalPayback, netAfterFees, approvalDate,
+        // Internal upload flag (skips GHL webhook)
+        isInternal
+      } = req.body;
       
       if (!email) {
         return res.status(400).json({ error: "Email is required" });
       }
+      
+      // Parse receivedAt date if provided (for internal uploads with custom date)
+      let receivedAtDate: Date | null = null;
+      if (receivedAt) {
+        receivedAtDate = new Date(receivedAt);
+        if (isNaN(receivedAtDate.getTime())) {
+          receivedAtDate = null;
+        }
+      }
+      
+      // Get reviewer info from session if available (for internal uploads with approval)
+      const reviewerEmail = (req.session as any)?.user?.email || 'internal-upload';
 
       // Check if application exists (for linking purposes, but don't block upload)
       const existingApp = await storage.getLoanApplicationByEmail(email);
@@ -2081,6 +2241,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mimeType: file.mimetype,
         fileSize: file.size,
         viewToken,
+        receivedAt: receivedAtDate,
+        approvalStatus: approvalStatus || null,
+        approvalNotes: approvalNotes || null,
+        reviewedBy: approvalStatus ? reviewerEmail : null,
+        reviewedAt: approvalStatus ? new Date() : null,
+        lenderId: lenderId || null,
+        lenderName: lenderName || null,
       });
 
       // Check if there's a matching application by email
@@ -2116,22 +2283,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Send webhook to GHL with "Statements Uploaded" tag and view links
       // Session-based throttling: only sends one webhook per email per 15-minute session
       // This prevents spam when users upload multiple PDFs at once
-      const nameParts = (matchingApp?.fullName || '').trim().split(' ');
-      ghlService.sendBankStatementUploadedWebhook({
-        email,
-        businessName: businessName || matchingApp?.businessName || matchingApp?.legalBusinessName || undefined,
-        phone: matchingApp?.phone || undefined,
-        firstName: nameParts[0] || undefined,
-        lastName: nameParts.slice(1).join(' ') || undefined,
-        statementLinks,
-        combinedViewUrl, // Single link to view ALL statements in one scrollable page
-      }).then(result => {
-        if (result.sent) {
-          console.log(`[BANK UPLOAD] Webhook sent for ${email} with View All link: ${combinedViewUrl}`);
-        } else {
-          console.log(`[BANK UPLOAD] Webhook skipped for ${email}: ${result.reason}`);
+      // DISABLED for internal uploads (isInternal flag) - will be re-enabled with new webhook URL later
+      if (isInternal === 'true') {
+        console.log(`[BANK UPLOAD] Webhook DISABLED for internal upload (${email}) - functionality preserved for future use`);
+      } else {
+        const nameParts = (matchingApp?.fullName || '').trim().split(' ');
+        ghlService.sendBankStatementUploadedWebhook({
+          email,
+          businessName: businessName || matchingApp?.businessName || matchingApp?.legalBusinessName || undefined,
+          phone: matchingApp?.phone || undefined,
+          firstName: nameParts[0] || undefined,
+          lastName: nameParts.slice(1).join(' ') || undefined,
+          statementLinks,
+          combinedViewUrl, // Single link to view ALL statements in one scrollable page
+        }).then(result => {
+          if (result.sent) {
+            console.log(`[BANK UPLOAD] Webhook sent for ${email} with View All link: ${combinedViewUrl}`);
+          } else {
+            console.log(`[BANK UPLOAD] Webhook skipped for ${email}: ${result.reason}`);
+          }
+        }).catch(err => console.error('[GHL] Bank statement webhook error:', err));
+      }
+
+      // Create underwriting decision when unqualified
+      if (approvalStatus === 'unqualified' && approvalNotes) {
+        try {
+          const resolvedBusinessName = businessName || matchingApp?.businessName || 'Unknown Business';
+          await storage.createOrUpdateBusinessUnderwritingDecision({
+            businessEmail: email,
+            businessName: resolvedBusinessName,
+            status: 'unqualified',
+            declineReason: approvalNotes,
+          });
+          console.log(`[BANK UPLOAD] Created unqualified underwriting decision for ${resolvedBusinessName}: ${approvalNotes}`);
+        } catch (unqualifiedError) {
+          console.error('[BANK UPLOAD] Failed to create unqualified decision:', unqualifiedError);
         }
-      }).catch(err => console.error('[GHL] Bank statement webhook error:', err));
+      }
+
+      // Create lender approval record AND underwriting decision when approved with details
+      let lenderApprovalId = null;
+      if (approvalStatus === 'approved' && lenderName && advanceAmount) {
+        try {
+          // Parse currency amounts (remove $ and commas)
+          const parseAmount = (val: string) => {
+            if (!val) return null;
+            const cleaned = val.replace(/[$,]/g, '');
+            const parsed = parseFloat(cleaned);
+            return isNaN(parsed) ? null : parsed.toString();
+          };
+
+          const resolvedBusinessName = businessName || matchingApp?.businessName || 'Unknown Business';
+
+          // Create lender approval record with deal details
+          const lenderApproval = await storage.createLenderApproval({
+            businessName: resolvedBusinessName,
+            businessEmail: email,
+            loanApplicationId: linkedApplicationId || null,
+            lenderName: lenderName,
+            approvedAmount: parseAmount(advanceAmount),
+            termLength: term || null,
+            factorRate: factorRate || null,
+            paybackAmount: parseAmount(totalPayback),
+            paymentFrequency: paymentFrequency || null,
+            paymentAmount: parseAmount(netAfterFees),
+            status: 'accepted',
+            notes: approvalNotes ? `${approvalNotes} (Approval Date: ${approvalDate || new Date().toISOString().split('T')[0]})` : `Approval Date: ${approvalDate || new Date().toISOString().split('T')[0]}`,
+          });
+          lenderApprovalId = lenderApproval.id;
+          console.log(`[BANK UPLOAD] Created lender approval ${lenderApproval.id} for ${resolvedBusinessName}`);
+
+          // Also create/update business underwriting decision (so it shows in dashboard)
+          // Store the approval details in additionalApprovals format
+          const approvalEntry = {
+            id: `internal-${Date.now()}`,
+            lender: lenderName,
+            advanceAmount: advanceAmount || '',
+            term: term || '',
+            paymentFrequency: paymentFrequency || 'Weekly',
+            factorRate: factorRate || '',
+            totalPayback: totalPayback || '',
+            netAfterFees: netAfterFees || '',
+            notes: approvalNotes || '',
+            approvalDate: approvalDate || new Date().toISOString().split('T')[0],
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+          };
+
+          await storage.createOrUpdateBusinessUnderwritingDecision({
+            businessEmail: email,
+            businessName: resolvedBusinessName,
+            status: 'approved',
+            additionalApprovals: [approvalEntry],
+          });
+          console.log(`[BANK UPLOAD] Created/updated underwriting decision for ${resolvedBusinessName}`);
+
+        } catch (approvalError) {
+          console.error('[BANK UPLOAD] Failed to create lender approval:', approvalError);
+          // Don't fail the upload, just log the error
+        }
+      }
 
       res.json({
         success: true,
@@ -2142,6 +2393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           createdAt: upload.createdAt,
           linkedApplicationId: linkedApplicationId || null,
           storageType,
+          lenderApprovalId,
         },
       });
     } catch (error) {
@@ -2160,12 +2412,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let uploads;
       
       // Admin and underwriting see all uploads, agents see only uploads from their applications
+      // Users (restricted role) see only their own uploads
       if (req.session.user.role === 'admin' || req.session.user.role === 'underwriting') {
         uploads = await storage.getAllBankStatementUploads();
         console.log(`[BANK STATEMENTS] ${req.session.user.role} fetching all ${uploads.length} uploads`);
       } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
         uploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
         console.log(`[BANK STATEMENTS] Agent ${req.session.user.agentName} fetching ${uploads.length} uploads`);
+      } else if (req.session.user.role === 'user' && req.session.user.agentEmail) {
+        // User role - can only see their own uploads (restricted access)
+        uploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
+        console.log(`[BANK STATEMENTS] User ${req.session.user.agentName} fetching ${uploads.length} uploads`);
       } else {
         // Partners and other roles don't have access to bank statements
         return res.status(403).json({ error: "Access denied" });
@@ -2192,8 +2449,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { id } = req.params;
     const { approvalStatus, approvalNotes } = req.body;
 
-    if (!approvalStatus || !['approved', 'declined', 'pending'].includes(approvalStatus)) {
-      return res.status(400).json({ error: "Invalid approval status. Must be 'approved', 'declined', or 'pending'" });
+    if (!approvalStatus || !['approved', 'declined', 'pending', 'unqualified'].includes(approvalStatus)) {
+      return res.status(400).json({ error: "Invalid approval status. Must be 'approved', 'declined', 'pending', or 'unqualified'" });
     }
 
     try {
@@ -2288,8 +2545,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       lender,
       notes,
       approvalDate,
-      approvalDeadline,
-      showOnLetter,
       declineReason,
       additionalApprovals
     } = req.body;
@@ -2298,28 +2553,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ error: "Business email is required" });
     }
 
-    if (!status || !['approved', 'declined'].includes(status)) {
-      return res.status(400).json({ error: "Status must be 'approved' or 'declined'" });
+    if (!status || !['approved', 'declined', 'unqualified'].includes(status)) {
+      return res.status(400).json({ error: "Status must be 'approved', 'declined', or 'unqualified'" });
     }
 
     try {
       const reviewerEmail = req.session.user.agentEmail || 'admin';
 
+      // Sync primary approval data from additionalApprovals JSONB to top-level columns
+      let syncedAdvanceAmount = advanceAmount || null;
+      let syncedTerm = term || null;
+      let syncedPaymentFrequency = paymentFrequency || null;
+      let syncedFactorRate = factorRate || null;
+      let syncedTotalPayback = totalPayback || null;
+      let syncedNetAfterFees = netAfterFees || null;
+      let syncedLender = lender || null;
+      let syncedNotes = notes || null;
+      let syncedApprovalDate = approvalDate ? new Date(approvalDate) : new Date();
+
+      if (additionalApprovals && Array.isArray(additionalApprovals)) {
+        const primary = additionalApprovals.find((a: any) => a.isPrimary);
+        if (primary) {
+          syncedAdvanceAmount = primary.advanceAmount ? parseFloat(primary.advanceAmount) : null;
+          syncedTerm = primary.term || null;
+          syncedPaymentFrequency = primary.paymentFrequency || null;
+          syncedFactorRate = primary.factorRate ? parseFloat(primary.factorRate) : null;
+          syncedTotalPayback = primary.totalPayback ? parseFloat(primary.totalPayback) : null;
+          syncedNetAfterFees = primary.netAfterFees ? parseFloat(primary.netAfterFees) : null;
+          syncedLender = primary.lender || null;
+          syncedNotes = primary.notes || null;
+          syncedApprovalDate = primary.approvalDate ? new Date(primary.approvalDate) : new Date();
+        }
+      }
+
       const decision = await storage.createOrUpdateBusinessUnderwritingDecision({
         businessEmail,
         businessName: businessName || null,
         status,
-        advanceAmount: advanceAmount || null,
-        term: term || null,
-        paymentFrequency: paymentFrequency || null,
-        factorRate: factorRate || null,
-        totalPayback: totalPayback || null,
-        netAfterFees: netAfterFees || null,
-        lender: lender || null,
-        notes: notes || null,
-        approvalDate: approvalDate ? new Date(approvalDate) : new Date(),
-        approvalDeadline: approvalDeadline ? new Date(approvalDeadline) : null,
-        showOnLetter: showOnLetter !== false, // Default to true
+        advanceAmount: syncedAdvanceAmount,
+        term: syncedTerm,
+        paymentFrequency: syncedPaymentFrequency,
+        factorRate: syncedFactorRate,
+        totalPayback: syncedTotalPayback,
+        netAfterFees: syncedNetAfterFees,
+        lender: syncedLender,
+        notes: syncedNotes,
+        approvalDate: syncedApprovalDate,
         declineReason: declineReason || null,
         additionalApprovals: additionalApprovals || null,
         reviewedBy: reviewerEmail,
@@ -2350,6 +2629,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert approvalDate string to Date if provided
       if (updates.approvalDate && typeof updates.approvalDate === 'string') {
         updates.approvalDate = new Date(updates.approvalDate);
+      }
+
+      // Sync primary approval data from additionalApprovals JSONB to top-level columns
+      if (updates.additionalApprovals && Array.isArray(updates.additionalApprovals)) {
+        const primary = updates.additionalApprovals.find((a: any) => a.isPrimary);
+        if (primary) {
+          updates.advanceAmount = primary.advanceAmount ? parseFloat(primary.advanceAmount) : null;
+          updates.term = primary.term || null;
+          updates.paymentFrequency = primary.paymentFrequency || null;
+          updates.factorRate = primary.factorRate ? parseFloat(primary.factorRate) : null;
+          updates.totalPayback = primary.totalPayback ? parseFloat(primary.totalPayback) : null;
+          updates.netAfterFees = primary.netAfterFees ? parseFloat(primary.netAfterFees) : null;
+          updates.lender = primary.lender || null;
+          updates.notes = primary.notes || null;
+          updates.approvalDate = primary.approvalDate ? new Date(primary.approvalDate) : null;
+        }
       }
 
       updates.reviewedBy = req.session.user.agentEmail || 'admin';
@@ -2394,22 +2689,216 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ============= Lenders API =============
-  
-  // Get all lenders (for autocomplete)
-  app.get("/api/lenders", async (req, res) => {
+  // Bulk import approvals from CSV
+  app.post("/api/underwriting-decisions/bulk-import", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
     
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only underwriting team or admin can bulk import" });
+    }
+    
+    const { csvData } = req.body;
+    
+    if (!csvData || typeof csvData !== 'string') {
+      return res.status(400).json({ error: "CSV data is required" });
+    }
+    
     try {
-      const allLenders = await storage.getAllLenders();
-      res.json(allLenders);
-    } catch (error) {
-      console.error("Error fetching lenders:", error);
-      res.status(500).json({ error: "Failed to fetch lenders" });
+      const reviewerEmail = req.session.user.agentEmail || 'admin';
+      
+      // Parse CSV
+      const lines = csvData.split('\n').map(line => line.trim()).filter(line => line);
+      if (lines.length < 2) {
+        return res.status(400).json({ error: "CSV must have a header row and at least one data row" });
+      }
+      
+      // Parse header row
+      const headers = parseCSVLine(lines[0]);
+      const headerMap: Record<string, number> = {};
+      headers.forEach((h, i) => {
+        headerMap[h.toLowerCase().trim()] = i;
+      });
+      
+      // Required columns
+      const businessNameIdx = headerMap['business name'];
+      const overallStatusIdx = headerMap['overall status'];
+      
+      if (businessNameIdx === undefined) {
+        return res.status(400).json({ error: "CSV must have a 'Business Name' column" });
+      }
+      
+      const results: { businessName: string; status: string; error?: string }[] = [];
+      
+      // Process data rows
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        const businessName = values[businessNameIdx]?.trim();
+        
+        if (!businessName) continue;
+        
+        const overallStatus = values[overallStatusIdx]?.trim().toLowerCase() || '';
+        const isApproved = overallStatus.includes('approved') && !overallStatus.includes('declined only');
+        
+        // Create a unique email based on business name (for lookup purposes)
+        const businessEmail = `${businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}@imported.local`;
+        
+        try {
+          // Build approvals array from CSV columns
+          const additionalApprovals: any[] = [];
+          
+          // Best/Primary offer
+          const bestLender = values[headerMap['best lender']]?.trim();
+          const bestAmount = values[headerMap['best funding amount']]?.trim();
+          const bestFactorRate = values[headerMap['best factor rate']]?.trim();
+          const bestTerm = values[headerMap['best term']]?.trim();
+          const bestPaymentFreq = values[headerMap['best payment freq']]?.trim()?.toLowerCase() || 'weekly';
+          const bestCommission = values[headerMap['best commission']]?.trim();
+          const bestDate = values[headerMap['best date']]?.trim();
+          
+          if (bestLender && bestAmount) {
+            additionalApprovals.push({
+              id: crypto.randomUUID(),
+              lender: bestLender,
+              advanceAmount: parseAmount(bestAmount),
+              term: bestTerm || '',
+              paymentFrequency: mapPaymentFrequency(bestPaymentFreq),
+              factorRate: bestFactorRate || '',
+              totalPayback: '',
+              netAfterFees: '',
+              notes: bestCommission ? `Commission: ${bestCommission}` : '',
+              approvalDate: parseDate(bestDate),
+              isPrimary: true,
+              createdAt: new Date().toISOString(),
+            });
+          }
+          
+          // Additional lenders (2-5)
+          for (let lenderNum = 2; lenderNum <= 5; lenderNum++) {
+            const lenderName = values[headerMap[`lender ${lenderNum}`]]?.trim();
+            const amount = values[headerMap[`funding amount ${lenderNum}`]]?.trim();
+            const factorRate = values[headerMap[`factor rate ${lenderNum}`]]?.trim();
+            const commission = values[headerMap[`commission ${lenderNum}`]]?.trim();
+            
+            if (lenderName && amount) {
+              additionalApprovals.push({
+                id: crypto.randomUUID(),
+                lender: lenderName,
+                advanceAmount: parseAmount(amount),
+                term: '',
+                paymentFrequency: 'weekly',
+                factorRate: factorRate || '',
+                totalPayback: '',
+                netAfterFees: '',
+                notes: commission ? `Commission: ${commission}` : '',
+                approvalDate: new Date().toISOString(),
+                isPrimary: false,
+                createdAt: new Date().toISOString(),
+              });
+            }
+          }
+          
+          // Build decline reasons from CSV
+          const declineReasons: string[] = [];
+          for (let declineNum = 1; declineNum <= 3; declineNum++) {
+            const declinedLender = values[headerMap[`declined lender ${declineNum}`]]?.trim();
+            const declineReason = values[headerMap[`decline reason ${declineNum}`]]?.trim();
+            if (declinedLender && declineReason) {
+              declineReasons.push(`${declinedLender}: ${declineReason}`);
+            }
+          }
+          
+          // Determine status and create decision
+          const status = isApproved && additionalApprovals.length > 0 ? 'approved' : 'declined';
+          const primaryApproval = additionalApprovals.find(a => a.isPrimary);
+          
+          await storage.createOrUpdateBusinessUnderwritingDecision({
+            businessEmail,
+            businessName,
+            status,
+            advanceAmount: primaryApproval?.advanceAmount || null,
+            term: primaryApproval?.term || null,
+            paymentFrequency: primaryApproval?.paymentFrequency || null,
+            factorRate: primaryApproval?.factorRate || null,
+            totalPayback: null,
+            netAfterFees: null,
+            lender: primaryApproval?.lender || null,
+            notes: primaryApproval?.notes || null,
+            approvalDate: primaryApproval?.approvalDate ? new Date(primaryApproval.approvalDate) : new Date(),
+            declineReason: status === 'declined' ? declineReasons.join('; ') : null,
+            additionalApprovals: additionalApprovals.length > 0 ? additionalApprovals : null,
+            reviewedBy: reviewerEmail,
+          });
+          
+          results.push({ businessName, status: 'success' });
+        } catch (rowError: any) {
+          results.push({ businessName, status: 'error', error: rowError.message });
+        }
+      }
+      
+      const successCount = results.filter(r => r.status === 'success').length;
+      const errorCount = results.filter(r => r.status === 'error').length;
+      
+      console.log(`[BULK IMPORT] ${reviewerEmail} imported ${successCount} approvals, ${errorCount} errors`);
+      
+      res.json({
+        success: true,
+        imported: successCount,
+        errors: errorCount,
+        results,
+      });
+    } catch (error: any) {
+      console.error("Error bulk importing approvals:", error);
+      res.status(500).json({ error: error.message || "Failed to import approvals" });
     }
   });
+  
+  // Helper functions for CSV parsing
+  function parseCSVLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+  
+  function parseAmount(value: string): string {
+    if (!value) return '';
+    // Remove currency symbols, commas, and parse number
+    const num = parseFloat(value.replace(/[$,]/g, ''));
+    return isNaN(num) ? '' : num.toString();
+  }
+  
+  function parseDate(value: string): string {
+    if (!value) return new Date().toISOString();
+    try {
+      const date = new Date(value);
+      return isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+    } catch {
+      return new Date().toISOString();
+    }
+  }
+  
+  function mapPaymentFrequency(freq: string): string {
+    const f = freq.toLowerCase();
+    if (f.includes('daily')) return 'daily';
+    if (f.includes('monthly')) return 'monthly';
+    if (f.includes('biweekly') || f.includes('bi-weekly')) return 'biweekly';
+    return 'weekly';
+  }
 
   // Get approval letter by slug (public route for approved businesses)
   app.get("/api/approval-letter/:slug", async (req, res) => {
@@ -2426,72 +2915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "No valid approval found" });
       }
       
-      // Build list of all visible offers (primary + additional with showOnLetter = true)
-      const allOffers: Array<{
-        advanceAmount: string | null;
-        term: string | null;
-        paymentFrequency: string | null;
-        factorRate: string | null;
-        totalPayback: string | null;
-        netAfterFees: string | null;
-        lender: string | null;
-        approvalDate: string | null;
-        notes: string | null;
-      }> = [];
-      
-      // Add primary approval if showOnLetter is true
-      if (decision.showOnLetter !== false) {
-        allOffers.push({
-          advanceAmount: decision.advanceAmount,
-          term: decision.term,
-          paymentFrequency: decision.paymentFrequency,
-          factorRate: decision.factorRate,
-          totalPayback: decision.totalPayback,
-          netAfterFees: decision.netAfterFees,
-          lender: decision.lender,
-          approvalDate: decision.approvalDate?.toISOString() || null,
-          notes: decision.notes,
-        });
-      }
-      
-      // Add additional approvals with showOnLetter = true
-      const additionalApprovals = decision.additionalApprovals as Array<{
-        lender?: string;
-        amount?: string;
-        term?: string;
-        factorRate?: string;
-        totalPayback?: string;
-        netAfterFees?: string;
-        paymentFrequency?: string;
-        notes?: string;
-        approvalDate?: string;
-        showOnLetter?: boolean;
-      }> | null;
-      
-      if (additionalApprovals && Array.isArray(additionalApprovals)) {
-        for (const add of additionalApprovals) {
-          if (add.showOnLetter !== false) {
-            allOffers.push({
-              advanceAmount: add.amount || null,
-              term: add.term || null,
-              paymentFrequency: add.paymentFrequency || null,
-              factorRate: add.factorRate || null,
-              totalPayback: add.totalPayback || null,
-              netAfterFees: add.netAfterFees || null,
-              lender: add.lender || null,
-              approvalDate: add.approvalDate || decision.approvalDate?.toISOString() || null,
-              notes: add.notes || null,
-            });
-          }
-        }
-      }
-      
-      // If no visible offers, return 404
-      if (allOffers.length === 0) {
-        return res.status(404).json({ error: "No visible offers available" });
-      }
-      
-      // Return approval details for the letter page with all visible offers
+      // Return approval details for the letter page (includes all approvals)
       res.json({
         businessName: decision.businessName,
         advanceAmount: decision.advanceAmount,
@@ -2503,8 +2927,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lender: decision.lender,
         approvalDate: decision.approvalDate,
         notes: decision.notes,
-        // New field: all visible offers for multi-offer display
-        offers: allOffers,
+        additionalApprovals: decision.additionalApprovals,
       });
     } catch (error) {
       console.error("Error fetching approval letter:", error);
@@ -5544,85 +5967,5 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Seed lenders data on startup
-  seedLenders();
-
   return httpServer;
-}
-
-// Lender seed data from CSV
-const LENDER_SEED_DATA = [
-  { name: "American Financial Center", contactInfo: "underwriting@afincen.com\nmarkc@afincen.com\n818-981-1034", requirements: "Term: 8 to 10 months", notes: "Trucking: Minimum of two trucks and average monthly revenue of $30K", tier: "A-B" },
-  { name: "Bizpoint", contactInfo: "underwriting@bizpointcapital.com", requirements: "Minimum Monthly Revenue: 20k / Minimum # of Deposits: 5 / TIB: 9 Months / FICO: 500", notes: "Straight Funding: 50k Max\nReverse: 350K Max / Up to 4 positions\nNo Clawbacks", tier: "A-C" },
-  { name: "BHB Funding", contactInfo: "ISObiz@bhbfunding.com\nsabina@bhbfunding.com", requirements: "Minimum Monthly Revenue: $15K / Positions: 1-3 / Min # of Deposits: 4 Per Month / Min # of Negative Days: 5 Per Month / TIB: 1 year / Term: 11 months / FICO: Minimum 550 / Funding Amount: Max $125K / NOT Funding CA / Funding in TEXAS 1st positions only w/UCC / Decision Logic / 5% Fee", notes: "Trucking: 1st: Min per month (not Avg) $75K / 5 Trucks / TIB: 3 years / FICO: 600\nConstruction: 1st Position: Min Per month (Not Avg) $125K / TIB: 3 years / FICO: 600", tier: "B" },
-  { name: "Backd", contactInfo: "submissions@backd.com\nvy@backd.com", requirements: "Minimum Monthly Revenue: 100k\nPositions: Mainly 1st Position / can consider 2nd and 3rd on strong files\nMinimum # of Deposits: 10 Per Month\nAverage Deal Size: $350K\nTerms: Typically 10-14 months (max 16 months)\nMinimum Credit: 650", notes: "Target Industries: Retail / Food & Beverage / Restaurants / Bars / Cafes / Medical / Manufacturing\nProhibited: Financial Services / Car Dealerships / Consulting / Real Estate Services / Legal Services / Cannabis / Firearms / Trucking / Solar", tier: "A-B" },
-  { name: "Capitalize Group", contactInfo: "subs@capitalizegroup.com\nisaac@capitalizegroup.com", requirements: "Minimum Monthly Revenue: 50k (100k for Trucking)\nPositions: 1+\nMaximum Negative Days Per Month: 5 Days\nMinimum Time In Business: 1 year\nMinimum # of Deposits: 4 Per Month\nProhibited States: Utah\nTerms: Max 140 Days / 32 weeks", notes: "Funding Range: 25k - 500k\nNo funding behind reverses\nProhibited: Auto Dealers / Financial / Real Estate / Agriculture/Farming / Gas Stations / Accounting/CPA / Staffing / Energy/Solar\nBuy Rate: 1.34 - 1.38", tier: "B-C" },
-  { name: "Capybara Capital", contactInfo: "deals@capybarausa.com\ncbianco@capybarausa.com\n561.404.1674", requirements: "Minimum Monthly Revenue: 25K\nMinimum Time In Business: 1 Year\nTerms: 3-10 Months\nFICO: 525\nProhibited States: Virginia / Utah / California / Texas", notes: "Prohibited Industries: Non-Profit / Banks & Lending / Law Firms / House Flipping / Airbnb / Real Estate / Auto Sales / Trucking / Transportation / Logistics / Staffing / Entertainment", tier: "A-C" },
-  { name: "Clear Fund / Lite Fund", contactInfo: "deals@litefund.co\naron@litefund.co\nfrank@litefund.co", requirements: "Minimum Monthly Revenue: 150K (or 15K for lower tier)\nPositions: 1-6 (or 1-10)\nMinimum Daily Balance: 5K (or $500)\nMaximum Negative Days Per Month: 4-7 Days\nMinimum Time In Business: 1-2 Years\nMinimum # of deposits: 5\nMinimum Credit: 500-600", notes: "General Buy Rate: 1.35 max upsell 1.45\nOrigination fees: Generally 5%, high risk 10%\nProhibited Industries: 1st Position Trucker", tier: "A-D" },
-  { name: "DLP", contactInfo: "submissions@dlpfunding.com", requirements: "Minimum Monthly Revenue: 40K\nPositions: 2nd+\nMinimum Funding: 10K\nMinimum Time In Business: 2 Years\nMinimum # of Deposits: 8 Per Month\nProhibited States: Utah / Virginia", notes: "Max Leverage 50% - Max Reverse Leverage 70%\nMin Construction 60K - 2 Month Payment History\nProhibited Industries: Trucking / Auto Sales\nOffers up to 250k, over 250k needs full financials", tier: "C" },
-  { name: "Evolve Capital", contactInfo: "tony@evolvecapitalfinance.com", requirements: "Equipment Financing", notes: "", tier: "" },
-  { name: "Fenix Capital Funding", contactInfo: "newdeals@fenixcapitalfunding.com\nolegz@fenixcapitalfunding.com", requirements: "Minimum Monthly Revenue: 10k\nPositions: 1-4\nProhibited States: California / Hawaii / Alaska / Puerto Rico\nMaximum Funding: 150K / Maximum Funding (Reverse): 350K\nMinimum # of Deposits: 5 Per Month\nMinimum Time In Business: 1 Year\nFICO: 500\nTerms: Max 8-9 months", notes: "Prohibited Industries: Auto Dealerships / Bail Bonds / Check Cashing / Collection Agencies / Gambling / Law Firms / Oil Field Services / Gas Stations / Trucking\nBuy rates: 1.25-1.35 (12 points built in)\nEarly renewal at 25% paid in", tier: "B-D" },
-  { name: "Fintegra", contactInfo: "Submissions@getfintegra.com\nsamanthai@getfintegra.com", requirements: "Minimum time in business: 12 months\nMinimum avg. monthly revenue: $10,000\nMinimum avg. bank balance: $1,000\nMinimum FICO score: 550\nMinimum # of deposits per month: 5\nMaximum NSFs (3-month avg.): 5\nNo Texas", notes: "Solid B paper funder (1st, 2nd and 3rd positions)\nFunding amounts: $10,000 to $250,000\nAverage term: 8-10 months (up to 15 months)\nTypical turnaround time: <2 hours", tier: "B" },
-  { name: "Fox", contactInfo: "Underwriting@foxbusinessfunding.com\navner@foxbusinessfunding.com", requirements: "Minimum Monthly Revenue: 45K\nPositions: 2nd-5th (Firm)\nMaximum Negative Days Per Month: 4 Days\nConsider higher risk 2nd position merchants (A level)\nTerms: Average 6-8 months", notes: "Prohibited Industries: Lawyers / Debt Collectors\nAverage funding size $60K (range $20K-$500K)\nOffer daily (more common) & weekly payment plans\nHigh risk industries (trucking) require min $150k-200k monthly revenue\nAuto sales: min 200k deposits/month", tier: "B-C" },
-  { name: "Fuji", contactInfo: "michael@fujifunding.com\nMichael - 847-606-1979", requirements: "Minimum Monthly Revenue: 20K\nPositions: 2nd+ (Firm)\nFunds Defaults", notes: "Prohibited Industries: Trucking", tier: "A-C" },
-  { name: "Fundworks", contactInfo: "newdeals@thefundworks.com\ncweiner@thefundworks.com", requirements: "Minimum Monthly Revenue: 10K\n4+ deposits\nMinimum Time in Business: 12 Months", notes: "Avg Daily Balance: 1K+\nFICO: 550\nRestricted industries: attorneys / real estate investors / firearms / debt consolidation / used auto dealerships / trucking / wholesale", tier: "A-B" },
-  { name: "GFE", contactInfo: "underwriting@ufcapitalexperts.com\nMatt@ezrevenuefinance.com", requirements: "Minimum Monthly Revenue: 20K\nMaximum Negative Days Per Month: 4-5 Days\nTerms: Max 120 Days\nPositions: No more than 6\nMinimum # of Deposits: 4 Per Month\nTIB: 6 months\nFICO: 500\nFunds Texas and California", notes: "Prohibited Industries: Bail Bond Services, Check Cashing, Debt Collection, Trucking, Auto Sales\nConstruction - min 80k in true deposits accepted\nNo previous Defaults", tier: "C-D" },
-  { name: "I Got Funded", contactInfo: "Submit@i-gotfunded.com\nMai@i-gotfunded.com", requirements: "1st Position Deals: Merchant must have at least 60 days seasoning on prior MCA\nStandard Terms: 40-140 business days; daily or weekly repayment\nMinimum Monthly Revenue: $75,000\nFunds up to 60-75% of verified average deposits\nMinimum 15+ transactions and $200+ daily deposits\nDefaults: 3 consecutive missed payments", notes: "Base: 12 points at 1.50 factor / 10% fee\nMinimum Terms: 1.40 factor / 5% fee", tier: "" },
-  { name: "Kapitus", contactInfo: "newcontracts@kapitus.com\nteambyler@kapitus.com\nBraden Byler (814) 602-0991\nAllysa 863-370-4569", requirements: "Minimum Monthly Revenue: 10K\nPositions: 1-2 (2nd has 100k / 12-month max)\nMinimum # of Deposits: 5 Per Month\nMaximum Negative Days Per Month: 3 Days\nMinimum TIB: 1-2 yrs (strong credit) or 3+ yrs\nRestaurants (3) / Construction (4) / Trucking (10) yrs\nTerms: 6-36 months, 48mo. max for preferred healthcare", notes: "Origination Fee: 2.5%\nRestaurants / General Contractors: 150k max\nTrucking: 125k max\nProhibited: Real Estate / Credit Repair / Auto Dealers / Finance / Insurance / Cell Phone Stores / CBD/Marijuana\nMinimum Credit: 625", tier: "A-B" },
-  { name: "Legend", contactInfo: "apps@legendfunding.com\ndcaro@legendfunding.com\nDavid Caro - 559-474-5233", requirements: "Minimum Monthly Revenue: 20K\nPositions: 1-3\nTerms: 12 Months\nMaximum Negative Days Per Month: 3 Days", notes: "Funding Amount: 20-350k\nProhibited Industries: Auto Dealership / Financial Services / Gambling / Law Firms & Attorneys / Travel Agencies / Transportation (Passenger)", tier: "A-B" },
-  { name: "Pearl", contactInfo: "submitpearl@pearlcash.com\nbrett.spass@revenued.com", requirements: "Grades A-D (A 12.5 mo 1.25x → D 5 mo 1.36x)\nMin $20k-$50k deposits\nStips: DL, Voided Check, A/R, Login (+Financials > $150k, +Tax Guard > $250k)", notes: "Preferred: Manufacturing, Medical, Tech, Construction, Auto\nHigh Risk: Insurance, Real Estate, Home-based, Lawyers, Lenders\nProhibited: Marijuana (CBD/Hemp OK)", tier: "" },
-  { name: "Pirs", contactInfo: "Submissions@pirscapital.com\nMitchell@pirscapital.com", requirements: "Minimum Monthly Revenue: 20K\nPositions: 1st (Will do 2nd Position Only Behind Another Tier 1 Lender)\nMinimum Time In Business: 1-2 Years", notes: "Minimum Credit: 650\nProhibited Industries: Trucking & Logistics / Automotive Sales / Supermarkets & Convenient Stores / Gas Stations / Law Firms / Travel Agencies / Cannabis / Casino & Gambling / Accounting Services / Real Estate & Property Management", tier: "A-B" },
-  { name: "Radiance Funding", contactInfo: "Subs@RadianceFunding.com\nSimon@radiancefunding.com", requirements: "Positions: 1-3\nTIB: 6 Months\nMinimum # of Deposits: 4\nMaximum Negative Days: 4\nMax Amount Funded: 400K\nOffer Biweekly", notes: "Prohibited Industries: Law Firms, Auto Sales, Travel Agents, Trucking, Brokers, Non-Profits, Oil, Gas, Real Estate, Limos, Solar", tier: "A-C" },
-  { name: "Rapid", contactInfo: "https://login.rapidfinance.com/Account/Login?ticket=88338553a520413693c88aaab54adb6b&userType=Partner", requirements: "Minimum Monthly Revenue: 20K\nMinimum Time In Business: 1-2 Years\nPositions: 1st (Strong 2nd or 3rd If There's Room)", notes: "Prohibited Industries: California Construction\nMinimum Credit: 615\nTerm Loan and LOC Option Available", tier: "A-B" },
-  { name: "Revenued", contactInfo: "submitrevenued@revenued.com\nbrett.spass@revenued.com\n908-400-2740", requirements: "Line Of Credit Program\nMinimum Monthly Revenue: 20K\nPositions: 1-3\nTIB: 6 Months\nTerm: 12 Months", notes: "FICO: 400\nNo sole props", tier: "" },
-  { name: "River Advance", contactInfo: "iso@riveradvance.com\nEli@riveradvance.com\nSarah@riveradvance.com", requirements: "Positions Funded: 2nd to 6th position\nNew deals: $750,000\nRenewals: Up to $1,000,000\nMax Term: 180 payments\nBuy Rates: 1.29-1.379\nMinimum Deposits: 3 per month\nMinimum FICO: No minimum\nMinimum Monthly Revenue: $40,000 (except construction: $100,000)", notes: "Restricted Industries: Cannabis, legal services, auto sales, trucking\nSweet Spot: 2nd-4th position deals with healthy balances, high revenue, few/no negative days, decent credit", tier: "" },
-  { name: "Silverline", contactInfo: "submissions@silverlinefunding.com", requirements: "Minimum Monthly Revenue: 45K\nPositions: 2nd-6th & Reverse (Firm no 1st position)\nMinimum Time In Business: 5 Months", notes: "", tier: "" },
-  { name: "Vital Cap", contactInfo: "submissions@vitalcapfund.com\npooja.nene@vitalcapfund.com", requirements: "Positions: 1-4 (2-3 preferred)\nMinimum # of Deposits: 5\nMaximum Negative Days Per Month: 5\nTIB: 1 year\nFICO: 520\nMax Term: 12 Months\nMax Amount Funded: 400K\nProhibited States: UT, AK, HI (TX case by case)", notes: "PREFERRED: Restaurants, Wholesalers, Liquor Stores, Retail, Medical, Manufacturers - Min. 15k avg monthly\nNON-PREFERRED: Construction, Landscaping, Auto Repair, Insurance, Law Firm - Min. 70k avg monthly, no 1st pos\nRESTRICTED: Financial Institutions, Collection Agencies, Gas Stations, Auto Sales, Trucking, Non-for-Profit, Bail Bonds, Check-Cashing, Real Estate Investment, Staffing, Travel, Childcare, Oil", tier: "B" },
-  { name: "Vox", contactInfo: "submissions@voxfunding.com\nnvarner@voxfunding.com\njscavuzzo@voxfunding.com (150k+)", requirements: "Minimum Monthly Revenue: 15k\nPositions: 1-3\nMaximum Negative Days Per Month: 5 Days\nMinimum Time In Business: 1 Year\nMinimum # of Deposits: 5 Per Month", notes: "Minimum Credit: 600\nProhibited Industries: Adult Entertainment / Cash Advance / Credit Card Protection / Credit Restoration / Escort Services / Mortgage Lenders / Pawn Shops / Check Cashier / Wire Transfer / State or Government Agencies / Used Car Dealerships / Sole Proprietors / Trucking\nFunding up to 1.5 mil\n2 point upsell", tier: "A-C" },
-  { name: "Westwood Funding", contactInfo: "Masoncap@westwoodfunding.com\nJuan Monegro 954-350-0331 ext 1032 | 347-865-7773", requirements: "Positions: 1-7 (No reverses)\nAll states/industries", notes: "Funding up to 2mil\nStarter program for tiny deals", tier: "C" },
-  { name: "Elevate Funding", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Forward Financing", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Greenbox Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Fundfi", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "OnDeck", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "BlueVine", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Kabbage", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "CAN Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Credibly", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "National Funding", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "PayPal Working Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Square Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Shopify Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Amazon Lending", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Fora Financial", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Breakout Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Business Backer", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Lendistry", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Clearco", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Biz2Credit", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Fundbox", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Celtic Capital", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "United Capital Source", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Mulligan Funding", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "SmartBiz", contactInfo: "", requirements: "", notes: "", tier: "" },
-  { name: "Lendio", contactInfo: "", requirements: "", notes: "", tier: "" }
-];
-
-async function seedLenders() {
-  console.log("[LENDERS] Seeding lenders data...");
-  try {
-    for (const lenderData of LENDER_SEED_DATA) {
-      await storage.upsertLender({
-        name: lenderData.name,
-        contactInfo: lenderData.contactInfo || null,
-        requirements: lenderData.requirements || null,
-        notes: lenderData.notes || null,
-        tier: lenderData.tier || null,
-        isActive: true,
-      });
-    }
-    console.log(`[LENDERS] Successfully seeded ${LENDER_SEED_DATA.length} lenders`);
-  } catch (error) {
-    console.error("[LENDERS] Error seeding lenders:", error);
-  }
 }

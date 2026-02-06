@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
   Upload,
@@ -16,10 +18,14 @@ import {
   Mail,
   X,
   Search,
-  Calendar
+  Calendar,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  AlertCircle
 } from "lucide-react";
 import { Link } from "wouter";
-import type { LoanApplication } from "@shared/schema";
+import type { LoanApplication, Lender } from "@shared/schema";
 
 interface UploadedFile {
   id: string;
@@ -42,6 +48,27 @@ export default function InternalStatementsUpload() {
   const [selectedApplication, setSelectedApplication] = useState<ApplicationSearchResult | null>(null);
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
+  const [receivedAt, setReceivedAt] = useState("");
+  const [receivedMonth, setReceivedMonth] = useState("");
+  const [receivedDay, setReceivedDay] = useState("");
+  const [receivedYear, setReceivedYear] = useState("");
+  const [approvalStatus, setApprovalStatus] = useState<string>("pending");
+  const [approvalNotes, setApprovalNotes] = useState("");
+  const [selectedLender, setSelectedLender] = useState<Lender | null>(null);
+  const [lenderSearchQuery, setLenderSearchQuery] = useState("");
+  const [showLenderResults, setShowLenderResults] = useState(false);
+  
+  // Approval form fields
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [term, setTerm] = useState("");
+  const [paymentFrequency, setPaymentFrequency] = useState("Weekly");
+  const [factorRate, setFactorRate] = useState("");
+  const [totalPayback, setTotalPayback] = useState("");
+  const [netAfterFees, setNetAfterFees] = useState("");
+  const [approvalMonth, setApprovalMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [approvalDay, setApprovalDay] = useState(String(new Date().getDate()).padStart(2, '0'));
+  const [approvalYear, setApprovalYear] = useState(String(new Date().getFullYear()));
+  
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -52,6 +79,15 @@ export default function InternalStatementsUpload() {
   const { data: applications, isLoading: isSearching } = useQuery<LoanApplication[]>({
     queryKey: ['/api/applications'],
   });
+
+  const { data: lenders } = useQuery<Lender[]>({
+    queryKey: ['/api/lenders'],
+  });
+
+  const filteredLenders = (lenders || []).filter((lender) => {
+    if (!lenderSearchQuery.trim()) return true;
+    return lender.name.toLowerCase().includes(lenderSearchQuery.toLowerCase());
+  }).slice(0, 10);
 
   const filteredApplications = (applications || []).filter((app) => {
     if (!searchQuery.trim()) return false;
@@ -91,6 +127,36 @@ export default function InternalStatementsUpload() {
       if (selectedApplication) {
         formData.append("applicationId", selectedApplication.id);
       }
+      const computedReceivedAt = receivedYear && receivedMonth && receivedDay
+        ? `${receivedYear}-${receivedMonth}-${receivedDay}`
+        : '';
+      if (computedReceivedAt) {
+        formData.append("receivedAt", computedReceivedAt);
+      }
+      if (approvalStatus && approvalStatus !== "pending") {
+        formData.append("approvalStatus", approvalStatus);
+      }
+      if (approvalNotes) {
+        formData.append("approvalNotes", approvalNotes);
+      }
+      if (selectedLender) {
+        formData.append("lenderId", selectedLender.id);
+        formData.append("lenderName", selectedLender.name);
+      }
+      // Approval details (when approved)
+      if (approvalStatus === "approved") {
+        if (advanceAmount) formData.append("advanceAmount", advanceAmount);
+        if (term) formData.append("term", term);
+        if (paymentFrequency) formData.append("paymentFrequency", paymentFrequency);
+        if (factorRate) formData.append("factorRate", factorRate);
+        if (totalPayback) formData.append("totalPayback", totalPayback);
+        if (netAfterFees) formData.append("netAfterFees", netAfterFees);
+        const computedApprovalDate = `${approvalYear}-${approvalMonth}-${approvalDay}`;
+        if (computedApprovalDate) formData.append("approvalDate", computedApprovalDate);
+      }
+      
+      // Mark as internal upload to skip GHL webhook
+      formData.append("isInternal", "true");
 
       const response = await fetch("/api/bank-statements/upload", {
         method: "POST",
@@ -190,6 +256,15 @@ export default function InternalStatementsUpload() {
       toast({
         title: "No Files Selected",
         description: "Please select at least one bank statement PDF to upload",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (approvalStatus === "unqualified" && !approvalNotes?.trim()) {
+      toast({
+        title: "Reason Required",
+        description: "Please enter a reason why this applicant is unqualified",
         variant: "destructive",
       });
       return;
@@ -418,6 +493,371 @@ export default function InternalStatementsUpload() {
                 </div>
               </div>
             )}
+
+            {/* Date Received Field */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                Date Received
+              </Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Select value={receivedMonth} onValueChange={setReceivedMonth}>
+                  <SelectTrigger data-testid="select-received-month">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="01">January</SelectItem>
+                    <SelectItem value="02">February</SelectItem>
+                    <SelectItem value="03">March</SelectItem>
+                    <SelectItem value="04">April</SelectItem>
+                    <SelectItem value="05">May</SelectItem>
+                    <SelectItem value="06">June</SelectItem>
+                    <SelectItem value="07">July</SelectItem>
+                    <SelectItem value="08">August</SelectItem>
+                    <SelectItem value="09">September</SelectItem>
+                    <SelectItem value="10">October</SelectItem>
+                    <SelectItem value="11">November</SelectItem>
+                    <SelectItem value="12">December</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={receivedDay} onValueChange={setReceivedDay}>
+                  <SelectTrigger data-testid="select-received-day">
+                    <SelectValue placeholder="Day" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 31 }, (_, i) => {
+                      const day = String(i + 1).padStart(2, '0');
+                      return <SelectItem key={day} value={day}>{i + 1}</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
+                <Select value={receivedYear} onValueChange={setReceivedYear}>
+                  <SelectTrigger data-testid="select-received-year">
+                    <SelectValue placeholder="Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((yr) => (
+                      <SelectItem key={yr} value={String(yr)}>{yr}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When were these statements sent over? Leave blank to use today's date.
+              </p>
+            </div>
+
+            {/* Approval Decision Section */}
+            <div className="space-y-4 p-4 bg-muted/50 rounded-lg border">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-primary" />
+                <Label className="font-medium">Underwriting Decision (Optional)</Label>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <Button
+                  type="button"
+                  variant={approvalStatus === "pending" ? "default" : "outline"}
+                  onClick={() => setApprovalStatus("pending")}
+                  className="justify-start"
+                  data-testid="button-status-pending"
+                >
+                  <Clock className="w-4 h-4 mr-2" />
+                  Pending
+                </Button>
+                <Button
+                  type="button"
+                  variant={approvalStatus === "approved" ? "default" : "outline"}
+                  onClick={() => setApprovalStatus("approved")}
+                  className={`justify-start ${approvalStatus === "approved" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                  data-testid="button-status-approved"
+                >
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Approved
+                </Button>
+                <Button
+                  type="button"
+                  variant={approvalStatus === "declined" ? "default" : "outline"}
+                  onClick={() => setApprovalStatus("declined")}
+                  className={`justify-start ${approvalStatus === "declined" ? "bg-red-600 hover:bg-red-700" : ""}`}
+                  data-testid="button-status-declined"
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Declined
+                </Button>
+                <Button
+                  type="button"
+                  variant={approvalStatus === "unqualified" ? "default" : "outline"}
+                  onClick={() => setApprovalStatus("unqualified")}
+                  className={`justify-start ${approvalStatus === "unqualified" ? "bg-orange-600 hover:bg-orange-700" : ""}`}
+                  data-testid="button-status-unqualified"
+                >
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  Unqualified
+                </Button>
+              </div>
+
+              {/* Full Approval Form */}
+              {approvalStatus === "approved" && (
+                <div className="space-y-4 pt-2 border-t">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="advanceAmount">Advance Amount</Label>
+                      <Input
+                        id="advanceAmount"
+                        value={advanceAmount}
+                        onChange={(e) => setAdvanceAmount(e.target.value)}
+                        placeholder="$50,000"
+                        data-testid="input-advance-amount"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="term">Term</Label>
+                      <Input
+                        id="term"
+                        value={term}
+                        onChange={(e) => setTerm(e.target.value)}
+                        placeholder="6 months"
+                        data-testid="input-term"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="paymentFrequency">Payment Frequency</Label>
+                    <Select value={paymentFrequency} onValueChange={setPaymentFrequency}>
+                      <SelectTrigger data-testid="select-payment-frequency">
+                        <SelectValue placeholder="Select frequency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Daily">Daily</SelectItem>
+                        <SelectItem value="Weekly">Weekly</SelectItem>
+                        <SelectItem value="Bi-Weekly">Bi-Weekly</SelectItem>
+                        <SelectItem value="Monthly">Monthly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="factorRate">Factor Rate</Label>
+                      <Input
+                        id="factorRate"
+                        value={factorRate}
+                        onChange={(e) => setFactorRate(e.target.value)}
+                        placeholder="1.25"
+                        data-testid="input-factor-rate"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="totalPayback">Total Payback</Label>
+                      <Input
+                        id="totalPayback"
+                        value={totalPayback}
+                        onChange={(e) => setTotalPayback(e.target.value)}
+                        placeholder="$62,500"
+                        data-testid="input-total-payback"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="netAfterFees">Net After Fees</Label>
+                      <Input
+                        id="netAfterFees"
+                        value={netAfterFees}
+                        onChange={(e) => setNetAfterFees(e.target.value)}
+                        placeholder="$48,500"
+                        data-testid="input-net-after-fees"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lenderSearch">Lender</Label>
+                      <div className="relative">
+                        <Input
+                          id="lenderSearch"
+                          value={selectedLender ? selectedLender.name : lenderSearchQuery}
+                          onChange={(e) => {
+                            setLenderSearchQuery(e.target.value);
+                            setSelectedLender(null);
+                            setShowLenderResults(true);
+                          }}
+                          onFocus={() => setShowLenderResults(true)}
+                          placeholder="Search lender..."
+                          data-testid="input-lender-search"
+                        />
+                        {showLenderResults && !selectedLender && (
+                          <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-auto">
+                            {filteredLenders.length > 0 ? (
+                              filteredLenders.map((lender) => (
+                                <button
+                                  key={lender.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedLender(lender);
+                                    setLenderSearchQuery("");
+                                    setShowLenderResults(false);
+                                  }}
+                                  className="w-full p-2 text-left hover-elevate border-b last:border-b-0"
+                                  data-testid={`button-select-lender-${lender.id}`}
+                                >
+                                  <p className="font-medium">{lender.name}</p>
+                                  {lender.tier && (
+                                    <p className="text-xs text-muted-foreground">Tier: {lender.tier}</p>
+                                  )}
+                                </button>
+                              ))
+                            ) : (
+                              <div className="p-2 text-center text-muted-foreground text-sm">
+                                No lenders found
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Approval Date</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Select value={approvalMonth} onValueChange={setApprovalMonth}>
+                        <SelectTrigger data-testid="select-approval-month">
+                          <SelectValue placeholder="Month" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="01">January</SelectItem>
+                          <SelectItem value="02">February</SelectItem>
+                          <SelectItem value="03">March</SelectItem>
+                          <SelectItem value="04">April</SelectItem>
+                          <SelectItem value="05">May</SelectItem>
+                          <SelectItem value="06">June</SelectItem>
+                          <SelectItem value="07">July</SelectItem>
+                          <SelectItem value="08">August</SelectItem>
+                          <SelectItem value="09">September</SelectItem>
+                          <SelectItem value="10">October</SelectItem>
+                          <SelectItem value="11">November</SelectItem>
+                          <SelectItem value="12">December</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={approvalDay} onValueChange={setApprovalDay}>
+                        <SelectTrigger data-testid="select-approval-day">
+                          <SelectValue placeholder="Day" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 31 }, (_, i) => {
+                            const day = String(i + 1).padStart(2, '0');
+                            return <SelectItem key={day} value={day}>{i + 1}</SelectItem>;
+                          })}
+                        </SelectContent>
+                      </Select>
+                      <Select value={approvalYear} onValueChange={setApprovalYear}>
+                        <SelectTrigger data-testid="select-approval-year">
+                          <SelectValue placeholder="Year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[2024, 2025, 2026, 2027, 2028, 2029, 2030].map((yr) => (
+                            <SelectItem key={yr} value={String(yr)}>{yr}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="approvalNotes">Notes</Label>
+                    <Textarea
+                      id="approvalNotes"
+                      value={approvalNotes}
+                      onChange={(e) => setApprovalNotes(e.target.value)}
+                      placeholder="Additional notes..."
+                      rows={3}
+                      data-testid="input-approval-notes"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Unqualified Reason */}
+              {approvalStatus === "unqualified" && (
+                <div className="space-y-4 pt-2 border-t">
+                  <div className="space-y-2">
+                    <Label htmlFor="unqualifiedReason" className="text-orange-600 font-medium">Reason for Unqualified (Required)</Label>
+                    <Textarea
+                      id="unqualifiedReason"
+                      value={approvalNotes}
+                      onChange={(e) => setApprovalNotes(e.target.value)}
+                      placeholder="Required: Enter the reason this applicant did not qualify to be sent to lenders..."
+                      rows={3}
+                      data-testid="input-unqualified-reason"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Decline Reason */}
+              {approvalStatus === "declined" && (
+                <div className="space-y-4 pt-2 border-t">
+                  <div className="space-y-2">
+                    <Label htmlFor="lenderSearch">Lender (who declined)</Label>
+                    <div className="relative">
+                      <Input
+                        id="lenderSearch"
+                        value={selectedLender ? selectedLender.name : lenderSearchQuery}
+                        onChange={(e) => {
+                          setLenderSearchQuery(e.target.value);
+                          setSelectedLender(null);
+                          setShowLenderResults(true);
+                        }}
+                        onFocus={() => setShowLenderResults(true)}
+                        placeholder="Search lender..."
+                        data-testid="input-lender-search-decline"
+                      />
+                      {showLenderResults && !selectedLender && (
+                        <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-auto">
+                          {filteredLenders.length > 0 ? (
+                            filteredLenders.map((lender) => (
+                              <button
+                                key={lender.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedLender(lender);
+                                  setLenderSearchQuery("");
+                                  setShowLenderResults(false);
+                                }}
+                                className="w-full p-2 text-left hover-elevate border-b last:border-b-0"
+                                data-testid={`button-select-lender-decline-${lender.id}`}
+                              >
+                                <p className="font-medium">{lender.name}</p>
+                                {lender.tier && (
+                                  <p className="text-xs text-muted-foreground">Tier: {lender.tier}</p>
+                                )}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-2 text-center text-muted-foreground text-sm">
+                              No lenders found
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="approvalNotes">Decline Reason</Label>
+                    <Textarea
+                      id="approvalNotes"
+                      value={approvalNotes}
+                      onChange={(e) => setApprovalNotes(e.target.value)}
+                      placeholder="Required: Enter the reason for declining..."
+                      rows={3}
+                      data-testid="input-decline-reason"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* File Upload Area */}
             <div

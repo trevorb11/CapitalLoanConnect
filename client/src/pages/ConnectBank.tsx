@@ -19,6 +19,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Loader2, CheckCircle2, Lock, AlertCircle, Upload, Building2, FileText, Mail, ExternalLink } from "lucide-react";
+import plaidLogo from "@assets/plaid_logo_1770240188710.png";
 
 const formSchema = z.object({
   businessName: z.string().min(2, "Business name must be at least 2 characters"),
@@ -368,9 +369,11 @@ export default function ConnectBank() {
                   {/* Plaid Option */}
                   <div className="border-2 border-[#5FBFB8] rounded-xl p-6 hover-elevate transition-all">
                     <div className="text-center mb-4">
-                      <div className="w-12 h-12 bg-[#5FBFB8]/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Lock className="w-6 h-6 text-[#5FBFB8]" />
-                      </div>
+                      <img 
+                        src={plaidLogo} 
+                        alt="Plaid" 
+                        className="h-8 mx-auto mb-3"
+                      />
                       <h4 className="font-semibold text-[#192F56]">Instant Connect</h4>
                       <p className="text-sm text-gray-500 mt-1">
                         Securely connect via Plaid
