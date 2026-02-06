@@ -2605,6 +2605,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       console.log(`[UNDERWRITING] ${reviewerEmail} set ${status} for business ${businessEmail}`);
+
+      // Sync to GHL opportunity (async, non-blocking)
+      ghlService.syncUnderwritingDecision(decision).then(async (ghlResult) => {
+        try {
+          await storage.updateBusinessUnderwritingDecision(decision.id, {
+            ghlSynced: ghlResult.success,
+            ghlSyncedAt: new Date(),
+            ghlSyncMessage: ghlResult.message,
+            ghlOpportunityId: ghlResult.opportunityId || null,
+          });
+          console.log(`[UNDERWRITING] GHL sync for ${businessEmail}: ${ghlResult.success ? 'success' : 'skipped'} - ${ghlResult.message}`);
+        } catch (dbErr) {
+          console.error(`[UNDERWRITING] Failed to save GHL sync status for ${businessEmail}:`, dbErr);
+        }
+      }).catch(err => {
+        console.error(`[UNDERWRITING] GHL sync error for ${businessEmail}:`, err);
+      });
+
       res.json(decision);
     } catch (error) {
       console.error("Error saving underwriting decision:", error);
@@ -2655,6 +2673,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`[UNDERWRITING] Decision ${id} updated by ${req.session.user.agentEmail || 'admin'}`);
+
+      // Sync updated decision to GHL opportunity (async, non-blocking)
+      ghlService.syncUnderwritingDecision(updated).then(async (ghlResult) => {
+        try {
+          await storage.updateBusinessUnderwritingDecision(id, {
+            ghlSynced: ghlResult.success,
+            ghlSyncedAt: new Date(),
+            ghlSyncMessage: ghlResult.message,
+            ghlOpportunityId: ghlResult.opportunityId || null,
+          });
+          console.log(`[UNDERWRITING] GHL sync for decision ${id}: ${ghlResult.success ? 'success' : 'skipped'} - ${ghlResult.message}`);
+        } catch (dbErr) {
+          console.error(`[UNDERWRITING] Failed to save GHL sync status for decision ${id}:`, dbErr);
+        }
+      }).catch(err => {
+        console.error(`[UNDERWRITING] GHL sync error for decision ${id}:`, err);
+      });
+
       res.json(updated);
     } catch (error) {
       console.error("Error updating underwriting decision:", error);

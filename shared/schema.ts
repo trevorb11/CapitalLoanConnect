@@ -440,7 +440,13 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   
   // Approval letter page slug (generated when approved)
   approvalSlug: text("approval_slug").unique(),
-  
+
+  // GHL sync tracking
+  ghlSynced: boolean("ghl_synced").default(false),
+  ghlSyncedAt: timestamp("ghl_synced_at"),
+  ghlSyncMessage: text("ghl_sync_message"),
+  ghlOpportunityId: text("ghl_opportunity_id"),
+
   // Audit fields
   reviewedBy: text("reviewed_by"), // Email of underwriter who made the decision
   createdAt: timestamp("created_at").defaultNow(),
@@ -449,6 +455,10 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
 
 export const insertBusinessUnderwritingDecisionSchema = createInsertSchema(businessUnderwritingDecisions).omit({
   id: true,
+  ghlSynced: true,
+  ghlSyncedAt: true,
+  ghlSyncMessage: true,
+  ghlOpportunityId: true,
   createdAt: true,
   updatedAt: true,
 });

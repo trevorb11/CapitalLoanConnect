@@ -1,4 +1,4 @@
-import type { LoanApplication } from "@shared/schema";
+import type { LoanApplication, BusinessUnderwritingDecision } from "@shared/schema";
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -1434,6 +1434,327 @@ export class GoHighLevelService {
         message: `Error: ${error.message || 'Unknown error'}`
       };
     }
+  }
+
+  // ========================================
+  // UNDERWRITING DECISION SYNC
+  // ========================================
+
+  /**
+   * Sync a BusinessUnderwritingDecision to GHL opportunity custom fields.
+   * Handles approved (syncs each offer), declined, and unqualified statuses.
+   *
+   * This is the primary API-based sync method. It's designed to be extensible —
+   * the same contact/opportunity lookup pattern can be reused for syncing
+   * data at other stages (intake, application, statements) in the future.
+   *
+   * Returns a result object with sync status that can be stored on the decision record.
+   */
+  async syncUnderwritingDecision(decision: BusinessUnderwritingDecision): Promise<{
+    success: boolean;
+    message: string;
+    opportunityId?: string;
+  }> {
+    if (!this.isEnabled) {
+      return { success: false, message: "GHL service not enabled" };
+    }
+
+    const businessName = decision.businessName;
+    if (!businessName) {
+      return { success: false, message: "No business name on decision — cannot look up GHL contact" };
+    }
+
+    const status = decision.status;
+
+    try {
+      // Step 1: Find the contact by business name (same lookup as syncApprovalToOpportunity)
+      const contactId = await this.searchContactByBusinessName(businessName);
+      if (!contactId) {
+        // Fall back to email lookup if business name didn't match
+        const contactByEmail = await this.findContactByEmail(decision.businessEmail);
+        if (!contactByEmail) {
+          return {
+            success: false,
+            message: `No GHL contact found for "${businessName}" (email: ${decision.businessEmail})`
+          };
+        }
+        // Use email-based contact
+        return await this.syncDecisionToContact(contactByEmail, decision);
+      }
+
+      return await this.syncDecisionToContact(contactId, decision);
+    } catch (error: any) {
+      console.error(`[GHL] Error in syncUnderwritingDecision for "${businessName}":`, error);
+      return {
+        success: false,
+        message: `Error: ${error.message || 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
+   * Internal: once we have a contactId, find the opportunity and sync the decision data.
+   */
+  private async syncDecisionToContact(contactId: string, decision: BusinessUnderwritingDecision): Promise<{
+    success: boolean;
+    message: string;
+    opportunityId?: string;
+  }> {
+    const status = decision.status;
+
+    // Step 2: Find opportunities for this contact
+    const opportunities = await this.searchOpportunitiesByContact(contactId);
+    if (opportunities.length === 0) {
+      return {
+        success: false,
+        message: `No opportunities found for contact ${contactId} (${decision.businessName})`
+      };
+    }
+
+    // Pick the most recent open opportunity, or the most recent overall
+    const openOpps = opportunities.filter(o =>
+      o.status?.toLowerCase() !== 'won' &&
+      o.status?.toLowerCase() !== 'lost'
+    );
+    const targetOpp = openOpps.length > 0
+      ? openOpps.sort((a: any, b: any) => new Date(b.updatedAt || b.dateAdded || 0).getTime() - new Date(a.updatedAt || a.dateAdded || 0).getTime())[0]
+      : opportunities.sort((a: any, b: any) => new Date(b.updatedAt || b.dateAdded || 0).getTime() - new Date(a.updatedAt || a.dateAdded || 0).getTime())[0];
+
+    // Step 3: Get current opportunity custom fields
+    const oppDetails = await this.getOpportunity(targetOpp.id);
+    const currentCustomFields: Record<string, string> = {};
+    if (oppDetails?.customFields) {
+      for (const cf of oppDetails.customFields) {
+        const key = cf.key || cf.id || '';
+        const value = cf.value || cf.field_value || '';
+        if (key && value) {
+          currentCustomFields[key] = value;
+        }
+      }
+    }
+
+    // Step 4: Build the fields to update based on status
+    if (status === 'approved') {
+      return await this.syncApprovedDecision(targetOpp.id, decision, currentCustomFields);
+    } else if (status === 'declined' || status === 'unqualified') {
+      return await this.syncDeclinedDecision(targetOpp.id, decision, currentCustomFields);
+    }
+
+    return {
+      success: false,
+      message: `Unrecognized status "${status}" — skipping sync`,
+      opportunityId: targetOpp.id
+    };
+  }
+
+  /**
+   * Sync an approved decision: push each offer from additionalApprovals into offer slots.
+   */
+  private async syncApprovedDecision(
+    opportunityId: string,
+    decision: BusinessUnderwritingDecision,
+    currentCustomFields: Record<string, string>
+  ): Promise<{ success: boolean; message: string; opportunityId: string }> {
+    const approvals = (decision.additionalApprovals as any[]) || [];
+    const fieldsToUpdate: Record<string, string> = {};
+    const syncedOffers: string[] = [];
+
+    // If there are individual approval entries, sync each one
+    if (approvals.length > 0) {
+      for (const entry of approvals) {
+        const lenderName = entry.lender || decision.lender || 'Unknown';
+        const normalizedLender = lenderName.toLowerCase().trim();
+
+        // Check for duplicate lender in existing offer slots
+        let isDuplicate = false;
+        for (let i = 1; i <= 5; i++) {
+          const existingValue = currentCustomFields[`opportunity.offer_${i}`] || fieldsToUpdate[`opportunity.offer_${i}`] || '';
+          if (existingValue && existingValue.toLowerCase().includes(`lender: ${normalizedLender}`)) {
+            isDuplicate = true;
+            break;
+          }
+        }
+        if (isDuplicate) {
+          console.log(`[GHL] Skipping duplicate offer for lender "${lenderName}"`);
+          continue;
+        }
+
+        // Find next available offer slot
+        let slotNumber = 0;
+        for (let i = 1; i <= 5; i++) {
+          const key = `opportunity.offer_${i}`;
+          if (!currentCustomFields[key] && !fieldsToUpdate[key]) {
+            slotNumber = i;
+            break;
+          }
+        }
+        if (slotNumber === 0) {
+          console.log(`[GHL] All offer slots filled, cannot sync "${lenderName}"`);
+          continue;
+        }
+
+        const offerString = this.formatOfferString({
+          lenderName,
+          approvedAmount: entry.advanceAmount?.toString(),
+          termLength: entry.term,
+          factorRate: entry.factorRate?.toString(),
+          paybackAmount: entry.totalPayback?.toString(),
+          paymentAmount: null,
+          paymentFrequency: entry.paymentFrequency,
+          productType: null,
+        });
+
+        fieldsToUpdate[`opportunity.offer_${slotNumber}`] = offerString;
+        syncedOffers.push(`Offer ${slotNumber}: ${lenderName}`);
+
+        // Check if this should be the best offer
+        const amount = parseFloat((entry.advanceAmount || '0').toString().replace(/[$,]/g, ''));
+        let isBest = true;
+        for (let i = 1; i <= 5; i++) {
+          const existing = currentCustomFields[`opportunity.offer_${i}`] || fieldsToUpdate[`opportunity.offer_${i}`] || '';
+          const match = existing.match(/Amount:\s*\$?([\d,]+)/i);
+          if (match) {
+            const existingAmt = parseFloat(match[1].replace(/,/g, ''));
+            if (existingAmt >= amount) {
+              isBest = false;
+              break;
+            }
+          }
+        }
+        if (isBest && !isNaN(amount) && amount > 0) {
+          fieldsToUpdate['opportunity.lender_with_best_offer'] = lenderName;
+        }
+      }
+    } else if (decision.lender) {
+      // No additionalApprovals array — use the top-level fields
+      const lenderName = decision.lender;
+      const normalizedLender = lenderName.toLowerCase().trim();
+
+      // Check for duplicate
+      let isDuplicate = false;
+      for (let i = 1; i <= 5; i++) {
+        const existingValue = currentCustomFields[`opportunity.offer_${i}`] || '';
+        if (existingValue && existingValue.toLowerCase().includes(`lender: ${normalizedLender}`)) {
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      if (!isDuplicate) {
+        let slotNumber = 0;
+        for (let i = 1; i <= 5; i++) {
+          if (!currentCustomFields[`opportunity.offer_${i}`]) {
+            slotNumber = i;
+            break;
+          }
+        }
+        if (slotNumber > 0) {
+          const offerString = this.formatOfferString({
+            lenderName,
+            approvedAmount: decision.advanceAmount?.toString(),
+            termLength: decision.term,
+            factorRate: decision.factorRate?.toString(),
+            paybackAmount: decision.totalPayback?.toString(),
+            paymentAmount: null,
+            paymentFrequency: decision.paymentFrequency,
+            productType: null,
+          });
+          fieldsToUpdate[`opportunity.offer_${slotNumber}`] = offerString;
+          syncedOffers.push(`Offer ${slotNumber}: ${lenderName}`);
+
+          const amount = parseFloat((decision.advanceAmount || '0').toString().replace(/[$,]/g, ''));
+          if (!isNaN(amount) && amount > 0) {
+            fieldsToUpdate['opportunity.lender_with_best_offer'] = lenderName;
+          }
+        }
+      }
+    }
+
+    if (Object.keys(fieldsToUpdate).length === 0) {
+      return {
+        success: true,
+        message: "No new offers to sync (all already present or no offer data)",
+        opportunityId
+      };
+    }
+
+    const updateSuccess = await this.updateOpportunityCustomFields(opportunityId, fieldsToUpdate);
+    if (updateSuccess) {
+      return {
+        success: true,
+        message: `Synced ${syncedOffers.length} offer(s): ${syncedOffers.join(', ')}`,
+        opportunityId
+      };
+    }
+
+    return {
+      success: false,
+      message: "Failed to update opportunity custom fields",
+      opportunityId
+    };
+  }
+
+  /**
+   * Sync a declined or unqualified decision into decline slots.
+   */
+  private async syncDeclinedDecision(
+    opportunityId: string,
+    decision: BusinessUnderwritingDecision,
+    currentCustomFields: Record<string, string>
+  ): Promise<{ success: boolean; message: string; opportunityId: string }> {
+    const fieldsToUpdate: Record<string, string> = {};
+
+    // Build a decline string from the decision
+    const reason = decision.declineReason || (decision.status === 'unqualified' ? 'Unqualified' : 'Declined');
+    const declineLabel = decision.status === 'unqualified' ? 'Unqualified' : 'Declined';
+    const declineString = `${declineLabel}: ${reason}`;
+
+    // Check for duplicate in existing decline slots
+    for (let i = 1; i <= 3; i++) {
+      const existing = currentCustomFields[`opportunity.decline_${i}`] || '';
+      if (existing && existing.toLowerCase() === declineString.toLowerCase()) {
+        return {
+          success: true,
+          message: `Decline reason already present in slot ${i}`,
+          opportunityId
+        };
+      }
+    }
+
+    // Find next available decline slot
+    let slotNumber = 0;
+    for (let i = 1; i <= 3; i++) {
+      if (!currentCustomFields[`opportunity.decline_${i}`]) {
+        slotNumber = i;
+        break;
+      }
+    }
+
+    if (slotNumber === 0) {
+      return {
+        success: false,
+        message: "All decline slots (1-3) are filled",
+        opportunityId
+      };
+    }
+
+    fieldsToUpdate[`opportunity.decline_${slotNumber}`] = declineString;
+    fieldsToUpdate['opportunity.declined_date'] = new Date().toISOString().split('T')[0];
+
+    const updateSuccess = await this.updateOpportunityCustomFields(opportunityId, fieldsToUpdate);
+    if (updateSuccess) {
+      return {
+        success: true,
+        message: `Synced to Decline ${slotNumber}: ${declineString}`,
+        opportunityId
+      };
+    }
+
+    return {
+      success: false,
+      message: "Failed to update opportunity custom fields",
+      opportunityId
+    };
   }
 }
 
