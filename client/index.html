@@ -24,7 +24,14 @@
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'G-CR5Q49Y3J5');
-      
+
+      // Google Ads Enhanced Conversions setup
+      // IMPORTANT: Replace AW-XXXXXXXXX with your actual Google Ads Conversion ID
+      // and AW-XXXXXXXXX/YYYYYYYYYY with your full conversion send_to value
+      gtag('config', 'AW-XXXXXXXXX', {
+        allow_enhanced_conversions: true
+      });
+
       // Custom event tracking functions
       window.trackEvent = function(eventName, eventParams) {
         gtag('event', eventName, eventParams);
@@ -105,6 +112,43 @@
           event_category: 'conversion',
           event_label: source || 'direct',
           traffic_source: source || 'direct'
+        });
+      };
+
+      // Google Ads Enhanced Conversion - fires ONLY for qualified intake leads (revenue >= $10k/month)
+      // This sets enhanced_conversion_data on the window for Google to read,
+      // then fires the conversion event.
+      // IMPORTANT: Replace 'AW-XXXXXXXXX/YYYYYYYYYY' with your actual send_to value from Google Ads.
+      window.trackQualifiedIntakeConversion = function(params) {
+        // Split full name into first and last for enhanced conversions
+        var nameParts = (params.fullName || '').trim().split(/\s+/);
+        var firstName = nameParts[0] || '';
+        var lastName = nameParts.slice(1).join(' ') || '';
+
+        // Set enhanced conversion data as JavaScript variables on the window
+        // These are the variables Google Ads will read for Enhanced Conversions
+        window.enhanced_conversion_data = {
+          email: params.email || '',
+          phone_number: params.phone ? '+1' + params.phone.replace(/\D/g, '') : '',
+          first_name: firstName,
+          last_name: lastName
+        };
+
+        // Fire the Google Ads conversion event
+        gtag('event', 'conversion', {
+          send_to: 'AW-XXXXXXXXX/YYYYYYYYYY',
+          transport_type: 'beacon'
+        });
+
+        // Also fire a GA4 event for reporting
+        gtag('event', 'qualified_intake_conversion', {
+          event_category: 'conversion',
+          event_label: 'Qualified Intake Lead',
+          monthly_revenue: params.monthlyRevenue || '',
+          requested_amount: params.requestedAmount || '',
+          industry: params.industry || '',
+          credit_score: params.creditScore || '',
+          transport_type: 'beacon'
         });
       };
     </script>

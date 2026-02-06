@@ -10,6 +10,13 @@ declare global {
     trackBankStatementUploaded: (fileCount: number) => void;
     trackFormAbandonment: (formType: string, lastStep: number) => void;
     trackCloseConvertLead: (source?: string) => void;
+    trackQualifiedIntakeConversion: (params: QualifiedIntakeConversionParams) => void;
+    enhanced_conversion_data?: {
+      email: string;
+      phone_number: string;
+      first_name: string;
+      last_name: string;
+    };
   }
 }
 
@@ -28,6 +35,16 @@ interface IntakeFormSubmittedParams {
   industry?: string;
   useOfFunds?: string;
   source?: string;
+}
+
+interface QualifiedIntakeConversionParams {
+  email: string;
+  fullName: string;
+  phone: string;
+  monthlyRevenue?: string;
+  requestedAmount?: string;
+  industry?: string;
+  creditScore?: string;
 }
 
 export const trackEvent = (eventName: string, eventParams?: Record<string, unknown>) => {
@@ -81,6 +98,13 @@ export const trackFormAbandonment = (formType: string, lastStep: number) => {
 export const trackCloseConvertLead = (source?: string) => {
   if (typeof window !== 'undefined' && window.trackCloseConvertLead) {
     window.trackCloseConvertLead(source);
+  }
+};
+
+// Google Ads Enhanced Conversion - only for qualified intake leads (revenue >= $10k/month)
+export const trackQualifiedIntakeConversion = (params: QualifiedIntakeConversionParams) => {
+  if (typeof window !== 'undefined' && window.trackQualifiedIntakeConversion) {
+    window.trackQualifiedIntakeConversion(params);
   }
 };
 

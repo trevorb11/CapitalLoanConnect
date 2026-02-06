@@ -4,7 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Loader2, CheckCircle, ArrowLeft } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
-import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
+import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView, trackQualifiedIntakeConversion } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 
 const BUSINESS_AGE_OPTIONS = [
@@ -184,11 +184,25 @@ export default function QuizIntake() {
       
       // Check if user is on the low revenue path
       if (quizData.monthlyRevenue < LOW_REVENUE_THRESHOLD) {
+        // Low revenue - NO conversion fires. User sees diversion screen.
         setShowLowRevenueOutcome(true);
-      } else if (data.id) {
-        navigate(`/?applicationId=${data.id}`);
       } else {
-        navigate("/");
+        // QUALIFIED lead - fire Google Ads Enhanced Conversion
+        trackQualifiedIntakeConversion({
+          email: quizData.email,
+          fullName: quizData.fullName,
+          phone: quizData.phone,
+          monthlyRevenue: quizData.monthlyRevenue.toString(),
+          requestedAmount: quizData.financingAmount.toString(),
+          industry: quizData.industry,
+          creditScore: quizData.creditScore,
+        });
+
+        if (data.id) {
+          navigate(`/?applicationId=${data.id}`);
+        } else {
+          navigate("/");
+        }
       }
     },
     onError: (error: Error) => {
