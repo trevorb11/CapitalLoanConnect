@@ -105,6 +105,10 @@ export class GoHighLevelService {
   // Session window in milliseconds (15 minutes) - webhooks within this window are deduplicated
   private readonly WEBHOOK_SESSION_WINDOW_MS = 15 * 60 * 1000;
 
+  // Pipeline stage cache: maps "pipelineName::stageName" → stageId
+  // Fetched once and reused for the lifetime of the service instance
+  private pipelineStageCache: Map<string, string> | null = null;
+
   constructor() {
     this.apiKey = GHL_API_KEY || null;
     this.locationId = GHL_LOCATION_ID || null;
@@ -1437,6 +1441,66 @@ export class GoHighLevelService {
   }
 
   // ========================================
+  // PIPELINE STAGE MANAGEMENT
+  // ========================================
+
+  /**
+   * Fetch all pipelines and cache stage IDs for fast lookup.
+   * Cache key format: "pipelineName::stageName" (lowercased) → stageId
+   */
+  private async loadPipelineStageCache(): Promise<Map<string, string>> {
+    if (this.pipelineStageCache) return this.pipelineStageCache;
+
+    this.pipelineStageCache = new Map();
+    try {
+      const response = await this.makeRequest(
+        `/opportunities/pipelines?locationId=${this.locationId}`,
+        "GET"
+      );
+      const pipelines = response.pipelines || [];
+      for (const pipeline of pipelines) {
+        for (const stage of (pipeline.stages || [])) {
+          const key = `${(pipeline.name || '').toLowerCase().trim()}::${(stage.name || '').toLowerCase().trim()}`;
+          this.pipelineStageCache.set(key, stage.id);
+        }
+      }
+      console.log(`[GHL] Loaded ${this.pipelineStageCache.size} pipeline stages into cache`);
+    } catch (error) {
+      console.error(`[GHL] Failed to load pipeline stages:`, error);
+    }
+    return this.pipelineStageCache;
+  }
+
+  /**
+   * Look up a pipeline stage ID by pipeline name and stage name.
+   */
+  async findPipelineStageId(pipelineName: string, stageName: string): Promise<string | null> {
+    const cache = await this.loadPipelineStageCache();
+    const key = `${pipelineName.toLowerCase().trim()}::${stageName.toLowerCase().trim()}`;
+    return cache.get(key) || null;
+  }
+
+  /**
+   * Move an opportunity to a specific pipeline stage.
+   */
+  async moveOpportunityToStage(opportunityId: string, pipelineStageId: string): Promise<boolean> {
+    if (!this.isEnabled || !opportunityId) return false;
+
+    try {
+      await this.makeRequest(
+        `/opportunities/${opportunityId}`,
+        "PUT",
+        { pipelineStageId }
+      );
+      console.log(`[GHL] Moved opportunity ${opportunityId} to stage ${pipelineStageId}`);
+      return true;
+    } catch (error) {
+      console.error(`[GHL] Error moving opportunity to stage:`, error);
+      return false;
+    }
+  }
+
+  // ========================================
   // UNDERWRITING DECISION SYNC
   // ========================================
 
@@ -1679,17 +1743,30 @@ export class GoHighLevelService {
     }
 
     const updateSuccess = await this.updateOpportunityCustomFields(opportunityId, fieldsToUpdate);
-    if (updateSuccess) {
+    if (!updateSuccess) {
       return {
-        success: true,
-        message: `Synced ${syncedOffers.length} offer(s): ${syncedOffers.join(', ')}`,
+        success: false,
+        message: "Failed to update opportunity custom fields",
         opportunityId
       };
     }
 
+    // Move the opportunity to the "Approved" stage in the "3. Underwriting" pipeline
+    const approvedStageId = await this.findPipelineStageId("3. Underwriting", "Approved");
+    if (approvedStageId) {
+      const moved = await this.moveOpportunityToStage(opportunityId, approvedStageId);
+      if (moved) {
+        console.log(`[GHL] Moved opportunity ${opportunityId} to Approved stage`);
+      } else {
+        console.warn(`[GHL] Failed to move opportunity ${opportunityId} to Approved stage (offer data still synced)`);
+      }
+    } else {
+      console.warn(`[GHL] Could not find "Approved" stage in "3. Underwriting" pipeline — offer data synced but stage not moved`);
+    }
+
     return {
-      success: false,
-      message: "Failed to update opportunity custom fields",
+      success: true,
+      message: `Synced ${syncedOffers.length} offer(s): ${syncedOffers.join(', ')}${approvedStageId ? ' | Moved to Approved stage' : ''}`,
       opportunityId
     };
   }
