@@ -1178,11 +1178,12 @@ export class GoHighLevelService {
   }
 
   /**
-   * Update an opportunity's custom fields
+   * Update an opportunity's custom fields and optional top-level fields (e.g. monetaryValue)
    */
   async updateOpportunityCustomFields(
     opportunityId: string,
-    customFields: Record<string, string>
+    customFields: Record<string, string>,
+    topLevelFields?: { monetaryValue?: number }
   ): Promise<boolean> {
     if (!this.isEnabled || !opportunityId) return false;
 
@@ -1193,13 +1194,21 @@ export class GoHighLevelService {
         field_value: value
       }));
 
+      const body: any = { customFields: customFieldsArray };
+      if (topLevelFields?.monetaryValue !== undefined) {
+        body.monetaryValue = topLevelFields.monetaryValue;
+      }
+
       await this.makeRequest(
         `/opportunities/${opportunityId}`,
         "PUT",
-        { customFields: customFieldsArray }
+        body
       );
 
       console.log(`[GHL] Updated opportunity ${opportunityId} with custom fields:`, Object.keys(customFields));
+      if (topLevelFields?.monetaryValue !== undefined) {
+        console.log(`[GHL] Updated opportunity ${opportunityId} monetary value: $${topLevelFields.monetaryValue.toLocaleString()}`);
+      }
       return true;
     } catch (error) {
       console.error(`[GHL] Error updating opportunity custom fields:`, error);
@@ -1742,7 +1751,22 @@ export class GoHighLevelService {
       };
     }
 
-    const updateSuccess = await this.updateOpportunityCustomFields(opportunityId, fieldsToUpdate);
+    // Determine the primary offer amount for the opportunity's monetary value
+    let primaryAmount: number | undefined;
+    if (approvals.length > 0) {
+      const primary = approvals.find((a: any) => a.isPrimary) || approvals[0];
+      const parsed = parseFloat((primary.advanceAmount || '0').toString().replace(/[$,]/g, ''));
+      if (!isNaN(parsed) && parsed > 0) primaryAmount = parsed;
+    } else if (decision.advanceAmount) {
+      const parsed = parseFloat(decision.advanceAmount.toString().replace(/[$,]/g, ''));
+      if (!isNaN(parsed) && parsed > 0) primaryAmount = parsed;
+    }
+
+    const updateSuccess = await this.updateOpportunityCustomFields(
+      opportunityId,
+      fieldsToUpdate,
+      primaryAmount ? { monetaryValue: primaryAmount } : undefined
+    );
     if (!updateSuccess) {
       return {
         success: false,
@@ -1766,7 +1790,7 @@ export class GoHighLevelService {
 
     return {
       success: true,
-      message: `Synced ${syncedOffers.length} offer(s): ${syncedOffers.join(', ')}${approvedStageId ? ' | Moved to Approved stage' : ''}`,
+      message: `Synced ${syncedOffers.length} offer(s): ${syncedOffers.join(', ')}${primaryAmount ? ` | Value: $${primaryAmount.toLocaleString()}` : ''}${approvedStageId ? ' | Moved to Approved stage' : ''}`,
       opportunityId
     };
   }
