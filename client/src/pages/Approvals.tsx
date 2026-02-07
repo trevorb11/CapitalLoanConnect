@@ -244,7 +244,10 @@ export default function Approvals() {
         credentials: "include",
         body: JSON.stringify(updates),
       });
-      if (!res.ok) throw new Error("Failed to update");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Server returned ${res.status}`);
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -252,8 +255,8 @@ export default function Approvals() {
       toast({ title: "Updated", description: "Approval details have been saved." });
       setEditingApproval(null);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to update approval details.", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to update approval details.", variant: "destructive" });
     },
   });
 

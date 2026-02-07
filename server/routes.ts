@@ -2523,12 +2523,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Create or update business underwriting decision
   app.post("/api/underwriting-decisions", async (req, res) => {
+    console.log(`[UNDERWRITING POST] Received request from ${req.session.user?.agentEmail || 'unknown'} (role: ${req.session.user?.role || 'none'})`);
+    
     if (!req.session.user?.isAuthenticated) {
+      console.log(`[UNDERWRITING POST] Rejected: not authenticated`);
       return res.status(401).json({ error: "Authentication required" });
     }
     
     // Only underwriting and admin can create/update decisions
     if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      console.log(`[UNDERWRITING POST] Rejected: role '${req.session.user.role}' does not have permission`);
       return res.status(403).json({ error: "Only underwriting team can manage decisions" });
     }
     
@@ -2548,6 +2552,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       declineReason,
       additionalApprovals
     } = req.body;
+
+    console.log(`[UNDERWRITING POST] Data: email=${businessEmail}, name=${businessName}, status=${status}, approvals=${additionalApprovals?.length || 0}`);
 
     if (!businessEmail) {
       return res.status(400).json({ error: "Business email is required" });
@@ -2632,16 +2638,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Update business underwriting decision by ID (partial update)
   app.patch("/api/underwriting-decisions/:id", async (req, res) => {
+    console.log(`[UNDERWRITING PATCH] Received request for decision ${req.params.id} from ${req.session.user?.agentEmail || 'unknown'} (role: ${req.session.user?.role || 'none'})`);
+    
     if (!req.session.user?.isAuthenticated) {
+      console.log(`[UNDERWRITING PATCH] Rejected: not authenticated`);
       return res.status(401).json({ error: "Authentication required" });
     }
 
     if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      console.log(`[UNDERWRITING PATCH] Rejected: role '${req.session.user.role}' does not have permission`);
       return res.status(403).json({ error: "Only underwriting team can manage decisions" });
     }
 
     const { id } = req.params;
     const updates = req.body;
+    console.log(`[UNDERWRITING PATCH] Updating decision ${id}, keys: ${Object.keys(updates).join(', ')}, approvals count: ${updates.additionalApprovals?.length || 'N/A'}`);
 
     try {
       // Convert approvalDate string to Date if provided

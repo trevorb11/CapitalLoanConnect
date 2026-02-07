@@ -1325,7 +1325,9 @@ function BankStatementsTab() {
           body: JSON.stringify({ additionalApprovals: approvals }),
         });
         if (!res.ok) {
-          console.error('Failed to update approval');
+          const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('Failed to update approval:', errorData);
+          toast({ title: "Save Failed", description: errorData.error || `Server returned ${res.status}`, variant: "destructive" });
           return;
         }
       } else {
@@ -1342,7 +1344,9 @@ function BankStatementsTab() {
           }),
         });
         if (!res.ok) {
-          console.error('Failed to create approval');
+          const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('Failed to create approval:', errorData);
+          toast({ title: "Save Failed", description: errorData.error || `Server returned ${res.status}`, variant: "destructive" });
           return;
         }
       }
@@ -1350,8 +1354,9 @@ function BankStatementsTab() {
       queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
       setApprovalFormDialog(null);
       toast({ title: "Approval Saved", description: `Approval ${editingApprovalId ? 'updated' : 'added'} for ${businessName}` });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving approval:', error);
+      toast({ title: "Save Failed", description: error.message || "An unexpected error occurred", variant: "destructive" });
     } finally {
       setSavingDecision(false);
     }
@@ -1440,9 +1445,13 @@ function BankStatementsTab() {
         queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
         setDeclineDialog(null);
         toast({ title: "Business Declined", description: `${declineDialog.businessName} has been declined` });
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        toast({ title: "Save Failed", description: errorData.error || `Server returned ${res.status}`, variant: "destructive" });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving decline:', error);
+      toast({ title: "Save Failed", description: error.message || "An unexpected error occurred", variant: "destructive" });
     } finally {
       setSavingDecision(false);
     }
@@ -1468,9 +1477,13 @@ function BankStatementsTab() {
         queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
         setUnqualifiedDialog(null);
         toast({ title: "Marked Unqualified", description: `${unqualifiedDialog.businessName} has been marked as unqualified` });
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        toast({ title: "Save Failed", description: errorData.error || `Server returned ${res.status}`, variant: "destructive" });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving unqualified:', error);
+      toast({ title: "Save Failed", description: error.message || "An unexpected error occurred", variant: "destructive" });
     } finally {
       setSavingDecision(false);
     }
