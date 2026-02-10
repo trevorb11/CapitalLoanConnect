@@ -2630,9 +2630,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json(decision);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving underwriting decision:", error);
-      res.status(500).json({ error: "Failed to save decision" });
+      const errorMessage = error?.message || error?.detail || "Failed to save decision";
+      console.error("[UNDERWRITING POST] Full error details:", JSON.stringify({
+        message: error?.message,
+        detail: error?.detail,
+        code: error?.code,
+        constraint: error?.constraint,
+        column: error?.column,
+        table: error?.table,
+        stack: error?.stack?.split('\n').slice(0, 5),
+      }));
+      res.status(500).json({ error: errorMessage });
     }
   });
   
