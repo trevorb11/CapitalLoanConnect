@@ -279,6 +279,79 @@ export default function InternalStatementsUpload() {
     }
     
     setSelectedFiles([]);
+
+    // Save underwriting decision if a status was selected (not pending)
+    if (approvalStatus && approvalStatus !== "pending") {
+      try {
+        const decisionPayload: Record<string, any> = {
+          businessEmail: email,
+          businessName: businessName || email,
+          status: approvalStatus,
+        };
+
+        if (approvalStatus === "approved") {
+          const approvalDate = `${approvalYear}-${approvalMonth}-${approvalDay}`;
+          const approvalEntry = {
+            id: `appr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            lender: selectedLender?.name || "",
+            advanceAmount: advanceAmount || "",
+            term: term || "",
+            paymentFrequency: paymentFrequency || "Weekly",
+            factorRate: factorRate || "",
+            totalPayback: totalPayback || "",
+            netAfterFees: netAfterFees || "",
+            notes: approvalNotes || "",
+            approvalDate,
+            isPrimary: true,
+          };
+          decisionPayload.additionalApprovals = [approvalEntry];
+          decisionPayload.lender = selectedLender?.name || null;
+          decisionPayload.advanceAmount = advanceAmount ? parseFloat(advanceAmount) : null;
+          decisionPayload.term = term || null;
+          decisionPayload.paymentFrequency = paymentFrequency || null;
+          decisionPayload.factorRate = factorRate ? parseFloat(factorRate) : null;
+          decisionPayload.totalPayback = totalPayback ? parseFloat(totalPayback) : null;
+          decisionPayload.netAfterFees = netAfterFees ? parseFloat(netAfterFees) : null;
+          decisionPayload.notes = approvalNotes || null;
+          decisionPayload.approvalDate = approvalDate;
+        } else if (approvalStatus === "declined" || approvalStatus === "unqualified") {
+          decisionPayload.declineReason = approvalNotes || null;
+          if (selectedLender) {
+            decisionPayload.lender = selectedLender.name;
+          }
+        }
+
+        const res = await fetch("/api/underwriting-decisions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(decisionPayload),
+        });
+
+        if (res.ok) {
+          const statusLabel = approvalStatus === "approved" ? "Approved" : approvalStatus === "declined" ? "Declined" : "Unqualified";
+          toast({
+            title: `Decision Saved: ${statusLabel}`,
+            description: `${businessName || email} has been marked as ${statusLabel.toLowerCase()}`,
+          });
+        } else {
+          const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+          toast({
+            title: "Decision Save Failed",
+            description: errorData.error || `Server returned ${res.status}`,
+            variant: "destructive",
+          });
+        }
+      } catch (decisionError: any) {
+        console.error("Error saving underwriting decision:", decisionError);
+        toast({
+          title: "Decision Save Failed",
+          description: decisionError.message || "An unexpected error occurred while saving the decision",
+          variant: "destructive",
+        });
+      }
+    }
+
     setIsSubmitted(true);
     
     toast({
