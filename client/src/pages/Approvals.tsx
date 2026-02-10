@@ -54,6 +54,7 @@ interface FullApprovalEntry {
   term: string;
   paymentFrequency: string;
   factorRate: string;
+  maxUpsell: string;
   totalPayback: string;
   netAfterFees: string;
   notes: string;
@@ -107,6 +108,7 @@ export default function Approvals() {
     term: '',
     paymentFrequency: 'weekly',
     factorRate: '',
+    maxUpsell: '',
     totalPayback: '',
     netAfterFees: '',
     lender: '',
@@ -202,6 +204,7 @@ export default function Approvals() {
         term: decision.term || '',
         paymentFrequency: decision.paymentFrequency || 'weekly',
         factorRate: decision.factorRate?.toString() || '',
+        maxUpsell: decision.maxUpsell?.toString() || '',
         totalPayback: decision.totalPayback?.toString() || '',
         netAfterFees: decision.netAfterFees?.toString() || '',
         notes: decision.notes || '',
@@ -220,6 +223,7 @@ export default function Approvals() {
           term: old.term || '',
           paymentFrequency: old.paymentFrequency || 'weekly',
           factorRate: old.factorRate || '',
+          maxUpsell: old.maxUpsell || '',
           totalPayback: old.totalPayback || '',
           netAfterFees: old.netAfterFees || '',
           notes: old.notes || '',
@@ -326,6 +330,7 @@ export default function Approvals() {
           term: existing.term,
           paymentFrequency: existing.paymentFrequency || 'weekly',
           factorRate: existing.factorRate,
+          maxUpsell: existing.maxUpsell || '',
           totalPayback: existing.totalPayback,
           netAfterFees: existing.netAfterFees,
           lender: existing.lender,
@@ -339,6 +344,7 @@ export default function Approvals() {
         term: '',
         paymentFrequency: 'weekly',
         factorRate: '',
+        maxUpsell: '',
         totalPayback: '',
         netAfterFees: '',
         lender: '',
@@ -363,6 +369,7 @@ export default function Approvals() {
         term: editForm.term,
         paymentFrequency: editForm.paymentFrequency,
         factorRate: editForm.factorRate,
+        maxUpsell: editForm.maxUpsell,
         totalPayback: editForm.totalPayback,
         netAfterFees: editForm.netAfterFees,
         notes: editForm.notes,
@@ -457,6 +464,7 @@ export default function Approvals() {
       "Term",
       "Payment Frequency",
       "Factor Rate",
+      "Max Upsell",
       "Total Payback",
       "Net After Fees",
       "Approval Date",
@@ -490,6 +498,7 @@ export default function Approvals() {
           "",
           "",
           "",
+          "",
           approvalLetterUrl,
           decision.createdAt ? new Date(decision.createdAt).toLocaleDateString() : ""
         ]);
@@ -503,6 +512,7 @@ export default function Approvals() {
             approval.term || "",
             approval.paymentFrequency || "",
             approval.factorRate || "",
+            approval.maxUpsell || "",
             approval.totalPayback || "",
             approval.netAfterFees || "",
             approval.approvalDate || "",
@@ -923,6 +933,8 @@ export default function Approvals() {
                   data-testid="input-edit-term"
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-paymentFrequency">Payment Frequency</Label>
                 <Select
@@ -939,6 +951,16 @@ export default function Approvals() {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label htmlFor="edit-lender">Lender</Label>
+                <Input
+                  id="edit-lender"
+                  placeholder="Lender name"
+                  value={editForm.lender}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, lender: e.target.value }))}
+                  data-testid="input-edit-lender"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -954,14 +976,14 @@ export default function Approvals() {
                 />
               </div>
               <div>
-                <Label htmlFor="edit-totalPayback">Total Payback</Label>
+                <Label htmlFor="edit-maxUpsell">Max Upsell</Label>
                 <Input
-                  id="edit-totalPayback"
+                  id="edit-maxUpsell"
                   type="number"
-                  placeholder="$62,500"
-                  value={editForm.totalPayback}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, totalPayback: e.target.value }))}
-                  data-testid="input-edit-total-payback"
+                  placeholder="$75,000"
+                  value={editForm.maxUpsell}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, maxUpsell: e.target.value }))}
+                  data-testid="input-edit-max-upsell"
                 />
               </div>
             </div>
@@ -978,13 +1000,14 @@ export default function Approvals() {
                 />
               </div>
               <div>
-                <Label htmlFor="edit-lender">Lender</Label>
+                <Label htmlFor="edit-totalPayback">Total Payback</Label>
                 <Input
-                  id="edit-lender"
-                  placeholder="Lender name"
-                  value={editForm.lender}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, lender: e.target.value }))}
-                  data-testid="input-edit-lender"
+                  id="edit-totalPayback"
+                  type="number"
+                  placeholder="$62,500"
+                  value={editForm.totalPayback}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, totalPayback: e.target.value }))}
+                  data-testid="input-edit-total-payback"
                 />
               </div>
             </div>

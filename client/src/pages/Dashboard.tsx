@@ -1101,6 +1101,7 @@ function BankStatementsTab() {
     term: string;
     paymentFrequency: string;
     factorRate: string;
+    maxUpsell: string;
     totalPayback: string;
     netAfterFees: string;
     notes: string;
@@ -1118,6 +1119,7 @@ function BankStatementsTab() {
     term: '',
     paymentFrequency: 'weekly',
     factorRate: '',
+    maxUpsell: '',
     totalPayback: '',
     netAfterFees: '',
     lender: '',
@@ -1199,6 +1201,7 @@ function BankStatementsTab() {
         term: decision.term || '',
         paymentFrequency: decision.paymentFrequency || 'weekly',
         factorRate: decision.factorRate?.toString() || '',
+        maxUpsell: decision.maxUpsell?.toString() || '',
         totalPayback: decision.totalPayback?.toString() || '',
         netAfterFees: decision.netAfterFees?.toString() || '',
         notes: decision.notes || '',
@@ -1218,6 +1221,7 @@ function BankStatementsTab() {
           term: old.term || '',
           paymentFrequency: old.paymentFrequency || 'weekly',
           factorRate: old.factorRate || '',
+          maxUpsell: old.maxUpsell || '',
           totalPayback: old.totalPayback || '',
           netAfterFees: old.netAfterFees || '',
           notes: old.notes || '',
@@ -1244,6 +1248,7 @@ function BankStatementsTab() {
           term: existing.term,
           paymentFrequency: existing.paymentFrequency || 'weekly',
           factorRate: existing.factorRate,
+          maxUpsell: existing.maxUpsell || '',
           totalPayback: existing.totalPayback,
           netAfterFees: existing.netAfterFees,
           lender: existing.lender,
@@ -1257,6 +1262,7 @@ function BankStatementsTab() {
         term: '',
         paymentFrequency: 'weekly',
         factorRate: '',
+        maxUpsell: '',
         totalPayback: '',
         netAfterFees: '',
         lender: '',
@@ -1297,6 +1303,7 @@ function BankStatementsTab() {
         term: approvalForm.term,
         paymentFrequency: approvalForm.paymentFrequency,
         factorRate: approvalForm.factorRate,
+        maxUpsell: approvalForm.maxUpsell,
         totalPayback: approvalForm.totalPayback,
         netAfterFees: approvalForm.netAfterFees,
         notes: approvalForm.notes,
@@ -2348,6 +2355,8 @@ function BankStatementsTab() {
                   data-testid="input-term"
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="paymentFrequency">Payment Frequency</Label>
                 <Select
@@ -2364,6 +2373,16 @@ function BankStatementsTab() {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label htmlFor="lender">Lender</Label>
+                <Input
+                  id="lender"
+                  placeholder="Lender name"
+                  value={approvalForm.lender}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, lender: e.target.value }))}
+                  data-testid="input-lender"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -2379,14 +2398,14 @@ function BankStatementsTab() {
                 />
               </div>
               <div>
-                <Label htmlFor="totalPayback">Total Payback</Label>
+                <Label htmlFor="maxUpsell">Max Upsell</Label>
                 <Input
-                  id="totalPayback"
+                  id="maxUpsell"
                   type="number"
-                  placeholder="$62,500"
-                  value={approvalForm.totalPayback}
-                  onChange={(e) => setApprovalForm(prev => ({ ...prev, totalPayback: e.target.value }))}
-                  data-testid="input-total-payback"
+                  placeholder="$75,000"
+                  value={approvalForm.maxUpsell}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, maxUpsell: e.target.value }))}
+                  data-testid="input-max-upsell"
                 />
               </div>
             </div>
@@ -2403,13 +2422,14 @@ function BankStatementsTab() {
                 />
               </div>
               <div>
-                <Label htmlFor="lender">Lender</Label>
+                <Label htmlFor="totalPayback">Total Payback</Label>
                 <Input
-                  id="lender"
-                  placeholder="Lender name"
-                  value={approvalForm.lender}
-                  onChange={(e) => setApprovalForm(prev => ({ ...prev, lender: e.target.value }))}
-                  data-testid="input-lender"
+                  id="totalPayback"
+                  type="number"
+                  placeholder="$62,500"
+                  value={approvalForm.totalPayback}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, totalPayback: e.target.value }))}
+                  data-testid="input-total-payback"
                 />
               </div>
             </div>

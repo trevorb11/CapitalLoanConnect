@@ -424,6 +424,7 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   term: text("term"), // e.g., "6 months", "12 months"
   paymentFrequency: text("payment_frequency"), // "daily", "weekly", "biweekly", or "monthly"
   factorRate: decimal("factor_rate", { precision: 5, scale: 4 }), // e.g., 1.25
+  maxUpsell: decimal("max_upsell", { precision: 12, scale: 2 }),
   totalPayback: decimal("total_payback", { precision: 12, scale: 2 }),
   netAfterFees: decimal("net_after_fees", { precision: 12, scale: 2 }),
   lender: text("lender"),
