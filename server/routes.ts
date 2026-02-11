@@ -2550,6 +2550,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       notes,
       approvalDate,
       declineReason,
+      followUpWorthy,
+      followUpDate,
       additionalApprovals
     } = req.body;
 
@@ -2606,6 +2608,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notes: syncedNotes,
         approvalDate: syncedApprovalDate,
         declineReason: declineReason || null,
+        followUpWorthy: followUpWorthy || false,
+        followUpDate: followUpDate ? new Date(followUpDate) : null,
         additionalApprovals: additionalApprovals || null,
         reviewedBy: reviewerEmail,
       });
@@ -2665,9 +2669,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log(`[UNDERWRITING PATCH] Updating decision ${id}, keys: ${Object.keys(updates).join(', ')}, approvals count: ${updates.additionalApprovals?.length || 'N/A'}`);
 
     try {
-      // Convert approvalDate string to Date if provided
+      // Convert date strings to Date objects if provided
       if (updates.approvalDate && typeof updates.approvalDate === 'string') {
         updates.approvalDate = new Date(updates.approvalDate);
+      }
+      if (updates.followUpDate && typeof updates.followUpDate === 'string') {
+        updates.followUpDate = new Date(updates.followUpDate);
       }
 
       // Sync primary approval data from additionalApprovals JSONB to top-level columns

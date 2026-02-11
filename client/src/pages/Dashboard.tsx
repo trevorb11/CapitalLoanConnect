@@ -1089,8 +1089,12 @@ function BankStatementsTab() {
   // Business-level underwriting decision state
   const [declineDialog, setDeclineDialog] = useState<{ businessEmail: string; businessName: string } | null>(null);
   const [declineReason, setDeclineReason] = useState('');
+  const [declineFollowUp, setDeclineFollowUp] = useState(false);
+  const [declineFollowUpDate, setDeclineFollowUpDate] = useState('');
   const [unqualifiedDialog, setUnqualifiedDialog] = useState<{ businessEmail: string; businessName: string } | null>(null);
   const [unqualifiedReason, setUnqualifiedReason] = useState('');
+  const [unqualifiedFollowUp, setUnqualifiedFollowUp] = useState(false);
+  const [unqualifiedFollowUpDate, setUnqualifiedFollowUpDate] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
 
   // Approval form dialog state (for adding/editing a single approval)
@@ -1277,6 +1281,8 @@ function BankStatementsTab() {
   const openDeclineDialog = (businessEmail: string, businessName: string) => {
     const existing = getBusinessDecision(businessEmail);
     setDeclineReason(existing?.declineReason || '');
+    setDeclineFollowUp(existing?.followUpWorthy || false);
+    setDeclineFollowUpDate(existing?.followUpDate ? new Date(existing.followUpDate).toISOString().split('T')[0] : '');
     setDeclineDialog({ businessEmail, businessName });
   };
 
@@ -1284,6 +1290,8 @@ function BankStatementsTab() {
   const openUnqualifiedDialog = (businessEmail: string, businessName: string) => {
     const existing = getBusinessDecision(businessEmail);
     setUnqualifiedReason(existing?.declineReason || '');
+    setUnqualifiedFollowUp(existing?.followUpWorthy || false);
+    setUnqualifiedFollowUpDate(existing?.followUpDate ? new Date(existing.followUpDate).toISOString().split('T')[0] : '');
     setUnqualifiedDialog({ businessEmail, businessName });
   };
 
@@ -1446,6 +1454,8 @@ function BankStatementsTab() {
           businessName: declineDialog.businessName,
           status: 'declined',
           declineReason: declineReason || null,
+          followUpWorthy: declineFollowUp || false,
+          followUpDate: declineFollowUp && declineFollowUpDate ? new Date(declineFollowUpDate).toISOString() : null,
         }),
       });
       if (res.ok) {
@@ -1478,6 +1488,8 @@ function BankStatementsTab() {
           businessName: unqualifiedDialog.businessName,
           status: 'unqualified',
           declineReason: unqualifiedReason || null,
+          followUpWorthy: unqualifiedFollowUp || false,
+          followUpDate: unqualifiedFollowUp && unqualifiedFollowUpDate ? new Date(unqualifiedFollowUpDate).toISOString() : null,
         }),
       });
       if (res.ok) {
@@ -1938,6 +1950,12 @@ function BankStatementsTab() {
                                     <ThumbsDown className="w-3 h-3" />
                                     Declined
                                   </Badge>
+                                  {decision.followUpWorthy && (
+                                    <Badge variant="outline" className="flex items-center gap-1 text-blue-600 border-blue-200 dark:text-blue-400 dark:border-blue-800">
+                                      <Calendar className="w-3 h-3" />
+                                      Follow Up{decision.followUpDate ? `: ${new Date(decision.followUpDate).toLocaleDateString()}` : ''}
+                                    </Badge>
+                                  )}
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -1954,6 +1972,12 @@ function BankStatementsTab() {
                                     <AlertCircle className="w-3 h-3" />
                                     Unqualified
                                   </Badge>
+                                  {decision.followUpWorthy && (
+                                    <Badge variant="outline" className="flex items-center gap-1 text-blue-600 border-blue-200 dark:text-blue-400 dark:border-blue-800">
+                                      <Calendar className="w-3 h-3" />
+                                      Follow Up{decision.followUpDate ? `: ${new Date(decision.followUpDate).toLocaleDateString()}` : ''}
+                                    </Badge>
+                                  )}
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -2505,6 +2529,41 @@ function BankStatementsTab() {
                 data-testid="input-decline-reason"
               />
             </div>
+            <div>
+              <Label>Worth Following Up With?</Label>
+              <div className="flex gap-2 mt-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={declineFollowUp ? "default" : "outline"}
+                  onClick={() => setDeclineFollowUp(true)}
+                  data-testid="button-decline-followup-yes"
+                >
+                  Yes
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={!declineFollowUp ? "default" : "outline"}
+                  onClick={() => { setDeclineFollowUp(false); setDeclineFollowUpDate(''); }}
+                  data-testid="button-decline-followup-no"
+                >
+                  No
+                </Button>
+              </div>
+            </div>
+            {declineFollowUp && (
+              <div>
+                <Label htmlFor="declineFollowUpDate">Follow-Up Date</Label>
+                <Input
+                  id="declineFollowUpDate"
+                  type="date"
+                  value={declineFollowUpDate}
+                  onChange={(e) => setDeclineFollowUpDate(e.target.value)}
+                  data-testid="input-decline-followup-date"
+                />
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"
@@ -2559,6 +2618,41 @@ function BankStatementsTab() {
                 data-testid="input-unqualified-reason"
               />
             </div>
+            <div>
+              <Label>Worth Following Up With?</Label>
+              <div className="flex gap-2 mt-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={unqualifiedFollowUp ? "default" : "outline"}
+                  onClick={() => setUnqualifiedFollowUp(true)}
+                  data-testid="button-unqualified-followup-yes"
+                >
+                  Yes
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={!unqualifiedFollowUp ? "default" : "outline"}
+                  onClick={() => { setUnqualifiedFollowUp(false); setUnqualifiedFollowUpDate(''); }}
+                  data-testid="button-unqualified-followup-no"
+                >
+                  No
+                </Button>
+              </div>
+            </div>
+            {unqualifiedFollowUp && (
+              <div>
+                <Label htmlFor="unqualifiedFollowUpDate">Follow-Up Date</Label>
+                <Input
+                  id="unqualifiedFollowUpDate"
+                  type="date"
+                  value={unqualifiedFollowUpDate}
+                  onChange={(e) => setUnqualifiedFollowUpDate(e.target.value)}
+                  data-testid="input-unqualified-followup-date"
+                />
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"
