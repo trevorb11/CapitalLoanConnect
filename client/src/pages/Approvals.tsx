@@ -171,14 +171,30 @@ export default function Approvals() {
     enabled: isAuthenticated,
   });
 
-  // Filter to only approved decisions, sorted by most recent first
+  // Helper: get the most recent approval date for a decision
+  const getMostRecentApprovalDate = (d: BusinessUnderwritingDecision): number => {
+    const dates: number[] = [];
+
+    if (d.approvalDate) {
+      dates.push(new Date(d.approvalDate).getTime());
+    }
+
+    const approvals = d.additionalApprovals as any[] | null;
+    if (approvals) {
+      approvals.forEach((appr: any) => {
+        if (appr.approvalDate) {
+          dates.push(new Date(appr.approvalDate).getTime());
+        }
+      });
+    }
+
+    return dates.length > 0 ? Math.max(...dates) : new Date(d.createdAt || 0).getTime();
+  };
+
+  // Filter to only approved decisions, sorted by most recent approval date first
   const approvedDecisions = (allDecisions || [])
     .filter(d => d.status === "approved")
-    .sort((a, b) => {
-      const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-      return dateB - dateA;
-    });
+    .sort((a, b) => getMostRecentApprovalDate(b) - getMostRecentApprovalDate(a));
 
   // Filter by search
   const filteredDecisions = approvedDecisions.filter(d => {
