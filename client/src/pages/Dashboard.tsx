@@ -1765,13 +1765,26 @@ function BankStatementsTab() {
     return acc;
   }, {} as Record<string, BankStatementUpload[]>) || {};
 
-  // Filter connections and uploads by search query
+  // Helper: check if an email has been decided (approved/declined/unqualified)
+  const emailHasDecision = (email: string): boolean => {
+    if (!email) return false;
+    const decision = getBusinessDecision(email);
+    return !!decision && ['approved', 'declined', 'unqualified'].includes(decision.status);
+  };
+
+  // Filter connections and uploads by search query, excluding decided businesses
   const lowerQuery = searchQuery.toLowerCase().trim();
-  const filteredConnections = bankConnections?.filter(conn => 
-    !lowerQuery || conn.businessName.toLowerCase().includes(lowerQuery)
-  ) || [];
+  const filteredConnections = bankConnections?.filter(conn => {
+    const matchesSearch = !lowerQuery || conn.businessName.toLowerCase().includes(lowerQuery);
+    const notDecided = !emailHasDecision(conn.email);
+    return matchesSearch && notDecided;
+  }) || [];
   const filteredUploadsByBusiness = Object.entries(uploadsByBusiness).filter(
-    ([businessName]) => !lowerQuery || businessName.toLowerCase().includes(lowerQuery)
+    ([businessName, uploads]) => {
+      const matchesSearch = !lowerQuery || businessName.toLowerCase().includes(lowerQuery);
+      const notDecided = !emailHasDecision(uploads[0]?.email || '');
+      return matchesSearch && notDecided;
+    }
   );
 
   const isLoading = connectionsLoading || uploadsLoading;
@@ -1824,34 +1837,7 @@ function BankStatementsTab() {
             />
           </div>
           
-          {/* Admin/Underwriting: Fix Missing View Tokens */}
-          {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                onClick={handleGenerateViewTokens}
-                disabled={generatingTokens}
-                data-testid="button-generate-view-tokens"
-              >
-                {generatingTokens ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Fixing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Fix Missing View Links
-                  </>
-                )}
-              </Button>
-              {tokenGenResult && (
-                <Badge variant={tokenGenResult.success ? "default" : "destructive"} className="text-xs">
-                  {tokenGenResult.message}
-                </Badge>
-              )}
-            </div>
-          )}
+          
         </div>
 
         {/* No results message */}
@@ -3053,14 +3039,7 @@ export default function Dashboard() {
                   </Button>
                 </Link>
               )}
-              {authData.role === "admin" && (
-                <Link href="/approvals">
-                  <Button variant="outline" data-testid="button-approvals">
-                    <Mail className="w-4 h-4 mr-2" />
-                    Approvals
-                  </Button>
-                </Link>
-              )}
+              
               <Button
                 variant="outline"
                 onClick={handleLogout}
@@ -3129,43 +3108,81 @@ export default function Dashboard() {
         </div>
 
         <Tabs defaultValue="applications" className="w-full">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-            <TabsList data-testid="tabs-dashboard">
-              <TabsTrigger value="applications" data-testid="tab-applications">
-                <FileText className="w-4 h-4 mr-2" />
-                Applications
-              </TabsTrigger>
-              <TabsTrigger value="bank-statements" data-testid="tab-bank-statements">
-                <Landmark className="w-4 h-4 mr-2" />
-                Bank Statements
-              </TabsTrigger>
-              {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
-                <TabsTrigger value="bot-attempts" data-testid="tab-bot-attempts">
-                  <Bot className="w-4 h-4 mr-2" />
-                  Bot Attempts
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <TabsList data-testid="tabs-dashboard">
+                <TabsTrigger value="applications" data-testid="tab-applications">
+                  <FileText className="w-4 h-4 mr-2" />
+                  Applications
                 </TabsTrigger>
-              )}
-            </TabsList>
-            <div className="flex gap-2 w-full md:w-auto">
-              <Button
-                variant="outline"
-                onClick={() => window.open("/api/application-template", "_blank")}
-                data-testid="button-download-template"
-                className="flex-1 md:flex-none"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Download Template
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => window.open("/api/applications/export/csv", "_blank")}
-                data-testid="button-export-csv"
-                className="flex-1 md:flex-none"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Export CSV
-              </Button>
+                <TabsTrigger value="bank-statements" data-testid="tab-bank-statements">
+                  <Landmark className="w-4 h-4 mr-2" />
+                  Bank Statements
+                </TabsTrigger>
+                {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
+                  <TabsTrigger value="bot-attempts" data-testid="tab-bot-attempts">
+                    <Bot className="w-4 h-4 mr-2" />
+                    Bot Attempts
+                  </TabsTrigger>
+                )}
+              </TabsList>
+              <div className="flex gap-2 w-full md:w-auto">
+                <Button
+                  variant="outline"
+                  onClick={() => window.open("/api/application-template", "_blank")}
+                  data-testid="button-download-template"
+                  className="flex-1 md:flex-none"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download Template
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => window.open("/api/applications/export/csv", "_blank")}
+                  data-testid="button-export-csv"
+                  className="flex-1 md:flex-none"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Export CSV
+                </Button>
+              </div>
             </div>
+
+            {/* Decision folder buttons - visible on all tabs */}
+            {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
+              <div className="flex flex-wrap gap-2 items-center">
+                <Link href="/approvals">
+                  <Button
+                    variant="outline"
+                    data-testid="button-approvals-folder"
+                    className="border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"
+                  >
+                    <ThumbsUp className="w-4 h-4 mr-2" />
+                    Approved
+                  </Button>
+                </Link>
+                <Link href="/declines">
+                  <Button
+                    variant="outline"
+                    data-testid="button-declined-folder"
+                    className="border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
+                  >
+                    <ThumbsDown className="w-4 h-4 mr-2" />
+                    Declined
+                  </Button>
+                </Link>
+                <Link href="/unqualified">
+                  <Button
+                    variant="outline"
+                    data-testid="button-unqualified-folder"
+                    className="border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400"
+                  >
+                    <AlertCircle className="w-4 h-4 mr-2" />
+                    Unqualified
+                  </Button>
+                </Link>
+              </div>
+            )}
           </div>
 
           <TabsContent value="applications">

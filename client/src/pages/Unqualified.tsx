@@ -6,12 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
 import {
   Building2,
-  XCircle,
+  AlertCircle,
   Loader2,
   ShieldAlert,
   ArrowLeft,
   Search,
-  CheckCircle2,
   Calendar,
   Trash2,
 } from "lucide-react";
@@ -45,7 +44,7 @@ function formatDate(date: string | Date | null | undefined): string {
   });
 }
 
-export default function Declines() {
+export default function Unqualified() {
   const [, setLocation] = useLocation();
   const [accessDenied, setAccessDenied] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
@@ -53,7 +52,6 @@ export default function Declines() {
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/underwriting-decisions/${id}`);
@@ -61,20 +59,19 @@ export default function Declines() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/underwriting-decisions"] });
       toast({
-        title: "Decline deleted",
-        description: "The decline record has been removed.",
+        title: "Record deleted",
+        description: "The unqualified record has been removed.",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to delete the decline record.",
+        description: "Failed to delete the record.",
         variant: "destructive",
       });
     },
   });
 
-  // Check authentication first
   useEffect(() => {
     async function checkAuth() {
       try {
@@ -96,7 +93,6 @@ export default function Declines() {
     checkAuth();
   }, [setLocation]);
 
-  // Fetch all underwriting decisions
   const { data: allDecisions, isLoading, error: decisionsError } = useQuery<BusinessUnderwritingDecision[]>({
     queryKey: ["/api/underwriting-decisions"],
     queryFn: async () => {
@@ -108,17 +104,15 @@ export default function Declines() {
     enabled: isAuthenticated,
   });
 
-  // Filter to only declined decisions, sorted by most recent first
-  const declinedDecisions = (allDecisions || [])
-    .filter(d => d.status === "declined")
+  const unqualifiedDecisions = (allDecisions || [])
+    .filter(d => d.status === "unqualified")
     .sort((a, b) => {
       const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
       const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
       return dateB - dateA;
     });
 
-  // Filter by search
-  const filteredDecisions = declinedDecisions.filter(d => {
+  const filteredDecisions = unqualifiedDecisions.filter(d => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return (
@@ -128,16 +122,12 @@ export default function Declines() {
     );
   });
 
-  const totalApproved = (allDecisions || []).filter(d => d.status === "approved").length;
-
-  // Check for 403 errors
   useEffect(() => {
     if (decisionsError && (decisionsError as any).message?.includes("403")) {
       setAccessDenied(true);
     }
   }, [decisionsError]);
 
-  // Show loading while checking auth
   if (!authChecked) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -146,7 +136,6 @@ export default function Declines() {
     );
   }
 
-  // Access denied view
   if (accessDenied) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -167,7 +156,6 @@ export default function Declines() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
@@ -180,39 +168,29 @@ export default function Declines() {
                 <ArrowLeft className="w-5 h-5" />
               </Button>
               <div>
-                <h1 className="text-2xl font-bold" data-testid="heading-declines">
-                  Declined Businesses
+                <h1 className="text-2xl font-bold" data-testid="heading-unqualified">
+                  Unqualified Businesses
                 </h1>
                 <p className="text-muted-foreground">
-                  Businesses declined from the bank statements review
+                  Businesses marked as unqualified from the bank statements review
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => setLocation("/approvals")}
-              className="flex items-center gap-2"
-              data-testid="button-view-approvals"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              View Approvals ({totalApproved})
-            </Button>
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 rounded-lg dark:bg-red-900">
-                  <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                <div className="p-2 bg-orange-100 rounded-lg dark:bg-orange-900">
+                  <AlertCircle className="w-5 h-5 text-orange-600 dark:text-orange-400" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold" data-testid="text-total-declines">
-                    {declinedDecisions.length}
+                  <div className="text-2xl font-bold" data-testid="text-total-unqualified">
+                    {unqualifiedDecisions.length}
                   </div>
-                  <div className="text-sm text-muted-foreground">Declined Businesses</div>
+                  <div className="text-sm text-muted-foreground">Unqualified Businesses</div>
                 </div>
               </div>
             </CardContent>
@@ -220,21 +198,20 @@ export default function Declines() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg dark:bg-green-900">
-                  <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-900">
+                  <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold" data-testid="text-total-approvals">
-                    {totalApproved}
+                  <div className="text-2xl font-bold" data-testid="text-follow-up-count">
+                    {unqualifiedDecisions.filter(d => d.followUpWorthy).length}
                   </div>
-                  <div className="text-sm text-muted-foreground">Approved Businesses</div>
+                  <div className="text-sm text-muted-foreground">Worth Following Up</div>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Search */}
         <div className="relative w-full sm:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -247,22 +224,21 @@ export default function Declines() {
           />
         </div>
 
-        {/* Declines List */}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
         ) : filteredDecisions.length === 0 ? (
           <Card className="p-12 text-center">
-            <XCircle className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
+            <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
             <p className="text-muted-foreground">
-              {searchQuery ? "No declined businesses match your search" : "No declined businesses yet"}
+              {searchQuery ? "No unqualified businesses match your search" : "No unqualified businesses yet"}
             </p>
           </Card>
         ) : (
           <div className="space-y-4">
             {filteredDecisions.map((decision) => (
-              <Card key={decision.id} className="p-6 hover-elevate" data-testid={`card-decline-${decision.id}`}>
+              <Card key={decision.id} className="p-6 hover-elevate" data-testid={`card-unqualified-${decision.id}`}>
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-3 flex-wrap">
@@ -270,9 +246,9 @@ export default function Declines() {
                         <Building2 className="w-5 h-5 text-primary" />
                         {decision.businessName || decision.businessEmail}
                       </h3>
-                      <Badge variant="destructive" className="flex items-center gap-1">
-                        <XCircle className="w-3 h-3" />
-                        Declined
+                      <Badge className="bg-orange-600 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Unqualified
                       </Badge>
                       {decision.followUpWorthy && (
                         <Badge variant="outline" className="flex items-center gap-1 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400">
@@ -288,8 +264,8 @@ export default function Declines() {
 
                     {decision.declineReason && (
                       <div className="text-sm mb-3">
-                        <div className="text-muted-foreground mb-1">Decline Reason</div>
-                        <div className="p-3 bg-red-50 dark:bg-red-950/30 rounded-md border border-red-200 dark:border-red-900">
+                        <div className="text-muted-foreground mb-1">Reason</div>
+                        <div className="p-3 bg-orange-50 dark:bg-orange-950/30 rounded-md border border-orange-200 dark:border-orange-900">
                           {decision.declineReason}
                         </div>
                       </div>
@@ -313,7 +289,6 @@ export default function Declines() {
                     </div>
                   </div>
 
-                  {/* Delete button */}
                   <div className="flex items-start">
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -321,16 +296,16 @@ export default function Declines() {
                           variant="ghost"
                           size="icon"
                           className="text-muted-foreground hover:text-destructive"
-                          data-testid={`button-delete-decline-${decision.id}`}
+                          data-testid={`button-delete-unqualified-${decision.id}`}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Decline Record</AlertDialogTitle>
+                          <AlertDialogTitle>Delete Record</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to delete the decline record for{" "}
+                            Are you sure you want to delete the unqualified record for{" "}
                             <strong>{decision.businessName || decision.businessEmail}</strong>?
                             This action cannot be undone.
                           </AlertDialogDescription>

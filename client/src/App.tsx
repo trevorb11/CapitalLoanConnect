@@ -36,6 +36,7 @@ import PartnerDashboard from "@/pages/PartnerDashboard";
 import ReferralLanding from "@/pages/ReferralLanding";
 import Approvals from "@/pages/Approvals";
 import Declines from "@/pages/Declines";
+import Unqualified from "@/pages/Unqualified";
 import RepConsole from "@/pages/RepConsole";
 import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
 import ApprovalLetter from "@/pages/ApprovalLetter";
@@ -94,6 +95,7 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/approvals" component={Approvals} />
       <Route path="/declines" component={Declines} />
+      <Route path="/unqualified" component={Unqualified} />
       <Route path="/agents" component={AgentSelector} />
 
       {/* Rep Console - Contact 360 View */}
