@@ -1071,7 +1071,7 @@ const INDUSTRIES = [
 
 // BusinessDecisionDialogData removed - approvals and declines now use separate dialogs
 
-function BankStatementsTab() {
+function BankStatementsTab({ searchQuery }: { searchQuery: string }) {
   const { toast } = useToast();
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
   const [selectedAssetReport, setSelectedAssetReport] = useState<BankConnection | null>(null);
@@ -1082,7 +1082,6 @@ function BankStatementsTab() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisTitle, setAnalysisTitle] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
   const [generatingTokens, setGeneratingTokens] = useState(false);
   const [tokenGenResult, setTokenGenResult] = useState<{ success: boolean; message: string } | null>(null);
   const [updatingApproval, setUpdatingApproval] = useState<string | null>(null);
@@ -1790,24 +1789,25 @@ function BankStatementsTab() {
     return acc;
   }, {} as Record<string, BankStatementUpload[]>) || {};
 
-  // Helper: check if an email has been decided (approved/declined/unqualified)
+  // Helper: check if an email has been decided (approved/declined/unqualified/funded)
   const emailHasDecision = (email: string): boolean => {
     if (!email) return false;
     const decision = getBusinessDecision(email);
-    return !!decision && ['approved', 'declined', 'unqualified'].includes(decision.status);
+    return !!decision && ['approved', 'declined', 'unqualified', 'funded'].includes(decision.status);
   };
 
   // Filter connections and uploads by search query, excluding decided businesses
   const lowerQuery = searchQuery.toLowerCase().trim();
   const filteredConnections = bankConnections?.filter(conn => {
-    const matchesSearch = !lowerQuery || conn.businessName.toLowerCase().includes(lowerQuery);
+    const matchesSearch = !lowerQuery || conn.businessName.toLowerCase().includes(lowerQuery) || conn.email?.toLowerCase().includes(lowerQuery);
     const notDecided = !emailHasDecision(conn.email);
     return matchesSearch && notDecided;
   }) || [];
   const filteredUploadsByBusiness = Object.entries(uploadsByBusiness).filter(
     ([businessName, uploads]) => {
-      const matchesSearch = !lowerQuery || businessName.toLowerCase().includes(lowerQuery);
-      const notDecided = !emailHasDecision(uploads[0]?.email || '');
+      const email = uploads[0]?.email || '';
+      const matchesSearch = !lowerQuery || businessName.toLowerCase().includes(lowerQuery) || email.toLowerCase().includes(lowerQuery);
+      const notDecided = !emailHasDecision(email);
       return matchesSearch && notDecided;
     }
   ).sort(([, uploadsA], [, uploadsB]) => {
@@ -1857,23 +1857,6 @@ function BankStatementsTab() {
   return (
     <>
       <div className="space-y-6">
-        {/* Search Bar and Admin Actions */}
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-          <div className="relative w-full sm:max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search by business name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-              data-testid="input-bank-search"
-            />
-          </div>
-          
-          
-        </div>
-
         {/* No results message */}
         {isEmpty && searchQuery && (
           <Card className="p-8" data-testid="card-no-results">
@@ -2911,7 +2894,7 @@ function BotAttemptsTab() {
 
 export default function Dashboard() {
   const { toast } = useToast();
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial" | "low-revenue">("all");
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>("all");
   const [selectedAppDetails, setSelectedAppDetails] = useState<LoanApplication | null>(null);
@@ -3076,10 +3059,10 @@ export default function Dashboard() {
     ? applications
         .filter((app) => {
           const matchesSearch =
-            (app.fullName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (app.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (app.businessName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (app.legalBusinessName || "").toLowerCase().includes(searchTerm.toLowerCase());
+            (app.fullName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (app.email || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (app.businessName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (app.legalBusinessName || "").toLowerCase().includes(searchQuery.toLowerCase());
 
           // Parse monthly revenue for low-revenue filter
           const revenueStr = app.monthlyRevenue || app.averageMonthlyRevenue || "0";
@@ -3338,19 +3321,21 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Dashboard-wide Search Bar */}
+          <div className="relative w-full sm:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, email, or business..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+              data-testid="input-dashboard-search"
+            />
+          </div>
+
           <TabsContent value="applications">
             <Card className="p-6 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <Input
-                placeholder="Search by name, email, or business..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-                data-testid="input-search-applications"
-              />
-            </div>
             <div className="flex gap-2 flex-wrap items-center">
               <Button
                 variant={filterStatus === "all" ? "default" : "outline"}
@@ -3545,7 +3530,7 @@ export default function Dashboard() {
         ) : (
           <Card className="p-12" data-testid="card-empty-state">
             <p className="text-center text-muted-foreground" data-testid="text-empty-message">
-              {searchTerm || filterStatus !== "all" 
+              {searchQuery || filterStatus !== "all"
                 ? "No applications match your filters" 
                 : authData.role === "agent" 
                   ? "No applications submitted through your link yet"
@@ -3556,7 +3541,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="bank-statements">
-            <BankStatementsTab />
+            <BankStatementsTab searchQuery={searchQuery} />
           </TabsContent>
 
           {/* Bot Attempts Tab - Admin only */}
