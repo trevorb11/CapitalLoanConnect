@@ -191,12 +191,16 @@ export default function Unqualified() {
     enabled: isAuthenticated,
   });
 
+  // Sort by decision date first, then createdAt fallback
   const unqualifiedDecisions = (allDecisions || [])
     .filter(d => d.status === "unqualified")
     .sort((a, b) => {
-      const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-      return dateB - dateA;
+      const getDecisionDate = (d: any): number => {
+        if (d.approvalDate) return new Date(d.approvalDate).getTime();
+        if (d.createdAt) return new Date(d.createdAt).getTime();
+        return 0;
+      };
+      return getDecisionDate(b) - getDecisionDate(a);
     });
 
   const filteredDecisions = unqualifiedDecisions.filter(d => {

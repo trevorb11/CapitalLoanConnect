@@ -1789,8 +1789,13 @@ function BankStatementsTab() {
       return matchesSearch && notDecided;
     }
   ).sort(([, uploadsA], [, uploadsB]) => {
-    const mostRecentA = Math.max(...uploadsA.map(u => u.createdAt ? new Date(u.createdAt).getTime() : 0));
-    const mostRecentB = Math.max(...uploadsB.map(u => u.createdAt ? new Date(u.createdAt).getTime() : 0));
+    const getBestDate = (u: BankStatementUpload): number => {
+      if (u.receivedAt) return new Date(u.receivedAt).getTime();
+      if (u.createdAt) return new Date(u.createdAt).getTime();
+      return 0;
+    };
+    const mostRecentA = Math.max(...uploadsA.map(getBestDate));
+    const mostRecentB = Math.max(...uploadsB.map(getBestDate));
     return mostRecentB - mostRecentA;
   });
 

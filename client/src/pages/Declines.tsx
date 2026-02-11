@@ -195,13 +195,16 @@ export default function Declines() {
     enabled: isAuthenticated,
   });
 
-  // Filter to only declined decisions, sorted by most recent first
+  // Filter to only declined decisions, sorted by decision date first, then createdAt fallback
   const declinedDecisions = (allDecisions || [])
     .filter(d => d.status === "declined")
     .sort((a, b) => {
-      const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-      return dateB - dateA;
+      const getDecisionDate = (d: any): number => {
+        if (d.approvalDate) return new Date(d.approvalDate).getTime();
+        if (d.createdAt) return new Date(d.createdAt).getTime();
+        return 0;
+      };
+      return getDecisionDate(b) - getDecisionDate(a);
     });
 
   // Filter by search
