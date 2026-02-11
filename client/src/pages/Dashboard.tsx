@@ -3110,22 +3110,52 @@ export default function Dashboard() {
         <Tabs defaultValue="applications" className="w-full">
           <div className="flex flex-col gap-4 mb-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <TabsList data-testid="tabs-dashboard">
-                <TabsTrigger value="applications" data-testid="tab-applications">
-                  <FileText className="w-4 h-4 mr-2" />
-                  Applications
-                </TabsTrigger>
-                <TabsTrigger value="bank-statements" data-testid="tab-bank-statements">
-                  <Landmark className="w-4 h-4 mr-2" />
-                  Bank Statements
-                </TabsTrigger>
-                {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
-                  <TabsTrigger value="bot-attempts" data-testid="tab-bot-attempts">
-                    <Bot className="w-4 h-4 mr-2" />
-                    Bot Attempts
+              <div className="flex flex-wrap items-center gap-2">
+                <TabsList data-testid="tabs-dashboard">
+                  <TabsTrigger value="applications" data-testid="tab-applications">
+                    <FileText className="w-4 h-4 mr-2" />
+                    Applications
                   </TabsTrigger>
+                  <TabsTrigger value="bank-statements" data-testid="tab-bank-statements">
+                    <Landmark className="w-4 h-4 mr-2" />
+                    Bank Statements
+                  </TabsTrigger>
+                </TabsList>
+                {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
+                  <>
+                    <Link href="/approvals">
+                      <Button
+                        variant="outline"
+                        data-testid="button-approvals-folder"
+                        className="border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"
+                      >
+                        <ThumbsUp className="w-4 h-4 mr-2" />
+                        Approved
+                      </Button>
+                    </Link>
+                    <Link href="/declines">
+                      <Button
+                        variant="outline"
+                        data-testid="button-declined-folder"
+                        className="border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
+                      >
+                        <ThumbsDown className="w-4 h-4 mr-2" />
+                        Declined
+                      </Button>
+                    </Link>
+                    <Link href="/unqualified">
+                      <Button
+                        variant="outline"
+                        data-testid="button-unqualified-folder"
+                        className="border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400"
+                      >
+                        <AlertCircle className="w-4 h-4 mr-2" />
+                        Unqualified
+                      </Button>
+                    </Link>
+                  </>
                 )}
-              </TabsList>
+              </div>
               <div className="flex gap-2 w-full md:w-auto">
                 <Button
                   variant="outline"
@@ -3145,44 +3175,16 @@ export default function Dashboard() {
                   <FileText className="w-4 h-4 mr-2" />
                   Export CSV
                 </Button>
+                {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
+                  <TabsList>
+                    <TabsTrigger value="bot-attempts" data-testid="tab-bot-attempts">
+                      <Bot className="w-4 h-4 mr-2" />
+                      Bot Attempts
+                    </TabsTrigger>
+                  </TabsList>
+                )}
               </div>
             </div>
-
-            {/* Decision folder buttons - visible on all tabs */}
-            {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
-              <div className="flex flex-wrap gap-2 items-center">
-                <Link href="/approvals">
-                  <Button
-                    variant="outline"
-                    data-testid="button-approvals-folder"
-                    className="border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"
-                  >
-                    <ThumbsUp className="w-4 h-4 mr-2" />
-                    Approved
-                  </Button>
-                </Link>
-                <Link href="/declines">
-                  <Button
-                    variant="outline"
-                    data-testid="button-declined-folder"
-                    className="border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
-                  >
-                    <ThumbsDown className="w-4 h-4 mr-2" />
-                    Declined
-                  </Button>
-                </Link>
-                <Link href="/unqualified">
-                  <Button
-                    variant="outline"
-                    data-testid="button-unqualified-folder"
-                    className="border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400"
-                  >
-                    <AlertCircle className="w-4 h-4 mr-2" />
-                    Unqualified
-                  </Button>
-                </Link>
-              </div>
-            )}
           </div>
 
           <TabsContent value="applications">
