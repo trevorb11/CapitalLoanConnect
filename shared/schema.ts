@@ -439,6 +439,10 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   // Decline fields (populated when status = "declined")
   declineReason: text("decline_reason"),
   
+  // Follow-up tracking (for declined/unqualified)
+  followUpWorthy: boolean("follow_up_worthy"),
+  followUpDate: timestamp("follow_up_date"),
+  
   // Approval letter page slug (generated when approved)
   approvalSlug: text("approval_slug").unique(),
 
