@@ -136,6 +136,7 @@ export default function Approvals() {
   const [csvContent, setCsvContent] = useState('');
   const [csvUploading, setCsvUploading] = useState(false);
   const [csvResults, setCsvResults] = useState<{ imported: number; errors: number; results?: any[] } | null>(null);
+  const [expandedAdditionalApprovals, setExpandedAdditionalApprovals] = useState<Set<string>>(new Set());
 
   // Check authentication first
   useEffect(() => {
@@ -901,9 +902,14 @@ export default function Approvals() {
                       {decision.businessEmail}
                     </div>
 
-                    {/* All Approvals List */}
-                    <div className="space-y-3">
-                      {approvals.map((appr) => (
+                    {/* Best Approval (Primary) at Top */}
+                    {(() => {
+                      const sortedApprovals = [...approvals].sort((a, b) => (a.isPrimary ? -1 : b.isPrimary ? 1 : 0));
+                      const bestApproval = sortedApprovals[0];
+                      const additionalApprovals = sortedApprovals.slice(1);
+                      const isAdditionalExpanded = expandedAdditionalApprovals.has(decision.id);
+
+                      const renderApproval = (appr: FullApprovalEntry) => (
                         <div
                           key={appr.id}
                           className={`p-4 rounded-lg border ${
@@ -917,14 +923,14 @@ export default function Approvals() {
                               <button
                                 onClick={() => handleSetPrimary(decision, appr.id)}
                                 className={`flex-shrink-0 ${appr.isPrimary ? 'text-yellow-500' : 'text-muted-foreground hover:text-yellow-500'}`}
-                                title={appr.isPrimary ? 'Primary approval' : 'Set as primary'}
+                                title={appr.isPrimary ? 'Best approval' : 'Set as best approval'}
                                 data-testid={`button-set-primary-${appr.id}`}
                               >
                                 <Star className={`w-4 h-4 ${appr.isPrimary ? 'fill-yellow-500' : ''}`} />
                               </button>
                               {appr.isPrimary && (
                                 <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 text-xs">
-                                  Primary
+                                  Best Approval
                                 </Badge>
                               )}
                               <span className="font-semibold flex items-center gap-1">
@@ -1000,8 +1006,36 @@ export default function Approvals() {
                             </div>
                           )}
                         </div>
-                      ))}
-                    </div>
+                      );
+
+                      return (
+                        <div className="space-y-3">
+                          {bestApproval && renderApproval(bestApproval)}
+                          {additionalApprovals.length > 0 && (
+                            <div>
+                              <button
+                                onClick={() => setExpandedAdditionalApprovals(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(decision.id)) next.delete(decision.id);
+                                  else next.add(decision.id);
+                                  return next;
+                                })}
+                                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
+                                data-testid={`button-toggle-additional-${decision.id}`}
+                              >
+                                {isAdditionalExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                {isAdditionalExpanded ? 'Hide' : 'View'} {additionalApprovals.length} Additional {additionalApprovals.length === 1 ? 'Approval' : 'Approvals'}
+                              </button>
+                              {isAdditionalExpanded && (
+                                <div className="space-y-3">
+                                  {additionalApprovals.map(renderApproval)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {(() => {
                       const uploads = getUploadsForEmail(decision.businessEmail || '');

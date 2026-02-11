@@ -2561,8 +2561,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ error: "Business email is required" });
     }
 
-    if (!status || !['approved', 'declined', 'unqualified'].includes(status)) {
-      return res.status(400).json({ error: "Status must be 'approved', 'declined', or 'unqualified'" });
+    if (!status || !['approved', 'declined', 'unqualified', 'funded'].includes(status)) {
+      return res.status(400).json({ error: "Status must be 'approved', 'declined', 'unqualified', or 'funded'" });
     }
 
     try {
@@ -2975,7 +2975,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Approval letter not found" });
       }
       
-      if (decision.status !== 'approved') {
+      if (decision.status !== 'approved' && decision.status !== 'funded') {
         return res.status(404).json({ error: "No valid approval found" });
       }
       

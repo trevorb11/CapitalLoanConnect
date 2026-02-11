@@ -66,6 +66,7 @@ function formatDate(date: string | Date | null | undefined): string {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -134,7 +135,7 @@ export default function Declines() {
         notes: editForm.notes || null,
         followUpWorthy: editForm.followUpWorthy,
         followUpDate: editForm.followUpWorthy && editForm.followUpDate
-          ? new Date(editForm.followUpDate).toISOString()
+          ? editForm.followUpDate + 'T12:00:00.000Z'
           : null,
       },
     });
