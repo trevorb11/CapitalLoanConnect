@@ -12,7 +12,7 @@ import {
   ArrowLeft,
   Search,
   CheckCircle2,
-  Calendar,
+  Calendar as CalendarIcon,
   Trash2,
   Eye,
   Download,
@@ -20,8 +20,11 @@ import {
   FolderArchive,
   ChevronDown,
   ChevronUp,
+  Pencil,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -35,6 +38,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 import type { BusinessUnderwritingDecision } from "@shared/schema";
 
 interface AuthState {
@@ -68,6 +76,69 @@ export default function Declines() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
+
+  // Edit state
+  const [editDialog, setEditDialog] = useState<BusinessUnderwritingDecision | null>(null);
+  const [editForm, setEditForm] = useState({
+    declineReason: '',
+    notes: '',
+    followUpWorthy: false,
+    followUpDate: '',
+  });
+
+  const openEditDialog = (decision: BusinessUnderwritingDecision) => {
+    setEditForm({
+      declineReason: decision.declineReason || '',
+      notes: decision.notes || '',
+      followUpWorthy: decision.followUpWorthy || false,
+      followUpDate: decision.followUpDate ? new Date(decision.followUpDate).toISOString().split('T')[0] : '',
+    });
+    setEditDialog(decision);
+  };
+
+  // Edit mutation
+  const editMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, any> }) => {
+      const res = await fetch(`/api/underwriting-decisions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/underwriting-decisions"] });
+      setEditDialog(null);
+      toast({
+        title: "Updated",
+        description: "Decline record has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update the decline record.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSaveEdit = () => {
+    if (!editDialog) return;
+    editMutation.mutate({
+      id: editDialog.id,
+      data: {
+        declineReason: editForm.declineReason,
+        notes: editForm.notes || null,
+        followUpWorthy: editForm.followUpWorthy,
+        followUpDate: editForm.followUpWorthy && editForm.followUpDate
+          ? new Date(editForm.followUpDate).toISOString()
+          : null,
+      },
+    });
+  };
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -377,7 +448,7 @@ export default function Declines() {
                       </Badge>
                       {decision.followUpWorthy && (
                         <Badge variant="outline" className="flex items-center gap-1 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400">
-                          <Calendar className="w-3 h-3" />
+                          <CalendarIcon className="w-3 h-3" />
                           Follow Up{decision.followUpDate ? `: ${formatDate(decision.followUpDate)}` : ''}
                         </Badge>
                       )}
@@ -408,7 +479,7 @@ export default function Declines() {
                         <span>Reviewed by: {decision.reviewedBy}</span>
                       )}
                       <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
+                        <CalendarIcon className="w-3 h-3" />
                         {formatDate(decision.updatedAt)}
                       </span>
                     </div>
@@ -480,8 +551,17 @@ export default function Declines() {
                     })()}
                   </div>
 
-                  {/* Delete button */}
-                  <div className="flex items-start">
+                  {/* Edit and Delete buttons */}
+                  <div className="flex items-start gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-primary"
+                      onClick={() => openEditDialog(decision)}
+                      data-testid={`button-edit-decline-${decision.id}`}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
@@ -525,6 +605,109 @@ export default function Declines() {
           </div>
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editDialog} onOpenChange={(open) => !open && setEditDialog(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Edit Decline: {editDialog?.businessName || editDialog?.businessEmail}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label htmlFor="edit-declineReason">Decline Reason</Label>
+              <Textarea
+                id="edit-declineReason"
+                value={editForm.declineReason}
+                onChange={(e) => setEditForm(prev => ({ ...prev, declineReason: e.target.value }))}
+                rows={3}
+                data-testid="input-edit-decline-reason"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea
+                id="edit-notes"
+                value={editForm.notes}
+                onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                rows={2}
+                data-testid="input-edit-notes"
+              />
+            </div>
+            <div>
+              <Label className="mb-2 block">Follow Up?</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={editForm.followUpWorthy ? "default" : "outline"}
+                  onClick={() => setEditForm(prev => ({ ...prev, followUpWorthy: true }))}
+                  data-testid="button-edit-followup-yes"
+                >
+                  Yes
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={!editForm.followUpWorthy ? "default" : "outline"}
+                  onClick={() => setEditForm(prev => ({ ...prev, followUpWorthy: false, followUpDate: '' }))}
+                  data-testid="button-edit-followup-no"
+                >
+                  No
+                </Button>
+              </div>
+            </div>
+            {editForm.followUpWorthy && (
+              <div>
+                <Label>Follow-Up Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      data-testid="input-edit-followup-date"
+                      className={cn("w-full justify-start text-left font-normal", !editForm.followUpDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {editForm.followUpDate ? format(new Date(editForm.followUpDate + 'T00:00:00'), "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={editForm.followUpDate ? new Date(editForm.followUpDate + 'T00:00:00') : undefined}
+                      onSelect={(day) => setEditForm(prev => ({ ...prev, followUpDate: day ? format(day, "yyyy-MM-dd") : '' }))}
+                      fromYear={2024}
+                      toYear={new Date().getFullYear() + 1}
+                      captionLayout="dropdown-buttons"
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setEditDialog(null)}
+                data-testid="button-cancel-edit"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                disabled={editMutation.isPending}
+                data-testid="button-save-edit"
+              >
+                {editMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : null}
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
