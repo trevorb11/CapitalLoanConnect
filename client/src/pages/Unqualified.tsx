@@ -13,6 +13,12 @@ import {
   Search,
   Calendar,
   Trash2,
+  Eye,
+  Download,
+  FileText,
+  FolderArchive,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +39,16 @@ import type { BusinessUnderwritingDecision } from "@shared/schema";
 interface AuthState {
   isAuthenticated: boolean;
   role?: 'admin' | 'agent' | 'underwriting';
+}
+
+interface BankStatementUpload {
+  id: string;
+  email: string;
+  businessName: string;
+  originalFileName: string;
+  fileSize: number;
+  createdAt: string;
+  source?: string;
 }
 
 function formatDate(date: string | Date | null | undefined): string {
@@ -121,6 +137,91 @@ export default function Unqualified() {
       (d.declineReason || "").toLowerCase().includes(q)
     );
   });
+
+  const { data: bankUploads } = useQuery<BankStatementUpload[]>({
+    queryKey: ['/api/bank-statements/uploads'],
+    queryFn: async () => {
+      const res = await fetch('/api/bank-statements/uploads', { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
+
+  const [expandedStatements, setExpandedStatements] = useState<Set<string>>(new Set());
+
+  const getUploadsForEmail = (email: string): BankStatementUpload[] => {
+    if (!email || !bankUploads) return [];
+    return bankUploads.filter(u => u.email.toLowerCase() === email.toLowerCase());
+  };
+
+  const handleViewStatement = (uploadId: string) => {
+    window.open(`/api/bank-statements/view/${uploadId}`, '_blank');
+  };
+
+  const handleDownloadStatement = async (uploadId: string, fileName: string) => {
+    try {
+      const res = await fetch(`/api/bank-statements/download/${uploadId}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download error:', error);
+    }
+  };
+
+  const handleViewAll = async (email: string) => {
+    try {
+      const res = await fetch(`/api/bank-statements/view-url?email=${encodeURIComponent(email)}`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        window.open(data.url, '_blank');
+      }
+    } catch (err) {
+      console.error('Failed to get view URL:', err);
+    }
+  };
+
+  const handleBulkDownload = async (businessName: string) => {
+    try {
+      const res = await fetch(`/api/bank-statements/download-all/${encodeURIComponent(businessName)}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Bulk download failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeBusinessName = businessName.replace(/[^a-zA-Z0-9-_]/g, '_').substring(0, 50);
+      a.download = `${safeBusinessName}_Bank_Statements.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Bulk download error:', error);
+    }
+  };
+
+  const toggleStatements = (id: string) => {
+    setExpandedStatements(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
 
   useEffect(() => {
     if (decisionsError && (decisionsError as any).message?.includes("403")) {
@@ -287,6 +388,72 @@ export default function Unqualified() {
                         {formatDate(decision.updatedAt)}
                       </span>
                     </div>
+
+                    {(() => {
+                      const uploads = getUploadsForEmail(decision.businessEmail || '');
+                      if (uploads.length === 0) return null;
+                      const isExpanded = expandedStatements.has(decision.id);
+                      return (
+                        <div className="mt-4 pt-4 border-t">
+                          <div className="flex flex-wrap gap-2 items-center mb-2">
+                            <Badge variant="outline" className="flex items-center gap-1">
+                              <FileText className="w-3 h-3" />
+                              {uploads.length} Statement{uploads.length !== 1 ? 's' : ''}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewAll(decision.businessEmail || '')}
+                              data-testid={`button-view-all-${decision.id}`}
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              View All
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleBulkDownload(decision.businessName || decision.businessEmail || '')}
+                              data-testid={`button-download-all-${decision.id}`}
+                            >
+                              <FolderArchive className="w-4 h-4 mr-1" />
+                              Download All
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleStatements(decision.id)}
+                              data-testid={`button-toggle-statements-${decision.id}`}
+                            >
+                              {isExpanded ? <ChevronUp className="w-4 h-4 mr-1" /> : <ChevronDown className="w-4 h-4 mr-1" />}
+                              {isExpanded ? 'Hide' : 'Show'} Individual Files
+                            </Button>
+                          </div>
+                          {isExpanded && (
+                            <div className="space-y-2 mt-3">
+                              {uploads.map((upload) => (
+                                <div key={upload.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <FileText className="w-4 h-4 text-primary flex-shrink-0" />
+                                    <span className="text-sm font-medium truncate">{upload.originalFileName}</span>
+                                    <span className="text-xs text-muted-foreground flex-shrink-0">{formatFileSize(upload.fileSize)}</span>
+                                  </div>
+                                  <div className="flex gap-2 flex-shrink-0">
+                                    <Button variant="outline" size="sm" onClick={() => handleViewStatement(upload.id)} data-testid={`button-view-statement-${upload.id}`}>
+                                      <Eye className="w-4 h-4 mr-1" />
+                                      View
+                                    </Button>
+                                    <Button variant="outline" size="sm" onClick={() => handleDownloadStatement(upload.id, upload.originalFileName)} data-testid={`button-download-statement-${upload.id}`}>
+                                      <Download className="w-4 h-4 mr-1" />
+                                      Download
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="flex items-start">
