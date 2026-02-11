@@ -37,6 +37,7 @@ import ReferralLanding from "@/pages/ReferralLanding";
 import Approvals from "@/pages/Approvals";
 import Declines from "@/pages/Declines";
 import Unqualified from "@/pages/Unqualified";
+import Funded from "@/pages/Funded";
 import RepConsole from "@/pages/RepConsole";
 import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
 import ApprovalLetter from "@/pages/ApprovalLetter";
@@ -96,6 +97,7 @@ function Router() {
       <Route path="/approvals" component={Approvals} />
       <Route path="/declines" component={Declines} />
       <Route path="/unqualified" component={Unqualified} />
+      <Route path="/funded" component={Funded} />
       <Route path="/agents" component={AgentSelector} />
 
       {/* Rep Console - Contact 360 View */}

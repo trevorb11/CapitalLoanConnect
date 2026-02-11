@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2 } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1099,6 +1099,7 @@ function BankStatementsTab() {
   const [unqualifiedFollowUp, setUnqualifiedFollowUp] = useState(false);
   const [unqualifiedFollowUpDate, setUnqualifiedFollowUpDate] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
+  const [expandedAdditionalApprovals, setExpandedAdditionalApprovals] = useState<Set<string>>(new Set());
 
   // Approval form dialog state (for adding/editing a single approval)
   interface FullApprovalEntry {
@@ -1187,7 +1188,7 @@ function BankStatementsTab() {
   // Helper: get all approvals for a business from the decision's JSONB (migration-aware)
   const getApprovalsForBusiness = (email: string): FullApprovalEntry[] => {
     const decision = getBusinessDecision(email);
-    if (!decision || decision.status !== 'approved') return [];
+    if (!decision || (decision.status !== 'approved' && decision.status !== 'funded')) return [];
 
     const raw = decision.additionalApprovals as any[] | null;
 
@@ -1458,7 +1459,7 @@ function BankStatementsTab() {
           status: 'declined',
           declineReason: declineReason || null,
           followUpWorthy: declineFollowUp || false,
-          followUpDate: declineFollowUp && declineFollowUpDate ? new Date(declineFollowUpDate).toISOString() : null,
+          followUpDate: declineFollowUp && declineFollowUpDate ? declineFollowUpDate + 'T12:00:00.000Z' : null,
         }),
       });
       if (res.ok) {
@@ -1492,7 +1493,7 @@ function BankStatementsTab() {
           status: 'unqualified',
           declineReason: unqualifiedReason || null,
           followUpWorthy: unqualifiedFollowUp || false,
-          followUpDate: unqualifiedFollowUp && unqualifiedFollowUpDate ? new Date(unqualifiedFollowUpDate).toISOString() : null,
+          followUpDate: unqualifiedFollowUp && unqualifiedFollowUpDate ? unqualifiedFollowUpDate + 'T12:00:00.000Z' : null,
         }),
       });
       if (res.ok) {
@@ -1508,6 +1509,27 @@ function BankStatementsTab() {
       toast({ title: "Save Failed", description: error.message || "An unexpected error occurred", variant: "destructive" });
     } finally {
       setSavingDecision(false);
+    }
+  };
+
+  // Mark a business as funded (change status from approved to funded)
+  const handleMarkFunded = async (businessEmail: string) => {
+    const decision = getBusinessDecision(businessEmail);
+    if (!decision) return;
+    try {
+      const res = await fetch(`/api/underwriting-decisions/${decision.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'funded' }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ['/api/underwriting-decisions'] });
+        toast({ title: "Marked as Funded", description: `${decision.businessName || businessEmail} has been marked as funded` });
+      }
+    } catch (error) {
+      console.error('Error marking as funded:', error);
+      toast({ title: "Error", description: "Failed to mark as funded", variant: "destructive" });
     }
   };
 
@@ -1940,6 +1962,36 @@ function BankStatementsTab() {
                                     <Plus className="w-3 h-3 mr-1" />
                                     Add Approval
                                   </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleMarkFunded(businessEmail)}
+                                    className="text-purple-600 border-purple-200 hover:bg-purple-50 dark:border-purple-800 dark:hover:bg-purple-900/20"
+                                    data-testid={`button-mark-funded-${businessEmail}`}
+                                  >
+                                    <Banknote className="w-3 h-3 mr-1" />
+                                    Mark Funded
+                                  </Button>
+                                </>
+                              )}
+                              {decision.status === 'funded' && (
+                                <>
+                                  <Badge className="bg-purple-600 hover:bg-purple-700 flex items-center gap-1">
+                                    <Banknote className="w-3 h-3" />
+                                    Funded
+                                  </Badge>
+                                  {approvalUrl && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={copyApprovalUrl}
+                                      className="text-primary border-primary/30 hover:bg-primary/10"
+                                      data-testid={`button-copy-funded-url-${businessEmail}`}
+                                    >
+                                      <Copy className="w-3 h-3 mr-1" />
+                                      Copy Letter URL
+                                    </Button>
+                                  )}
                                 </>
                               )}
                               {decision.status === 'declined' && (
@@ -1951,7 +2003,7 @@ function BankStatementsTab() {
                                   {decision.followUpWorthy && (
                                     <Badge variant="outline" className="flex items-center gap-1 text-blue-600 border-blue-200 dark:text-blue-400 dark:border-blue-800">
                                       <CalendarIcon className="w-3 h-3" />
-                                      Follow Up{decision.followUpDate ? `: ${new Date(decision.followUpDate).toLocaleDateString()}` : ''}
+                                      Follow Up{decision.followUpDate ? `: ${new Date(decision.followUpDate).toLocaleDateString('en-US', { timeZone: 'UTC' })}` : ''}
                                     </Badge>
                                   )}
                                   <Button
@@ -1973,7 +2025,7 @@ function BankStatementsTab() {
                                   {decision.followUpWorthy && (
                                     <Badge variant="outline" className="flex items-center gap-1 text-blue-600 border-blue-200 dark:text-blue-400 dark:border-blue-800">
                                       <CalendarIcon className="w-3 h-3" />
-                                      Follow Up{decision.followUpDate ? `: ${new Date(decision.followUpDate).toLocaleDateString()}` : ''}
+                                      Follow Up{decision.followUpDate ? `: ${new Date(decision.followUpDate).toLocaleDateString('en-US', { timeZone: 'UTC' })}` : ''}
                                     </Badge>
                                   )}
                                   <Button
@@ -2079,44 +2131,47 @@ function BankStatementsTab() {
                     </div>
                   </div>
 
-                  {/* Inline Approvals List */}
+                  {/* Inline Approvals List - Best at top with dropdown */}
                   {canManageApprovals && (() => {
                     const businessEmail = uploads[0]?.email;
                     if (!businessEmail) return null;
                     const decision = getBusinessDecision(businessEmail);
-                    if (!decision || decision.status !== 'approved') return null;
+                    if (!decision || (decision.status !== 'approved' && decision.status !== 'funded')) return null;
                     const approvals = getApprovalsForBusiness(businessEmail);
                     if (approvals.length === 0) return null;
 
-                    return (
-                      <div className="mb-4 space-y-2">
-                        {approvals.map((appr) => (
-                          <div
-                            key={appr.id}
-                            className={`flex items-center justify-between gap-3 p-3 rounded-lg text-sm ${
-                              appr.isPrimary
-                                ? 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800'
-                                : 'bg-muted/50 border border-transparent'
-                            }`}
+                    const sortedApprovals = [...approvals].sort((a, b) => (a.isPrimary ? -1 : b.isPrimary ? 1 : 0));
+                    const bestApproval = sortedApprovals[0];
+                    const additionalApprovals = sortedApprovals.slice(1);
+                    const isAdditionalExpanded = expandedAdditionalApprovals.has(businessEmail);
+
+                    const renderInlineApproval = (appr: FullApprovalEntry) => (
+                      <div
+                        key={appr.id}
+                        className={`flex items-center justify-between gap-3 p-3 rounded-lg text-sm ${
+                          appr.isPrimary
+                            ? 'bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                            : 'bg-muted/50 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0 flex-wrap">
+                          <button
+                            onClick={() => handleSetPrimary(businessEmail, appr.id)}
+                            className={`flex-shrink-0 ${appr.isPrimary ? 'text-yellow-500' : 'text-muted-foreground hover:text-yellow-500'}`}
+                            title={appr.isPrimary ? 'Best approval' : 'Set as best approval'}
+                            data-testid={`button-set-primary-${appr.id}`}
                           >
-                            <div className="flex items-center gap-3 flex-1 min-w-0 flex-wrap">
-                              <button
-                                onClick={() => handleSetPrimary(businessEmail, appr.id)}
-                                className={`flex-shrink-0 ${appr.isPrimary ? 'text-yellow-500' : 'text-muted-foreground hover:text-yellow-500'}`}
-                                title={appr.isPrimary ? 'Primary approval' : 'Set as primary'}
-                                data-testid={`button-set-primary-${appr.id}`}
-                              >
-                                <Star className={`w-4 h-4 ${appr.isPrimary ? 'fill-yellow-500' : ''}`} />
-                              </button>
-                              {appr.isPrimary && (
-                                <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 text-xs">
-                                  Primary
-                                </Badge>
-                              )}
-                              <span className="font-medium">{appr.lender || 'No lender'}</span>
-                              {appr.advanceAmount && (
-                                <span className="text-green-600 dark:text-green-400 font-semibold">
-                                  ${parseFloat(appr.advanceAmount).toLocaleString()}
+                            <Star className={`w-4 h-4 ${appr.isPrimary ? 'fill-yellow-500' : ''}`} />
+                          </button>
+                          {appr.isPrimary && (
+                            <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 text-xs">
+                              Best Approval
+                            </Badge>
+                          )}
+                          <span className="font-medium">{appr.lender || 'No lender'}</span>
+                          {appr.advanceAmount && (
+                            <span className="text-green-600 dark:text-green-400 font-semibold">
+                              ${parseFloat(appr.advanceAmount).toLocaleString()}
                                 </span>
                               )}
                               {appr.term && <span className="text-muted-foreground">{appr.term}</span>}
@@ -2143,7 +2198,33 @@ function BankStatementsTab() {
                               </Button>
                             </div>
                           </div>
-                        ))}
+                        );
+
+                    return (
+                      <div className="mb-4 space-y-2">
+                        {bestApproval && renderInlineApproval(bestApproval)}
+                        {additionalApprovals.length > 0 && (
+                          <div>
+                            <button
+                              onClick={() => setExpandedAdditionalApprovals(prev => {
+                                const next = new Set(prev);
+                                if (next.has(businessEmail)) next.delete(businessEmail);
+                                else next.add(businessEmail);
+                                return next;
+                              })}
+                              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+                              data-testid={`button-toggle-additional-${businessEmail}`}
+                            >
+                              {isAdditionalExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                              {isAdditionalExpanded ? 'Hide' : 'View'} {additionalApprovals.length} Additional {additionalApprovals.length === 1 ? 'Approval' : 'Approvals'}
+                            </button>
+                            {isAdditionalExpanded && (
+                              <div className="space-y-2 mt-2">
+                                {additionalApprovals.map(renderInlineApproval)}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -3211,6 +3292,16 @@ export default function Dashboard() {
                       >
                         <AlertCircle className="w-4 h-4 mr-2" />
                         Unqualified
+                      </Button>
+                    </Link>
+                    <Link href="/funded">
+                      <Button
+                        variant="outline"
+                        data-testid="button-funded-folder"
+                        className="border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400"
+                      >
+                        <Banknote className="w-4 h-4 mr-2" />
+                        Funded
                       </Button>
                     </Link>
                   </>
