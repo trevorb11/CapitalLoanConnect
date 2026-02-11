@@ -10,11 +10,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2 } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -1785,7 +1788,11 @@ function BankStatementsTab() {
       const notDecided = !emailHasDecision(uploads[0]?.email || '');
       return matchesSearch && notDecided;
     }
-  );
+  ).sort(([, uploadsA], [, uploadsB]) => {
+    const mostRecentA = Math.max(...uploadsA.map(u => u.createdAt ? new Date(u.createdAt).getTime() : 0));
+    const mostRecentB = Math.max(...uploadsB.map(u => u.createdAt ? new Date(u.createdAt).getTime() : 0));
+    return mostRecentB - mostRecentA;
+  });
 
   const isLoading = connectionsLoading || uploadsLoading;
   const hasConnections = filteredConnections.length > 0;
@@ -1938,7 +1945,7 @@ function BankStatementsTab() {
                                   </Badge>
                                   {decision.followUpWorthy && (
                                     <Badge variant="outline" className="flex items-center gap-1 text-blue-600 border-blue-200 dark:text-blue-400 dark:border-blue-800">
-                                      <Calendar className="w-3 h-3" />
+                                      <CalendarIcon className="w-3 h-3" />
                                       Follow Up{decision.followUpDate ? `: ${new Date(decision.followUpDate).toLocaleDateString()}` : ''}
                                     </Badge>
                                   )}
@@ -1960,7 +1967,7 @@ function BankStatementsTab() {
                                   </Badge>
                                   {decision.followUpWorthy && (
                                     <Badge variant="outline" className="flex items-center gap-1 text-blue-600 border-blue-200 dark:text-blue-400 dark:border-blue-800">
-                                      <Calendar className="w-3 h-3" />
+                                      <CalendarIcon className="w-3 h-3" />
                                       Follow Up{decision.followUpDate ? `: ${new Date(decision.followUpDate).toLocaleDateString()}` : ''}
                                     </Badge>
                                   )}
@@ -2229,7 +2236,7 @@ function BankStatementsTab() {
                           <span className="font-medium">${parseFloat(connection.avgBalance).toLocaleString()}</span>
                         </div>
                         <div className="flex items-center gap-2 text-sm">
-                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
                           <span className="text-muted-foreground">Connected:</span>
                           <span className="font-medium">{format(new Date(connection.createdAt), 'MMM d, yyyy')}</span>
                         </div>
@@ -2444,14 +2451,30 @@ function BankStatementsTab() {
               </div>
             </div>
             <div>
-              <Label htmlFor="approvalDate">Approval Date</Label>
-              <Input
-                id="approvalDate"
-                type="date"
-                value={approvalForm.approvalDate}
-                onChange={(e) => setApprovalForm(prev => ({ ...prev, approvalDate: e.target.value }))}
-                data-testid="input-approval-date"
-              />
+              <Label>Approval Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    data-testid="input-approval-date"
+                    className={cn("w-full justify-start text-left font-normal", !approvalForm.approvalDate && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {approvalForm.approvalDate ? format(new Date(approvalForm.approvalDate + 'T00:00:00'), "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={approvalForm.approvalDate ? new Date(approvalForm.approvalDate + 'T00:00:00') : undefined}
+                    onSelect={(day) => setApprovalForm(prev => ({ ...prev, approvalDate: day ? format(day, "yyyy-MM-dd") : '' }))}
+                    fromYear={2024}
+                    toYear={new Date().getFullYear()}
+                    captionLayout="dropdown-buttons"
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Label htmlFor="notes">Notes</Label>
@@ -2540,14 +2563,30 @@ function BankStatementsTab() {
             </div>
             {declineFollowUp && (
               <div>
-                <Label htmlFor="declineFollowUpDate">Follow-Up Date</Label>
-                <Input
-                  id="declineFollowUpDate"
-                  type="date"
-                  value={declineFollowUpDate}
-                  onChange={(e) => setDeclineFollowUpDate(e.target.value)}
-                  data-testid="input-decline-followup-date"
-                />
+                <Label>Follow-Up Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      data-testid="input-decline-followup-date"
+                      className={cn("w-full justify-start text-left font-normal", !declineFollowUpDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {declineFollowUpDate ? format(new Date(declineFollowUpDate + 'T00:00:00'), "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={declineFollowUpDate ? new Date(declineFollowUpDate + 'T00:00:00') : undefined}
+                      onSelect={(day) => setDeclineFollowUpDate(day ? format(day, "yyyy-MM-dd") : '')}
+                      fromYear={2024}
+                      toYear={new Date().getFullYear() + 1}
+                      captionLayout="dropdown-buttons"
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
             <div className="flex justify-end gap-2 pt-4">
@@ -2629,14 +2668,30 @@ function BankStatementsTab() {
             </div>
             {unqualifiedFollowUp && (
               <div>
-                <Label htmlFor="unqualifiedFollowUpDate">Follow-Up Date</Label>
-                <Input
-                  id="unqualifiedFollowUpDate"
-                  type="date"
-                  value={unqualifiedFollowUpDate}
-                  onChange={(e) => setUnqualifiedFollowUpDate(e.target.value)}
-                  data-testid="input-unqualified-followup-date"
-                />
+                <Label>Follow-Up Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      data-testid="input-unqualified-followup-date"
+                      className={cn("w-full justify-start text-left font-normal", !unqualifiedFollowUpDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {unqualifiedFollowUpDate ? format(new Date(unqualifiedFollowUpDate + 'T00:00:00'), "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={unqualifiedFollowUpDate ? new Date(unqualifiedFollowUpDate + 'T00:00:00') : undefined}
+                      onSelect={(day) => setUnqualifiedFollowUpDate(day ? format(day, "yyyy-MM-dd") : '')}
+                      fromYear={2024}
+                      toYear={new Date().getFullYear() + 1}
+                      captionLayout="dropdown-buttons"
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
             <div className="flex justify-end gap-2 pt-4">
