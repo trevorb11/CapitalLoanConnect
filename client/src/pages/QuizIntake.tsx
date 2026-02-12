@@ -737,9 +737,40 @@ export default function QuizIntake() {
               We'll connect you with the best financing options based on your business profile.
             </p>
 
-            <div className="max-w-sm mx-auto">
-              {/* GHL Embedded Form */}
-              {ghlFormSubmitted ? (
+            <div className="max-w-sm mx-auto relative">
+              {/* GHL Embedded Form - kept in DOM to prevent NotFoundError */}
+              <div className="relative" data-testid="ghl-form-container" style={{ display: ghlFormSubmitted ? 'none' : 'block' }}>
+                <iframe
+                  src="https://api.leadconnectorhq.com/widget/form/9lPCXmZ6jBCV2lHiRvM0"
+                  style={{ width: '100%', height: '450px', border: 'none', borderRadius: '8px' }}
+                  id="inline-9lPCXmZ6jBCV2lHiRvM0"
+                  data-layout="{'id':'INLINE'}"
+                  data-trigger-type="alwaysShow"
+                  data-trigger-value=""
+                  data-activation-type="alwaysActivated"
+                  data-activation-value=""
+                  data-deactivation-type="neverDeactivate"
+                  data-deactivation-value=""
+                  data-form-name="Initial Contact Form"
+                  data-height="450"
+                  data-layout-iframe-id="inline-9lPCXmZ6jBCV2lHiRvM0"
+                  data-form-id="9lPCXmZ6jBCV2lHiRvM0"
+                  title="Initial Contact Form"
+                  data-testid="ghl-form-iframe"
+                />
+                <p className="text-white/50 text-[10px] leading-relaxed mt-3">
+                  By submitting, I agree to the{" "}
+                  <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
+                    Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
+                    Privacy Policy
+                  </a>.
+                </p>
+              </div>
+
+              {ghlFormSubmitted && (
                 <div className="py-8" data-testid="ghl-form-submitted">
                   <div className="flex flex-col items-center gap-4">
                     {submitMutation.isPending ? (
@@ -758,37 +789,6 @@ export default function QuizIntake() {
                       </>
                     )}
                   </div>
-                </div>
-              ) : (
-                <div className="relative" data-testid="ghl-form-container">
-                  <iframe
-                    src="https://api.leadconnectorhq.com/widget/form/9lPCXmZ6jBCV2lHiRvM0"
-                    style={{ width: '100%', height: '450px', border: 'none', borderRadius: '8px' }}
-                    id="inline-9lPCXmZ6jBCV2lHiRvM0"
-                    data-layout="{'id':'INLINE'}"
-                    data-trigger-type="alwaysShow"
-                    data-trigger-value=""
-                    data-activation-type="alwaysActivated"
-                    data-activation-value=""
-                    data-deactivation-type="neverDeactivate"
-                    data-deactivation-value=""
-                    data-form-name="Initial Contact Form"
-                    data-height="450"
-                    data-layout-iframe-id="inline-9lPCXmZ6jBCV2lHiRvM0"
-                    data-form-id="9lPCXmZ6jBCV2lHiRvM0"
-                    title="Initial Contact Form"
-                    data-testid="ghl-form-iframe"
-                  />
-                  <p className="text-white/50 text-[10px] leading-relaxed mt-3">
-                    By submitting, I agree to the{" "}
-                    <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
-                      Terms of Service
-                    </a>{" "}
-                    and{" "}
-                    <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
-                      Privacy Policy
-                    </a>.
-                  </p>
                 </div>
               )}
 
