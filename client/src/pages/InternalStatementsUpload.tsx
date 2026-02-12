@@ -22,7 +22,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Plus
 } from "lucide-react";
 import { Link } from "wouter";
 import type { LoanApplication, Lender } from "@shared/schema";
@@ -74,6 +75,7 @@ export default function InternalStatementsUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [submittedInfo, setSubmittedInfo] = useState<{ filesUploaded: number; decisionSaved: boolean; decisionType: string }>({ filesUploaded: 0, decisionSaved: false, decisionType: '' });
   const [showSearchResults, setShowSearchResults] = useState(false);
 
   const { data: applications, isLoading: isSearching } = useQuery<LoanApplication[]>({
@@ -242,6 +244,10 @@ export default function InternalStatementsUpload() {
     setIsDragging(false);
   };
 
+  const hasFiles = selectedFiles.length > 0;
+  const hasDecision = approvalStatus && approvalStatus !== "pending";
+  const canSubmit = email && (hasFiles || hasDecision);
+
   const handleSubmit = async () => {
     if (!email) {
       toast({
@@ -252,10 +258,10 @@ export default function InternalStatementsUpload() {
       return;
     }
 
-    if (selectedFiles.length === 0) {
+    if (!hasFiles && !hasDecision) {
       toast({
-        title: "No Files Selected",
-        description: "Please select at least one bank statement PDF to upload",
+        title: "Nothing to Submit",
+        description: "Please upload bank statements, set an underwriting decision, or both",
         variant: "destructive",
       });
       return;
@@ -270,18 +276,24 @@ export default function InternalStatementsUpload() {
       return;
     }
 
-    setUploadProgress(0);
-    const totalFiles = selectedFiles.length;
-    
-    for (let i = 0; i < totalFiles; i++) {
-      await uploadMutation.mutateAsync(selectedFiles[i]);
-      setUploadProgress(((i + 1) / totalFiles) * 100);
-    }
-    
-    setSelectedFiles([]);
+    let filesUploaded = 0;
 
-    // Save underwriting decision if a status was selected (not pending)
-    if (approvalStatus && approvalStatus !== "pending") {
+    if (hasFiles) {
+      setUploadProgress(0);
+      const totalFiles = selectedFiles.length;
+      
+      for (let i = 0; i < totalFiles; i++) {
+        await uploadMutation.mutateAsync(selectedFiles[i]);
+        setUploadProgress(((i + 1) / totalFiles) * 100);
+      }
+      
+      filesUploaded = totalFiles;
+      setSelectedFiles([]);
+    }
+
+    let decisionSaved = false;
+
+    if (hasDecision) {
       try {
         const decisionPayload: Record<string, any> = {
           businessEmail: email,
@@ -329,6 +341,7 @@ export default function InternalStatementsUpload() {
         });
 
         if (res.ok) {
+          decisionSaved = true;
           const statusLabel = approvalStatus === "approved" ? "Approved" : approvalStatus === "declined" ? "Declined" : "Unqualified";
           toast({
             title: `Decision Saved: ${statusLabel}`,
@@ -352,11 +365,19 @@ export default function InternalStatementsUpload() {
       }
     }
 
+    if (filesUploaded === 0 && !decisionSaved) {
+      return;
+    }
+
+    setSubmittedInfo({ filesUploaded, decisionSaved, decisionType: approvalStatus });
     setIsSubmitted(true);
     
+    const parts: string[] = [];
+    if (filesUploaded > 0) parts.push(`${filesUploaded} statement${filesUploaded > 1 ? "s" : ""} uploaded`);
+    if (decisionSaved) parts.push("decision saved");
     toast({
-      title: "Upload Complete",
-      description: `Successfully uploaded ${totalFiles} statement${totalFiles > 1 ? "s" : ""}`,
+      title: "Submission Complete",
+      description: parts.join(" and "),
     });
   };
 
@@ -371,7 +392,26 @@ export default function InternalStatementsUpload() {
     return new Date(dateString).toLocaleDateString();
   };
 
-  if (isSubmitted && uploadedFiles.length > 0) {
+  if (isSubmitted) {
+    const successTitle = submittedInfo.decisionSaved && submittedInfo.filesUploaded > 0
+      ? "Submission Complete"
+      : submittedInfo.decisionSaved
+      ? "Decision Saved"
+      : "Statements Uploaded";
+
+    const successDescription = (() => {
+      const parts: string[] = [];
+      if (submittedInfo.filesUploaded > 0) {
+        parts.push(`${submittedInfo.filesUploaded} bank statement${submittedInfo.filesUploaded > 1 ? "s have" : " has"} been uploaded`);
+      }
+      if (submittedInfo.decisionSaved) {
+        const label = submittedInfo.decisionType === "approved" ? "approved" : submittedInfo.decisionType === "declined" ? "declined" : "unqualified";
+        parts.push(`the business has been marked as ${label}`);
+      }
+      parts.push("If an existing profile was found for this email, the data has been attached to it. Otherwise, a new profile was created.");
+      return parts.join(". ") + ".";
+    })();
+
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-2xl mx-auto">
@@ -381,29 +421,31 @@ export default function InternalStatementsUpload() {
             </div>
             
             <h1 className="text-2xl font-bold mb-3" data-testid="text-upload-success-title">
-              Thank you!
+              {successTitle}
             </h1>
 
             <p className="text-muted-foreground mb-6">
-              The bank statements have been received. We should have an answer on financing options within 48 hours.
+              {successDescription}
             </p>
 
-            <div className="bg-muted/50 rounded-lg p-4 mb-6">
-              <h3 className="font-medium mb-3 text-left">Uploaded Files:</h3>
-              <ul className="space-y-2">
-                {uploadedFiles.map((file) => (
-                  <li 
-                    key={file.id} 
-                    className="flex items-center gap-3 text-sm text-left"
-                    data-testid={`text-uploaded-file-${file.id}`}
-                  >
-                    <FileText className="w-4 h-4 text-primary flex-shrink-0" />
-                    <span className="truncate flex-1">{file.originalFileName}</span>
-                    <span className="text-muted-foreground">{formatFileSize(file.fileSize)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            {uploadedFiles.length > 0 && (
+              <div className="bg-muted/50 rounded-lg p-4 mb-6">
+                <h3 className="font-medium mb-3 text-left">Uploaded Files:</h3>
+                <ul className="space-y-2">
+                  {uploadedFiles.map((file) => (
+                    <li 
+                      key={file.id} 
+                      className="flex items-center gap-3 text-sm text-left"
+                      data-testid={`text-uploaded-file-${file.id}`}
+                    >
+                      <FileText className="w-4 h-4 text-primary flex-shrink-0" />
+                      <span className="truncate flex-1">{file.originalFileName}</span>
+                      <span className="text-muted-foreground">{formatFileSize(file.fileSize)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3">
               <Button 
@@ -414,11 +456,22 @@ export default function InternalStatementsUpload() {
                   setSelectedApplication(null);
                   setBusinessName('');
                   setEmail('');
+                  setApprovalStatus('pending');
+                  setApprovalNotes('');
+                  setSelectedLender(null);
+                  setLenderSearchQuery('');
+                  setAdvanceAmount('');
+                  setTerm('');
+                  setPaymentFrequency('Weekly');
+                  setFactorRate('');
+                  setTotalPayback('');
+                  setNetAfterFees('');
+                  setSubmittedInfo({ filesUploaded: 0, decisionSaved: false, decisionType: '' });
                 }}
                 data-testid="button-upload-more"
               >
-                <Upload className="w-4 h-4 mr-2" />
-                Upload More Statements
+                <Plus className="w-4 h-4 mr-2" />
+                Add Another
               </Button>
               
               <Link href="/dashboard">
@@ -450,10 +503,10 @@ export default function InternalStatementsUpload() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Upload className="w-5 h-5" />
-              Internal Statement Upload
+              Internal Upload
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Upload bank statements for a merchant. Search for an existing application or enter details manually.
+              Upload bank statements, add an underwriting decision, or both. If a profile already exists for this email, the data will be attached to it automatically.
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -642,7 +695,7 @@ export default function InternalStatementsUpload() {
                   type="button"
                   variant={approvalStatus === "approved" ? "default" : "outline"}
                   onClick={() => setApprovalStatus("approved")}
-                  className={`justify-start ${approvalStatus === "approved" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                  className={`justify-start ${approvalStatus === "approved" ? "bg-green-600 text-white" : ""}`}
                   data-testid="button-status-approved"
                 >
                   <CheckCircle2 className="w-4 h-4 mr-2" />
@@ -652,7 +705,7 @@ export default function InternalStatementsUpload() {
                   type="button"
                   variant={approvalStatus === "declined" ? "default" : "outline"}
                   onClick={() => setApprovalStatus("declined")}
-                  className={`justify-start ${approvalStatus === "declined" ? "bg-red-600 hover:bg-red-700" : ""}`}
+                  className={`justify-start ${approvalStatus === "declined" ? "bg-red-600 text-white" : ""}`}
                   data-testid="button-status-declined"
                 >
                   <XCircle className="w-4 h-4 mr-2" />
@@ -662,7 +715,7 @@ export default function InternalStatementsUpload() {
                   type="button"
                   variant={approvalStatus === "unqualified" ? "default" : "outline"}
                   onClick={() => setApprovalStatus("unqualified")}
-                  className={`justify-start ${approvalStatus === "unqualified" ? "bg-orange-600 hover:bg-orange-700" : ""}`}
+                  className={`justify-start ${approvalStatus === "unqualified" ? "bg-orange-600 text-white" : ""}`}
                   data-testid="button-status-unqualified"
                 >
                   <AlertCircle className="w-4 h-4 mr-2" />
@@ -933,6 +986,12 @@ export default function InternalStatementsUpload() {
             </div>
 
             {/* File Upload Area */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Bank Statements (Optional)
+              </Label>
+            </div>
             <div
               className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
                 isDragging 
@@ -1024,19 +1083,25 @@ export default function InternalStatementsUpload() {
             {/* Submit Button */}
             <Button
               onClick={handleSubmit}
-              disabled={uploadMutation.isPending || selectedFiles.length === 0 || !email}
+              disabled={uploadMutation.isPending || !canSubmit}
               className="w-full"
               data-testid="button-submit-upload"
             >
               {uploadMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Uploading...
+                  Submitting...
                 </>
               ) : (
                 <>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload {selectedFiles.length > 0 ? `${selectedFiles.length} Statement${selectedFiles.length > 1 ? "s" : ""}` : "Statements"}
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  {hasFiles && hasDecision
+                    ? `Upload ${selectedFiles.length} Statement${selectedFiles.length > 1 ? "s" : ""} & Save Decision`
+                    : hasFiles
+                    ? `Upload ${selectedFiles.length} Statement${selectedFiles.length > 1 ? "s" : ""}`
+                    : hasDecision
+                    ? "Save Decision"
+                    : "Submit"}
                 </>
               )}
             </Button>
