@@ -181,6 +181,36 @@ export default function QuizIntake() {
         industry: quizData.industry,
         useOfFunds: quizData.fundingPurpose,
       });
+
+      // Also submit to GHL native form (fire-and-forget, non-blocking)
+      // Generate a fresh reCAPTCHA token for the GHL form submission
+      const ghlSubmit = async () => {
+        try {
+          let ghlCaptchaToken: string | undefined;
+          if (executeRecaptcha) {
+            try {
+              ghlCaptchaToken = await executeRecaptcha("ghl_form_submit");
+            } catch (e) {
+              // Continue without captcha token
+            }
+          }
+          await fetch("/api/ghl-form-submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              formId: "9lPCXmZ6jBCV2lHiRvM0",
+              fullName: quizData.fullName,
+              email: quizData.email,
+              phone: quizData.phone,
+              businessName: quizData.businessName,
+              captchaToken: ghlCaptchaToken,
+            }),
+          });
+        } catch (err) {
+          console.error("GHL form submission error:", err);
+        }
+      };
+      ghlSubmit();
       
       // Check if user is on the low revenue path
       if (quizData.monthlyRevenue < LOW_REVENUE_THRESHOLD) {
