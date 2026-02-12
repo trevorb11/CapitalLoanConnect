@@ -33,6 +33,8 @@ import {
   ChevronDown,
   ChevronUp,
   Banknote,
+  Undo2,
+  Mail,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -119,6 +121,43 @@ export default function Funded() {
   const [expandedAdditionalApprovals, setExpandedAdditionalApprovals] = useState<Set<string>>(new Set());
   const [expandedStatements, setExpandedStatements] = useState<Set<string>>(new Set());
 
+  const [editingFunded, setEditingFunded] = useState<{
+    decision: BusinessUnderwritingDecision;
+    approvalId?: string;
+  } | null>(null);
+  const [editForm, setEditForm] = useState({
+    advanceAmount: '',
+    term: '',
+    paymentFrequency: 'weekly',
+    factorRate: '',
+    maxUpsell: '',
+    totalPayback: '',
+    netAfterFees: '',
+    lender: '',
+    notes: '',
+    approvalDate: '',
+    fundedDate: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const [showAddFunded, setShowAddFunded] = useState(false);
+  const [addForm, setAddForm] = useState({
+    businessName: '',
+    businessEmail: '',
+    advanceAmount: '',
+    term: '',
+    paymentFrequency: 'weekly',
+    factorRate: '',
+    maxUpsell: '',
+    totalPayback: '',
+    netAfterFees: '',
+    lender: '',
+    notes: '',
+    approvalDate: new Date().toISOString().split('T')[0],
+    fundedDate: new Date().toISOString().split('T')[0],
+  });
+  const [addSaving, setAddSaving] = useState(false);
+
   // Check authentication first
   useEffect(() => {
     async function checkAuth() {
@@ -187,6 +226,202 @@ export default function Funded() {
       });
     },
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Record<string, any> }) => {
+      const res = await fetch(`/api/underwriting-decisions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Server returned ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/underwriting-decisions"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to update.", variant: "destructive" });
+    },
+  });
+
+  const addFundedMutation = useMutation({
+    mutationFn: async (data: Record<string, any>) => {
+      const res = await fetch('/api/underwriting-decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `Server returned ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/underwriting-decisions"] });
+    },
+  });
+
+  const generateApprovalId = () => `appr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+  const openEditDialog = (decision: BusinessUnderwritingDecision, approvalId?: string) => {
+    const approvals = getApprovalsForDecision(decision);
+    if (approvalId) {
+      const existing = approvals.find(a => a.id === approvalId);
+      if (existing) {
+        setEditForm({
+          advanceAmount: existing.advanceAmount,
+          term: existing.term,
+          paymentFrequency: existing.paymentFrequency || 'weekly',
+          factorRate: existing.factorRate,
+          maxUpsell: existing.maxUpsell || '',
+          totalPayback: existing.totalPayback,
+          netAfterFees: existing.netAfterFees,
+          lender: existing.lender,
+          notes: existing.notes,
+          approvalDate: existing.approvalDate || '',
+          fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString().split('T')[0] : '',
+        });
+      }
+    } else {
+      setEditForm({
+        advanceAmount: '',
+        term: '',
+        paymentFrequency: 'weekly',
+        factorRate: '',
+        maxUpsell: '',
+        totalPayback: '',
+        netAfterFees: '',
+        lender: '',
+        notes: '',
+        approvalDate: new Date().toISOString().split('T')[0],
+        fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      });
+    }
+    setEditingFunded({ decision, approvalId });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingFunded) return;
+    setSaving(true);
+    try {
+      const { decision, approvalId } = editingFunded;
+      let approvals = getApprovalsForDecision(decision);
+
+      const newEntry: FullApprovalEntry = {
+        id: approvalId || generateApprovalId(),
+        lender: editForm.lender,
+        advanceAmount: editForm.advanceAmount,
+        term: editForm.term,
+        paymentFrequency: editForm.paymentFrequency,
+        factorRate: editForm.factorRate,
+        maxUpsell: editForm.maxUpsell,
+        totalPayback: editForm.totalPayback,
+        netAfterFees: editForm.netAfterFees,
+        notes: editForm.notes,
+        approvalDate: editForm.approvalDate,
+        isPrimary: approvals.length === 0,
+        createdAt: approvalId
+          ? (approvals.find(a => a.id === approvalId)?.createdAt || new Date().toISOString())
+          : new Date().toISOString(),
+      };
+
+      if (approvalId) {
+        const wasEdited = approvals.find(a => a.id === approvalId);
+        newEntry.isPrimary = wasEdited?.isPrimary || false;
+        approvals = approvals.map(a => a.id === approvalId ? newEntry : a);
+      } else {
+        approvals.push(newEntry);
+      }
+
+      await updateMutation.mutateAsync({
+        id: decision.id,
+        updates: {
+          additionalApprovals: approvals,
+          fundedDate: editForm.fundedDate,
+        },
+      });
+      setEditingFunded(null);
+      toast({ title: "Updated", description: "Funded deal details have been saved." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRevertToApproved = async (decision: BusinessUnderwritingDecision) => {
+    try {
+      await updateMutation.mutateAsync({
+        id: decision.id,
+        updates: {
+          status: 'approved',
+          fundedDate: null,
+        },
+      });
+      toast({ title: "Reverted", description: `${decision.businessName || decision.businessEmail} has been moved back to Approved.` });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to revert.", variant: "destructive" });
+    }
+  };
+
+  const handleAddFundedDeal = async () => {
+    if (!addForm.businessEmail.trim()) {
+      toast({ title: "Error", description: "Email is required.", variant: "destructive" });
+      return;
+    }
+    setAddSaving(true);
+    try {
+      const approval: FullApprovalEntry = {
+        id: generateApprovalId(),
+        lender: addForm.lender,
+        advanceAmount: addForm.advanceAmount,
+        term: addForm.term,
+        paymentFrequency: addForm.paymentFrequency,
+        factorRate: addForm.factorRate,
+        maxUpsell: addForm.maxUpsell,
+        totalPayback: addForm.totalPayback,
+        netAfterFees: addForm.netAfterFees,
+        notes: addForm.notes,
+        approvalDate: addForm.approvalDate,
+        isPrimary: true,
+        createdAt: new Date().toISOString(),
+      };
+
+      await addFundedMutation.mutateAsync({
+        businessName: addForm.businessName,
+        businessEmail: addForm.businessEmail,
+        status: 'funded',
+        fundedDate: addForm.fundedDate,
+        additionalApprovals: [approval],
+      });
+      setShowAddFunded(false);
+      setAddForm({
+        businessName: '',
+        businessEmail: '',
+        advanceAmount: '',
+        term: '',
+        paymentFrequency: 'weekly',
+        factorRate: '',
+        maxUpsell: '',
+        totalPayback: '',
+        netAfterFees: '',
+        lender: '',
+        notes: '',
+        approvalDate: new Date().toISOString().split('T')[0],
+        fundedDate: new Date().toISOString().split('T')[0],
+      });
+      toast({ title: "Deal Added", description: `${addForm.businessName || addForm.businessEmail} has been added as funded.` });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to add funded deal.", variant: "destructive" });
+    } finally {
+      setAddSaving(false);
+    }
+  };
 
   // Helper: get all approvals for a decision (migration-aware)
   const getApprovalsForDecision = (decision: BusinessUnderwritingDecision): FullApprovalEntry[] => {
@@ -422,7 +657,32 @@ export default function Funded() {
                 </p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                onClick={() => {
+                  setShowAddFunded(true);
+                  setAddForm({
+                    businessName: '',
+                    businessEmail: '',
+                    advanceAmount: '',
+                    term: '',
+                    paymentFrequency: 'weekly',
+                    factorRate: '',
+                    maxUpsell: '',
+                    totalPayback: '',
+                    netAfterFees: '',
+                    lender: '',
+                    notes: '',
+                    approvalDate: new Date().toISOString().split('T')[0],
+                    fundedDate: new Date().toISOString().split('T')[0],
+                  });
+                }}
+                className="flex items-center gap-2"
+                data-testid="button-add-funded"
+              >
+                <Plus className="w-4 h-4" />
+                Add Funded Deal
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setLocation("/approvals")}
@@ -636,13 +896,60 @@ export default function Funded() {
                           </Button>
                         )}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const primary = sortedApprovals.find(a => a.isPrimary) || sortedApprovals[0];
+                            if (primary) {
+                              openEditDialog(decision, primary.id);
+                            } else {
+                              openEditDialog(decision);
+                            }
+                          }}
+                          data-testid={`button-edit-funded-${decision.id}`}
+                        >
+                          <Pencil className="w-3 h-3 mr-1" />
+                          Edit
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              data-testid={`button-revert-funded-${decision.id}`}
+                            >
+                              <Undo2 className="w-3 h-3 mr-1" />
+                              Revert to Approved
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Revert to Approved</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to move{" "}
+                                <strong>{decision.businessName || decision.businessEmail}</strong>{" "}
+                                back to the Approved list? The funded date will be removed.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel data-testid="button-cancel-revert">Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleRevertToApproved(decision)}
+                                data-testid="button-confirm-revert"
+                              >
+                                Revert to Approved
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-muted-foreground hover:text-destructive"
+                              className="text-muted-foreground"
                               data-testid={`button-delete-funded-${decision.id}`}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -661,7 +968,7 @@ export default function Funded() {
                               <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => deleteMutation.mutate(decision.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                className="bg-destructive text-destructive-foreground"
                                 data-testid="button-confirm-delete"
                               >
                                 {deleteMutation.isPending ? (
@@ -786,6 +1093,376 @@ export default function Funded() {
           </div>
         )}
       </div>
+
+      {/* Edit Funded Deal Dialog */}
+      <Dialog open={!!editingFunded} onOpenChange={(open) => !open && setEditingFunded(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-primary" />
+              Edit Funded Deal: {editingFunded?.decision.businessName || editingFunded?.decision.businessEmail}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800">
+              <Label htmlFor="edit-fundedDate" className="text-emerald-700 dark:text-emerald-300 font-semibold">Funded Date</Label>
+              <Input
+                id="edit-fundedDate"
+                type="date"
+                value={editForm.fundedDate}
+                onChange={(e) => setEditForm(prev => ({ ...prev, fundedDate: e.target.value }))}
+                data-testid="input-edit-funded-date"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-advanceAmount">Advance Amount</Label>
+                <Input
+                  id="edit-advanceAmount"
+                  type="number"
+                  placeholder="$50,000"
+                  value={editForm.advanceAmount}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, advanceAmount: e.target.value }))}
+                  data-testid="input-edit-advance-amount"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-term">Term</Label>
+                <Input
+                  id="edit-term"
+                  placeholder="6 months"
+                  value={editForm.term}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, term: e.target.value }))}
+                  data-testid="input-edit-term"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-paymentFrequency">Payment Frequency</Label>
+                <Select
+                  value={editForm.paymentFrequency}
+                  onValueChange={(value) => setEditForm(prev => ({ ...prev, paymentFrequency: value }))}
+                >
+                  <SelectTrigger data-testid="select-edit-payment-frequency">
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="edit-lender">Lender</Label>
+                <Input
+                  id="edit-lender"
+                  placeholder="Lender name"
+                  value={editForm.lender}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, lender: e.target.value }))}
+                  data-testid="input-edit-lender"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-factorRate">Factor Rate</Label>
+                <Input
+                  id="edit-factorRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={editForm.factorRate}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, factorRate: e.target.value }))}
+                  data-testid="input-edit-factor-rate"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-maxUpsell">Max Upsell</Label>
+                <Input
+                  id="edit-maxUpsell"
+                  type="number"
+                  placeholder="$75,000"
+                  value={editForm.maxUpsell}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, maxUpsell: e.target.value }))}
+                  data-testid="input-edit-max-upsell"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-netAfterFees">Net After Fees</Label>
+                <Input
+                  id="edit-netAfterFees"
+                  type="number"
+                  placeholder="$48,500"
+                  value={editForm.netAfterFees}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
+                  data-testid="input-edit-net-after-fees"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-totalPayback">Total Payback</Label>
+                <Input
+                  id="edit-totalPayback"
+                  type="number"
+                  placeholder="$62,500"
+                  value={editForm.totalPayback}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, totalPayback: e.target.value }))}
+                  data-testid="input-edit-total-payback"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="edit-approvalDate">Approval Date</Label>
+              <Input
+                id="edit-approvalDate"
+                type="date"
+                value={editForm.approvalDate}
+                onChange={(e) => setEditForm(prev => ({ ...prev, approvalDate: e.target.value }))}
+                data-testid="input-edit-approval-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea
+                id="edit-notes"
+                placeholder="Additional notes..."
+                rows={3}
+                value={editForm.notes}
+                onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                data-testid="input-edit-notes"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setEditingFunded(null)}
+                data-testid="button-cancel-edit"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                data-testid="button-save-edit"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-1" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Funded Deal Dialog */}
+      <Dialog open={showAddFunded} onOpenChange={setShowAddFunded}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-primary" />
+              Add Funded Deal
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Manually add a business that has been funded.
+          </p>
+          <div className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="add-businessName">Business Name</Label>
+                <Input
+                  id="add-businessName"
+                  placeholder="Business Name"
+                  value={addForm.businessName}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, businessName: e.target.value }))}
+                  data-testid="input-add-business-name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="add-businessEmail">Email *</Label>
+                <Input
+                  id="add-businessEmail"
+                  type="email"
+                  placeholder="business@email.com"
+                  value={addForm.businessEmail}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, businessEmail: e.target.value }))}
+                  data-testid="input-add-business-email"
+                />
+              </div>
+            </div>
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800">
+              <Label htmlFor="add-fundedDate" className="text-emerald-700 dark:text-emerald-300 font-semibold">Funded Date</Label>
+              <Input
+                id="add-fundedDate"
+                type="date"
+                value={addForm.fundedDate}
+                onChange={(e) => setAddForm(prev => ({ ...prev, fundedDate: e.target.value }))}
+                data-testid="input-add-funded-date"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="add-advanceAmount">Advance Amount</Label>
+                <Input
+                  id="add-advanceAmount"
+                  type="number"
+                  placeholder="$50,000"
+                  value={addForm.advanceAmount}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, advanceAmount: e.target.value }))}
+                  data-testid="input-add-advance-amount"
+                />
+              </div>
+              <div>
+                <Label htmlFor="add-term">Term</Label>
+                <Input
+                  id="add-term"
+                  placeholder="6 months"
+                  value={addForm.term}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, term: e.target.value }))}
+                  data-testid="input-add-term"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="add-paymentFrequency">Payment Frequency</Label>
+                <Select
+                  value={addForm.paymentFrequency}
+                  onValueChange={(value) => setAddForm(prev => ({ ...prev, paymentFrequency: value }))}
+                >
+                  <SelectTrigger data-testid="select-add-payment-frequency">
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="add-lender">Lender</Label>
+                <Input
+                  id="add-lender"
+                  placeholder="Lender name"
+                  value={addForm.lender}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, lender: e.target.value }))}
+                  data-testid="input-add-lender"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="add-factorRate">Factor Rate</Label>
+                <Input
+                  id="add-factorRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={addForm.factorRate}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, factorRate: e.target.value }))}
+                  data-testid="input-add-factor-rate"
+                />
+              </div>
+              <div>
+                <Label htmlFor="add-maxUpsell">Max Upsell</Label>
+                <Input
+                  id="add-maxUpsell"
+                  type="number"
+                  placeholder="$75,000"
+                  value={addForm.maxUpsell}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, maxUpsell: e.target.value }))}
+                  data-testid="input-add-max-upsell"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="add-netAfterFees">Net After Fees</Label>
+                <Input
+                  id="add-netAfterFees"
+                  type="number"
+                  placeholder="$48,500"
+                  value={addForm.netAfterFees}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
+                  data-testid="input-add-net-after-fees"
+                />
+              </div>
+              <div>
+                <Label htmlFor="add-totalPayback">Total Payback</Label>
+                <Input
+                  id="add-totalPayback"
+                  type="number"
+                  placeholder="$62,500"
+                  value={addForm.totalPayback}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, totalPayback: e.target.value }))}
+                  data-testid="input-add-total-payback"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="add-approvalDate">Approval Date</Label>
+              <Input
+                id="add-approvalDate"
+                type="date"
+                value={addForm.approvalDate}
+                onChange={(e) => setAddForm(prev => ({ ...prev, approvalDate: e.target.value }))}
+                data-testid="input-add-approval-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="add-notes">Notes</Label>
+              <Textarea
+                id="add-notes"
+                placeholder="Additional notes..."
+                rows={3}
+                value={addForm.notes}
+                onChange={(e) => setAddForm(prev => ({ ...prev, notes: e.target.value }))}
+                data-testid="input-add-notes"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowAddFunded(false)}
+                data-testid="button-cancel-add"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddFundedDeal}
+                disabled={addSaving || !addForm.businessEmail.trim()}
+                data-testid="button-save-add"
+              >
+                {addSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <Banknote className="w-4 h-4 mr-1" />
+                    Add Funded Deal
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

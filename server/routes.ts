@@ -2552,7 +2552,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       declineReason,
       followUpWorthy,
       followUpDate,
-      additionalApprovals
+      additionalApprovals,
+      fundedDate,
     } = req.body;
 
     console.log(`[UNDERWRITING POST] Data: email=${businessEmail}, name=${businessName}, status=${status}, approvals=${additionalApprovals?.length || 0}`);
@@ -2612,6 +2613,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         followUpDate: followUpDate ? new Date(followUpDate) : null,
         additionalApprovals: additionalApprovals || null,
         reviewedBy: reviewerEmail,
+        fundedDate: fundedDate ? new Date(fundedDate) : null,
       });
       
       console.log(`[UNDERWRITING] ${reviewerEmail} set ${status} for business ${businessEmail}`);

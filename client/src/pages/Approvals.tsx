@@ -836,6 +836,15 @@ export default function Approvals() {
                 <ThumbsDown className="w-4 h-4" />
                 View Declines ({stats.totalDeclined})
               </Button>
+              <Button
+                variant="outline"
+                onClick={() => setLocation("/funded")}
+                className="flex items-center gap-2"
+                data-testid="button-view-funded"
+              >
+                <Banknote className="w-4 h-4" />
+                View Funded ({(allDecisions || []).filter(d => d.status === "funded").length})
+              </Button>
             </div>
           </div>
         </div>
