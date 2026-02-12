@@ -259,7 +259,11 @@ export default function Funded() {
   // Filter to only funded decisions
   const fundedDecisions = (allDecisions || [])
     .filter(d => d.status === "funded")
-    .sort((a, b) => getMostRecentApprovalDate(b) - getMostRecentApprovalDate(a));
+    .sort((a, b) => {
+      const aDate = a.fundedDate ? new Date(a.fundedDate).getTime() : getMostRecentApprovalDate(a);
+      const bDate = b.fundedDate ? new Date(b.fundedDate).getTime() : getMostRecentApprovalDate(b);
+      return bDate - aDate;
+    });
 
   // Filter by search
   const filteredDecisions = fundedDecisions.filter(d => {
@@ -582,6 +586,15 @@ export default function Funded() {
                           {formatDate(appr.approvalDate)}
                         </div>
                       </div>
+                      {decision.fundedDate && (
+                        <div>
+                          <div className="text-muted-foreground">Funded Date</div>
+                          <div className="font-medium flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                            <Calendar className="w-3 h-3" />
+                            {formatDate(decision.fundedDate)}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                   {appr.notes && (

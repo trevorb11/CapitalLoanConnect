@@ -2676,6 +2676,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (updates.followUpDate && typeof updates.followUpDate === 'string') {
         updates.followUpDate = new Date(updates.followUpDate);
       }
+      if (updates.fundedDate && typeof updates.fundedDate === 'string') {
+        updates.fundedDate = new Date(updates.fundedDate);
+      }
 
       // Sync primary approval data from additionalApprovals JSONB to top-level columns
       if (updates.additionalApprovals && Array.isArray(updates.additionalApprovals)) {

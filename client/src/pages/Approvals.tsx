@@ -41,6 +41,7 @@ import {
   FolderArchive,
   ChevronDown,
   ChevronUp,
+  Banknote,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -137,6 +138,23 @@ export default function Approvals() {
   const [csvUploading, setCsvUploading] = useState(false);
   const [csvResults, setCsvResults] = useState<{ imported: number; errors: number; results?: any[] } | null>(null);
   const [expandedAdditionalApprovals, setExpandedAdditionalApprovals] = useState<Set<string>>(new Set());
+
+  // Fund dialog state
+  const [fundingDecision, setFundingDecision] = useState<BusinessUnderwritingDecision | null>(null);
+  const [fundForm, setFundForm] = useState({
+    advanceAmount: '',
+    term: '',
+    paymentFrequency: 'weekly',
+    factorRate: '',
+    maxUpsell: '',
+    totalPayback: '',
+    netAfterFees: '',
+    lender: '',
+    notes: '',
+    approvalDate: '',
+    fundedDate: new Date().toISOString().split('T')[0],
+  });
+  const [fundSaving, setFundSaving] = useState(false);
 
   // Check authentication first
   useEffect(() => {
@@ -558,6 +576,65 @@ export default function Approvals() {
     }
   };
 
+  // Open Fund dialog with primary approval pre-filled
+  const openFundDialog = (decision: BusinessUnderwritingDecision) => {
+    const approvals = getApprovalsForDecision(decision);
+    const primary = approvals.find(a => a.isPrimary) || approvals[0];
+    setFundForm({
+      advanceAmount: primary?.advanceAmount || decision.advanceAmount?.toString() || '',
+      term: primary?.term || decision.term || '',
+      paymentFrequency: primary?.paymentFrequency || decision.paymentFrequency || 'weekly',
+      factorRate: primary?.factorRate || decision.factorRate?.toString() || '',
+      maxUpsell: primary?.maxUpsell || decision.maxUpsell?.toString() || '',
+      totalPayback: primary?.totalPayback || decision.totalPayback?.toString() || '',
+      netAfterFees: primary?.netAfterFees || decision.netAfterFees?.toString() || '',
+      lender: primary?.lender || decision.lender || '',
+      notes: primary?.notes || decision.notes || '',
+      approvalDate: primary?.approvalDate || (decision.approvalDate ? new Date(decision.approvalDate).toISOString().split('T')[0] : ''),
+      fundedDate: new Date().toISOString().split('T')[0],
+    });
+    setFundingDecision(decision);
+  };
+
+  // Save funded deal
+  const handleSaveFund = async () => {
+    if (!fundingDecision) return;
+    setFundSaving(true);
+    try {
+      let approvals = getApprovalsForDecision(fundingDecision);
+      const primary = approvals.find(a => a.isPrimary) || approvals[0];
+
+      if (primary) {
+        primary.advanceAmount = fundForm.advanceAmount;
+        primary.term = fundForm.term;
+        primary.paymentFrequency = fundForm.paymentFrequency;
+        primary.factorRate = fundForm.factorRate;
+        primary.maxUpsell = fundForm.maxUpsell;
+        primary.totalPayback = fundForm.totalPayback;
+        primary.netAfterFees = fundForm.netAfterFees;
+        primary.lender = fundForm.lender;
+        primary.notes = fundForm.notes;
+        primary.approvalDate = fundForm.approvalDate;
+        approvals = approvals.map(a => (a.id === primary.id ? primary : a));
+      }
+
+      await updateMutation.mutateAsync({
+        id: fundingDecision.id,
+        updates: {
+          status: 'funded',
+          fundedDate: fundForm.fundedDate,
+          additionalApprovals: approvals,
+        },
+      });
+      setFundingDecision(null);
+      toast({ title: "Deal Funded", description: `${fundingDecision.businessName || fundingDecision.businessEmail} has been marked as funded.` });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to mark deal as funded.", variant: "destructive" });
+    } finally {
+      setFundSaving(false);
+    }
+  };
+
   const copyApprovalUrl = (slug: string) => {
     const url = `${window.location.origin}/approved/${slug}`;
     navigator.clipboard.writeText(url);
@@ -894,6 +971,15 @@ export default function Approvals() {
                         >
                           <Plus className="w-4 h-4 mr-1" />
                           Add Approval
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => openFundDialog(decision)}
+                          className="bg-emerald-600 text-white"
+                          data-testid={`button-fund-${decision.id}`}
+                        >
+                          <Banknote className="w-4 h-4 mr-1" />
+                          Fund
                         </Button>
                       </div>
                     </div>
@@ -1373,6 +1459,184 @@ export default function Approvals() {
                   <>
                     <Upload className="w-4 h-4 mr-1" />
                     Import CSV
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fund Deal Dialog */}
+      <Dialog open={!!fundingDecision} onOpenChange={(open) => !open && setFundingDecision(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Banknote className="w-5 h-5 text-emerald-600" />
+              Fund Deal: {fundingDecision?.businessName || fundingDecision?.businessEmail}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Review and update the approval details below before marking this deal as funded.
+          </p>
+          <div className="space-y-4 pt-2">
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800">
+              <Label htmlFor="fund-fundedDate" className="text-emerald-700 dark:text-emerald-300 font-semibold">Funded Date</Label>
+              <Input
+                id="fund-fundedDate"
+                type="date"
+                value={fundForm.fundedDate}
+                onChange={(e) => setFundForm(prev => ({ ...prev, fundedDate: e.target.value }))}
+                className="mt-1"
+                data-testid="input-fund-funded-date"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="fund-lender">Lender</Label>
+                <Input
+                  id="fund-lender"
+                  placeholder="Lender name"
+                  value={fundForm.lender}
+                  onChange={(e) => setFundForm(prev => ({ ...prev, lender: e.target.value }))}
+                  data-testid="input-fund-lender"
+                />
+              </div>
+              <div>
+                <Label htmlFor="fund-advanceAmount">Advance Amount</Label>
+                <Input
+                  id="fund-advanceAmount"
+                  type="number"
+                  placeholder="$50,000"
+                  value={fundForm.advanceAmount}
+                  onChange={(e) => setFundForm(prev => ({ ...prev, advanceAmount: e.target.value }))}
+                  data-testid="input-fund-advance-amount"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="fund-term">Term</Label>
+                <Input
+                  id="fund-term"
+                  placeholder="6 months"
+                  value={fundForm.term}
+                  onChange={(e) => setFundForm(prev => ({ ...prev, term: e.target.value }))}
+                  data-testid="input-fund-term"
+                />
+              </div>
+              <div>
+                <Label htmlFor="fund-paymentFrequency">Payment Frequency</Label>
+                <Select
+                  value={fundForm.paymentFrequency}
+                  onValueChange={(value) => setFundForm(prev => ({ ...prev, paymentFrequency: value }))}
+                >
+                  <SelectTrigger data-testid="select-fund-payment-frequency">
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="fund-factorRate">Factor Rate</Label>
+                <Input
+                  id="fund-factorRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={fundForm.factorRate}
+                  onChange={(e) => setFundForm(prev => ({ ...prev, factorRate: e.target.value }))}
+                  data-testid="input-fund-factor-rate"
+                />
+              </div>
+              <div>
+                <Label htmlFor="fund-maxUpsell">Max Upsell</Label>
+                <Input
+                  id="fund-maxUpsell"
+                  type="number"
+                  placeholder="$75,000"
+                  value={fundForm.maxUpsell}
+                  onChange={(e) => setFundForm(prev => ({ ...prev, maxUpsell: e.target.value }))}
+                  data-testid="input-fund-max-upsell"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="fund-totalPayback">Total Payback</Label>
+                <Input
+                  id="fund-totalPayback"
+                  type="number"
+                  placeholder="$62,500"
+                  value={fundForm.totalPayback}
+                  onChange={(e) => setFundForm(prev => ({ ...prev, totalPayback: e.target.value }))}
+                  data-testid="input-fund-total-payback"
+                />
+              </div>
+              <div>
+                <Label htmlFor="fund-netAfterFees">Net After Fees</Label>
+                <Input
+                  id="fund-netAfterFees"
+                  type="number"
+                  placeholder="$48,500"
+                  value={fundForm.netAfterFees}
+                  onChange={(e) => setFundForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
+                  data-testid="input-fund-net-after-fees"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="fund-approvalDate">Approval Date</Label>
+              <Input
+                id="fund-approvalDate"
+                type="date"
+                value={fundForm.approvalDate}
+                onChange={(e) => setFundForm(prev => ({ ...prev, approvalDate: e.target.value }))}
+                data-testid="input-fund-approval-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="fund-notes">Notes</Label>
+              <Textarea
+                id="fund-notes"
+                placeholder="Additional notes..."
+                rows={3}
+                value={fundForm.notes}
+                onChange={(e) => setFundForm(prev => ({ ...prev, notes: e.target.value }))}
+                data-testid="input-fund-notes"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setFundingDecision(null)}
+                data-testid="button-cancel-fund"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveFund}
+                disabled={fundSaving}
+                className="bg-emerald-600 text-white"
+                data-testid="button-confirm-fund"
+              >
+                {fundSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Banknote className="w-4 h-4 mr-1" />
+                    Mark as Funded
                   </>
                 )}
               </Button>
