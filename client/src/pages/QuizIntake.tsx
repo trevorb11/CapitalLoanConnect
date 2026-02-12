@@ -737,19 +737,18 @@ export default function QuizIntake() {
               We'll connect you with the best financing options based on your business profile.
             </p>
 
-            <div className="max-w-sm mx-auto relative">
+            <div className="w-full max-w-md mx-auto relative">
               {/* GHL Embedded Form - kept in DOM to prevent NotFoundError */}
               <div className="relative" data-testid="ghl-form-container" style={{ display: ghlFormSubmitted ? 'none' : 'block' }}>
                 <div
                   className="rounded-lg overflow-hidden"
                   style={{
-                    filter: 'invert(0.88) hue-rotate(180deg)',
-                    background: 'white',
+                    filter: 'invert(0.82) hue-rotate(180deg) saturate(1.3) brightness(0.95)',
                   }}
                 >
                   <iframe
                     src="https://api.leadconnectorhq.com/widget/form/9lPCXmZ6jBCV2lHiRvM0"
-                    style={{ width: '100%', height: '450px', border: 'none' }}
+                    style={{ width: '100%', height: '550px', border: 'none' }}
                     id="inline-9lPCXmZ6jBCV2lHiRvM0"
                     data-layout="{'id':'INLINE'}"
                     data-trigger-type="alwaysShow"
