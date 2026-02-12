@@ -650,7 +650,8 @@ export class GoHighLevelService {
     const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
     const BACKUP_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbynygRwYHpg4joyMLY-IC_B_7cqrNlNl92HjHduc5OvUtrUgig7_aHG69CdSTKZ562w/exec';
     const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/483f3c14-ae23-420a-8328-4ef77f0d65db';
-    
+    const TERTIARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/nO2wheN20Xlq0BDNq8iS';
+
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
     const firstName = nameParts[0] || '';
@@ -794,6 +795,16 @@ export class GoHighLevelService {
         );
       }
 
+      if (TERTIARY_WEBHOOK_URL) {
+        webhookRequests.push(
+          fetch(TERTIARY_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          }).catch(err => console.error('Tertiary webhook error:', err))
+        );
+      }
+
       // Wait for webhooks (but don't fail if they error)
       await Promise.allSettled(webhookRequests);
       console.log('[GHL] Webhooks sent successfully with', Object.keys(webhookPayload).filter(k => webhookPayload[k as keyof typeof webhookPayload]).length, 'fields');
@@ -807,7 +818,8 @@ export class GoHighLevelService {
   async sendPartialApplicationWebhook(application: Partial<LoanApplication>): Promise<void> {
     const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
     const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/483f3c14-ae23-420a-8328-4ef77f0d65db';
-    
+    const TERTIARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/nO2wheN20Xlq0BDNq8iS';
+
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
     const firstName = nameParts[0] || '';
@@ -824,11 +836,11 @@ export class GoHighLevelService {
     };
 
     // Build CSZ values with fallback logic
-    const businessCszValue = application.businessCsz || 
-      (application.city && application.state && application.zipCode 
-        ? `${application.city}, ${application.state} ${application.zipCode}` 
+    const businessCszValue = application.businessCsz ||
+      (application.city && application.state && application.zipCode
+        ? `${application.city}, ${application.state} ${application.zipCode}`
         : "");
-    
+
     const ownerCszValue = application.ownerCsz ||
       (application.ownerCity && application.ownerState && application.ownerZip
         ? `${application.ownerCity}, ${application.ownerState} ${application.ownerZip}`
@@ -941,7 +953,15 @@ export class GoHighLevelService {
           body: JSON.stringify(webhookPayload),
         }).catch(err => console.error('[GHL] Partial application secondary webhook error:', err))
       );
-      
+
+      webhookRequests.push(
+        fetch(TERTIARY_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        }).catch(err => console.error('[GHL] Partial application tertiary webhook error:', err))
+      );
+
       await Promise.allSettled(webhookRequests);
       console.log('[GHL] Partial application webhooks sent successfully');
     } catch (error) {
@@ -1034,7 +1054,8 @@ export class GoHighLevelService {
   }): Promise<{ sent: boolean; reason?: string }> {
     const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/763f2d42-9850-4ed3-acde-9449ef94f9ae';
     const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/483f3c14-ae23-420a-8328-4ef77f0d65db';
-    
+    const TERTIARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/iWPNrw8Zz2ypLYBLNDO7';
+
     const emailKey = contactInfo.email.toLowerCase().trim();
     const now = Date.now();
     
@@ -1095,8 +1116,16 @@ export class GoHighLevelService {
         }).catch(err => console.error('[GHL] Bank statement secondary webhook error:', err))
       );
 
+      webhookRequests.push(
+        fetch(TERTIARY_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        }).catch(err => console.error('[GHL] Bank statement tertiary webhook error:', err))
+      );
+
       await Promise.allSettled(webhookRequests);
-      
+
       // Mark this email as having received a webhook in this session
       this.bankStatementWebhookCache.set(emailKey, now);
       console.log('[GHL] Bank statement webhooks sent successfully - session marked for', emailKey);
