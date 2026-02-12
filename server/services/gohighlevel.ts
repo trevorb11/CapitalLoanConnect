@@ -628,6 +628,7 @@ export class GoHighLevelService {
     const APPLICATION_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/MHfzGI1xWl0mUNKjLrJb';
     const BACKUP_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbynygRwYHpg4joyMLY-IC_B_7cqrNlNl92HjHduc5OvUtrUgig7_aHG69CdSTKZ562w/exec';
     const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/483f3c14-ae23-420a-8328-4ef77f0d65db';
+    const FULL_APP_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/iWPNrw8Zz2ypLYBLNDO7';
     
     // Parse name for first/last
     const nameParts = (application.fullName || '').trim().split(' ');
@@ -769,6 +770,16 @@ export class GoHighLevelService {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(webhookPayload),
           }).catch(err => console.error('Secondary webhook error:', err))
+        );
+      }
+
+      if (FULL_APP_WEBHOOK_URL) {
+        webhookRequests.push(
+          fetch(FULL_APP_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+          }).catch(err => console.error('Full app webhook error:', err))
         );
       }
 
@@ -1012,6 +1023,7 @@ export class GoHighLevelService {
   }): Promise<{ sent: boolean; reason?: string }> {
     const BANK_STATEMENT_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/763f2d42-9850-4ed3-acde-9449ef94f9ae';
     const SECONDARY_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/483f3c14-ae23-420a-8328-4ef77f0d65db';
+    const BANK_STATEMENT_WEBHOOK_URL_2 = 'https://services.leadconnectorhq.com/hooks/YZDW5eqJe08EWiQlNEe9/webhook-trigger/nO2wheN20Xlq0BDNq8iS';
     
     const emailKey = contactInfo.email.toLowerCase().trim();
     const now = Date.now();
@@ -1071,6 +1083,14 @@ export class GoHighLevelService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(webhookPayload),
         }).catch(err => console.error('[GHL] Bank statement secondary webhook error:', err))
+      );
+
+      webhookRequests.push(
+        fetch(BANK_STATEMENT_WEBHOOK_URL_2, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        }).catch(err => console.error('[GHL] Bank statement webhook 2 error:', err))
       );
 
       await Promise.allSettled(webhookRequests);
