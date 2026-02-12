@@ -445,28 +445,50 @@ export class GoHighLevelService {
     return contactData;
   }
 
-  // Search for existing contact by email
+  // Search for existing contact by email - tries lookup endpoint first, then search endpoint
   private async findContactByEmail(email: string): Promise<string | null> {
     if (!this.isEnabled || !email) return null;
-    
+
+    // Strategy 1: Use the /contacts/lookup endpoint
     try {
       const response = await this.makeRequest(
         `/contacts/lookup?locationId=${this.locationId}&email=${encodeURIComponent(email)}`,
         "GET"
       );
-      
+
       // API returns { contacts: [...] } or { contact: {...} }
       const contacts = response.contacts || (response.contact ? [response.contact] : []);
       if (contacts.length > 0) {
-        console.log("[GHL DEBUG] Found existing contact by email:", contacts[0].id);
+        console.log("[GHL] Found contact by email lookup:", contacts[0].id, "for", email);
         return contacts[0].id;
       }
-      return null;
     } catch (error) {
-      // Contact not found is not an error - just means we need to create
-      console.log("[GHL DEBUG] No existing contact found for email:", email);
-      return null;
+      console.log("[GHL] Lookup endpoint failed for email:", email, "- trying search fallback");
     }
+
+    // Strategy 2: Use the /contacts/ search endpoint as fallback
+    try {
+      const response = await this.makeRequest(
+        `/contacts/?locationId=${this.locationId}&query=${encodeURIComponent(email)}&limit=10`,
+        "GET"
+      );
+
+      const contacts = response.contacts || [];
+      const normalizedEmail = email.toLowerCase().trim();
+
+      for (const contact of contacts) {
+        const contactEmail = (contact.email || '').toLowerCase().trim();
+        if (contactEmail === normalizedEmail) {
+          console.log("[GHL] Found contact by email search:", contact.id, "for", email);
+          return contact.id;
+        }
+      }
+    } catch (error) {
+      console.log("[GHL] Search endpoint also failed for email:", email);
+    }
+
+    console.log("[GHL] No contact found for email:", email);
+    return null;
   }
 
   // Get existing contact's tags by contact ID
@@ -1204,6 +1226,59 @@ export class GoHighLevelService {
   }
 
   /**
+   * Auto-create an opportunity for a contact when none exists.
+   * Fetches available pipelines and uses the first pipeline's first stage.
+   */
+  private async createOpportunityForContact(contactId: string, businessName: string): Promise<string | null> {
+    if (!this.isEnabled || !contactId) return null;
+
+    try {
+      // Fetch pipelines to get a valid pipelineId and stageId
+      const pipelinesResponse = await this.makeRequest(
+        `/opportunities/pipelines?locationId=${this.locationId}`,
+        "GET"
+      );
+
+      const pipelines = pipelinesResponse.pipelines || [];
+      if (pipelines.length === 0) {
+        console.error("[GHL] No pipelines found — cannot create opportunity");
+        return null;
+      }
+
+      // Use the first pipeline and its first stage
+      const pipeline = pipelines[0];
+      const stages = pipeline.stages || [];
+      if (stages.length === 0) {
+        console.error(`[GHL] Pipeline "${pipeline.name}" has no stages — cannot create opportunity`);
+        return null;
+      }
+
+      const stageId = stages[0].id;
+
+      const response = await this.makeRequest("/opportunities/", "POST", {
+        locationId: this.locationId,
+        contactId,
+        pipelineId: pipeline.id,
+        pipelineStageId: stageId,
+        name: businessName || "New Opportunity",
+        status: "open",
+      });
+
+      const opportunityId = response?.opportunity?.id || response?.id;
+      if (opportunityId) {
+        console.log(`[GHL] Created opportunity ${opportunityId} for contact ${contactId} in pipeline "${pipeline.name}"`);
+        return opportunityId;
+      }
+
+      console.error("[GHL] Opportunity creation response missing ID:", response);
+      return null;
+    } catch (error: any) {
+      console.error(`[GHL] Error creating opportunity for contact ${contactId}:`, error.message || error);
+      return null;
+    }
+  }
+
+  /**
    * Format approval/denial data as a readable string
    */
   private formatOfferString(approval: {
@@ -1262,6 +1337,7 @@ export class GoHighLevelService {
    */
   async syncApprovalToOpportunity(approval: {
     businessName: string;
+    businessEmail?: string | null;
     lenderName: string;
     status: string;
     approvedAmount?: string | null;
@@ -1291,22 +1367,44 @@ export class GoHighLevelService {
     }
 
     try {
-      // Step 1: Find contact by business name
-      const contactId = await this.searchContactByBusinessName(approval.businessName);
+      // Step 1: Find contact by email first (most reliable), then business name as fallback
+      let contactId: string | null = null;
+
+      if (approval.businessEmail) {
+        contactId = await this.findContactByEmail(approval.businessEmail);
+        if (contactId) {
+          console.log(`[GHL] Found contact by email "${approval.businessEmail}": ${contactId}`);
+        }
+      }
+
+      if (!contactId) {
+        contactId = await this.searchContactByBusinessName(approval.businessName);
+        if (contactId) {
+          console.log(`[GHL] Found contact by business name "${approval.businessName}": ${contactId}`);
+        }
+      }
+
       if (!contactId) {
         return {
           success: false,
-          message: `No GHL contact found for business: "${approval.businessName}"`
+          message: `No GHL contact found for email "${approval.businessEmail}" or business "${approval.businessName}"`
         };
       }
 
       // Step 2: Find opportunities for this contact
       const opportunities = await this.searchOpportunitiesByContact(contactId);
       if (opportunities.length === 0) {
-        return {
-          success: false,
-          message: `No opportunities found for contact ${contactId} (${approval.businessName})`
-        };
+        // Try to auto-create an opportunity if we have the contact
+        const newOppId = await this.createOpportunityForContact(contactId, approval.businessName);
+        if (!newOppId) {
+          return {
+            success: false,
+            message: `No opportunities found for contact ${contactId} (${approval.businessName}) and auto-creation failed`
+          };
+        }
+        console.log(`[GHL] Auto-created opportunity ${newOppId} for contact ${contactId}`);
+        // Continue with the newly created opportunity
+        return await this.syncToOpportunity(newOppId, approval, isApproved, isDenied);
       }
 
       // Get the most recent open opportunity, or the most recent one overall
@@ -1319,119 +1417,136 @@ export class GoHighLevelService {
         ? openOpps.sort((a, b) => new Date(b.updatedAt || b.dateAdded || 0).getTime() - new Date(a.updatedAt || a.dateAdded || 0).getTime())[0]
         : opportunities.sort((a, b) => new Date(b.updatedAt || b.dateAdded || 0).getTime() - new Date(a.updatedAt || a.dateAdded || 0).getTime())[0];
 
-      // Step 3: Get current opportunity to check existing fields
-      const oppDetails = await this.getOpportunity(targetOpp.id);
-      const currentCustomFields: Record<string, string> = {};
-
-      if (oppDetails?.customFields) {
-        for (const cf of oppDetails.customFields) {
-          const key = cf.key || cf.id || '';
-          const value = cf.value || cf.field_value || '';
-          if (key && value) {
-            currentCustomFields[key] = value;
-          }
-        }
-      }
-
-      // Step 4: Check for duplicate lender in existing slots
-      // Use correct GHL field keys: opportunity.offer_X and opportunity.decline_X
-      const fieldPrefix = isApproved ? 'opportunity.offer_' : 'opportunity.decline_';
-      const normalizedLenderName = approval.lenderName.toLowerCase().trim();
-
-      for (let i = 1; i <= 5; i++) {
-        const fieldKey = `${fieldPrefix}${i}`;
-        const existingValue = currentCustomFields[fieldKey] || '';
-
-        // Check if this lender already has an entry
-        if (existingValue && existingValue.toLowerCase().includes(`lender: ${normalizedLenderName}`)) {
-          return {
-            success: false,
-            message: `Lender "${approval.lenderName}" already has an ${isApproved ? 'offer' : 'decline'} in slot ${i}`,
-            opportunityId: targetOpp.id
-          };
-        }
-      }
-
-      // Step 5: Find the next available slot (1-5)
-      let slotNumber = 0;
-
-      for (let i = 1; i <= 5; i++) {
-        const fieldKey = `${fieldPrefix}${i}`;
-        const existingValue = currentCustomFields[fieldKey];
-
-        if (!existingValue || existingValue.trim() === '') {
-          slotNumber = i;
-          break;
-        }
-      }
-
-      if (slotNumber === 0) {
-        return {
-          success: false,
-          message: `All ${isApproved ? 'Offer' : 'Decline'} slots (1-5) are filled for this opportunity`,
-          opportunityId: targetOpp.id
-        };
-      }
-
-      // Step 6: Format and update the field
-      const offerString = this.formatOfferString(approval);
-      const fieldKey = `${fieldPrefix}${slotNumber}`;
-
-      // Build the fields to update
-      const fieldsToUpdate: Record<string, string> = {
-        [fieldKey]: offerString
-      };
-
-      // For approvals, also check if this should be the "best offer" (highest amount)
-      if (isApproved && approval.approvedAmount) {
-        const newAmount = parseFloat((approval.approvedAmount || '0').replace(/[$,]/g, ''));
-        let isBestOffer = true;
-
-        // Check existing offers to see if any have a higher amount
-        for (let i = 1; i <= 5; i++) {
-          const existingOffer = currentCustomFields[`opportunity.offer_${i}`] || '';
-          const amountMatch = existingOffer.match(/Amount:\s*\$?([\d,]+)/i);
-          if (amountMatch) {
-            const existingAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
-            if (existingAmount >= newAmount) {
-              isBestOffer = false;
-              break;
-            }
-          }
-        }
-
-        if (isBestOffer && !isNaN(newAmount) && newAmount > 0) {
-          fieldsToUpdate['opportunity.lender_with_best_offer'] = approval.lenderName;
-        }
-      }
-
-      // For declines, set the declined_date
-      if (isDenied) {
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-        fieldsToUpdate['opportunity.declined_date'] = today;
-      }
-
-      const updateSuccess = await this.updateOpportunityCustomFields(targetOpp.id, fieldsToUpdate);
-
-      if (updateSuccess) {
-        return {
-          success: true,
-          message: `Synced to ${isApproved ? 'Offer' : 'Decline'} ${slotNumber}: ${offerString}`,
-          opportunityId: targetOpp.id
-        };
-      } else {
-        return {
-          success: false,
-          message: `Failed to update opportunity custom fields`,
-          opportunityId: targetOpp.id
-        };
-      }
+      return await this.syncToOpportunity(targetOpp.id, approval, isApproved, isDenied);
 
     } catch (error: any) {
       console.error(`[GHL] Error syncing approval to opportunity:`, error);
       return {
         success: false,
         message: `Error: ${error.message || 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
+   * Internal: sync approval/decline data into an opportunity's custom fields
+   */
+  private async syncToOpportunity(
+    opportunityId: string,
+    approval: {
+      lenderName: string;
+      approvedAmount?: string | null;
+      termLength?: string | null;
+      factorRate?: string | null;
+      paybackAmount?: string | null;
+      paymentAmount?: string | null;
+      paymentFrequency?: string | null;
+      productType?: string | null;
+    },
+    isApproved: boolean,
+    isDenied: boolean
+  ): Promise<{ success: boolean; message: string; opportunityId: string }> {
+    // Get current opportunity to check existing fields
+    const oppDetails = await this.getOpportunity(opportunityId);
+    const currentCustomFields: Record<string, string> = {};
+
+    if (oppDetails?.customFields) {
+      for (const cf of oppDetails.customFields) {
+        const key = cf.key || cf.id || '';
+        const value = cf.value || cf.field_value || '';
+        if (key && value) {
+          currentCustomFields[key] = value;
+        }
+      }
+    }
+
+    // Check for duplicate lender in existing slots
+    const fieldPrefix = isApproved ? 'opportunity.offer_' : 'opportunity.decline_';
+    const normalizedLenderName = approval.lenderName.toLowerCase().trim();
+
+    for (let i = 1; i <= 5; i++) {
+      const fieldKey = `${fieldPrefix}${i}`;
+      const existingValue = currentCustomFields[fieldKey] || '';
+
+      if (existingValue && existingValue.toLowerCase().includes(`lender: ${normalizedLenderName}`)) {
+        return {
+          success: false,
+          message: `Lender "${approval.lenderName}" already has an ${isApproved ? 'offer' : 'decline'} in slot ${i}`,
+          opportunityId
+        };
+      }
+    }
+
+    // Find the next available slot (1-5)
+    let slotNumber = 0;
+
+    for (let i = 1; i <= 5; i++) {
+      const fieldKey = `${fieldPrefix}${i}`;
+      const existingValue = currentCustomFields[fieldKey];
+
+      if (!existingValue || existingValue.trim() === '') {
+        slotNumber = i;
+        break;
+      }
+    }
+
+    if (slotNumber === 0) {
+      return {
+        success: false,
+        message: `All ${isApproved ? 'Offer' : 'Decline'} slots (1-5) are filled for this opportunity`,
+        opportunityId
+      };
+    }
+
+    // Format and update the field
+    const offerString = this.formatOfferString(approval);
+    const fieldKey = `${fieldPrefix}${slotNumber}`;
+
+    const fieldsToUpdate: Record<string, string> = {
+      [fieldKey]: offerString
+    };
+
+    // For approvals, check if this should be the "best offer" (highest amount)
+    if (isApproved && approval.approvedAmount) {
+      const newAmount = parseFloat((approval.approvedAmount || '0').replace(/[$,]/g, ''));
+      let isBestOffer = true;
+
+      for (let i = 1; i <= 5; i++) {
+        const existingOffer = currentCustomFields[`opportunity.offer_${i}`] || '';
+        const amountMatch = existingOffer.match(/Amount:\s*\$?([\d,]+)/i);
+        if (amountMatch) {
+          const existingAmount = parseFloat(amountMatch[1].replace(/,/g, ''));
+          if (existingAmount >= newAmount) {
+            isBestOffer = false;
+            break;
+          }
+        }
+      }
+
+      if (isBestOffer && !isNaN(newAmount) && newAmount > 0) {
+        fieldsToUpdate['opportunity.lender_with_best_offer'] = approval.lenderName;
+      }
+    }
+
+    // For declines, set the declined_date
+    if (isDenied) {
+      const today = new Date().toISOString().split('T')[0];
+      fieldsToUpdate['opportunity.declined_date'] = today;
+    }
+
+    const updateSuccess = await this.updateOpportunityCustomFields(opportunityId, fieldsToUpdate);
+
+    if (updateSuccess) {
+      return {
+        success: true,
+        message: `Synced to ${isApproved ? 'Offer' : 'Decline'} ${slotNumber}: ${offerString}`,
+        opportunityId
+      };
+    } else {
+      return {
+        success: false,
+        message: `Failed to update opportunity custom fields`,
+        opportunityId
       };
     }
   }
@@ -1460,31 +1575,41 @@ export class GoHighLevelService {
     }
 
     const businessName = decision.businessName;
-    if (!businessName) {
-      return { success: false, message: "No business name on decision — cannot look up GHL contact" };
+    const businessEmail = decision.businessEmail;
+
+    if (!businessEmail && !businessName) {
+      return { success: false, message: "No email or business name on decision — cannot look up GHL contact" };
     }
 
-    const status = decision.status;
-
     try {
-      // Step 1: Find the contact by business name (same lookup as syncApprovalToOpportunity)
-      const contactId = await this.searchContactByBusinessName(businessName);
-      if (!contactId) {
-        // Fall back to email lookup if business name didn't match
-        const contactByEmail = await this.findContactByEmail(decision.businessEmail);
-        if (!contactByEmail) {
-          return {
-            success: false,
-            message: `No GHL contact found for "${businessName}" (email: ${decision.businessEmail})`
-          };
+      // Step 1: Find the contact by email first (most reliable — avoids name mismatch issues)
+      let contactId: string | null = null;
+
+      if (businessEmail) {
+        contactId = await this.findContactByEmail(businessEmail);
+        if (contactId) {
+          console.log(`[GHL] Found contact by email "${businessEmail}": ${contactId}`);
         }
-        // Use email-based contact
-        return await this.syncDecisionToContact(contactByEmail, decision);
+      }
+
+      // Step 2: Fall back to business name search if email lookup failed
+      if (!contactId && businessName) {
+        contactId = await this.searchContactByBusinessName(businessName);
+        if (contactId) {
+          console.log(`[GHL] Found contact by business name "${businessName}": ${contactId}`);
+        }
+      }
+
+      if (!contactId) {
+        return {
+          success: false,
+          message: `No GHL contact found for email "${businessEmail}" or business "${businessName}"`
+        };
       }
 
       return await this.syncDecisionToContact(contactId, decision);
     } catch (error: any) {
-      console.error(`[GHL] Error in syncUnderwritingDecision for "${businessName}":`, error);
+      console.error(`[GHL] Error in syncUnderwritingDecision for "${businessEmail || businessName}":`, error);
       return {
         success: false,
         message: `Error: ${error.message || 'Unknown error'}`
@@ -1505,10 +1630,36 @@ export class GoHighLevelService {
     // Step 2: Find opportunities for this contact
     const opportunities = await this.searchOpportunitiesByContact(contactId);
     if (opportunities.length === 0) {
-      return {
-        success: false,
-        message: `No opportunities found for contact ${contactId} (${decision.businessName})`
-      };
+      // Auto-create an opportunity if none exists
+      const newOppId = await this.createOpportunityForContact(contactId, decision.businessName || '');
+      if (!newOppId) {
+        return {
+          success: false,
+          message: `No opportunities found for contact ${contactId} (${decision.businessName}) and auto-creation failed`
+        };
+      }
+      console.log(`[GHL] Auto-created opportunity ${newOppId} for contact ${contactId} (${decision.businessName})`);
+
+      // Get the new opportunity's custom fields and proceed
+      const oppDetails = await this.getOpportunity(newOppId);
+      const newCustomFields: Record<string, string> = {};
+      if (oppDetails?.customFields) {
+        for (const cf of oppDetails.customFields) {
+          const key = cf.key || cf.id || '';
+          const value = cf.value || cf.field_value || '';
+          if (key && value) {
+            newCustomFields[key] = value;
+          }
+        }
+      }
+
+      if (status === 'approved' || status === 'funded') {
+        return await this.syncApprovedDecision(newOppId, decision, newCustomFields);
+      } else if (status === 'declined' || status === 'unqualified') {
+        return await this.syncDeclinedDecision(newOppId, decision, newCustomFields);
+      }
+
+      return { success: false, message: `Unrecognized status "${status}" — skipping sync`, opportunityId: newOppId };
     }
 
     // Pick the most recent open opportunity, or the most recent overall
@@ -1534,7 +1685,7 @@ export class GoHighLevelService {
     }
 
     // Step 4: Build the fields to update based on status
-    if (status === 'approved') {
+    if (status === 'approved' || status === 'funded') {
       return await this.syncApprovedDecision(targetOpp.id, decision, currentCustomFields);
     } else if (status === 'declined' || status === 'unqualified') {
       return await this.syncDeclinedDecision(targetOpp.id, decision, currentCustomFields);

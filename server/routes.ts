@@ -4834,6 +4834,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 try {
                   const ghlResult = await ghlService.syncApprovalToOpportunity({
                     businessName: row.businessName,
+                    businessEmail: row.businessEmail || null,
                     lenderName: row.lenderName,
                     status: updates.status,
                     approvedAmount: row.approvedAmount,
@@ -4914,6 +4915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           try {
             const ghlResult = await ghlService.syncApprovalToOpportunity({
               businessName: row.businessName,
+              businessEmail: row.businessEmail || null,
               lenderName: row.lenderName,
               status: row.status || 'pending',
               approvedAmount: row.approvedAmount,
@@ -5078,6 +5080,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 try {
                   const ghlResult = await ghlService.syncApprovalToOpportunity({
                     businessName: row.businessName,
+                    businessEmail: row.businessEmail || null,
                     lenderName: row.lenderName,
                     status: updates.status,
                     approvedAmount: row.approvedAmount,
@@ -5139,6 +5142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           try {
             const ghlResult = await ghlService.syncApprovalToOpportunity({
               businessName: row.businessName,
+              businessEmail: row.businessEmail || null,
               lenderName: row.lenderName,
               status: row.status || 'pending',
               approvedAmount: row.approvedAmount,
