@@ -651,7 +651,8 @@ export default function Approvals() {
     // CSV headers
     const headers = [
       "Business Name",
-      "Business Email",
+      "Email",
+      "Phone",
       "Lender",
       "Advance Amount",
       "Term",
@@ -681,6 +682,7 @@ export default function Approvals() {
         rows.push([
           decision.businessName || "",
           decision.businessEmail || "",
+          decision.businessPhone || "",
           "",
           "",
           "",
@@ -700,6 +702,7 @@ export default function Approvals() {
           rows.push([
             decision.businessName || "",
             decision.businessEmail || "",
+            decision.businessPhone || "",
             approval.lender || "",
             approval.advanceAmount || "",
             approval.term || "",
@@ -1393,11 +1396,16 @@ export default function Approvals() {
               </p>
               <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
                 <li><strong>Business Name</strong> (required)</li>
+                <li><strong>Email</strong> (recommended - used to identify the business)</li>
+                <li><strong>Phone</strong> or <strong>Phone Number</strong> (recommended - used to identify the business)</li>
                 <li><strong>Overall Status</strong> (Approved / Declined Only)</li>
                 <li><strong>Best Lender, Best Funding Amount, Best Factor Rate, Best Term, Best Payment Freq, Best Commission, Best Date</strong></li>
                 <li><strong>Lender 2-5, Funding Amount 2-5, Factor Rate 2-5, Commission 2-5</strong> (for additional offers)</li>
                 <li><strong>Declined Lender 1-3, Decline Reason 1-3</strong> (for decline info)</li>
               </ul>
+              <p className="text-xs text-muted-foreground mt-2">
+                Each row should include at least an <strong>Email</strong> or <strong>Phone</strong> so the business can be identified in the system.
+              </p>
             </div>
             
             {/* File upload */}

@@ -2539,6 +2539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const {
       businessEmail,
       businessName,
+      businessPhone,
       status,
       advanceAmount,
       term,
@@ -2598,6 +2599,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const decision = await storage.createOrUpdateBusinessUnderwritingDecision({
         businessEmail,
         businessName: businessName || null,
+        businessPhone: businessPhone || null,
         status,
         advanceAmount: syncedAdvanceAmount,
         term: syncedTerm,
@@ -2793,6 +2795,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Required columns
       const businessNameIdx = headerMap['business name'];
       const overallStatusIdx = headerMap['overall status'];
+      const emailIdx = headerMap['email'];
+      const phoneIdx = headerMap['phone'] ?? headerMap['phone number'];
       
       if (businessNameIdx === undefined) {
         return res.status(400).json({ error: "CSV must have a 'Business Name' column" });
@@ -2810,8 +2814,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const overallStatus = values[overallStatusIdx]?.trim().toLowerCase() || '';
         const isApproved = overallStatus.includes('approved') && !overallStatus.includes('declined only');
         
-        // Create a unique email based on business name (for lookup purposes)
-        const businessEmail = `${businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}@imported.local`;
+        // Use real email if provided, otherwise generate synthetic one
+        const csvEmail = emailIdx !== undefined ? values[emailIdx]?.trim() : '';
+        const csvPhone = phoneIdx !== undefined ? values[phoneIdx]?.trim() : '';
+        const businessEmail = csvEmail || `${businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}@imported.local`;
+        const businessPhone = csvPhone || null;
         
         try {
           // Build approvals array from CSV columns
@@ -2885,6 +2892,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.createOrUpdateBusinessUnderwritingDecision({
             businessEmail,
             businessName,
+            businessPhone,
             status,
             advanceAmount: primaryApproval?.advanceAmount || null,
             term: primaryApproval?.term || null,

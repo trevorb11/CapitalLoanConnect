@@ -415,6 +415,7 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   // Business identifier (using email as the unique key for the business)
   businessEmail: text("business_email").notNull().unique(),
   businessName: text("business_name"),
+  businessPhone: text("business_phone"),
   
   // Decision status
   status: text("status").notNull(), // "approved" or "declined"
