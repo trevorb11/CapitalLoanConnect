@@ -604,6 +604,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ isAuthenticated: false });
   });
 
+  app.get("/api/agents", (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    const agentList = AGENTS.map(a => ({ name: a.name, email: a.email }));
+    res.json(agentList);
+  });
+
   // Lookup application progress by email or phone
   app.post("/api/applications/progress", async (req, res) => {
     try {
