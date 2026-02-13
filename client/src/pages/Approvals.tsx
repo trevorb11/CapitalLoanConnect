@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { LenderAutocomplete } from "@/components/LenderAutocomplete";
 import {
   Select,
   SelectContent,
@@ -1266,11 +1267,11 @@ export default function Approvals() {
               </div>
               <div>
                 <Label htmlFor="edit-lender">Lender</Label>
-                <Input
+                <LenderAutocomplete
                   id="edit-lender"
-                  placeholder="Lender name"
+                  placeholder="Search lender..."
                   value={editForm.lender}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, lender: e.target.value }))}
+                  onChange={(val) => setEditForm(prev => ({ ...prev, lender: val }))}
                   data-testid="input-edit-lender"
                 />
               </div>
@@ -1511,11 +1512,11 @@ export default function Approvals() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="fund-lender">Lender</Label>
-                <Input
+                <LenderAutocomplete
                   id="fund-lender"
-                  placeholder="Lender name"
+                  placeholder="Search lender..."
                   value={fundForm.lender}
-                  onChange={(e) => setFundForm(prev => ({ ...prev, lender: e.target.value }))}
+                  onChange={(val) => setFundForm(prev => ({ ...prev, lender: val }))}
                   data-testid="input-fund-lender"
                 />
               </div>

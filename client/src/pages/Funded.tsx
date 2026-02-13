@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { LenderAutocomplete } from "@/components/LenderAutocomplete";
 import {
   Building2,
   DollarSign,
@@ -1198,11 +1199,11 @@ export default function Funded() {
               </div>
               <div>
                 <Label htmlFor="edit-lender">Lender</Label>
-                <Input
+                <LenderAutocomplete
                   id="edit-lender"
-                  placeholder="Lender name"
+                  placeholder="Search lender..."
                   value={editForm.lender}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, lender: e.target.value }))}
+                  onChange={(val) => setEditForm(prev => ({ ...prev, lender: val }))}
                   data-testid="input-edit-lender"
                 />
               </div>
@@ -1413,11 +1414,11 @@ export default function Funded() {
               </div>
               <div>
                 <Label htmlFor="add-lender">Lender</Label>
-                <Input
+                <LenderAutocomplete
                   id="add-lender"
-                  placeholder="Lender name"
+                  placeholder="Search lender..."
                   value={addForm.lender}
-                  onChange={(e) => setAddForm(prev => ({ ...prev, lender: e.target.value }))}
+                  onChange={(val) => setAddForm(prev => ({ ...prev, lender: val }))}
                   data-testid="input-add-lender"
                 />
               </div>
