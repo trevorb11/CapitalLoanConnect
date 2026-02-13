@@ -737,7 +737,7 @@ export default function QuizIntake() {
               We'll connect you with the best financing options based on your business profile.
             </p>
 
-            <div className="w-full max-w-md mx-auto relative">
+            <div className="w-full mx-auto relative" style={{ maxWidth: '650px' }}>
               {/* GHL Embedded Form - kept in DOM to prevent NotFoundError */}
               <div className="relative" data-testid="ghl-form-container" style={{ display: ghlFormSubmitted ? 'none' : 'block' }}>
                 <div className="rounded-lg overflow-hidden">
