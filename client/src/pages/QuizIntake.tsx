@@ -740,15 +740,10 @@ export default function QuizIntake() {
             <div className="w-full max-w-md mx-auto relative">
               {/* GHL Embedded Form - kept in DOM to prevent NotFoundError */}
               <div className="relative" data-testid="ghl-form-container" style={{ display: ghlFormSubmitted ? 'none' : 'block' }}>
-                <div
-                  className="rounded-lg overflow-hidden"
-                  style={{
-                    filter: 'invert(0.82) hue-rotate(180deg) saturate(1.3) brightness(0.95)',
-                  }}
-                >
+                <div className="rounded-lg overflow-hidden">
                   <iframe
                     src="https://api.leadconnectorhq.com/widget/form/9lPCXmZ6jBCV2lHiRvM0"
-                    style={{ width: '100%', height: '550px', border: 'none' }}
+                    style={{ width: '100%', height: '700px', border: 'none', background: 'transparent' }}
                     id="inline-9lPCXmZ6jBCV2lHiRvM0"
                     data-layout="{'id':'INLINE'}"
                     data-trigger-type="alwaysShow"
@@ -758,10 +753,11 @@ export default function QuizIntake() {
                     data-deactivation-type="neverDeactivate"
                     data-deactivation-value=""
                     data-form-name="Initial Contact Form"
-                    data-height="450"
+                    data-height="700"
                     data-layout-iframe-id="inline-9lPCXmZ6jBCV2lHiRvM0"
                     data-form-id="9lPCXmZ6jBCV2lHiRvM0"
                     title="Initial Contact Form"
+                    allow="clipboard-write"
                     data-testid="ghl-form-iframe"
                   />
                 </div>
