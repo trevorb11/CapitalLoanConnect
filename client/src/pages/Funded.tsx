@@ -35,6 +35,7 @@ import {
   Banknote,
   Undo2,
   Mail,
+  UserCheck,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -137,6 +138,7 @@ export default function Funded() {
     notes: '',
     approvalDate: '',
     fundedDate: '',
+    assignedRep: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -155,6 +157,7 @@ export default function Funded() {
     notes: '',
     approvalDate: new Date().toISOString().split('T')[0],
     fundedDate: new Date().toISOString().split('T')[0],
+    assignedRep: '',
   });
   const [addSaving, setAddSaving] = useState(false);
 
@@ -189,6 +192,16 @@ export default function Funded() {
       return res.json();
     },
     retry: false,
+    enabled: isAuthenticated,
+  });
+
+  const { data: agents } = useQuery<{ name: string; email: string }[]>({
+    queryKey: ['/api/agents'],
+    queryFn: async () => {
+      const res = await fetch('/api/agents', { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
     enabled: isAuthenticated,
   });
 
@@ -287,6 +300,7 @@ export default function Funded() {
           notes: existing.notes,
           approvalDate: existing.approvalDate || '',
           fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString().split('T')[0] : '',
+          assignedRep: decision.assignedRep || '',
         });
       }
     } else {
@@ -302,6 +316,7 @@ export default function Funded() {
         notes: '',
         approvalDate: new Date().toISOString().split('T')[0],
         fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        assignedRep: decision.assignedRep || '',
       });
     }
     setEditingFunded({ decision, approvalId });
@@ -345,6 +360,7 @@ export default function Funded() {
         updates: {
           additionalApprovals: approvals,
           fundedDate: editForm.fundedDate,
+          assignedRep: editForm.assignedRep || null,
         },
       });
       setEditingFunded(null);
@@ -397,6 +413,7 @@ export default function Funded() {
         businessEmail: addForm.businessEmail,
         status: 'funded',
         fundedDate: addForm.fundedDate,
+        assignedRep: addForm.assignedRep || null,
         additionalApprovals: [approval],
       });
       setShowAddFunded(false);
@@ -414,6 +431,7 @@ export default function Funded() {
         notes: '',
         approvalDate: new Date().toISOString().split('T')[0],
         fundedDate: new Date().toISOString().split('T')[0],
+        assignedRep: '',
       });
       toast({ title: "Deal Added", description: `${addForm.businessName || addForm.businessEmail} has been added as funded.` });
     } catch (error: any) {
@@ -507,7 +525,8 @@ export default function Funded() {
     return (
       (d.businessName || "").toLowerCase().includes(q) ||
       (d.businessEmail || "").toLowerCase().includes(q) ||
-      (d.lender || "").toLowerCase().includes(q)
+      (d.lender || "").toLowerCase().includes(q) ||
+      (d.assignedRep || "").toLowerCase().includes(q)
     );
   });
 
@@ -983,8 +1002,14 @@ export default function Funded() {
                       </div>
                     </div>
 
-                    <div className="text-sm text-muted-foreground">
-                      {decision.businessEmail}
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                      <span>{decision.businessEmail}</span>
+                      {decision.assignedRep && (
+                        <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                          <UserCheck className="w-3 h-3" />
+                          {decision.assignedRep}
+                        </Badge>
+                      )}
                     </div>
 
                     {/* Best Approval at top with dropdown for additional */}
@@ -1113,6 +1138,23 @@ export default function Funded() {
                 onChange={(e) => setEditForm(prev => ({ ...prev, fundedDate: e.target.value }))}
                 data-testid="input-edit-funded-date"
               />
+            </div>
+            <div>
+              <Label htmlFor="edit-assignedRep">Assigned Rep</Label>
+              <Select
+                value={editForm.assignedRep}
+                onValueChange={(value) => setEditForm(prev => ({ ...prev, assignedRep: value === '__none__' ? '' : value }))}
+              >
+                <SelectTrigger data-testid="select-edit-assigned-rep">
+                  <SelectValue placeholder="Select a rep" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {(agents || []).map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1311,6 +1353,23 @@ export default function Funded() {
                 onChange={(e) => setAddForm(prev => ({ ...prev, fundedDate: e.target.value }))}
                 data-testid="input-add-funded-date"
               />
+            </div>
+            <div>
+              <Label htmlFor="add-assignedRep">Assigned Rep</Label>
+              <Select
+                value={addForm.assignedRep}
+                onValueChange={(value) => setAddForm(prev => ({ ...prev, assignedRep: value === '__none__' ? '' : value }))}
+              >
+                <SelectTrigger data-testid="select-add-assigned-rep">
+                  <SelectValue placeholder="Select a rep" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {(agents || []).map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
