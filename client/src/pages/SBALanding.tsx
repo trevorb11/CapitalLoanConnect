@@ -776,10 +776,10 @@ export default function SBALanding() {
                 5 minutes. No hard credit pull. No obligation.
               </p>
 
-              <div style={{ display: ghlFormSubmitted ? 'none' : 'block' }} data-testid="sba-ghl-form-container">
+              <div style={{ display: ghlFormSubmitted ? 'none' : 'block', overflow: 'hidden' }} data-testid="sba-ghl-form-container">
                 <iframe
                   src="https://api.leadconnectorhq.com/widget/form/9lPCXmZ6jBCV2lHiRvM0"
-                  style={{ width: '100%', height: '600px', border: 'none', background: 'transparent' }}
+                  style={{ width: '100%', height: '600px', border: 'none', background: 'transparent', marginTop: '-60px' }}
                   id="sba-inline-9lPCXmZ6jBCV2lHiRvM0"
                   data-layout="{'id':'INLINE'}"
                   data-trigger-type="alwaysShow"
