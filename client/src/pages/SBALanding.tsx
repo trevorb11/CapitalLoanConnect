@@ -2,9 +2,16 @@ import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { Loader2, CheckCircle, ArrowLeft, Shield, Clock, DollarSign, Building2, FileText, Users, Landmark } from "lucide-react";
+import { Loader2, CheckCircle, ArrowLeft, Shield, Clock, DollarSign, Building2, FileText, Users, Landmark, ArrowRight, Star, TrendingUp, Briefcase } from "lucide-react";
 import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
+
+import sbaRestaurant from "@assets/sba-restaurant.jpg";
+import sbaConstruction from "@assets/sba-construction.jpg";
+import sbaMedical from "@assets/sba-medical.jpg";
+import sbaRetail from "@assets/sba-retail.jpg";
+import sbaTrucking from "@assets/sba-trucking.jpg";
+import sbaFranchise from "@assets/sba-franchise.jpg";
 
 const BUSINESS_AGE_OPTIONS = [
   "Less than 3 months",
@@ -86,18 +93,16 @@ function formatAmount(amount: number): string {
   }).format(amount);
 }
 
-type SBAPhase = "landing" | "quiz";
-
 export default function SBALanding() {
   const [, navigate] = useLocation();
-  const [phase, setPhase] = useState<SBAPhase>("landing");
+  const [showQuiz, setShowQuiz] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [formError, setFormError] = useState("");
   const [ghlFormLoaded, setGhlFormLoaded] = useState(false);
   const [ghlFormSubmitted, setGhlFormSubmitted] = useState(false);
 
-  const totalSteps = 8;
+  const totalSteps = 7;
   const progress = (currentStep / totalSteps) * 100;
 
   const [quizData, setQuizData] = useState<QuizData>({
@@ -123,19 +128,17 @@ export default function SBALanding() {
   }, []);
 
   useEffect(() => {
-    if (phase === "quiz" && currentStep === 1 && !ghlFormLoaded) {
-      const existingScript = document.querySelector('script[src="https://link.msgsndr.com/js/form_embed.js"]');
-      if (!existingScript) {
-        const script = document.createElement('script');
-        script.src = 'https://link.msgsndr.com/js/form_embed.js';
-        script.async = true;
-        script.onload = () => setGhlFormLoaded(true);
-        document.body.appendChild(script);
-      } else {
-        setGhlFormLoaded(true);
-      }
+    const existingScript = document.querySelector('script[src="https://link.msgsndr.com/js/form_embed.js"]');
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.src = 'https://link.msgsndr.com/js/form_embed.js';
+      script.async = true;
+      script.onload = () => setGhlFormLoaded(true);
+      document.body.appendChild(script);
+    } else {
+      setGhlFormLoaded(true);
     }
-  }, [phase, currentStep, ghlFormLoaded]);
+  }, []);
 
   const submitMutation = useMutation({
     mutationFn: async (data: QuizData & { recaptchaToken?: string }) => {
@@ -186,16 +189,20 @@ export default function SBALanding() {
     const GHL_ORIGINS = ['https://api.leadconnectorhq.com', 'https://link.msgsndr.com', 'https://backend.leadconnectorhq.com'];
 
     const extractGhlFormData = (eventData: any): Record<string, any> | null => {
-      if (Array.isArray(eventData) && eventData.length >= 3 && typeof eventData[2] === 'string') {
-        const jsonStr = eventData[2];
-        if (jsonStr.includes('customer_id') || jsonStr.includes('full_address') || jsonStr.includes('email')) {
-          return JSON.parse(jsonStr);
+      try {
+        if (Array.isArray(eventData) && eventData.length >= 3 && typeof eventData[2] === 'string') {
+          const jsonStr = eventData[2];
+          if (jsonStr.includes('customer_id') || jsonStr.includes('full_address') || jsonStr.includes('email')) {
+            return JSON.parse(jsonStr);
+          }
         }
-      }
-      if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
-        if (eventData.type === 'form-submit' || eventData.type === 'form-submit-success' || eventData.formId) {
-          return eventData.data || eventData;
+        if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
+          if (eventData.type === 'form-submit' || eventData.type === 'form-submit-success' || eventData.formId) {
+            return eventData.data || eventData;
+          }
         }
+      } catch {
+        return null;
       }
       return null;
     };
@@ -223,7 +230,10 @@ export default function SBALanding() {
           consentTransactional: true,
         }));
 
-        setTimeout(() => goToStep(2), 1500);
+        setTimeout(() => {
+          setShowQuiz(true);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 1500);
       } catch (e) {
         // ignore
       }
@@ -244,7 +254,7 @@ export default function SBALanding() {
 
   const nextStep = () => {
     if (currentStep < totalSteps) {
-      const stepNames = ['Contact Info', 'Funding Purpose', 'Credit Score', 'Monthly Revenue', 'Industry', 'Business Age', 'Own Business', 'Financing Amount'];
+      const stepNames = ['Funding Purpose', 'Credit Score', 'Monthly Revenue', 'Industry', 'Business Age', 'Own Business', 'Financing Amount'];
       trackFormStepCompleted('sba_intake', currentStep, stepNames[currentStep - 1]);
       goToStep(currentStep + 1);
     }
@@ -265,12 +275,16 @@ export default function SBALanding() {
     submitMutation.mutate(quizData);
   };
 
-  const startQuiz = () => {
-    setPhase("quiz");
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const INDUSTRY_CARDS = [
+    { name: "Restaurants & Food Services", img: sbaRestaurant, keywords: "SBA loan for restaurant, food service business financing, restaurant expansion loan" },
+    { name: "Construction & Contractors", img: sbaConstruction, keywords: "SBA loan for construction business, contractor equipment financing, construction working capital" },
+    { name: "Medical & Dental Practices", img: sbaMedical, keywords: "SBA loan for medical practice, dental practice financing, healthcare business loan" },
+    { name: "Retail & E-Commerce", img: sbaRetail, keywords: "SBA loan for retail store, small business retail financing, inventory funding" },
+    { name: "Trucking & Transportation", img: sbaTrucking, keywords: "SBA loan for trucking company, transportation business financing, fleet expansion loan" },
+    { name: "Franchise & Multi-Location", img: sbaFranchise, keywords: "SBA loan for franchise, franchise startup loan, multi-location business financing" },
+  ];
 
-  if (phase === "quiz") {
+  if (showQuiz) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)" }}>
         <div
@@ -282,80 +296,18 @@ export default function SBALanding() {
           }}
           data-testid="sba-quiz-container"
         >
-          {!ghlFormSubmitted || currentStep > 1 ? (
-            <div className="w-full h-1 bg-white/20 rounded-full mb-8">
-              <div
-                className="h-full bg-white rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${progress}%` }}
-                data-testid="sba-progress-bar"
-              />
-            </div>
-          ) : null}
+          <div className="w-full h-1 bg-white/20 rounded-full mb-8">
+            <div
+              className="h-full bg-white rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${progress}%` }}
+              data-testid="sba-progress-bar"
+            />
+          </div>
 
-          {/* Step 1: GHL Contact Form */}
+          {/* Step 1: Funding Purpose */}
           <div
             className={`transition-all duration-300 ${currentStep === 1 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
             data-testid="sba-step-1"
-          >
-            <div className="text-center">
-              <h3 className="text-white text-xl md:text-2xl font-semibold mb-2">
-                Let's Get Started
-              </h3>
-              <p className="text-white/70 mb-4 text-sm md:text-base">
-                Fill out your contact information below to begin your SBA funding qualification.
-              </p>
-
-              <div className="w-full mx-auto relative" style={{ maxWidth: '650px' }}>
-                <div className="relative" data-testid="sba-ghl-form-container" style={{ display: ghlFormSubmitted ? 'none' : 'block' }}>
-                  <div className="rounded-lg overflow-hidden">
-                    <iframe
-                      src="https://api.leadconnectorhq.com/widget/form/9lPCXmZ6jBCV2lHiRvM0"
-                      style={{ width: '100%', height: '700px', border: 'none', background: 'transparent' }}
-                      id="sba-inline-9lPCXmZ6jBCV2lHiRvM0"
-                      data-layout="{'id':'INLINE'}"
-                      data-trigger-type="alwaysShow"
-                      data-trigger-value=""
-                      data-activation-type="alwaysActivated"
-                      data-activation-value=""
-                      data-deactivation-type="neverDeactivate"
-                      data-deactivation-value=""
-                      data-form-name="Initial Contact Form"
-                      data-height="700"
-                      data-layout-iframe-id="sba-inline-9lPCXmZ6jBCV2lHiRvM0"
-                      data-form-id="9lPCXmZ6jBCV2lHiRvM0"
-                      title="Initial Contact Form"
-                      allow="clipboard-write"
-                      data-testid="sba-ghl-form-iframe"
-                    />
-                  </div>
-                  <p className="text-white/50 text-[10px] leading-relaxed mt-3">
-                    By submitting, I agree to the{" "}
-                    <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
-                      Terms of Service
-                    </a>{" "}
-                    and{" "}
-                    <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
-                      Privacy Policy
-                    </a>.
-                  </p>
-                </div>
-
-                {ghlFormSubmitted && (
-                  <div className="py-8" data-testid="sba-ghl-submitted">
-                    <div className="flex flex-col items-center gap-4">
-                      <CheckCircle className="w-10 h-10 text-green-400" />
-                      <p className="text-white text-lg font-medium">Great! Now let's qualify your business...</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Step 2: Funding Purpose (was Q7 in original) */}
-          <div
-            className={`transition-all duration-300 ${currentStep === 2 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-            data-testid="sba-step-2"
           >
             <div className="text-center">
               <h3 className="text-white text-2xl md:text-3xl font-semibold mb-8">
@@ -388,16 +340,16 @@ export default function SBALanding() {
             </div>
           </div>
 
-          {/* Step 3: Credit Score (was Q6) */}
+          {/* Step 2: Credit Score */}
           <div
-            className={`transition-all duration-300 ${currentStep === 3 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-            data-testid="sba-step-3"
+            className={`transition-all duration-300 ${currentStep === 2 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+            data-testid="sba-step-2"
           >
             <div className="text-center">
               <button
                 onClick={prevStep}
                 className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
-                data-testid="sba-back-3"
+                data-testid="sba-back-2"
               >
                 <ArrowLeft className="w-5 h-5" />
                 <span>Back</span>
@@ -433,16 +385,16 @@ export default function SBALanding() {
             </div>
           </div>
 
-          {/* Step 4: Monthly Revenue (was Q5) */}
+          {/* Step 3: Monthly Revenue */}
           <div
-            className={`transition-all duration-300 ${currentStep === 4 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-            data-testid="sba-step-4"
+            className={`transition-all duration-300 ${currentStep === 3 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+            data-testid="sba-step-3"
           >
             <div className="text-center">
               <button
                 onClick={prevStep}
                 className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
-                data-testid="sba-back-4"
+                data-testid="sba-back-3"
               >
                 <ArrowLeft className="w-5 h-5" />
                 <span>Back</span>
@@ -484,16 +436,16 @@ export default function SBALanding() {
             </div>
           </div>
 
-          {/* Step 5: Industry (was Q4) */}
+          {/* Step 4: Industry */}
           <div
-            className={`transition-all duration-300 ${currentStep === 5 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-            data-testid="sba-step-5"
+            className={`transition-all duration-300 ${currentStep === 4 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+            data-testid="sba-step-4"
           >
             <div className="text-center">
               <button
                 onClick={prevStep}
                 className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
-                data-testid="sba-back-5"
+                data-testid="sba-back-4"
               >
                 <ArrowLeft className="w-5 h-5" />
                 <span>Back</span>
@@ -528,16 +480,16 @@ export default function SBALanding() {
             </div>
           </div>
 
-          {/* Step 6: Business Age (was Q3) */}
+          {/* Step 5: Business Age */}
           <div
-            className={`transition-all duration-300 ${currentStep === 6 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-            data-testid="sba-step-6"
+            className={`transition-all duration-300 ${currentStep === 5 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+            data-testid="sba-step-5"
           >
             <div className="text-center">
               <button
                 onClick={prevStep}
                 className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
-                data-testid="sba-back-6"
+                data-testid="sba-back-5"
               >
                 <ArrowLeft className="w-5 h-5" />
                 <span>Back</span>
@@ -572,16 +524,16 @@ export default function SBALanding() {
             </div>
           </div>
 
-          {/* Step 7: Own Business (was Q2) */}
+          {/* Step 6: Own Business */}
           <div
-            className={`transition-all duration-300 ${currentStep === 7 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-            data-testid="sba-step-7"
+            className={`transition-all duration-300 ${currentStep === 6 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+            data-testid="sba-step-6"
           >
             <div className="text-center">
               <button
                 onClick={prevStep}
                 className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
-                data-testid="sba-back-7"
+                data-testid="sba-back-6"
               >
                 <ArrowLeft className="w-5 h-5" />
                 <span>Back</span>
@@ -616,25 +568,25 @@ export default function SBALanding() {
             </div>
           </div>
 
-          {/* Step 8: Financing Amount (was Q1) - Final step with submit */}
+          {/* Step 7: Financing Amount - Final step with submit */}
           <div
-            className={`transition-all duration-300 ${currentStep === 8 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
-            data-testid="sba-step-8"
+            className={`transition-all duration-300 ${currentStep === 7 ? "block opacity-100" : "hidden opacity-0"} ${isTransitioning ? "opacity-0" : ""}`}
+            data-testid="sba-step-7"
           >
             <div className="text-center">
               <button
                 onClick={prevStep}
                 className="absolute top-8 left-8 text-white/70 hover:text-white flex items-center gap-2 transition-colors"
-                data-testid="sba-back-8"
+                data-testid="sba-back-7"
               >
                 <ArrowLeft className="w-5 h-5" />
                 <span>Back</span>
               </button>
               <h3 className="text-white text-2xl md:text-3xl font-semibold mb-4 leading-tight">
-                How much are you looking to finance?
+                How much SBA funding do you need?
               </h3>
               <p className="text-white/70 mb-8 text-base md:text-lg">
-                Drag the slider to select your desired financing amount.
+                Drag the slider to select your desired SBA loan amount.
               </p>
 
               <div className="max-w-md mx-auto px-4">
@@ -646,13 +598,13 @@ export default function SBALanding() {
                   <input
                     type="range"
                     min="5000"
-                    max="1000000"
-                    step="1000"
+                    max="5000000"
+                    step="5000"
                     value={quizData.financingAmount}
                     onChange={(e) => setQuizData((prev) => ({ ...prev, financingAmount: parseInt(e.target.value) }))}
                     className="financing-slider w-full h-3 rounded-full appearance-none cursor-pointer mb-3"
                     style={{
-                      background: `linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.9) ${((quizData.financingAmount - 5000) / (1000000 - 5000)) * 100}%, rgba(255,255,255,0.2) ${((quizData.financingAmount - 5000) / (1000000 - 5000)) * 100}%, rgba(255,255,255,0.2) 100%)`,
+                      background: `linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.9) ${((quizData.financingAmount - 5000) / (5000000 - 5000)) * 100}%, rgba(255,255,255,0.2) ${((quizData.financingAmount - 5000) / (5000000 - 5000)) * 100}%, rgba(255,255,255,0.2) 100%)`,
                     }}
                     data-testid="sba-financing-slider"
                   />
@@ -660,7 +612,7 @@ export default function SBALanding() {
 
                 <div className="flex justify-between text-white/60 text-sm mb-8">
                   <span>$5K</span>
-                  <span>$1M+</span>
+                  <span>$5M</span>
                 </div>
 
                 <button
@@ -675,7 +627,7 @@ export default function SBALanding() {
                       Processing...
                     </span>
                   ) : (
-                    "Submit & Continue to Application"
+                    "Submit & Continue to Full Application"
                   )}
                 </button>
 
@@ -690,7 +642,7 @@ export default function SBALanding() {
 
           <div className="mt-8 pt-6 border-t border-white/10">
             <p className="text-white/50 text-xs text-center">
-              SBA loans provided through our network of approved SBA lenders. All applications subject to lender approval.
+              SBA loans provided through our network of 50+ SBA preferred lenders. All applications subject to lender approval and SBA guidelines.
             </p>
           </div>
         </div>
@@ -749,209 +701,443 @@ export default function SBALanding() {
     <div style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", backgroundColor: '#f5f5f7', color: '#1d1d1f', lineHeight: 1.6 }}>
       {/* Header */}
       <header style={{ backgroundColor: '#0a0f2c', padding: '20px 0', borderBottom: '1px solid #1a2650', position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
           <img
             src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c11dae8ddeadf0fc2ffa7_Group%2017.svg"
-            alt="Today Capital Group"
+            alt="Today Capital Group - SBA Loan Broker"
             style={{ height: '40px', width: 'auto' }}
             data-testid="sba-img-logo"
           />
-          <span style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: 500, letterSpacing: '1px', textTransform: 'uppercase' }}>SBA Loans</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <span style={{ color: '#e0e0e0', fontSize: '14px', fontWeight: 500, letterSpacing: '1px', textTransform: 'uppercase' }}>SBA Loan Experts</span>
+          </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section style={{ background: 'linear-gradient(135deg, #0a0f2c 0%, #1a2650 50%, #192F56 100%)', padding: '80px 20px', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+      {/* Hero Section with Embedded GHL Form */}
+      <section style={{ background: 'linear-gradient(135deg, #0a0f2c 0%, #1a2650 50%, #192F56 100%)', padding: '60px 20px 80px', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'radial-gradient(circle at 30% 50%, rgba(91, 77, 143, 0.15) 0%, transparent 60%)' }} />
-        <div style={{ maxWidth: '1000px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255,255,255,0.1)', padding: '8px 20px', borderRadius: '50px', marginBottom: '24px', border: '1px solid rgba(255,255,255,0.15)' }}>
-            <Landmark size={16} color="#ffffff" />
-            <span style={{ color: '#ffffff', fontSize: '14px', fontWeight: 500 }}>SBA-Backed Financing</span>
-          </div>
+        <div style={{ maxWidth: '1100px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '40px', alignItems: 'start' }} className="md:!grid-cols-2">
+            {/* Left: Hero Content */}
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(255,255,255,0.1)', padding: '8px 20px', borderRadius: '50px', marginBottom: '24px', border: '1px solid rgba(255,255,255,0.15)' }}>
+                <Shield size={16} color="#ffffff" />
+                <span style={{ color: '#ffffff', fontSize: '14px', fontWeight: 500 }}>SBA Preferred Lender Network</span>
+              </div>
 
-          <h1 style={{ fontSize: 'clamp(36px, 5vw, 56px)', fontWeight: 600, color: '#FFFFFF', marginBottom: '20px', letterSpacing: '-2px', lineHeight: 1.1 }}>
-            SBA Loans Built for<br />
-            <span style={{ fontStyle: 'italic', fontWeight: 300 }}>Growing Businesses</span>
-          </h1>
+              <h1 style={{ fontSize: 'clamp(32px, 4.5vw, 52px)', fontWeight: 700, color: '#FFFFFF', marginBottom: '20px', letterSpacing: '-1.5px', lineHeight: 1.1 }} data-testid="sba-text-hero-title">
+                Get Matched With the SBA Lender Most Likely to Approve Your Business
+              </h1>
 
-          <p style={{ fontSize: 'clamp(16px, 2vw, 20px)', color: '#e0e0e0', marginBottom: '40px', maxWidth: '700px', marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6 }} data-testid="sba-text-hero-subtitle">
-            Access government-backed loans with competitive rates and longer terms. We connect you with SBA-approved lenders to help your business grow with confidence.
-          </p>
+              <p style={{ fontSize: 'clamp(16px, 2vw, 19px)', color: '#d0d0d0', marginBottom: '32px', lineHeight: 1.7 }} data-testid="sba-text-hero-subtitle">
+                One simple application connects you with 50+ SBA preferred lenders. No bank visits required. Get pre-qualified for an SBA loan today with fast decisions and less hassle.
+              </p>
 
-          <button
-            onClick={startQuiz}
-            style={{
-              display: 'inline-block', padding: '18px 48px', backgroundColor: '#FFFFFF', color: '#0a0f2c',
-              textDecoration: 'none', fontWeight: 600, borderRadius: '50px', fontSize: '16px', border: 'none',
-              cursor: 'pointer', boxShadow: '0 4px 20px rgba(255,255,255,0.2)', transition: 'transform 0.3s ease, box-shadow 0.3s ease'
-            }}
-            data-testid="sba-button-get-started"
-          >
-            Check Your Eligibility
-          </button>
+              {/* Trust Bar */}
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: '32px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} data-testid="sba-trust-no-fee">
+                  <CheckCircle size={18} color="#4ade80" />
+                  <span style={{ color: '#d0d0d0', fontSize: '14px' }}>No Upfront Fees</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} data-testid="sba-trust-pre-qual">
+                  <CheckCircle size={18} color="#4ade80" />
+                  <span style={{ color: '#d0d0d0', fontSize: '14px' }}>Free Pre-Qualification</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} data-testid="sba-trust-dedicated">
+                  <CheckCircle size={18} color="#4ade80" />
+                  <span style={{ color: '#d0d0d0', fontSize: '14px' }}>Dedicated Loan Advisor</span>
+                </div>
+              </div>
 
-          {/* Stats */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '60px', marginTop: '50px', flexWrap: 'wrap' }}>
-            <div style={{ textAlign: 'center' }}>
-              <span style={{ fontSize: 'clamp(28px, 3vw, 42px)', fontWeight: 700, color: '#FFFFFF', display: 'block', marginBottom: '8px' }} data-testid="sba-text-stat-rate">6-10%</span>
-              <span style={{ fontSize: '13px', color: '#b0b0b0', textTransform: 'uppercase', letterSpacing: '1px' }}>Interest Rates</span>
+              {/* Stats */}
+              <div style={{ display: 'flex', gap: '40px', flexWrap: 'wrap' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <span style={{ fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, color: '#FFFFFF', display: 'block' }} data-testid="sba-text-stat-amount">$50K-$5M</span>
+                  <span style={{ fontSize: '12px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '1px' }}>SBA Loan Amounts</span>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <span style={{ fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, color: '#FFFFFF', display: 'block' }} data-testid="sba-text-stat-rate">Prime+2.75%</span>
+                  <span style={{ fontSize: '12px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '1px' }}>Rates From</span>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <span style={{ fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 700, color: '#FFFFFF', display: 'block' }} data-testid="sba-text-stat-term">Up to 25yr</span>
+                  <span style={{ fontSize: '12px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '1px' }}>Loan Terms</span>
+                </div>
+              </div>
             </div>
-            <div style={{ textAlign: 'center' }}>
-              <span style={{ fontSize: 'clamp(28px, 3vw, 42px)', fontWeight: 700, color: '#FFFFFF', display: 'block', marginBottom: '8px' }} data-testid="sba-text-stat-term">Up to 25yrs</span>
-              <span style={{ fontSize: '13px', color: '#b0b0b0', textTransform: 'uppercase', letterSpacing: '1px' }}>Loan Terms</span>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <span style={{ fontSize: 'clamp(28px, 3vw, 42px)', fontWeight: 700, color: '#FFFFFF', display: 'block', marginBottom: '8px' }} data-testid="sba-text-stat-amount">Up to $5M</span>
-              <span style={{ fontSize: '13px', color: '#b0b0b0', textTransform: 'uppercase', letterSpacing: '1px' }}>Loan Amounts</span>
+
+            {/* Right: GHL Form */}
+            <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.1)' }} data-testid="sba-hero-form-container">
+              <h3 style={{ color: '#ffffff', fontSize: '20px', fontWeight: 600, textAlign: 'center', marginBottom: '4px' }}>
+                See If You Qualify
+              </h3>
+              <p style={{ color: '#9ca3af', fontSize: '14px', textAlign: 'center', marginBottom: '16px' }}>
+                No hard credit pull. No obligation.
+              </p>
+
+              <div style={{ display: ghlFormSubmitted ? 'none' : 'block' }} data-testid="sba-ghl-form-container">
+                <iframe
+                  src="https://api.leadconnectorhq.com/widget/form/9lPCXmZ6jBCV2lHiRvM0"
+                  style={{ width: '100%', height: '600px', border: 'none', background: 'transparent' }}
+                  id="sba-inline-9lPCXmZ6jBCV2lHiRvM0"
+                  data-layout="{'id':'INLINE'}"
+                  data-trigger-type="alwaysShow"
+                  data-trigger-value=""
+                  data-activation-type="alwaysActivated"
+                  data-activation-value=""
+                  data-deactivation-type="neverDeactivate"
+                  data-deactivation-value=""
+                  data-form-name="Initial Contact Form"
+                  data-height="600"
+                  data-layout-iframe-id="sba-inline-9lPCXmZ6jBCV2lHiRvM0"
+                  data-form-id="9lPCXmZ6jBCV2lHiRvM0"
+                  title="SBA Loan Pre-Qualification Form"
+                  allow="clipboard-write"
+                  data-testid="sba-ghl-form-iframe"
+                />
+                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', lineHeight: 1.5, marginTop: '12px', textAlign: 'center' }}>
+                  By submitting, I agree to the{" "}
+                  <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'underline' }}>
+                    Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'underline' }}>
+                    Privacy Policy
+                  </a>.
+                </p>
+              </div>
+
+              {ghlFormSubmitted && (
+                <div style={{ padding: '48px 16px', textAlign: 'center' }} data-testid="sba-ghl-submitted">
+                  <CheckCircle size={48} color="#4ade80" style={{ margin: '0 auto 16px' }} />
+                  <p style={{ color: '#ffffff', fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Information Received</p>
+                  <p style={{ color: '#9ca3af', fontSize: '14px' }}>Qualifying your business now...</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </section>
 
-      {/* What is an SBA Loan */}
+      {/* How It Works Section */}
       <section style={{ backgroundColor: '#ffffff', padding: '80px 20px' }}>
         <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '60px' }}>
-            <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', color: '#1d1d1f', marginBottom: '16px', fontWeight: 600 }}>What is an SBA Loan?</h2>
+            <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', color: '#1d1d1f', marginBottom: '16px', fontWeight: 600 }} data-testid="sba-heading-how-it-works">
+              How SBA Loan Pre-Qualification Works
+            </h2>
             <p style={{ fontSize: '18px', color: '#6e6e73', maxWidth: '700px', margin: '0 auto', lineHeight: 1.7 }}>
-              SBA loans are partially guaranteed by the U.S. Small Business Administration, allowing lenders to offer favorable terms to small businesses that might not qualify for conventional financing.
+              Skip the bank runaround. Our streamlined SBA loan process connects you with the right lender in three simple steps.
             </p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '32px' }}>
-            <div style={{ backgroundColor: '#f5f5f7', padding: '32px 28px', borderRadius: '16px', textAlign: 'center' }} data-testid="sba-card-lower-rates">
-              <div style={{ marginBottom: '16px' }}>
-                <DollarSign size={40} color="#5b4d8f" />
-              </div>
-              <h3 style={{ fontSize: '20px', color: '#1d1d1f', marginBottom: '10px', fontWeight: 600 }}>Lower Interest Rates</h3>
+            <div style={{ backgroundColor: '#f5f5f7', padding: '32px 28px', borderRadius: '16px', textAlign: 'center', position: 'relative' }} data-testid="sba-step-card-1">
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#0a0f2c', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '20px', fontWeight: 700 }}>1</div>
+              <h3 style={{ fontSize: '20px', color: '#1d1d1f', marginBottom: '10px', fontWeight: 600 }}>Tell Us About Your Business</h3>
               <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6 }}>
-                Government backing means lenders can offer rates significantly below conventional business loans.
+                Complete a quick 2-minute application. We ask about your industry, revenue, credit score, and how much SBA funding you need.
               </p>
             </div>
 
-            <div style={{ backgroundColor: '#f5f5f7', padding: '32px 28px', borderRadius: '16px', textAlign: 'center' }} data-testid="sba-card-longer-terms">
-              <div style={{ marginBottom: '16px' }}>
-                <Clock size={40} color="#5b4d8f" />
-              </div>
-              <h3 style={{ fontSize: '20px', color: '#1d1d1f', marginBottom: '10px', fontWeight: 600 }}>Longer Repayment Terms</h3>
+            <div style={{ backgroundColor: '#f5f5f7', padding: '32px 28px', borderRadius: '16px', textAlign: 'center' }} data-testid="sba-step-card-2">
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#0a0f2c', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '20px', fontWeight: 700 }}>2</div>
+              <h3 style={{ fontSize: '20px', color: '#1d1d1f', marginBottom: '10px', fontWeight: 600 }}>Get Matched With SBA Preferred Lenders</h3>
               <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6 }}>
-                Terms up to 25 years mean lower monthly payments and better cash flow for your business.
+                One application, multiple SBA lender matches. We compare 50+ SBA preferred lenders to find the best rates and terms for your business.
               </p>
             </div>
 
-            <div style={{ backgroundColor: '#f5f5f7', padding: '32px 28px', borderRadius: '16px', textAlign: 'center' }} data-testid="sba-card-larger-amounts">
-              <div style={{ marginBottom: '16px' }}>
-                <Building2 size={40} color="#5b4d8f" />
-              </div>
-              <h3 style={{ fontSize: '20px', color: '#1d1d1f', marginBottom: '10px', fontWeight: 600 }}>Larger Loan Amounts</h3>
+            <div style={{ backgroundColor: '#f5f5f7', padding: '32px 28px', borderRadius: '16px', textAlign: 'center' }} data-testid="sba-step-card-3">
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#0a0f2c', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '20px', fontWeight: 700 }}>3</div>
+              <h3 style={{ fontSize: '20px', color: '#1d1d1f', marginBottom: '10px', fontWeight: 600 }}>Receive Your SBA Funding</h3>
               <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6 }}>
-                Access up to $5 million in funding for expansion, equipment, real estate, and working capital.
+                Your dedicated SBA loan advisor handles the paperwork from start to close. SBA loans funded in as fast as 45-60 days.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* SBA Loan Types */}
+      {/* SBA Loan Types Section */}
       <section style={{ backgroundColor: '#f5f5f7', padding: '80px 20px' }}>
         <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '60px' }}>
-            <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', color: '#1d1d1f', marginBottom: '16px', fontWeight: 600 }}>SBA Loan Programs</h2>
-            <p style={{ fontSize: '18px', color: '#6e6e73', maxWidth: '600px', margin: '0 auto' }}>
-              We help you find the right SBA program for your specific business needs.
+            <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', color: '#1d1d1f', marginBottom: '16px', fontWeight: 600 }} data-testid="sba-heading-loan-programs">
+              SBA Loan Programs We Offer
+            </h2>
+            <p style={{ fontSize: '18px', color: '#6e6e73', maxWidth: '700px', margin: '0 auto' }}>
+              SBA loans from $50K to $5M for working capital, commercial real estate, equipment purchases, business acquisition, and debt refinancing.
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
             <div style={{ backgroundColor: '#ffffff', padding: '32px 28px', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} data-testid="sba-card-7a">
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'rgba(91,77,143,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <FileText size={20} color="#5b4d8f" />
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: 'rgba(91,77,143,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FileText size={22} color="#5b4d8f" />
                 </div>
                 <h3 style={{ fontSize: '20px', color: '#1d1d1f', fontWeight: 600 }}>SBA 7(a) Loan</h3>
               </div>
-              <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6, marginBottom: '12px' }}>
-                The most common SBA loan, ideal for working capital, equipment, and business expansion. Up to $5M.
+              <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6, marginBottom: '16px' }}>
+                The most popular SBA loan program. Ideal for working capital, equipment financing, business expansion, partner buyouts, and debt refinancing. SBA 7(a) loan amounts up to $5 million with competitive rates starting at Prime + 2.75%.
               </p>
-              <p style={{ fontSize: '13px', color: '#5b4d8f', fontWeight: 500 }}>Terms: 7-25 years</p>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: '#5b4d8f', fontWeight: 500, backgroundColor: 'rgba(91,77,143,0.08)', padding: '4px 12px', borderRadius: '20px' }}>Up to $5M</span>
+                <span style={{ fontSize: '13px', color: '#5b4d8f', fontWeight: 500, backgroundColor: 'rgba(91,77,143,0.08)', padding: '4px 12px', borderRadius: '20px' }}>7-25 Year Terms</span>
+              </div>
             </div>
 
             <div style={{ backgroundColor: '#ffffff', padding: '32px 28px', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} data-testid="sba-card-504">
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'rgba(91,77,143,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Building2 size={20} color="#5b4d8f" />
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: 'rgba(91,77,143,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Building2 size={22} color="#5b4d8f" />
                 </div>
                 <h3 style={{ fontSize: '20px', color: '#1d1d1f', fontWeight: 600 }}>SBA 504 Loan</h3>
               </div>
-              <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6, marginBottom: '12px' }}>
-                Designed for major fixed asset purchases like real estate and large equipment. Up to $5.5M.
+              <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6, marginBottom: '16px' }}>
+                Designed for commercial real estate purchases and major fixed asset acquisitions. SBA 504 loan for commercial real estate offers below-market fixed interest rates, lower down payments, and long-term stability for growing businesses.
               </p>
-              <p style={{ fontSize: '13px', color: '#5b4d8f', fontWeight: 500 }}>Terms: 10-25 years</p>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: '#5b4d8f', fontWeight: 500, backgroundColor: 'rgba(91,77,143,0.08)', padding: '4px 12px', borderRadius: '20px' }}>Up to $5.5M</span>
+                <span style={{ fontSize: '13px', color: '#5b4d8f', fontWeight: 500, backgroundColor: 'rgba(91,77,143,0.08)', padding: '4px 12px', borderRadius: '20px' }}>10-25 Year Terms</span>
+              </div>
             </div>
 
             <div style={{ backgroundColor: '#ffffff', padding: '32px 28px', borderRadius: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} data-testid="sba-card-microloan">
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'rgba(91,77,143,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Users size={20} color="#5b4d8f" />
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', backgroundColor: 'rgba(91,77,143,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={22} color="#5b4d8f" />
                 </div>
                 <h3 style={{ fontSize: '20px', color: '#1d1d1f', fontWeight: 600 }}>SBA Microloan</h3>
               </div>
-              <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6, marginBottom: '12px' }}>
-                Smaller loans up to $50K for startups and growing businesses. Ideal for inventory and supplies.
+              <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6, marginBottom: '16px' }}>
+                SBA startup loans and microloans up to $50K designed for new businesses, franchise startups, and smaller capital needs. Get an SBA loan for a new business with no extensive operating history required.
               </p>
-              <p style={{ fontSize: '13px', color: '#5b4d8f', fontWeight: 500 }}>Terms: Up to 6 years</p>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '13px', color: '#5b4d8f', fontWeight: 500, backgroundColor: 'rgba(91,77,143,0.08)', padding: '4px 12px', borderRadius: '20px' }}>Up to $50K</span>
+                <span style={{ fontSize: '13px', color: '#5b4d8f', fontWeight: 500, backgroundColor: 'rgba(91,77,143,0.08)', padding: '4px 12px', borderRadius: '20px' }}>Up to 6 Year Terms</span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Eligibility Requirements */}
+      {/* Industry-Specific Section with Stock Photos */}
       <section style={{ backgroundColor: '#ffffff', padding: '80px 20px' }}>
-        <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-          <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-            <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', color: '#1d1d1f', marginBottom: '16px', fontWeight: 600 }}>Basic Eligibility</h2>
-            <p style={{ fontSize: '18px', color: '#6e6e73' }}>
-              See if your business may qualify for SBA financing.
+        <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+            <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', color: '#1d1d1f', marginBottom: '16px', fontWeight: 600 }} data-testid="sba-heading-industries">
+              SBA Loans for Every Industry
+            </h2>
+            <p style={{ fontSize: '18px', color: '#6e6e73', maxWidth: '700px', margin: '0 auto', lineHeight: 1.7 }}>
+              Whether you own a restaurant, medical practice, construction company, franchise, or trucking business, our SBA loan experts find the right financing for your specific industry.
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            {[
-              "Operate as a for-profit business in the U.S.",
-              "Meet SBA size standards for your industry",
-              "Have invested equity (time or money) in the business",
-              "Have exhausted other financing options",
-              "Good personal credit score (typically 650+)",
-              "Demonstrate ability to repay the loan",
-            ].map((req, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '16px', backgroundColor: '#f5f5f7', borderRadius: '12px' }} data-testid={`sba-eligibility-${idx}`}>
-                <CheckCircle size={20} color="#5b4d8f" style={{ flexShrink: 0, marginTop: '2px' }} />
-                <span style={{ fontSize: '15px', color: '#1d1d1f', lineHeight: 1.5 }}>{req}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+            {INDUSTRY_CARDS.map((industry, idx) => (
+              <div key={idx} style={{ borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', backgroundColor: '#ffffff' }} data-testid={`sba-industry-card-${idx}`}>
+                <div style={{ height: '200px', overflow: 'hidden', position: 'relative' }}>
+                  <img
+                    src={industry.img}
+                    alt={`SBA loan for ${industry.name} - small business financing`}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    loading="lazy"
+                  />
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)' }} />
+                  <h3 style={{ position: 'absolute', bottom: '16px', left: '20px', color: '#ffffff', fontSize: '18px', fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>{industry.name}</h3>
+                </div>
+                <div style={{ padding: '16px 20px' }}>
+                  <p style={{ fontSize: '13px', color: '#6e6e73', lineHeight: 1.5 }}>{industry.keywords}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* Comparison Table - Going Direct vs. Working With Us */}
+      <section style={{ backgroundColor: '#f5f5f7', padding: '80px 20px' }}>
+        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: '48px' }}>
+            <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', color: '#1d1d1f', marginBottom: '16px', fontWeight: 600 }} data-testid="sba-heading-comparison">
+              Going Direct vs. Working With an SBA Loan Broker
+            </h2>
+            <p style={{ fontSize: '18px', color: '#6e6e73' }}>
+              Why business owners choose Today Capital Group over applying to banks directly.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            {/* Direct Column */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '28px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }} data-testid="sba-comparison-direct">
+              <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#6e6e73', marginBottom: '20px', textAlign: 'center' }}>Going Direct to a Bank</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {[
+                  "1 lender, 1 set of criteria",
+                  "90-180 day timeline",
+                  "You navigate alone",
+                  "Limited loan options",
+                  "Multiple applications needed",
+                  "No prepayment guidance",
+                ].map((item, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <span style={{ color: '#ef4444', fontSize: '16px', fontWeight: 700, flexShrink: 0, marginTop: '2px' }}>-</span>
+                    <span style={{ fontSize: '14px', color: '#6e6e73', lineHeight: 1.5 }}>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* With Us Column */}
+            <div style={{ backgroundColor: '#0a0f2c', borderRadius: '16px', padding: '28px', boxShadow: '0 4px 16px rgba(10,15,44,0.2)' }} data-testid="sba-comparison-broker">
+              <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#ffffff', marginBottom: '20px', textAlign: 'center' }}>Working With Today Capital</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {[
+                  "50+ SBA preferred lenders",
+                  "45-60 day average timeline",
+                  "Dedicated SBA loan advisor",
+                  "Expert lender matching",
+                  "One application does it all",
+                  "We handle the paperwork",
+                ].map((item, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <CheckCircle size={16} color="#4ade80" style={{ flexShrink: 0, marginTop: '3px' }} />
+                    <span style={{ fontSize: '14px', color: '#d0d0d0', lineHeight: 1.5 }}>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Benefits / Why SBA Section */}
+      <section style={{ backgroundColor: '#ffffff', padding: '80px 20px' }}>
+        <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+            <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', color: '#1d1d1f', marginBottom: '16px', fontWeight: 600 }} data-testid="sba-heading-benefits">
+              Why Choose SBA Loans for Your Small Business?
+            </h2>
+            <p style={{ fontSize: '18px', color: '#6e6e73', maxWidth: '700px', margin: '0 auto', lineHeight: 1.7 }}>
+              SBA loans are partially guaranteed by the U.S. Small Business Administration, allowing lenders to offer the most competitive rates and longest terms available to small businesses.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '32px' }}>
+            <div style={{ backgroundColor: '#f5f5f7', padding: '32px 28px', borderRadius: '16px', textAlign: 'center' }} data-testid="sba-benefit-rates">
+              <div style={{ marginBottom: '16px' }}>
+                <DollarSign size={40} color="#5b4d8f" />
+              </div>
+              <h3 style={{ fontSize: '20px', color: '#1d1d1f', marginBottom: '10px', fontWeight: 600 }}>Lowest Interest Rates Available</h3>
+              <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6 }}>
+                Current SBA loan rates start at Prime + 2.25%. Government backing means lenders offer rates significantly below conventional business loans. No prepayment penalties on most SBA loans.
+              </p>
+            </div>
+
+            <div style={{ backgroundColor: '#f5f5f7', padding: '32px 28px', borderRadius: '16px', textAlign: 'center' }} data-testid="sba-benefit-terms">
+              <div style={{ marginBottom: '16px' }}>
+                <Clock size={40} color="#5b4d8f" />
+              </div>
+              <h3 style={{ fontSize: '20px', color: '#1d1d1f', marginBottom: '10px', fontWeight: 600 }}>Longer Repayment Terms</h3>
+              <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6 }}>
+                SBA loan terms up to 25 years for real estate and 10 years for working capital. Longer terms mean lower monthly payments and better cash flow management for your business.
+              </p>
+            </div>
+
+            <div style={{ backgroundColor: '#f5f5f7', padding: '32px 28px', borderRadius: '16px', textAlign: 'center' }} data-testid="sba-benefit-amounts">
+              <div style={{ marginBottom: '16px' }}>
+                <TrendingUp size={40} color="#5b4d8f" />
+              </div>
+              <h3 style={{ fontSize: '20px', color: '#1d1d1f', marginBottom: '10px', fontWeight: 600 }}>Up to $5 Million in SBA Funding</h3>
+              <p style={{ fontSize: '15px', color: '#6e6e73', lineHeight: 1.6 }}>
+                Get $50K to $5M in SBA-backed funding for expansion, equipment, commercial real estate, business acquisition, working capital, or refinancing existing business debt.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SBA Loan Eligibility / FAQ Section */}
+      <section style={{ backgroundColor: '#f5f5f7', padding: '80px 20px' }}>
+        <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: '48px' }}>
+            <h2 style={{ fontSize: 'clamp(28px, 4vw, 42px)', color: '#1d1d1f', marginBottom: '16px', fontWeight: 600 }} data-testid="sba-heading-eligibility">
+              SBA Loan Requirements & Eligibility
+            </h2>
+            <p style={{ fontSize: '18px', color: '#6e6e73' }}>
+              Do you qualify for an SBA loan? Here are the basic SBA loan requirements and eligibility criteria.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            {[
+              { text: "For-profit business operating in the United States", detail: "Required" },
+              { text: "Meet SBA size standards for your industry", detail: "Most small businesses qualify" },
+              { text: "Personal credit score of 650 or higher", detail: "SBA loan credit score requirement" },
+              { text: "Demonstrated ability to repay the loan", detail: "Revenue documentation" },
+              { text: "Time in business (2+ years preferred, startups considered)", detail: "SBA startup loan available" },
+              { text: "Owner equity investment in the business", detail: "Typically 10-20% down payment" },
+            ].map((req, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '20px', backgroundColor: '#ffffff', borderRadius: '12px' }} data-testid={`sba-eligibility-${idx}`}>
+                <CheckCircle size={20} color="#5b4d8f" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <span style={{ fontSize: '15px', color: '#1d1d1f', lineHeight: 1.5, display: 'block', fontWeight: 500 }}>{req.text}</span>
+                  <span style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px', display: 'block' }}>{req.detail}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* FAQ Items */}
+          <div style={{ marginTop: '48px' }}>
+            <h3 style={{ fontSize: '24px', fontWeight: 600, color: '#1d1d1f', marginBottom: '24px', textAlign: 'center' }} data-testid="sba-heading-faq">
+              Frequently Asked SBA Loan Questions
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {[
+                { q: "What credit score do I need for an SBA loan?", a: "Most SBA lenders require a minimum credit score of 650, though some SBA loan programs accept scores as low as 620. Higher credit scores qualify for better SBA loan rates and terms." },
+                { q: "How long does it take to get an SBA loan?", a: "With our streamlined SBA loan process and 50+ lender network, most SBA loans are funded within 45-60 days. SBA express loans can close even faster." },
+                { q: "What documents are required for an SBA loan application?", a: "Typical SBA loan requirements include 2-3 years of tax returns, recent bank statements, a business plan (for startups), and personal financial statements. Your dedicated loan advisor will guide you through every document." },
+                { q: "Can I get an SBA loan for a new business or startup?", a: "Yes. SBA startup loans and SBA microloans are available for new businesses and franchise startups. Requirements vary but many SBA lenders work with startups that have strong business plans and owner experience." },
+                { q: "What if I don't qualify for an SBA loan?", a: "If you don't meet SBA loan eligibility requirements, we can explore alternative business financing options including conventional term loans, equipment financing, and lines of credit." },
+                { q: "How much SBA loan can I get?", a: "SBA 7(a) loans go up to $5 million. SBA 504 loans go up to $5.5 million. SBA microloans go up to $50,000. The amount you qualify for depends on your revenue, credit, and business needs." },
+              ].map((faq, idx) => (
+                <div key={idx} style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '24px' }} data-testid={`sba-faq-${idx}`}>
+                  <h4 style={{ fontSize: '16px', fontWeight: 600, color: '#1d1d1f', marginBottom: '8px' }}>{faq.q}</h4>
+                  <p style={{ fontSize: '14px', color: '#6e6e73', lineHeight: 1.6 }}>{faq.a}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA Section */}
       <section style={{ background: 'linear-gradient(135deg, #0a0f2c 0%, #1a2650 100%)', padding: '80px 20px', textAlign: 'center' }}>
         <div style={{ maxWidth: '700px', margin: '0 auto' }}>
-          <h2 style={{ fontSize: 'clamp(28px, 4vw, 38px)', color: '#ffffff', marginBottom: '16px', fontWeight: 600 }}>
-            Ready to Get Started?
+          <h2 style={{ fontSize: 'clamp(28px, 4vw, 38px)', color: '#ffffff', marginBottom: '16px', fontWeight: 600 }} data-testid="sba-heading-final-cta">
+            Ready to Apply for an SBA Loan?
           </h2>
-          <p style={{ fontSize: '18px', color: '#e0e0e0', marginBottom: '32px', lineHeight: 1.6 }}>
-            Check your eligibility in just a few minutes. Our team will guide you through the entire SBA loan process.
+          <p style={{ fontSize: '18px', color: '#d0d0d0', marginBottom: '16px', lineHeight: 1.6 }}>
+            Get pre-qualified for an SBA loan in minutes. Our SBA loan advisors will match you with the best lender for your business needs. Free pre-qualification, no obligation, no hard credit pull.
+          </p>
+          <p style={{ fontSize: '16px', color: '#9ca3af', marginBottom: '32px' }}>
+            Trusted by 2,000+ business owners across restaurants, medical practices, construction, trucking, franchises, and more.
           </p>
           <button
-            onClick={startQuiz}
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             style={{
-              display: 'inline-block', padding: '18px 48px', backgroundColor: '#FFFFFF', color: '#0a0f2c',
+              display: 'inline-flex', alignItems: 'center', gap: '10px', padding: '18px 48px', backgroundColor: '#FFFFFF', color: '#0a0f2c',
               textDecoration: 'none', fontWeight: 600, borderRadius: '50px', fontSize: '16px', border: 'none',
               cursor: 'pointer', boxShadow: '0 4px 20px rgba(255,255,255,0.2)'
             }}
             data-testid="sba-button-cta-bottom"
           >
-            Start Your Application
+            Check SBA Eligibility Now
+            <ArrowRight size={18} />
           </button>
         </div>
       </section>
@@ -961,18 +1147,27 @@ export default function SBALanding() {
         <div style={{ maxWidth: '1000px', margin: '0 auto', textAlign: 'center' }}>
           <img
             src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c11dae8ddeadf0fc2ffa7_Group%2017.svg"
-            alt="Today Capital Group"
+            alt="Today Capital Group - SBA Loan Broker"
             style={{ height: '32px', width: 'auto', marginBottom: '16px' }}
           />
-          <p style={{ fontSize: '13px', color: '#6e6e73', maxWidth: '600px', margin: '0 auto', lineHeight: 1.6 }}>
-            Today Capital Group connects businesses with SBA-approved lenders. We are not a direct lender. All loans are subject to lender approval and SBA guidelines.
+          <p style={{ fontSize: '13px', color: '#6e6e73', maxWidth: '700px', margin: '0 auto', lineHeight: 1.6 }}>
+            Today Capital Group is a business loan broker that connects small businesses with SBA-approved lenders. We are not a direct lender. All SBA loans are subject to lender approval and SBA guidelines. SBA loan rates, terms, and eligibility requirements vary by lender and program.
           </p>
-          <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center', gap: '24px' }}>
-            <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" style={{ fontSize: '13px', color: '#6e6e73', textDecoration: 'none' }}>Terms of Service</a>
-            <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ fontSize: '13px', color: '#6e6e73', textDecoration: 'none' }}>Privacy Policy</a>
+          <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center', gap: '24px', flexWrap: 'wrap' }}>
+            <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" style={{ fontSize: '13px', color: '#6e6e73', textDecoration: 'none' }} data-testid="sba-link-terms">Terms of Service</a>
+            <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ fontSize: '13px', color: '#6e6e73', textDecoration: 'none' }} data-testid="sba-link-privacy">Privacy Policy</a>
           </div>
         </div>
       </footer>
+
+      {/* CSS for responsive grid */}
+      <style>{`
+        @media (min-width: 768px) {
+          .md\\:!grid-cols-2 {
+            grid-template-columns: 1fr 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
