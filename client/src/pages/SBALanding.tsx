@@ -6,12 +6,12 @@ import { Loader2, CheckCircle, ArrowLeft, Shield, Clock, DollarSign, Building2, 
 import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 
-import sbaRestaurant from "@assets/sba-restaurant.jpg";
-import sbaConstruction from "@assets/sba-construction.jpg";
-import sbaMedical from "@assets/sba-medical.jpg";
-import sbaRetail from "@assets/sba-retail.jpg";
-import sbaTrucking from "@assets/sba-trucking.jpg";
-import sbaFranchise from "@assets/sba-franchise.jpg";
+import sbaRestaurant from "../assets/images/sba-restaurant.jpg";
+import sbaConstruction from "../assets/images/sba-construction.jpg";
+import sbaMedical from "../assets/images/sba-medical.jpg";
+import sbaRetail from "../assets/images/sba-retail.jpg";
+import sbaTrucking from "../assets/images/sba-trucking.jpg";
+import sbaFranchise from "../assets/images/sba-franchise.jpg";
 
 const BUSINESS_AGE_OPTIONS = [
   "Less than 3 months",
