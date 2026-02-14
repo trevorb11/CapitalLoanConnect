@@ -6,12 +6,6 @@ import { Loader2, CheckCircle, ArrowLeft, Shield, Clock, DollarSign, Building2, 
 import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 
-import sbaRestaurant from "../assets/images/sba-restaurant.jpg";
-import sbaConstruction from "../assets/images/sba-construction.jpg";
-import sbaMedical from "../assets/images/sba-medical.jpg";
-import sbaRetail from "../assets/images/sba-retail.jpg";
-import sbaTrucking from "../assets/images/sba-trucking.jpg";
-import sbaFranchise from "../assets/images/sba-franchise.jpg";
 
 const BUSINESS_AGE_OPTIONS = [
   "Less than 3 months",
@@ -275,14 +269,6 @@ export default function SBALanding() {
     submitMutation.mutate(quizData);
   };
 
-  const INDUSTRY_CARDS = [
-    { name: "Restaurants & Food Services", img: sbaRestaurant, keywords: "SBA loan for restaurant, food service business financing, restaurant expansion loan" },
-    { name: "Construction & Contractors", img: sbaConstruction, keywords: "SBA loan for construction business, contractor equipment financing, construction working capital" },
-    { name: "Medical & Dental Practices", img: sbaMedical, keywords: "SBA loan for medical practice, dental practice financing, healthcare business loan" },
-    { name: "Retail & E-Commerce", img: sbaRetail, keywords: "SBA loan for retail store, small business retail financing, inventory funding" },
-    { name: "Trucking & Transportation", img: sbaTrucking, keywords: "SBA loan for trucking company, transportation business financing, fleet expansion loan" },
-    { name: "Franchise & Multi-Location", img: sbaFranchise, keywords: "SBA loan for franchise, franchise startup loan, multi-location business financing" },
-  ];
 
   if (showQuiz) {
     return (
@@ -936,23 +922,28 @@ export default function SBALanding() {
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
-            {INDUSTRY_CARDS.map((industry, idx) => (
-              <div key={idx} style={{ borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', backgroundColor: '#ffffff' }} data-testid={`sba-industry-card-${idx}`}>
-                <div style={{ height: '200px', overflow: 'hidden', position: 'relative' }}>
-                  <img
-                    src={industry.img}
-                    alt={`SBA loan for ${industry.name} - small business financing`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    loading="lazy"
-                  />
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)' }} />
-                  <h3 style={{ position: 'absolute', bottom: '16px', left: '20px', color: '#ffffff', fontSize: '18px', fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>{industry.name}</h3>
-                </div>
-                <div style={{ padding: '16px 20px' }}>
-                  <p style={{ fontSize: '13px', color: '#6e6e73', lineHeight: 1.5 }}>{industry.keywords}</p>
-                </div>
-              </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '12px' }}>
+            {[
+              "Restaurants & Food Services",
+              "Construction & Contractors",
+              "Medical & Dental Practices",
+              "Retail & E-Commerce",
+              "Trucking & Transportation",
+              "Franchise & Multi-Location",
+              "Gas Stations",
+              "Hotels & Hospitality",
+              "Daycare & Childcare",
+              "Laundromats",
+              "Auto Repair & Dealerships",
+              "Professional Services",
+            ].map((industry, idx) => (
+              <span
+                key={idx}
+                style={{ fontSize: '14px', color: '#1d1d1f', fontWeight: 500, backgroundColor: '#f5f5f7', padding: '10px 20px', borderRadius: '50px', border: '1px solid #e5e5e7' }}
+                data-testid={`sba-industry-tag-${idx}`}
+              >
+                {industry}
+              </span>
             ))}
           </div>
         </div>
