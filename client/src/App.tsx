@@ -42,6 +42,7 @@ import RepConsole from "@/pages/RepConsole";
 import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
 import ApprovalLetter from "@/pages/ApprovalLetter";
 import InternalStatementsUpload from "@/pages/InternalStatementsUpload";
+import SBALanding from "@/pages/SBALanding";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -92,6 +93,7 @@ function Router() {
       <Route path="/statements" component={Statements} />
       <Route path="/internal-upload" component={InternalStatementsUpload} />
       <Route path="/funding-check" component={FundingCheck} />
+      <Route path="/sba" component={SBALanding} />
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/approvals" component={Approvals} />
