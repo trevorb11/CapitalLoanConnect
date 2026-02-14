@@ -727,7 +727,7 @@ export default function SBALanding() {
               </div>
 
               <h1 style={{ fontSize: 'clamp(32px, 4.5vw, 52px)', fontWeight: 700, color: '#FFFFFF', marginBottom: '20px', letterSpacing: '-1.5px', lineHeight: 1.1 }} data-testid="sba-text-hero-title">
-                SBA Loans Up to $5M &mdash; See If You Qualify in Minutes
+                SBA Loans Up to $5M. See If You Qualify in Minutes
               </h1>
 
               <p style={{ fontSize: 'clamp(16px, 2vw, 19px)', color: '#d0d0d0', marginBottom: '32px', lineHeight: 1.7 }} data-testid="sba-text-hero-subtitle">
