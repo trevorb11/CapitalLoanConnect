@@ -727,11 +727,11 @@ export default function SBALanding() {
               </div>
 
               <h1 style={{ fontSize: 'clamp(32px, 4.5vw, 52px)', fontWeight: 700, color: '#FFFFFF', marginBottom: '20px', letterSpacing: '-1.5px', lineHeight: 1.1 }} data-testid="sba-text-hero-title">
-                Get Matched With the SBA Lender Most Likely to Approve Your Business
+                SBA Loans Up to $5M &mdash; See If You Qualify in Minutes
               </h1>
 
               <p style={{ fontSize: 'clamp(16px, 2vw, 19px)', color: '#d0d0d0', marginBottom: '32px', lineHeight: 1.7 }} data-testid="sba-text-hero-subtitle">
-                One simple application connects you with 50+ SBA preferred lenders. No bank visits required. Get pre-qualified for an SBA loan today with fast decisions and less hassle.
+                Takes about 5 minutes. Our team reviews every application and works to find the right SBA lender and deal for your business.
               </p>
 
               {/* Trust Bar */}
@@ -770,10 +770,10 @@ export default function SBALanding() {
             {/* Right: GHL Form */}
             <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.1)' }} data-testid="sba-hero-form-container">
               <h3 style={{ color: '#ffffff', fontSize: '20px', fontWeight: 600, textAlign: 'center', marginBottom: '4px' }}>
-                See If You Qualify
+                Start Your Free Pre-Qualification
               </h3>
               <p style={{ color: '#9ca3af', fontSize: '14px', textAlign: 'center', marginBottom: '16px' }}>
-                No hard credit pull. No obligation.
+                5 minutes. No hard credit pull. No obligation.
               </p>
 
               <div style={{ display: ghlFormSubmitted ? 'none' : 'block' }} data-testid="sba-ghl-form-container">
