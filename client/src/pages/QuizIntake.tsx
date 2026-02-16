@@ -243,7 +243,7 @@ export default function QuizIntake() {
         const capturedName = formData.full_name || formData.name || formData.first_name || '';
         const capturedEmail = formData.email || '';
         const capturedPhone = formData.phone || formData.full_phone || '';
-        const capturedBusiness = formData.company_name || formData.business_name || '';
+        const capturedBusiness = formData.company_name || formData.business_name || formData.companyName || formData.businessName || formData.company || '';
 
         setQuizData(prev => ({
           ...prev,

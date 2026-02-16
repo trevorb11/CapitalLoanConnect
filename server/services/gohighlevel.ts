@@ -950,13 +950,15 @@ export class GoHighLevelService {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
+    console.log(`[GHL] Intake webhook - businessName: "${application.businessName}", legalBusinessName: "${application.legalBusinessName}"`);
+    
     // Build intake webhook payload - pass data as-is without sanitizing to prevent data loss
     const webhookPayload = {
       first_name: firstName,
       last_name: lastName,
       email: application.email,
       phone: application.phone,
-      company_name: application.legalBusinessName || application.businessName,
+      company_name: application.businessName || application.legalBusinessName,
       requested_loan_amount: application.requestedAmount,
       years_in_business: application.timeInBusiness,
       monthly_revenue: application.monthlyRevenue,
