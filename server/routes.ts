@@ -679,7 +679,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new loan application
   app.post("/api/applications", async (req, res) => {
     try {
+      console.log(`[APP CREATE] Incoming businessName: "${req.body.businessName}", legalBusinessName: "${req.body.legalBusinessName}"`);
       const { sanitized: applicationData, recaptchaToken, faxNumber } = sanitizeApplicationData(req.body);
+      console.log(`[APP CREATE] After sanitize businessName: "${applicationData.businessName}", legalBusinessName: "${applicationData.legalBusinessName}"`);
 
       // Honeypot detection - if faxNumber is filled, it's likely a bot
       if (faxNumber && faxNumber.trim() !== "") {

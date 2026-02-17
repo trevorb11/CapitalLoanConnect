@@ -218,13 +218,26 @@ export default function QuizIntake() {
       if (Array.isArray(eventData) && eventData.length >= 3 && typeof eventData[2] === 'string') {
         const jsonStr = eventData[2];
         if (jsonStr.includes('customer_id') || jsonStr.includes('full_address') || jsonStr.includes('email')) {
-          return JSON.parse(jsonStr);
+          const parsed = JSON.parse(jsonStr);
+          console.log('[GHL Form] Extracted from array format, keys:', Object.keys(parsed));
+          return parsed;
         }
       }
       if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
         if (eventData.type === 'form-submit' || eventData.type === 'form-submit-success' || eventData.formId) {
-          return eventData.data || eventData;
+          const data = eventData.data || eventData;
+          console.log('[GHL Form] Extracted from object format, type:', eventData.type, 'keys:', Object.keys(data));
+          return data;
         }
+      }
+      if (typeof eventData === 'string') {
+        try {
+          const parsed = JSON.parse(eventData);
+          if (parsed && typeof parsed === 'object' && (parsed.email || parsed.full_name || parsed.phone)) {
+            console.log('[GHL Form] Extracted from string format, keys:', Object.keys(parsed));
+            return parsed;
+          }
+        } catch {}
       }
       return null;
     };
@@ -237,13 +250,26 @@ export default function QuizIntake() {
         const formData = extractGhlFormData(event.data);
         if (!formData) return;
 
-        console.log('[GHL Form] Captured submission data:', formData);
+        console.log('[GHL Form] Captured submission data:', JSON.stringify(formData, null, 2));
+        console.log('[GHL Form] All keys:', Object.keys(formData));
         setGhlFormSubmitted(true);
 
         const capturedName = formData.full_name || formData.name || formData.first_name || '';
         const capturedEmail = formData.email || '';
         const capturedPhone = formData.phone || formData.full_phone || '';
-        const capturedBusiness = formData.company_name || formData.business_name || formData.companyName || formData.businessName || formData.company || '';
+
+        let capturedBusiness = formData.company_name || formData.business_name || formData.companyName || formData.businessName || formData.company || '';
+        if (!capturedBusiness) {
+          const businessKey = Object.keys(formData).find(k => {
+            const lower = k.toLowerCase();
+            return lower.includes('business') || lower.includes('company') || lower.includes('organization');
+          });
+          if (businessKey) {
+            capturedBusiness = formData[businessKey] || '';
+            console.log(`[GHL Form] Found business name via key scan: "${businessKey}" = "${capturedBusiness}"`);
+          }
+        }
+        console.log(`[GHL Form] Captured business: "${capturedBusiness}", name: "${capturedName}", email: "${capturedEmail}"`);
 
         setQuizData(prev => ({
           ...prev,
