@@ -371,8 +371,7 @@ export default function SignatureApplication(props?: SignatureApplicationProps) 
 
     if (isFinal) {
       payload.isFullApplicationCompleted = true;
-      payload.applicantSignature = "SIGNED_VIA_DRAWN_SIGNATURE";
-      if (signatureDataUrl) payload.applicantSignatureImage = signatureDataUrl;
+      payload.applicantSignature = signatureDataUrl || "SIGNED_VIA_DRAWN_SIGNATURE";
       if (recaptchaToken) payload.recaptchaToken = recaptchaToken;
     }
     if (agent) {
