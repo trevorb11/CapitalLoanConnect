@@ -386,11 +386,18 @@
                 const signaturePlaceholder = document.getElementById('signature_placeholder');
                 
                 if (data.applicantSignature.startsWith('data:image')) {
-                    // It's a drawn signature (legacy support)
+                    // It's a drawn signature - show image with date stamp
                     const signatureImg = document.getElementById('signature_image');
                     signatureImg.src = data.applicantSignature;
                     signatureImg.style.display = 'block';
-                    signaturePlaceholder.style.display = 'none';
+                    signatureImg.dataset.updatedAt = data.updatedAt || '';
+                    const signedDate = data.updatedAt ? new Date(data.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                    signaturePlaceholder.innerHTML = `
+                        <div style="padding: 8px 0; text-align: left;">
+                            <div style="font-size: 13px; color: #6b7280;">Date: ${signedDate}</div>
+                        </div>
+                    `;
+                    signaturePlaceholder.style.display = 'block';
                 } else {
                     // It's a checkbox signature (ISO timestamp) - display stamp
                     signaturePlaceholder.innerHTML = `
@@ -595,10 +602,12 @@
         
         // Signature Section - Two column layout
         // Get signature data from the DOM
+        const sigImg = document.getElementById('signature_image');
         const signatureData = {
-            src: document.getElementById('signature_image').src,
-            isVisible: document.getElementById('signature_image').style.display !== 'none',
+            src: sigImg.src,
+            isVisible: sigImg.style.display !== 'none',
             fullName: document.getElementById('full_name').textContent,
+            updatedAt: sigImg.dataset.updatedAt || null,
             timestamp: null
         };
         
@@ -646,8 +655,13 @@
                     doc.setFont('helvetica', 'italic');
                     doc.text('Electronic Consent Accepted', 120, stampY + 11);
                 } else if (signatureData.src && signatureData.isVisible) {
-                    // Drawn signature (legacy support)
+                    // Drawn signature - show image with date stamp below
                     doc.addImage(signatureData.src, 'PNG', 120, signatureStartY + 8, 70, 21);
+                    const signedDate = signatureData.updatedAt ? new Date(signatureData.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(100, 100, 100);
+                    doc.text(`Date: ${signedDate}`, 120, signatureStartY + 33);
                 }
             } catch (error) {
                 console.error('Failed to add signature to PDF:', error);
