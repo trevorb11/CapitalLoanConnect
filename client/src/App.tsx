@@ -43,6 +43,7 @@ import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
 import ApprovalLetter from "@/pages/ApprovalLetter";
 import InternalStatementsUpload from "@/pages/InternalStatementsUpload";
 import SBALanding from "@/pages/SBALanding";
+import SignatureApplication from "@/pages/SignatureApplication";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -94,6 +95,7 @@ function Router() {
       <Route path="/internal-upload" component={InternalStatementsUpload} />
       <Route path="/funding-check" component={FundingCheck} />
       <Route path="/sba" component={SBALanding} />
+      <Route path="/sig" component={SignatureApplication} />
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/approvals" component={Approvals} />
