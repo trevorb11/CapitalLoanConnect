@@ -394,9 +394,27 @@ export default function SignatureApplication(props?: SignatureApplicationProps) 
           return false;
         }
       } else {
-        const response = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
+        const response = await fetch(`/api/applications/${applicationId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          credentials: "include",
+        });
         const responseData = await response.json().catch(() => ({}));
         if (!response.ok) {
+          if (response.status === 404) {
+            console.log("[SAVE] Application not found, clearing stale ID and creating new");
+            localStorage.removeItem("applicationId");
+            setApplicationId(null);
+            const retryResponse = await apiRequest("POST", "/api/applications", payload);
+            const newApp = await retryResponse.json();
+            if (newApp.id) { localStorage.setItem("applicationId", newApp.id); setApplicationId(newApp.id); }
+            if (newApp.validationFailed && newApp.validationErrors?.length > 0) {
+              toast({ title: "Required Fields Missing", description: `Please complete: ${newApp.validationErrors.slice(0, 3).join(', ')}${newApp.validationErrors.length > 3 ? '...' : ''}`, variant: "destructive" });
+              return false;
+            }
+            return true;
+          }
           if (responseData.missingFields?.length > 0) {
             toast({ title: "Required Fields Missing", description: `Please complete: ${responseData.missingFields.slice(0, 3).join(', ')}${responseData.missingFields.length > 3 ? '...' : ''}`, variant: "destructive" });
           } else {

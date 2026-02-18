@@ -449,12 +449,43 @@ export default function FullApplication(props?: FullApplicationProps) {
           return false; // Prevent step advancement
         }
       } else {
-        const response = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
+        const response = await fetch(`/api/applications/${applicationId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          credentials: "include",
+        });
         const responseData = await response.json().catch(() => ({}));
         
         // Check for validation errors (both step validation and final submission)
         if (!response.ok) {
           console.error("[SAVE FAILED] Server rejected:", responseData);
+          
+          // Handle stale application ID (exists in localStorage but not in current DB)
+          if (response.status === 404) {
+            console.log("[SAVE] Application not found, clearing stale ID and creating new");
+            localStorage.removeItem("applicationId");
+            setApplicationId(null);
+            try {
+              const retryResponse = await apiRequest("POST", "/api/applications", payload);
+              const newApp = await retryResponse.json();
+              if (newApp.id) {
+                localStorage.setItem("applicationId", newApp.id);
+                setApplicationId(newApp.id);
+              }
+              if (newApp.validationFailed && newApp.validationErrors?.length > 0) {
+                toast({
+                  title: "Required Fields Missing",
+                  description: `Please complete: ${newApp.validationErrors.slice(0, 3).join(', ')}${newApp.validationErrors.length > 3 ? '...' : ''}`,
+                  variant: "destructive"
+                });
+                return false;
+              }
+              return true;
+            } catch (retryError) {
+              console.error("[SAVE] Retry POST also failed:", retryError);
+            }
+          }
           
           if (responseData.missingFields && responseData.missingFields.length > 0) {
             toast({
