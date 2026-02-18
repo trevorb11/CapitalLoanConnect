@@ -1109,6 +1109,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.agentViewUrl = generateApplicationUrl(req, id);
       }
 
+      // Check if application was already completed BEFORE applying updates
+      const appBeforeUpdate = await storage.getLoanApplication(id);
+      const wasAlreadyCompleted = appBeforeUpdate?.isFullApplicationCompleted === true;
+
       // Filter out empty values to preserve previously entered data
       const filteredUpdates = filterEmptyValues(updates);
       const updatedApp = await storage.updateLoanApplication(id, filteredUpdates);
@@ -1117,9 +1121,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Application not found" });
       }
 
-      // Send webhook only (GHL API sync disabled for now)
-      // Only send webhook when full application is explicitly completed (not on every auto-save)
-      if (updatedApp.isFullApplicationCompleted) {
+      // Send webhook only when full application is NEWLY completed in this request
+      // (not on every subsequent auto-save after it was already completed)
+      if (updates.isFullApplicationCompleted && updatedApp.isFullApplicationCompleted && !wasAlreadyCompleted) {
         ghlService.sendWebhook(updatedApp).catch(err => 
           console.error("Webhook error (non-blocking):", err)
         );
