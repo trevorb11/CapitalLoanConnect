@@ -57,8 +57,44 @@ export const AGENTS: Agent[] = [
   {
     initials: "bj",
     name: "Bryce Jennings",
-    email: "bryce@todaycapitalgroup.com",
-    ghlId: "",
+    email: "Bryce@todaycapitalgroup.com",
+    ghlId: "NoRxwknVbhhjCg1g7kw",
+  },
+  {
+    initials: "jb",
+    name: "Jonathan Bishop",
+    email: "jb@todaycapitalgroup.com",
+    ghlId: "GxuuCIet62gbUyacBacX",
+  },
+  {
+    initials: "mf",
+    name: "Manny Fanalua",
+    email: "manny@todaycapitalgroup.com",
+    ghlId: "p5Omnaxoz30PPsp5cofl",
+  },
+  {
+    initials: "ja",
+    name: "James Atkinson",
+    email: "James@todaycapitalgroup.com",
+    ghlId: "dRUIBKKS1MOXWFbA9F6",
+  },
+  {
+    initials: "dk",
+    name: "Dominic Kendl",
+    email: "Dominic@todaycapitalgroup.com",
+    ghlId: "E7Ab3ZniQBxeC2BgwbdK",
+  },
+  {
+    initials: "do",
+    name: "Diego Orellana",
+    email: "diego@todaycapitalgroup.com",
+    ghlId: "rY714b49S3YL5IKPLOU3",
+  },
+  {
+    initials: "dc",
+    name: "Dennys Cisne",
+    email: "Dennys@todaycapitalgroup.com",
+    ghlId: "LOS6jIBhXamV7JhVfPH",
   },
 ];
 
