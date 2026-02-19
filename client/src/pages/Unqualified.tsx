@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { StatusToggle } from "@/components/StatusToggle";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -533,6 +534,7 @@ export default function Unqualified() {
                   </div>
 
                   <div className="flex items-start gap-1">
+                    <StatusToggle decision={decision} currentStatus="unqualified" />
                     <Button
                       variant="ghost"
                       size="icon"

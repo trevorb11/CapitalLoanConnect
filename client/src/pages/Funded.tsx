@@ -9,6 +9,7 @@ import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { LenderAutocomplete } from "@/components/LenderAutocomplete";
+import { StatusToggle } from "@/components/StatusToggle";
 import {
   Building2,
   DollarSign,
@@ -34,7 +35,6 @@ import {
   ChevronDown,
   ChevronUp,
   Banknote,
-  Undo2,
   Mail,
   UserCheck,
 } from "lucide-react";
@@ -371,20 +371,6 @@ export default function Funded() {
     }
   };
 
-  const handleRevertToApproved = async (decision: BusinessUnderwritingDecision) => {
-    try {
-      await updateMutation.mutateAsync({
-        id: decision.id,
-        updates: {
-          status: 'approved',
-          fundedDate: null,
-        },
-      });
-      toast({ title: "Reverted", description: `${decision.businessName || decision.businessEmail} has been moved back to Approved.` });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to revert.", variant: "destructive" });
-    }
-  };
 
   const handleAddFundedDeal = async () => {
     if (!addForm.businessEmail.trim()) {
@@ -933,37 +919,7 @@ export default function Funded() {
                           <Pencil className="w-3 h-3 mr-1" />
                           Edit
                         </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              data-testid={`button-revert-funded-${decision.id}`}
-                            >
-                              <Undo2 className="w-3 h-3 mr-1" />
-                              Revert to Approved
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Revert to Approved</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to move{" "}
-                                <strong>{decision.businessName || decision.businessEmail}</strong>{" "}
-                                back to the Approved list? The funded date will be removed.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel data-testid="button-cancel-revert">Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleRevertToApproved(decision)}
-                                data-testid="button-confirm-revert"
-                              >
-                                Revert to Approved
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        <StatusToggle decision={decision} currentStatus="funded" />
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button

@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { StatusToggle } from "@/components/StatusToggle";
 import type { BusinessUnderwritingDecision } from "@shared/schema";
 
 interface AuthState {
@@ -994,6 +995,7 @@ export default function Approvals() {
                           <Banknote className="w-4 h-4 mr-1" />
                           Fund
                         </Button>
+                        <StatusToggle decision={decision} currentStatus="approved" />
                       </div>
                     </div>
 
