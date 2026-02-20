@@ -219,7 +219,7 @@ export default function Leaderboard() {
                             </span>
                           )}
                         </div>
-                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-black rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-700 ease-out ${
                               rank === 1
