@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Trophy, TrendingUp, Banknote, FileText, Crown, Medal, Award } from "lucide-react";
+import { Trophy, TrendingUp, Banknote, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,30 +55,22 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-function formatFullCurrency(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
+function getFirstName(name: string): string {
+  return name.split(" ")[0];
 }
 
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-}
-
-function RankIcon({ rank }: { rank: number }) {
-  if (rank === 1) return <Crown className="w-6 h-6 text-yellow-500" />;
-  if (rank === 2) return <Medal className="w-5 h-5 text-muted-foreground" />;
-  if (rank === 3) return <Award className="w-5 h-5 text-amber-600" />;
-  return <span className="text-sm font-bold text-muted-foreground w-6 text-center">{rank}</span>;
-}
+const BAR_COLORS = [
+  "bg-yellow-500",
+  "bg-blue-500",
+  "bg-emerald-500",
+  "bg-purple-500",
+  "bg-orange-500",
+  "bg-pink-500",
+  "bg-cyan-500",
+  "bg-red-400",
+  "bg-indigo-500",
+  "bg-teal-500",
+];
 
 export default function Leaderboard() {
   const [activeView, setActiveView] = useState<LeaderboardView>("applications");
@@ -98,18 +90,35 @@ export default function Leaderboard() {
   const entries = data?.[activeView] || [];
   const topEntries = entries.slice(0, 10);
 
-  const leader = topEntries[0];
-  const maxMetric = leader
-    ? config.showAmount
-      ? leader.amount
-      : leader.count
+  const maxMetric = topEntries.length > 0
+    ? Math.max(...topEntries.map((e) => (config.showAmount ? e.amount : e.count)))
     : 1;
 
   const Icon = config.icon;
 
+  const yAxisSteps = 5;
+  const yAxisMax = maxMetric > 0 ? Math.ceil(maxMetric / Math.pow(10, Math.floor(Math.log10(maxMetric || 1)))) * Math.pow(10, Math.floor(Math.log10(maxMetric || 1))) : 10;
+  const niceMax = (() => {
+    if (maxMetric <= 0) return 10;
+    if (!config.showAmount) {
+      const raw = Math.ceil(maxMetric * 1.15);
+      if (raw <= 5) return raw;
+      if (raw <= 10) return Math.ceil(raw / 2) * 2;
+      return Math.ceil(raw / 5) * 5;
+    }
+    const raw = maxMetric * 1.15;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+    return Math.ceil(raw / magnitude) * magnitude;
+  })();
+
+  const yLabels = Array.from({ length: yAxisSteps + 1 }, (_, i) => {
+    const val = (niceMax / yAxisSteps) * (yAxisSteps - i);
+    return val;
+  });
+
   return (
     <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
-      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+      <div className="max-w-5xl mx-auto space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
@@ -153,14 +162,14 @@ export default function Leaderboard() {
             <div className="flex items-center gap-2">
               <Icon className="w-5 h-5 text-primary" />
               <h2 className="text-base sm:text-lg font-semibold">
-                {config.label} Leaderboard
+                {config.label}
               </h2>
             </div>
             <Badge variant="secondary" className="text-xs">
               {config.showAmount ? "By Volume" : "By Count"}
             </Badge>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent>
             {isLoading ? (
               <div className="flex items-center justify-center py-16">
                 <p className="text-muted-foreground text-sm">Loading leaderboard...</p>
@@ -170,94 +179,70 @@ export default function Leaderboard() {
                 <p className="text-muted-foreground text-sm">No data yet</p>
               </div>
             ) : (
-              <div className="divide-y divide-border">
-                {topEntries.map((entry, index) => {
-                  const rank = index + 1;
-                  const metric = config.showAmount ? entry.amount : entry.count;
-                  const barWidth = maxMetric > 0 ? (metric / maxMetric) * 100 : 0;
-                  const isTop3 = rank <= 3;
+              <div className="flex" data-testid="bar-chart">
+                <div className="flex flex-col justify-between pr-2 sm:pr-3 shrink-0" style={{ height: "280px" }}>
+                  {yLabels.map((val, i) => (
+                    <span key={i} className="text-[10px] sm:text-xs text-muted-foreground text-right min-w-[32px] sm:min-w-[48px] leading-none">
+                      {config.showAmount ? formatCurrency(val) : Math.round(val)}
+                    </span>
+                  ))}
+                </div>
 
-                  return (
-                    <div
-                      key={entry.name}
-                      className={`flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3 sm:py-4 transition-colors ${
-                        isTop3 ? "bg-primary/[0.03]" : ""
-                      }`}
-                      data-testid={`leaderboard-row-${index}`}
-                    >
-                      <div className="flex items-center justify-center w-8 shrink-0">
-                        <RankIcon rank={rank} />
-                      </div>
-
+                <div className="flex-1 flex flex-col min-w-0">
+                  <div
+                    className="flex-1 flex items-end gap-1 sm:gap-2 border-l border-b border-border relative"
+                    style={{ height: "280px" }}
+                  >
+                    {[1, 2, 3, 4].map((i) => (
                       <div
-                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-xs sm:text-sm shrink-0 ${
-                          rank === 1
-                            ? "bg-yellow-500/15 text-yellow-600"
-                            : rank === 2
-                            ? "bg-muted text-muted-foreground"
-                            : rank === 3
-                            ? "bg-amber-500/15 text-amber-700"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {getInitials(entry.name)}
-                      </div>
+                        key={i}
+                        className="absolute left-0 right-0 border-t border-border/30"
+                        style={{ bottom: `${(i / yAxisSteps) * 100}%` }}
+                      />
+                    ))}
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline gap-2 mb-1.5">
-                          <span
-                            className={`font-semibold truncate ${
-                              isTop3 ? "text-foreground text-sm sm:text-base" : "text-foreground/80 text-sm"
-                            }`}
-                            data-testid={`text-rep-name-${index}`}
-                          >
-                            {entry.name}
-                          </span>
-                          {config.showAmount && entry.count > 0 && (
-                            <span className="text-muted-foreground text-xs shrink-0 hidden sm:inline">
-                              {entry.count} {entry.count === 1 ? "deal" : "deals"}
-                            </span>
-                          )}
-                        </div>
-                        <div className="h-1.5 bg-black rounded-full overflow-hidden">
+                    {topEntries.map((entry, index) => {
+                      const metric = config.showAmount ? entry.amount : entry.count;
+                      const barHeight = niceMax > 0 ? (metric / niceMax) * 100 : 0;
+                      const colorClass = BAR_COLORS[index % BAR_COLORS.length];
+
+                      return (
+                        <div
+                          key={entry.name}
+                          className="flex-1 flex flex-col items-center justify-end h-full relative z-10 group"
+                          data-testid={`leaderboard-bar-${index}`}
+                        >
+                          <div className="invisible group-hover:visible absolute -top-8 bg-foreground text-background text-[10px] sm:text-xs px-2 py-1 rounded whitespace-nowrap font-medium z-20">
+                            {entry.name}: {config.showAmount ? formatCurrency(entry.amount) : entry.count}
+                            {config.showAmount && entry.count > 0 && ` (${entry.count})`}
+                          </div>
+
+                          <div className="text-[10px] sm:text-xs font-bold text-foreground mb-1 leading-none">
+                            {config.showAmount ? formatCurrency(entry.amount) : entry.count}
+                          </div>
+
                           <div
-                            className={`h-full rounded-full transition-all duration-700 ease-out ${
-                              rank === 1
-                                ? "bg-yellow-500"
-                                : rank === 2
-                                ? "bg-muted-foreground/40"
-                                : rank === 3
-                                ? "bg-amber-500"
-                                : "bg-primary/30"
-                            }`}
-                            style={{ width: `${barWidth}%` }}
+                            className={`w-full max-w-[60px] ${colorClass} rounded-t-md transition-all duration-700 ease-out`}
+                            style={{ height: `${Math.max(barHeight, 2)}%` }}
                           />
                         </div>
-                      </div>
+                      );
+                    })}
+                  </div>
 
-                      <div className="text-right shrink-0 min-w-[60px] sm:min-w-[90px]">
-                        <div
-                          className={`font-bold ${
-                            isTop3 ? "text-foreground text-base sm:text-xl" : "text-foreground/80 text-sm sm:text-lg"
-                          }`}
-                          data-testid={`text-metric-${index}`}
+                  <div className="flex gap-1 sm:gap-2 border-l border-border">
+                    {topEntries.map((entry, index) => (
+                      <div key={entry.name} className="flex-1 flex flex-col items-center pt-2">
+                        <span
+                          className="text-[9px] sm:text-xs text-muted-foreground font-medium truncate max-w-full text-center leading-tight"
+                          data-testid={`text-rep-name-${index}`}
                         >
-                          {config.showAmount ? formatCurrency(entry.amount) : entry.count}
-                        </div>
-                        {config.showAmount && (
-                          <div className="text-muted-foreground text-[10px] sm:text-xs hidden sm:block">
-                            {formatFullCurrency(entry.amount)}
-                          </div>
-                        )}
-                        {!config.showAmount && (
-                          <div className="text-muted-foreground text-[10px] sm:text-xs">
-                            {config.metricLabel}
-                          </div>
-                        )}
+                          {getFirstName(entry.name)}
+                        </span>
                       </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>
