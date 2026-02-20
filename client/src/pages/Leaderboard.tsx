@@ -180,7 +180,7 @@ export default function Leaderboard() {
               </div>
             ) : (
               <div className="flex" data-testid="bar-chart">
-                <div className="flex flex-col justify-between pr-2 sm:pr-3 shrink-0" style={{ height: "280px" }}>
+                <div className="flex flex-col justify-between pr-2 sm:pr-3 shrink-0 h-[280px] sm:h-[400px] lg:h-[520px]">
                   {yLabels.map((val, i) => (
                     <span key={i} className="text-[10px] sm:text-xs text-muted-foreground text-right min-w-[32px] sm:min-w-[48px] leading-none">
                       {config.showAmount ? formatCurrency(val) : Math.round(val)}
@@ -190,8 +190,7 @@ export default function Leaderboard() {
 
                 <div className="flex-1 flex flex-col min-w-0">
                   <div
-                    className="flex-1 flex items-end gap-1 sm:gap-2 border-l border-b border-border relative"
-                    style={{ height: "280px" }}
+                    className="flex-1 flex items-end gap-1 sm:gap-3 lg:gap-4 border-l border-b border-border relative h-[280px] sm:h-[400px] lg:h-[520px]"
                   >
                     {[1, 2, 3, 4].map((i) => (
                       <div
@@ -222,7 +221,7 @@ export default function Leaderboard() {
                           </div>
 
                           <div
-                            className={`w-full max-w-[60px] ${colorClass} rounded-t-md transition-all duration-700 ease-out`}
+                            className={`w-full max-w-[60px] sm:max-w-[72px] lg:max-w-[80px] ${colorClass} rounded-t-md transition-all duration-700 ease-out`}
                             style={{ height: `${Math.max(barHeight, 2)}%` }}
                           />
                         </div>
