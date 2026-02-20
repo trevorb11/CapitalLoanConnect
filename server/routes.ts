@@ -6060,5 +6060,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Leaderboard API - public endpoint for TV display
+  app.get("/api/leaderboard", async (_req, res) => {
+    try {
+      const applications = await storage.getAllLoanApplications();
+      const decisions = await storage.getAllBusinessUnderwritingDecisions();
+
+      // Applications: count per agentName
+      const appCounts: Record<string, number> = {};
+      for (const app of applications) {
+        const name = app.agentName;
+        if (!name) continue;
+        appCounts[name] = (appCounts[name] || 0) + 1;
+      }
+
+      // Approvals: sum advanceAmount per assignedRep where status = "approved"
+      const approvalAmounts: Record<string, number> = {};
+      const approvalCounts: Record<string, number> = {};
+      for (const d of decisions) {
+        if (d.status !== "approved") continue;
+        const rep = d.assignedRep;
+        if (!rep) continue;
+        const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
+        if (!isNaN(amount)) {
+          approvalAmounts[rep] = (approvalAmounts[rep] || 0) + amount;
+        }
+        approvalCounts[rep] = (approvalCounts[rep] || 0) + 1;
+      }
+
+      // Funded: sum advanceAmount per assignedRep where status = "funded"
+      const fundedAmounts: Record<string, number> = {};
+      const fundedCounts: Record<string, number> = {};
+      for (const d of decisions) {
+        if (d.status !== "funded") continue;
+        const rep = d.assignedRep;
+        if (!rep) continue;
+        const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
+        if (isNaN(amount)) continue;
+        fundedAmounts[rep] = (fundedAmounts[rep] || 0) + amount;
+        fundedCounts[rep] = (fundedCounts[rep] || 0) + 1;
+      }
+
+      // Build sorted arrays
+      const applicationLeaderboard = Object.entries(appCounts)
+        .map(([name, count]) => ({ name, count, amount: 0 }))
+        .sort((a, b) => b.count - a.count);
+
+      const approvalLeaderboard = Object.entries(approvalAmounts)
+        .map(([name, amount]) => ({ name, amount, count: approvalCounts[name] || 0 }))
+        .sort((a, b) => b.amount - a.amount);
+
+      const fundedLeaderboard = Object.entries(fundedAmounts)
+        .map(([name, amount]) => ({ name, amount, count: fundedCounts[name] || 0 }))
+        .sort((a, b) => b.amount - a.amount);
+
+      res.json({
+        applications: applicationLeaderboard,
+        approvals: approvalLeaderboard,
+        funded: fundedLeaderboard,
+      });
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
+      res.status(500).json({ error: "Failed to fetch leaderboard data" });
+    }
+  });
+
   return httpServer;
 }
