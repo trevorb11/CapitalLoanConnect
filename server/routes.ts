@@ -6066,21 +6066,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const applications = await storage.getAllLoanApplications();
       const decisions = await storage.getAllBusinessUnderwritingDecisions();
 
-      // Applications: count per agentName
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Applications: count per agentName (last 30 days)
       const appCounts: Record<string, number> = {};
       for (const app of applications) {
         const name = app.agentName;
         if (!name) continue;
+        if (app.createdAt && new Date(app.createdAt) < thirtyDaysAgo) continue;
         appCounts[name] = (appCounts[name] || 0) + 1;
       }
 
-      // Approvals: sum advanceAmount per assignedRep where status = "approved"
+      // Approvals: sum advanceAmount per assignedRep where status = "approved" (last 30 days by approvalDate or createdAt)
       const approvalAmounts: Record<string, number> = {};
       const approvalCounts: Record<string, number> = {};
       for (const d of decisions) {
         if (d.status !== "approved") continue;
         const rep = d.assignedRep;
         if (!rep) continue;
+        const dateRef = d.approvalDate || d.createdAt;
+        if (dateRef && new Date(dateRef) < thirtyDaysAgo) continue;
         const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
         if (!isNaN(amount)) {
           approvalAmounts[rep] = (approvalAmounts[rep] || 0) + amount;
@@ -6088,13 +6094,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         approvalCounts[rep] = (approvalCounts[rep] || 0) + 1;
       }
 
-      // Funded: sum advanceAmount per assignedRep where status = "funded"
+      // Funded: sum advanceAmount per assignedRep where status = "funded" (last 30 days by fundedDate or createdAt)
       const fundedAmounts: Record<string, number> = {};
       const fundedCounts: Record<string, number> = {};
       for (const d of decisions) {
         if (d.status !== "funded") continue;
         const rep = d.assignedRep;
         if (!rep) continue;
+        const dateRef = d.fundedDate || d.createdAt;
+        if (dateRef && new Date(dateRef) < thirtyDaysAgo) continue;
         const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
         if (isNaN(amount)) continue;
         fundedAmounts[rep] = (fundedAmounts[rep] || 0) + amount;
