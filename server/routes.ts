@@ -6066,15 +6066,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const applications = await storage.getAllLoanApplications();
       const decisions = await storage.getAllBusinessUnderwritingDecisions();
 
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 7);
 
       // Applications: count per agentName (last 30 days)
       const appCounts: Record<string, number> = {};
       for (const app of applications) {
         const name = app.agentName;
         if (!name) continue;
-        if (app.createdAt && new Date(app.createdAt) < thirtyDaysAgo) continue;
+        if (app.createdAt && new Date(app.createdAt) < cutoffDate) continue;
         appCounts[name] = (appCounts[name] || 0) + 1;
       }
 
@@ -6086,7 +6086,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const rep = d.assignedRep;
         if (!rep) continue;
         const dateRef = d.approvalDate || d.createdAt;
-        if (dateRef && new Date(dateRef) < thirtyDaysAgo) continue;
+        if (dateRef && new Date(dateRef) < cutoffDate) continue;
         const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
         if (!isNaN(amount)) {
           approvalAmounts[rep] = (approvalAmounts[rep] || 0) + amount;
@@ -6094,7 +6094,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         approvalCounts[rep] = (approvalCounts[rep] || 0) + 1;
       }
 
-      // Funded: sum advanceAmount per assignedRep where status = "funded" (last 30 days by fundedDate or createdAt)
+      // Funded: sum advanceAmount per assignedRep where status = "funded" (past week by fundedDate or createdAt)
       const fundedAmounts: Record<string, number> = {};
       const fundedCounts: Record<string, number> = {};
       for (const d of decisions) {
@@ -6102,7 +6102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const rep = d.assignedRep;
         if (!rep) continue;
         const dateRef = d.fundedDate || d.createdAt;
-        if (dateRef && new Date(dateRef) < thirtyDaysAgo) continue;
+        if (dateRef && new Date(dateRef) < cutoffDate) continue;
         const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
         if (isNaN(amount)) continue;
         fundedAmounts[rep] = (fundedAmounts[rep] || 0) + amount;

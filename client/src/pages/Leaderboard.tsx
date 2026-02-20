@@ -120,7 +120,7 @@ export default function Leaderboard() {
                 Leaderboard
               </h1>
               <p className="text-muted-foreground text-xs sm:text-sm">
-                Last 30 days &middot; {currentTime.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                Past 7 days &middot; {currentTime.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </p>
             </div>
           </div>
