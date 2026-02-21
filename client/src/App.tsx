@@ -44,6 +44,7 @@ import ApprovalLetter from "@/pages/ApprovalLetter";
 import InternalStatementsUpload from "@/pages/InternalStatementsUpload";
 import SBALanding from "@/pages/SBALanding";
 import SignatureApplication from "@/pages/SignatureApplication";
+import Congratulations from "@/pages/Congratulations";
 import Leaderboard from "@/pages/Leaderboard";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
@@ -98,6 +99,7 @@ function Router() {
       <Route path="/sba" component={SBALanding} />
       <Route path="/sig" component={SignatureApplication} />
       <Route path="/leaderboard" component={Leaderboard} />
+      <Route path="/congratulations" component={Congratulations} />
       <Route path="/success" component={Success} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/approvals" component={Approvals} />
