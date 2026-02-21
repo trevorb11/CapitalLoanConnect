@@ -2488,6 +2488,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========================================
+  // CONGRATULATIONS DOCUMENT UPLOAD ROUTES
+  // ========================================
+
+  // Configure multer for congratulations document uploads (voided check + driver's license)
+  const congratsDocUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_FILE_SIZE },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+      if (allowed.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only PDF, JPG, PNG, or WebP files are allowed"));
+      }
+    },
+  });
+
+  app.post("/api/congratulations/upload", (req, res, next) => {
+    congratsDocUpload.single("file")(req, res, (err: any) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: "File size exceeds 25MB limit" });
+        }
+        return res.status(400).json({ error: err.message });
+      }
+      next();
+    });
+  }, async (req, res) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const { email, businessName, docType } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      if (!docType || !["voided_check", "drivers_license"].includes(docType)) {
+        return res.status(400).json({ error: "Invalid document type" });
+      }
+
+      if (!objectStorage.isConfigured()) {
+        console.error("[UPLOAD] Object Storage not configured - cannot accept uploads");
+        return res.status(500).json({ error: "File storage is not configured. Please contact support." });
+      }
+
+      // Upload to object storage under a dedicated prefix
+      const { randomUUID } = await import("crypto");
+      const objectId = randomUUID();
+      const prefix = `congratulations-docs/${docType}`;
+      const objectName = `${prefix}/${objectId}-${file.originalname}`;
+
+      // Encode buffer as base64 for storage (same pattern as bank statements)
+      const base64Content = file.buffer.toString("base64");
+      const { Client } = await import("@replit/object-storage");
+      const client = new Client();
+      const result = await client.uploadFromText(objectName, base64Content);
+
+      if (!result.ok) {
+        throw new Error(`Upload failed: ${(result as any).error?.message || "Unknown error"}`);
+      }
+
+      console.log(`[CONGRATS UPLOAD] Uploaded ${docType} for ${email}: ${objectName} (${file.size} bytes)`);
+
+      // Try to find and log the linked application
+      const existingApp = await storage.getLoanApplicationByEmail(email);
+      if (existingApp) {
+        console.log(`[CONGRATS UPLOAD] Linked to application ${existingApp.id} for ${email}`);
+      }
+
+      res.json({
+        success: true,
+        upload: {
+          objectName,
+          docType,
+          originalFileName: file.originalname,
+          fileSize: file.size,
+          email,
+          businessName: businessName || null,
+        },
+      });
+    } catch (error) {
+      console.error("[CONGRATS UPLOAD] Error:", error);
+      res.status(500).json({ error: "Failed to upload document. Please try again." });
+    }
+  });
+
   // ============= Business Underwriting Decisions =============
   
   // Get all business underwriting decisions
