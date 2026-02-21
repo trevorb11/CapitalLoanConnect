@@ -55,15 +55,15 @@ function getFirstName(name: string): string {
 
 const BAR_COLORS = [
   "#3b82f6",
-  "#6366f1",
+  "#10b981",
+  "#f59e0b",
   "#8b5cf6",
-  "#a78bfa",
-  "#60a5fa",
-  "#818cf8",
-  "#7c3aed",
-  "#4f46e5",
-  "#2563eb",
-  "#7dd3fc",
+  "#ef4444",
+  "#06b6d4",
+  "#f97316",
+  "#ec4899",
+  "#14b8a6",
+  "#6366f1",
 ];
 
 export default function Leaderboard() {
