@@ -1073,9 +1073,6 @@ const INDUSTRIES = [
 
 function BankStatementsTab() {
   const { toast } = useToast();
-  const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
-  const [selectedAssetReport, setSelectedAssetReport] = useState<BankConnection | null>(null);
-  const [selectedStatements, setSelectedStatements] = useState<BankConnection | null>(null);
   const [expandedBusinesses, setExpandedBusinesses] = useState<Set<string>>(new Set());
   const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
@@ -1139,18 +1136,6 @@ function BankStatementsTab() {
     queryKey: ['/api/auth/check'],
   });
 
-  const { data: bankConnections, isLoading: connectionsLoading } = useQuery<BankConnection[]>({
-    queryKey: ['/api/plaid/all'],
-    queryFn: async () => {
-      const res = await fetch('/api/plaid/all', {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        throw new Error('Failed to fetch bank connections');
-      }
-      return res.json();
-    },
-  });
 
   const { data: bankUploads, isLoading: uploadsLoading } = useQuery<BankStatementUpload[]>({
     queryKey: ['/api/bank-statements/uploads'],
@@ -1614,35 +1599,6 @@ function BankStatementsTab() {
     }
   };
 
-  const handleAnalyzePlaid = async (connection: BankConnection) => {
-    setAnalysisTitle(connection.institutionName);
-    setAnalysisModalOpen(true);
-    setAnalysisLoading(true);
-    setAnalysisError(null);
-    setAnalysisData(null);
-
-    try {
-      const res = await fetch(`/api/plaid/analyze/${connection.plaidItemId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({}),
-      });
-      
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || data.error || 'Analysis failed');
-      }
-      
-      const data = await res.json();
-      setAnalysisData(data);
-    } catch (error: any) {
-      console.error('Analysis error:', error);
-      setAnalysisError(error.message || 'Analysis failed');
-    } finally {
-      setAnalysisLoading(false);
-    }
-  };
 
   const handleAnalyzeUploads = async (businessName: string) => {
     setAnalysisTitle(businessName);
@@ -1799,11 +1755,6 @@ function BankStatementsTab() {
 
   // Filter connections and uploads by search query, excluding decided businesses
   const lowerQuery = searchQuery.toLowerCase().trim();
-  const filteredConnections = bankConnections?.filter(conn => {
-    const matchesSearch = !lowerQuery || conn.businessName.toLowerCase().includes(lowerQuery);
-    const notDecided = !emailHasDecision(conn.email);
-    return matchesSearch && notDecided;
-  }) || [];
   const filteredUploadsByBusiness = Object.entries(uploadsByBusiness).filter(
     ([businessName, uploads]) => {
       const matchesSearch = !lowerQuery || businessName.toLowerCase().includes(lowerQuery);
@@ -1821,13 +1772,12 @@ function BankStatementsTab() {
     return mostRecentB - mostRecentA;
   });
 
-  const isLoading = connectionsLoading || uploadsLoading;
-  const hasConnections = filteredConnections.length > 0;
+  const isLoading = uploadsLoading;
   const hasUploads = filteredUploadsByBusiness.length > 0;
-  const isEmpty = !hasConnections && !hasUploads;
+  const isEmpty = !hasUploads;
 
   // Check if there's any data at all (before search filtering)
-  const hasAnyData = (bankConnections && bankConnections.length > 0) || (bankUploads && bankUploads.length > 0);
+  const hasAnyData = (bankUploads && bankUploads.length > 0);
 
   if (isLoading) {
     return (
@@ -2286,132 +2236,8 @@ function BankStatementsTab() {
           </div>
         )}
 
-        {/* Plaid Connections Section */}
-        {hasConnections && (
-          <div>
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Landmark className="w-5 h-5" />
-              Connected Banks
-            </h3>
-            <div className="space-y-4">
-              {filteredConnections.map((connection) => (
-                <Card key={connection.id} className="p-6 hover-elevate" data-testid={`card-bank-connection-${connection.id}`}>
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3 flex-wrap">
-                        <h3 className="font-semibold text-lg flex items-center gap-2">
-                          <Building2 className="w-5 h-5 text-primary" />
-                          {connection.businessName}
-                        </h3>
-                        <Badge variant="outline" className="flex items-center gap-1">
-                          <Landmark className="w-3 h-3" />
-                          {connection.institutionName}
-                        </Badge>
-                        <Badge className="bg-emerald-600">Plaid Connected</Badge>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        <div className="flex items-center gap-2 text-sm">
-                          <DollarSign className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">Monthly Revenue:</span>
-                          <span className="font-medium">${parseFloat(connection.monthlyRevenue).toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Landmark className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">Avg Balance:</span>
-                          <span className="font-medium">${parseFloat(connection.avgBalance).toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">Connected:</span>
-                          <span className="font-medium">{format(new Date(connection.createdAt), 'MMM d, yyyy')}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-sm mb-4">
-                        <User className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">{connection.email}</span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-3">
-                        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                          {getStatusIcon(connection.analysisResult.sba.status)}
-                          <span className="text-sm font-medium">SBA:</span>
-                          {getStatusBadge(connection.analysisResult.sba.status)}
-                        </div>
-                        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                          {getStatusIcon(connection.analysisResult.loc.status)}
-                          <span className="text-sm font-medium">LOC:</span>
-                          {getStatusBadge(connection.analysisResult.loc.status)}
-                        </div>
-                        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                          {getStatusIcon(connection.analysisResult.mca.status)}
-                          <span className="text-sm font-medium">MCA:</span>
-                          {getStatusBadge(connection.analysisResult.mca.status)}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        onClick={() => setSelectedStatements(connection)}
-                        data-testid={`button-view-statements-${connection.id}`}
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        Bank Statements
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setSelectedAssetReport(connection)}
-                        data-testid={`button-view-asset-report-${connection.id}`}
-                      >
-                        <Landmark className="w-4 h-4 mr-2" />
-                        Asset Report
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => handleAnalyzePlaid(connection)}
-                        className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 border-purple-200 dark:border-purple-800"
-                        data-testid={`button-analyze-plaid-${connection.id}`}
-                      >
-                        <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
-                        Analyze
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
-      {selectedConnection && (
-        <ItemStatementsModal
-          plaidItemId={selectedConnection.plaidItemId}
-          institutionName={selectedConnection.institutionName}
-          isOpen={!!selectedConnection}
-          onClose={() => setSelectedConnection(null)}
-        />
-      )}
-
-      {selectedAssetReport && (
-        <AssetReportModal
-          plaidItemId={selectedAssetReport.plaidItemId}
-          institutionName={selectedAssetReport.institutionName}
-          isOpen={!!selectedAssetReport}
-          onClose={() => setSelectedAssetReport(null)}
-        />
-      )}
-
-      {selectedStatements && (
-        <PlaidStatementsModal
-          plaidItemId={selectedStatements.plaidItemId}
-          institutionName={selectedStatements.institutionName}
-          isOpen={!!selectedStatements}
-          onClose={() => setSelectedStatements(null)}
-        />
-      )}
 
       <AnalysisModal
         isOpen={analysisModalOpen}
@@ -2931,17 +2757,6 @@ export default function Dashboard() {
     retry: false,
   });
 
-  const { data: bankConnections } = useQuery<BankConnection[]>({
-    queryKey: ['/api/plaid/all'],
-    enabled: authData?.isAuthenticated === true,
-    queryFn: async () => {
-      const res = await fetch('/api/plaid/all', {
-        credentials: 'include',
-      });
-      if (!res.ok) return [];
-      return res.json();
-    },
-  });
 
   const { data: bankUploads } = useQuery<BankStatementUpload[]>({
     queryKey: ['/api/bank-statements/uploads'],
@@ -3108,13 +2923,6 @@ export default function Dashboard() {
         })
     : [];
 
-  const emailsWithBankData = new Set<string>();
-  bankConnections?.forEach((c) => c.email && emailsWithBankData.add(c.email.toLowerCase()));
-  bankUploads?.forEach((u) => u.email && emailsWithBankData.add(u.email.toLowerCase()));
-  
-  const appsWithBankData = applications?.filter((a) => 
-    a.plaidItemId || (a.email && emailsWithBankData.has(a.email.toLowerCase()))
-  ).length || 0;
 
   // Helper to check if app has low revenue
   const isAppLowRevenue = (app: LoanApplication) => {
@@ -3130,7 +2938,6 @@ export default function Dashboard() {
     intakeOnly: applications?.filter((a) => a.isCompleted && !a.isFullApplicationCompleted).length || 0,
     fullCompleted: applications?.filter((a) => a.isFullApplicationCompleted).length || 0,
     partial: applications?.filter((a) => !a.isCompleted && !a.isFullApplicationCompleted).length || 0,
-    bankConnected: appsWithBankData,
     lowRevenue: applications?.filter(isAppLowRevenue).length || 0,
   };
 
@@ -3234,17 +3041,6 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          <Card className="p-6" data-testid="card-stat-bank">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Bank Connected</p>
-                <p className="text-3xl font-bold" data-testid="text-bank-count">{stats.bankConnected}</p>
-              </div>
-              <div className="w-12 h-12 bg-emerald-500/10 rounded-lg flex items-center justify-center">
-                <Landmark className="w-6 h-6 text-emerald-500" />
-              </div>
-            </div>
-          </Card>
         </div>
 
         <Tabs defaultValue="applications" className="w-full">
@@ -3446,12 +3242,6 @@ export default function Dashboard() {
                           {app.agentName}
                         </Badge>
                       )}
-                      {app.plaidItemId && (
-                        <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-700" data-testid={`badge-plaid-${app.id}`}>
-                          <Landmark className="w-3 h-3 mr-1" />
-                          Bank Connected
-                        </Badge>
-                      )}
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
@@ -3524,17 +3314,6 @@ export default function Dashboard() {
                       <ExternalLink className="w-4 h-4 mr-2" />
                       View Application
                     </Button>
-                    {app.plaidItemId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedAppForStatements(app.id)}
-                        data-testid={`button-view-statements-${app.id}`}
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        View Statements
-                      </Button>
-                    )}
                     <p className="text-xs text-muted-foreground text-center" data-testid={`text-app-id-${app.id}`}>ID: {app.id?.slice(0, 8)}...</p>
                   </div>
                 </div>
