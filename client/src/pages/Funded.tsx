@@ -37,6 +37,7 @@ import {
   Banknote,
   Mail,
   UserCheck,
+  Upload,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -161,6 +162,11 @@ export default function Funded() {
     assignedRep: '',
   });
   const [addSaving, setAddSaving] = useState(false);
+
+  const [showImportCsv, setShowImportCsv] = useState(false);
+  const [csvContent, setCsvContent] = useState('');
+  const [csvUploading, setCsvUploading] = useState(false);
+  const [csvResults, setCsvResults] = useState<{ imported: number; errors: number; results?: { businessName: string; status: string; error?: string }[] } | null>(null);
 
   // Check authentication first
   useEffect(() => {
@@ -428,6 +434,60 @@ export default function Funded() {
     }
   };
 
+  const handleCsvImport = async () => {
+    if (!csvContent.trim()) {
+      toast({ title: "Error", description: "Please paste CSV content or upload a file.", variant: "destructive" });
+      return;
+    }
+    setCsvUploading(true);
+    setCsvResults(null);
+    try {
+      const res = await fetch('/api/underwriting-decisions/funded-bulk-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ csvData: csvContent }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to import');
+      setCsvResults({ imported: data.imported, errors: data.errors, results: data.results });
+      queryClient.invalidateQueries({ queryKey: ["/api/underwriting-decisions"] });
+      if (data.errors === 0) {
+        toast({ title: "Import Successful", description: `Imported ${data.imported} funded deals.` });
+      } else {
+        toast({ title: "Partial Success", description: `Imported ${data.imported} deals with ${data.errors} errors.` });
+      }
+    } catch (error: any) {
+      toast({ title: "Import Failed", description: error.message, variant: "destructive" });
+    } finally {
+      setCsvUploading(false);
+    }
+  };
+
+  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setCsvContent(event.target?.result as string || '');
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const downloadCsvTemplate = () => {
+    const headers = ['Business Name', 'Business Email', 'Lender', 'Advance Amount', 'Term', 'Payment Frequency', 'Factor Rate', 'Max Upsell', 'Total Payback', 'Net After Fees', 'Notes', 'Approval Date', 'Funded Date', 'Assigned Rep'];
+    const example = ['Acme Corp', 'acme@example.com', 'Lender Name', '50000', '6 months', 'weekly', '1.35', '', '67500', '48000', '', '2026-01-15', '2026-01-20', 'John Smith'];
+    const csv = [headers.join(','), example.join(',')].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'funded-deals-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Helper: get all approvals for a decision (migration-aware)
   const getApprovalsForDecision = (decision: BusinessUnderwritingDecision): FullApprovalEntry[] => {
     const raw = decision.additionalApprovals as any[] | null;
@@ -664,6 +724,19 @@ export default function Funded() {
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowImportCsv(true);
+                  setCsvContent('');
+                  setCsvResults(null);
+                }}
+                className="flex items-center gap-2"
+                data-testid="button-import-csv"
+              >
+                <Upload className="w-4 h-4" />
+                Import CSV
+              </Button>
               <Button
                 onClick={() => {
                   setShowAddFunded(true);
@@ -1259,6 +1332,83 @@ export default function Funded() {
                     Save Changes
                   </>
                 )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* CSV Import Dialog */}
+      <Dialog open={showImportCsv} onOpenChange={(open) => { setShowImportCsv(open); if (!open) { setCsvContent(''); setCsvResults(null); } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="w-5 h-5 text-primary" />
+              Import Funded Deals from CSV
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="rounded-md bg-muted p-4 text-sm space-y-1">
+              <p className="font-medium">Required columns:</p>
+              <p className="text-muted-foreground">Business Name, Business Email</p>
+              <p className="font-medium mt-2">Optional columns:</p>
+              <p className="text-muted-foreground">Lender, Advance Amount, Term, Payment Frequency, Factor Rate, Max Upsell, Total Payback, Net After Fees, Notes, Approval Date, Funded Date, Assigned Rep</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={downloadCsvTemplate} data-testid="button-download-template">
+                <Download className="w-4 h-4 mr-2" />
+                Download Template
+              </Button>
+              <label htmlFor="csv-file-upload-funded">
+                <Button variant="outline" size="sm" asChild data-testid="button-upload-csv-file">
+                  <span>
+                    <FileText className="w-4 h-4 mr-2" />
+                    Upload CSV File
+                  </span>
+                </Button>
+              </label>
+              <input
+                id="csv-file-upload-funded"
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={handleCsvFileChange}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="csv-content-funded">Or paste CSV content</Label>
+              <Textarea
+                id="csv-content-funded"
+                value={csvContent}
+                onChange={(e) => setCsvContent(e.target.value)}
+                placeholder="Business Name,Business Email,Lender,Advance Amount,..."
+                className="font-mono text-xs min-h-[160px]"
+                data-testid="textarea-csv-content"
+              />
+            </div>
+            {csvResults && (
+              <div className={`rounded-md p-4 text-sm ${csvResults.errors === 0 ? 'bg-green-50 dark:bg-green-900/20' : 'bg-yellow-50 dark:bg-yellow-900/20'}`}>
+                <p className="font-medium mb-2">
+                  Import complete: {csvResults.imported} imported, {csvResults.errors} errors
+                </p>
+                {csvResults.results && csvResults.results.filter(r => r.status === 'error').length > 0 && (
+                  <ul className="space-y-1 text-muted-foreground">
+                    {csvResults.results.filter(r => r.status === 'error').map((r, idx) => (
+                      <li key={idx} className="text-red-600 dark:text-red-400">
+                        {r.businessName}: {r.error}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => { setShowImportCsv(false); setCsvContent(''); setCsvResults(null); }} data-testid="button-cancel-import">
+                Cancel
+              </Button>
+              <Button onClick={handleCsvImport} disabled={csvUploading || !csvContent.trim()} data-testid="button-run-import">
+                {csvUploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                {csvUploading ? 'Importing...' : 'Import Deals'}
               </Button>
             </div>
           </div>

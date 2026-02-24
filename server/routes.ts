@@ -3037,6 +3037,119 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: error.message || "Failed to import approvals" });
     }
   });
+
+  // Funded deals CSV bulk import
+  app.post("/api/underwriting-decisions/funded-bulk-import", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only underwriting team or admin can bulk import" });
+    }
+
+    const { csvData } = req.body;
+    if (!csvData || typeof csvData !== 'string') {
+      return res.status(400).json({ error: "CSV data is required" });
+    }
+
+    try {
+      const reviewerEmail = req.session.user.agentEmail || 'admin';
+      const lines = csvData.split('\n').map((l: string) => l.trim()).filter((l: string) => l);
+      if (lines.length < 2) {
+        return res.status(400).json({ error: "CSV must have a header row and at least one data row" });
+      }
+
+      const headers = parseCSVLine(lines[0]);
+      const headerMap: Record<string, number> = {};
+      headers.forEach((h: string, i: number) => { headerMap[h.toLowerCase().trim()] = i; });
+
+      const businessNameIdx = headerMap['business name'];
+      const businessEmailIdx = headerMap['business email'] ?? headerMap['email'];
+
+      if (businessNameIdx === undefined) {
+        return res.status(400).json({ error: "CSV must have a 'Business Name' column" });
+      }
+      if (businessEmailIdx === undefined) {
+        return res.status(400).json({ error: "CSV must have a 'Business Email' column" });
+      }
+
+      const results: { businessName: string; status: string; error?: string }[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        const businessName = values[businessNameIdx]?.trim();
+        if (!businessName) continue;
+
+        const csvEmail = values[businessEmailIdx]?.trim();
+        const businessEmail = csvEmail || `${businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}@imported.local`;
+
+        const lender = values[headerMap['lender']]?.trim() || '';
+        const advanceAmount = parseAmount(values[headerMap['advance amount']]?.trim() || '');
+        const term = values[headerMap['term']]?.trim() || '';
+        const paymentFrequency = mapPaymentFrequency(values[headerMap['payment frequency']]?.trim()?.toLowerCase() || 'weekly');
+        const factorRate = values[headerMap['factor rate']]?.trim() || '';
+        const maxUpsell = parseAmount(values[headerMap['max upsell']]?.trim() || '');
+        const totalPayback = parseAmount(values[headerMap['total payback']]?.trim() || '');
+        const netAfterFees = parseAmount(values[headerMap['net after fees']]?.trim() || '');
+        const notes = values[headerMap['notes']]?.trim() || '';
+        const approvalDateRaw = values[headerMap['approval date']]?.trim() || '';
+        const fundedDateRaw = values[headerMap['funded date']]?.trim() || '';
+        const assignedRep = values[headerMap['assigned rep']]?.trim() || '';
+
+        try {
+          const approval = {
+            id: crypto.randomUUID(),
+            lender,
+            advanceAmount,
+            term,
+            paymentFrequency,
+            factorRate,
+            maxUpsell,
+            totalPayback,
+            netAfterFees,
+            notes,
+            approvalDate: parseDate(approvalDateRaw) || new Date().toISOString(),
+            isPrimary: true,
+            createdAt: new Date().toISOString(),
+          };
+
+          await storage.createOrUpdateBusinessUnderwritingDecision({
+            businessEmail,
+            businessName,
+            businessPhone: null,
+            status: 'funded',
+            advanceAmount: advanceAmount || null,
+            term: term || null,
+            paymentFrequency: paymentFrequency || null,
+            factorRate: factorRate || null,
+            maxUpsell: maxUpsell || null,
+            totalPayback: totalPayback || null,
+            netAfterFees: netAfterFees || null,
+            lender: lender || null,
+            notes: notes || null,
+            approvalDate: approvalDateRaw ? new Date(parseDate(approvalDateRaw) || Date.now()) : new Date(),
+            fundedDate: fundedDateRaw ? new Date(parseDate(fundedDateRaw) || Date.now()) : new Date(),
+            assignedRep: assignedRep || null,
+            additionalApprovals: [approval],
+            reviewedBy: reviewerEmail,
+          });
+
+          results.push({ businessName, status: 'success' });
+        } catch (rowError: any) {
+          results.push({ businessName, status: 'error', error: rowError.message });
+        }
+      }
+
+      const successCount = results.filter(r => r.status === 'success').length;
+      const errorCount = results.filter(r => r.status === 'error').length;
+      console.log(`[FUNDED IMPORT] ${reviewerEmail} imported ${successCount} funded deals, ${errorCount} errors`);
+
+      res.json({ success: true, imported: successCount, errors: errorCount, results });
+    } catch (error: any) {
+      console.error("Error bulk importing funded deals:", error);
+      res.status(500).json({ error: error.message || "Failed to import funded deals" });
+    }
+  });
   
   // Helper functions for CSV parsing
   function parseCSVLine(line: string): string[] {
