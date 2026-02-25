@@ -54,54 +54,6 @@ function formatCurrency(value: string | null | undefined): string {
   }).format(num);
 }
 
-function formatCurrencyWithCents(value: string | null | undefined): string {
-  if (!value) return "$0.00";
-  const num = parseFloat(value);
-  if (isNaN(num)) return "$0.00";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num);
-}
-
-function calculatePaymentAmount(totalPayback: string | null, term: string | null, frequency: string | null): string {
-  if (!totalPayback || !term) return "$0";
-  const total = parseFloat(totalPayback);
-  if (isNaN(total)) return "$0";
-  const termMonths = parseInt(term.match(/\d+/)?.[0] || "12");
-
-  let periods: number;
-  switch (frequency) {
-    case 'daily':
-      periods = termMonths * 22; // ~22 business days per month
-      break;
-    case 'monthly':
-      periods = termMonths;
-      break;
-    case 'weekly':
-    default:
-      periods = termMonths * 4.33;
-      break;
-  }
-
-  const payment = total / periods;
-  return formatCurrency(payment.toString());
-}
-
-function getFrequencyLabel(frequency: string | null): string {
-  switch (frequency) {
-    case 'daily':
-      return 'per day';
-    case 'monthly':
-      return 'per month';
-    case 'weekly':
-    default:
-      return 'per week';
-  }
-}
-
 function getPaymentTypeLabel(frequency: string | null): string {
   switch (frequency) {
     case 'daily':
@@ -112,14 +64,6 @@ function getPaymentTypeLabel(frequency: string | null): string {
     default:
       return 'Weekly Payments';
   }
-}
-
-function calculateTotalFees(advanceAmount: string | null, netAfterFees: string | null): string {
-  if (!advanceAmount || !netAfterFees) return "$0.00";
-  const advance = parseFloat(advanceAmount);
-  const net = parseFloat(netAfterFees);
-  if (isNaN(advance) || isNaN(net)) return "$0.00";
-  return formatCurrencyWithCents((advance - net).toString());
 }
 
 const SCHEDULING_LINK = "https://bit.ly/3Zxj0Kq";
@@ -209,14 +153,8 @@ export default function ApprovalLetter() {
   const theme = COLOR_THEMES[selectedIndex % COLOR_THEMES.length];
 
   const advanceAmount = formatCurrency(current.advanceAmount);
-  const netAfterFees = formatCurrency(current.netAfterFees);
-  const totalPayback = formatCurrency(current.totalPayback);
-  const paymentAmount = calculatePaymentAmount(current.totalPayback, current.term, current.paymentFrequency);
-  const frequencyLabel = getFrequencyLabel(current.paymentFrequency);
   const paymentTypeLabel = getPaymentTypeLabel(current.paymentFrequency);
-  const totalFees = calculateTotalFees(current.advanceAmount, current.netAfterFees);
   const businessName = approval.businessName || "Valued Customer";
-  const term = current.term || "12 mo";
   const factorRate = current.factorRate || "1.25";
   const lender = current.lender || "Standard Program";
   const approvalDateStr = current.approvalDate ? format(new Date(current.approvalDate), "MMMM d, yyyy") : format(new Date(), "MMMM d, yyyy");
@@ -273,9 +211,6 @@ export default function ApprovalLetter() {
             <div style={{ fontSize: "4.5rem", fontWeight: 800, color: theme.accent, letterSpacing: "-0.03em", lineHeight: 1, textShadow: `0 0 60px rgba(${theme.accentRgb}, 0.25)`, transition: "color 0.5s ease, text-shadow 0.5s ease" }} data-testid="text-advance-amount">
               {advanceAmount}
             </div>
-            <p style={{ marginTop: "12px", fontSize: "1.125rem", color: "#9CA3AF" }}>
-              <strong style={{ color: "#fff", fontWeight: 600 }} data-testid="text-net-amount">{netAfterFees}</strong> net after fees
-            </p>
           </div>
         </section>
 
@@ -333,57 +268,25 @@ export default function ApprovalLetter() {
             <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: theme.accent, transition: "color 0.5s ease" }} data-testid="text-lender">{lender}</span>
           </div>
 
-          <div style={{ textAlign: "center", paddingBottom: "32px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", marginBottom: "28px" }}>
-            <div style={{ fontSize: "3.5rem", fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1 }} data-testid="text-payment-amount">
-              {paymentAmount}
-            </div>
-            <div style={{ marginTop: "8px", fontSize: "0.9375rem", color: theme.accent, fontWeight: 600, transition: "color 0.5s ease" }} data-testid="text-frequency-label">{frequencyLabel}</div>
-          </div>
-
           <div style={{ display: "flex", justifyContent: "center", gap: "48px" }}>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-term">{term}</div>
-              <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Term</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: theme.accent, marginBottom: "4px", transition: "color 0.5s ease" }} data-testid="text-advance-amount-detail">
+                {advanceAmount}
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Approval Amount</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-frequency-label">
+                {current.paymentFrequency ? current.paymentFrequency.charAt(0).toUpperCase() + current.paymentFrequency.slice(1) : "Weekly"}
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Payment Frequency</div>
             </div>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-factor-rate">{factorRate}</div>
               <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Factor Rate</div>
             </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-total-payback">{totalPayback}</div>
-              <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Total Payback</div>
-            </div>
           </div>
         </section>
-
-        <div style={{
-          background: "#111827", border: `1px solid rgba(${theme.accentRgb}, 0.15)`,
-          borderRadius: "16px", padding: "28px", marginBottom: "24px",
-          transition: "border-color 0.5s ease",
-        }} data-testid="section-breakdown">
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
-            <div style={{ width: "36px", height: "36px", background: `rgba(${theme.accentRgb}, 0.25)`, borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.5s ease" }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke={theme.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: "18px", height: "18px", transition: "stroke 0.5s ease" }}>
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                <line x1="2" y1="10" x2="22" y2="10" />
-              </svg>
-            </div>
-            <h3 style={{ fontSize: "0.9375rem", fontWeight: 700, color: "#fff" }}>Funding Breakdown</h3>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid rgba(255, 255, 255, 0.08)" }}>
-            <span style={{ color: "#9CA3AF", fontSize: "0.875rem" }}>Advance Amount</span>
-            <span style={{ fontWeight: 600, fontSize: "0.875rem", color: theme.accent, transition: "color 0.5s ease" }}>+ {formatCurrencyWithCents(current.advanceAmount)}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid rgba(255, 255, 255, 0.08)" }}>
-            <span style={{ color: "#9CA3AF", fontSize: "0.875rem" }}>Origination and Application Fees</span>
-            <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "#6B7280" }}>- {totalFees}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0 12px", marginTop: "4px", borderTop: "2px solid #374151" }}>
-            <span style={{ fontSize: "0.9375rem", fontWeight: 700, color: "#fff" }}>You Receive</span>
-            <span style={{ fontSize: "0.9375rem", fontWeight: 700, color: "#fff" }}>{formatCurrencyWithCents(current.netAfterFees)}</span>
-          </div>
-        </div>
 
         <div style={{ display: "flex", justifyContent: "center", gap: "28px", flexWrap: "wrap", marginBottom: "32px" }} data-testid="section-features">
           <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#9CA3AF", fontSize: "0.875rem" }}>

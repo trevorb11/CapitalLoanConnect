@@ -58,14 +58,13 @@ export default function InternalStatementsUpload() {
   const [selectedLender, setSelectedLender] = useState<Lender | null>(null);
   const [lenderSearchQuery, setLenderSearchQuery] = useState("");
   const [showLenderResults, setShowLenderResults] = useState(false);
+  const [customLenderName, setCustomLenderName] = useState("");
   
   // Approval form fields
   const [advanceAmount, setAdvanceAmount] = useState("");
   const [term, setTerm] = useState("");
   const [paymentFrequency, setPaymentFrequency] = useState("Weekly");
   const [factorRate, setFactorRate] = useState("");
-  const [totalPayback, setTotalPayback] = useState("");
-  const [netAfterFees, setNetAfterFees] = useState("");
   const [approvalMonth, setApprovalMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [approvalDay, setApprovalDay] = useState(String(new Date().getDate()).padStart(2, '0'));
   const [approvalYear, setApprovalYear] = useState(String(new Date().getFullYear()));
@@ -144,6 +143,8 @@ export default function InternalStatementsUpload() {
       if (selectedLender) {
         formData.append("lenderId", selectedLender.id);
         formData.append("lenderName", selectedLender.name);
+      } else if (customLenderName) {
+        formData.append("lenderName", customLenderName);
       }
       // Approval details (when approved)
       if (approvalStatus === "approved") {
@@ -151,8 +152,6 @@ export default function InternalStatementsUpload() {
         if (term) formData.append("term", term);
         if (paymentFrequency) formData.append("paymentFrequency", paymentFrequency);
         if (factorRate) formData.append("factorRate", factorRate);
-        if (totalPayback) formData.append("totalPayback", totalPayback);
-        if (netAfterFees) formData.append("netAfterFees", netAfterFees);
         const computedApprovalDate = `${approvalYear}-${approvalMonth}-${approvalDay}`;
         if (computedApprovalDate) formData.append("approvalDate", computedApprovalDate);
       }
@@ -305,31 +304,29 @@ export default function InternalStatementsUpload() {
           const approvalDate = `${approvalYear}-${approvalMonth}-${approvalDay}`;
           const approvalEntry = {
             id: `appr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-            lender: selectedLender?.name || "",
+            lender: selectedLender?.name || customLenderName || "",
             advanceAmount: advanceAmount || "",
             term: term || "",
             paymentFrequency: paymentFrequency || "Weekly",
             factorRate: factorRate || "",
-            totalPayback: totalPayback || "",
-            netAfterFees: netAfterFees || "",
             notes: approvalNotes || "",
             approvalDate,
             isPrimary: true,
           };
           decisionPayload.additionalApprovals = [approvalEntry];
-          decisionPayload.lender = selectedLender?.name || null;
+          decisionPayload.lender = selectedLender?.name || customLenderName || null;
           decisionPayload.advanceAmount = advanceAmount ? parseFloat(advanceAmount) : null;
           decisionPayload.term = term || null;
           decisionPayload.paymentFrequency = paymentFrequency || null;
           decisionPayload.factorRate = factorRate ? parseFloat(factorRate) : null;
-          decisionPayload.totalPayback = totalPayback ? parseFloat(totalPayback) : null;
-          decisionPayload.netAfterFees = netAfterFees ? parseFloat(netAfterFees) : null;
           decisionPayload.notes = approvalNotes || null;
           decisionPayload.approvalDate = approvalDate;
         } else if (approvalStatus === "declined" || approvalStatus === "unqualified") {
           decisionPayload.declineReason = approvalNotes || null;
           if (selectedLender) {
             decisionPayload.lender = selectedLender.name;
+          } else if (customLenderName) {
+            decisionPayload.lender = customLenderName;
           }
         }
 
@@ -776,68 +773,95 @@ export default function InternalStatementsUpload() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="totalPayback">Total Payback</Label>
-                      <Input
-                        id="totalPayback"
-                        value={totalPayback}
-                        onChange={(e) => setTotalPayback(e.target.value)}
-                        placeholder="$62,500"
-                        data-testid="input-total-payback"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="netAfterFees">Net After Fees</Label>
-                      <Input
-                        id="netAfterFees"
-                        value={netAfterFees}
-                        onChange={(e) => setNetAfterFees(e.target.value)}
-                        placeholder="$48,500"
-                        data-testid="input-net-after-fees"
-                      />
-                    </div>
-                    <div className="space-y-2">
                       <Label htmlFor="lenderSearch">Lender</Label>
                       <div className="relative">
                         <Input
                           id="lenderSearch"
-                          value={selectedLender ? selectedLender.name : lenderSearchQuery}
+                          value={selectedLender ? selectedLender.name : (customLenderName || lenderSearchQuery)}
                           onChange={(e) => {
-                            setLenderSearchQuery(e.target.value);
-                            setSelectedLender(null);
-                            setShowLenderResults(true);
+                            if (customLenderName) {
+                              setCustomLenderName(e.target.value);
+                            } else {
+                              setLenderSearchQuery(e.target.value);
+                              setSelectedLender(null);
+                              setShowLenderResults(true);
+                            }
                           }}
-                          onFocus={() => setShowLenderResults(true)}
-                          placeholder="Search lender..."
+                          onFocus={() => {
+                            if (!customLenderName) setShowLenderResults(true);
+                          }}
+                          placeholder={customLenderName ? "Type custom lender name..." : "Search lender..."}
                           data-testid="input-lender-search"
                         />
-                        {showLenderResults && !selectedLender && (
+                        {customLenderName !== "" && !selectedLender && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomLenderName("");
+                              setSelectedLender(null);
+                              setLenderSearchQuery("");
+                              setShowLenderResults(true);
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            Back to list
+                          </button>
+                        )}
+                        {showLenderResults && !selectedLender && !customLenderName && (
                           <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-auto">
                             {filteredLenders.length > 0 ? (
-                              filteredLenders.map((lender) => (
+                              <>
+                                {filteredLenders.map((lender) => (
+                                  <button
+                                    key={lender.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedLender(lender);
+                                      setLenderSearchQuery("");
+                                      setShowLenderResults(false);
+                                    }}
+                                    className="w-full p-2 text-left hover-elevate border-b last:border-b-0"
+                                    data-testid={`button-select-lender-${lender.id}`}
+                                  >
+                                    <p className="font-medium">{lender.name}</p>
+                                    {lender.tier && (
+                                      <p className="text-xs text-muted-foreground">Tier: {lender.tier}</p>
+                                    )}
+                                  </button>
+                                ))}
                                 <button
-                                  key={lender.id}
                                   type="button"
                                   onClick={() => {
-                                    setSelectedLender(lender);
-                                    setLenderSearchQuery("");
+                                    setCustomLenderName(lenderSearchQuery || "");
+                                    setSelectedLender(null);
                                     setShowLenderResults(false);
                                   }}
-                                  className="w-full p-2 text-left hover-elevate border-b last:border-b-0"
-                                  data-testid={`button-select-lender-${lender.id}`}
+                                  className="w-full p-2 text-left hover-elevate border-t text-muted-foreground"
+                                  data-testid="button-select-lender-other"
                                 >
-                                  <p className="font-medium">{lender.name}</p>
-                                  {lender.tier && (
-                                    <p className="text-xs text-muted-foreground">Tier: {lender.tier}</p>
-                                  )}
+                                  <p className="font-medium text-sm">Other</p>
+                                  <p className="text-xs">Enter a custom lender name</p>
                                 </button>
-                              ))
+                              </>
                             ) : (
-                              <div className="p-2 text-center text-muted-foreground text-sm">
-                                No lenders found
-                              </div>
+                              <>
+                                <div className="p-2 text-center text-muted-foreground text-sm">
+                                  No lenders found
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCustomLenderName(lenderSearchQuery || "");
+                                    setSelectedLender(null);
+                                    setShowLenderResults(false);
+                                  }}
+                                  className="w-full p-2 text-left hover-elevate border-t text-muted-foreground"
+                                  data-testid="button-select-lender-other"
+                                >
+                                  <p className="font-medium text-sm">Other</p>
+                                  <p className="text-xs">Enter a custom lender name</p>
+                                </button>
+                              </>
                             )}
                           </div>
                         )}
