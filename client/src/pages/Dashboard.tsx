@@ -1881,87 +1881,6 @@ function BankStatementsTab() {
           </Card>
         )}
 
-        {/* Plaid Connected Banks Section */}
-        {hasConnections && (
-          <div>
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Landmark className="w-5 h-5 text-emerald-600" />
-              Plaid Connected Banks
-              <Badge className="bg-emerald-600 text-white text-xs">{filteredConnections.length}</Badge>
-            </h3>
-            <div className="space-y-4">
-              {filteredConnections.map((connection) => (
-                <Card key={connection.id} className="p-6 hover-elevate" data-testid={`card-bank-connection-${connection.id}`}>
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3 flex-wrap">
-                        <h4 className="font-semibold text-lg flex items-center gap-2">
-                          <Building2 className="w-5 h-5 text-primary" />
-                          {connection.businessName}
-                        </h4>
-                        <Badge variant="outline" className="flex items-center gap-1">
-                          <Landmark className="w-3 h-3" />
-                          {connection.institutionName}
-                        </Badge>
-                        <Badge className="bg-emerald-600 text-white">Plaid Connected</Badge>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                        <div className="flex items-center gap-2 text-sm">
-                          <DollarSign className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">Monthly Revenue:</span>
-                          <span className="font-medium">${parseFloat(connection.monthlyRevenue).toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <Landmark className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">Avg Balance:</span>
-                          <span className="font-medium">${parseFloat(connection.avgBalance).toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">Connected:</span>
-                          <span className="font-medium">{format(new Date(connection.createdAt), 'MMM d, yyyy')}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <User className="w-4 h-4" />
-                        {connection.email}
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2 min-w-[140px]">
-                      <Button
-                        onClick={() => setSelectedStatements(connection)}
-                        data-testid={`button-view-statements-${connection.id}`}
-                        size="sm"
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        Bank Statements
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedAssetReport(connection)}
-                        data-testid={`button-view-asset-report-${connection.id}`}
-                      >
-                        <Landmark className="w-4 h-4 mr-2" />
-                        Asset Report
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleAnalyzePlaid(connection)}
-                        data-testid={`button-analyze-plaid-${connection.id}`}
-                      >
-                        <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
-                        Analyze
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* PDF Uploads Section - Grouped by Business */}
         {hasUploads && (
           <div>
@@ -2359,6 +2278,87 @@ function BankStatementsTab() {
                       ))}
                     </div>
                   )}
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Plaid Connected Banks Section */}
+        {hasConnections && (
+          <div>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Landmark className="w-5 h-5 text-emerald-600" />
+              Plaid Connected Banks
+              <Badge className="bg-emerald-600 text-white text-xs">{filteredConnections.length}</Badge>
+            </h3>
+            <div className="space-y-4">
+              {filteredConnections.map((connection) => (
+                <Card key={connection.id} className="p-6 hover-elevate" data-testid={`card-bank-connection-${connection.id}`}>
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3 flex-wrap">
+                        <h4 className="font-semibold text-lg flex items-center gap-2">
+                          <Building2 className="w-5 h-5 text-primary" />
+                          {connection.businessName}
+                        </h4>
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Landmark className="w-3 h-3" />
+                          {connection.institutionName}
+                        </Badge>
+                        <Badge className="bg-emerald-600 text-white">Plaid Connected</Badge>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                        <div className="flex items-center gap-2 text-sm">
+                          <DollarSign className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Monthly Revenue:</span>
+                          <span className="font-medium">${parseFloat(connection.monthlyRevenue).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Landmark className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Avg Balance:</span>
+                          <span className="font-medium">${parseFloat(connection.avgBalance).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Connected:</span>
+                          <span className="font-medium">{format(new Date(connection.createdAt), 'MMM d, yyyy')}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <User className="w-4 h-4" />
+                        {connection.email}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 min-w-[140px]">
+                      <Button
+                        onClick={() => setSelectedStatements(connection)}
+                        data-testid={`button-view-statements-${connection.id}`}
+                        size="sm"
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        Bank Statements
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedAssetReport(connection)}
+                        data-testid={`button-view-asset-report-${connection.id}`}
+                      >
+                        <Landmark className="w-4 h-4 mr-2" />
+                        Asset Report
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAnalyzePlaid(connection)}
+                        data-testid={`button-analyze-plaid-${connection.id}`}
+                      >
+                        <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
+                        Analyze
+                      </Button>
+                    </div>
+                  </div>
                 </Card>
               ))}
             </div>
