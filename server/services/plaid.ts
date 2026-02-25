@@ -82,7 +82,7 @@ export class PlaidService {
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: userId },
       client_name: 'Today Capital Group',
-      products: [Products.Statements],
+      products: [Products.Statements, Products.Assets],
       country_codes: [CountryCode.Us],
       language: 'en',
       statements: {
@@ -90,6 +90,25 @@ export class PlaidService {
         end_date: endDate.toISOString().split('T')[0],
       },
     });
+    return response.data;
+  }
+
+  async createUpdateLinkToken(userId: string, accessToken: string) {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - 6);
+
+    const response = await plaidClient.linkTokenCreate({
+      user: { client_user_id: userId },
+      client_name: 'Today Capital Group',
+      access_token: accessToken,
+      country_codes: [CountryCode.Us],
+      language: 'en',
+      statements: {
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0],
+      },
+    } as any);
     return response.data;
   }
 
@@ -380,12 +399,17 @@ export class PlaidService {
       });
     }
 
-    const response = await plaidClient.assetReportCreate(request);
-    
-    return {
-      assetReportToken: response.data.asset_report_token,
-      assetReportId: response.data.asset_report_id
-    };
+    try {
+      const response = await plaidClient.assetReportCreate(request);
+      return {
+        assetReportToken: response.data.asset_report_token,
+        assetReportId: response.data.asset_report_id
+      };
+    } catch (err: any) {
+      const plaidBody = err?.response?.data;
+      console.error('[PLAID ASSET REPORT ERROR]', JSON.stringify(plaidBody || err?.message || err));
+      throw err;
+    }
   }
 
   async getAssetReport(assetReportToken: string): Promise<any> {

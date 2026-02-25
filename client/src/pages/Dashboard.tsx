@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { type LoanApplication, type BankStatementUpload, type BusinessUnderwritingDecision } from "@shared/schema";
 import { queryClient, getQueryFn } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { usePlaidLink } from "react-plaid-link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1070,6 +1071,60 @@ const INDUSTRIES = [
 ];
 
 // BusinessDecisionDialogData removed - approvals and declines now use separate dialogs
+
+function ReconnectPlaidButton({ plaidItemId, onSuccess }: { plaidItemId: string; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const { open, ready } = usePlaidLink({
+    token: linkToken,
+    onSuccess: () => {
+      toast({ title: "Bank reconnected", description: "Asset reports are now available for this connection." });
+      setLinkToken(null);
+      onSuccess();
+    },
+    onExit: () => {
+      setLinkToken(null);
+    },
+  });
+
+  useEffect(() => {
+    if (linkToken && ready) {
+      open();
+    }
+  }, [linkToken, ready, open]);
+
+  const handleReconnect = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/plaid/create-update-link-token/${plaidItemId}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create update link token");
+      const data = await res.json();
+      setLinkToken(data.link_token);
+    } catch {
+      toast({ title: "Error", description: "Failed to initiate reconnect. Try again.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleReconnect}
+      disabled={loading}
+      data-testid={`button-reconnect-plaid-${plaidItemId}`}
+    >
+      {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Link2 className="w-4 h-4 mr-2" />}
+      Reconnect
+    </Button>
+  );
+}
 
 function BankStatementsTab() {
   const { toast } = useToast();
@@ -2357,6 +2412,10 @@ function BankStatementsTab() {
                         <Sparkles className="w-4 h-4 mr-2 text-purple-500" />
                         Analyze
                       </Button>
+                      <ReconnectPlaidButton
+                        plaidItemId={connection.plaidItemId}
+                        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['/api/plaid/all'] })}
+                      />
                     </div>
                   </div>
                 </Card>

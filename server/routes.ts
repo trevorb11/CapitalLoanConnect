@@ -1302,6 +1302,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 1b. Generate Update Link Token for existing Plaid item (to add new products)
+  app.post("/api/plaid/create-update-link-token/:plaidItemId", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    try {
+      const { plaidItemId } = req.params;
+      const plaidItem = await storage.getPlaidItem(plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Bank connection not found" });
+      }
+      const tokenData = await plaidService.createUpdateLinkToken("user-session-id", plaidItem.accessToken);
+      res.json(tokenData);
+    } catch (error: any) {
+      const plaidBody = error?.response?.data;
+      console.error("Plaid Update Link Token Error:", plaidBody ? JSON.stringify(plaidBody) : error?.message);
+      res.status(500).json({ error: "Failed to create update link token" });
+    }
+  });
+
   // 2. Handle Successful Link & Analyze (with Asset Report + AI Analysis)
   app.post("/api/plaid/exchange-token", async (req, res) => {
     try {
@@ -1734,15 +1754,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(assetReport);
     } catch (error: any) {
-      console.error("Error fetching asset report:", error);
+      const plaidBody = error?.response?.data;
+      console.error("Error fetching asset report:", plaidBody ? JSON.stringify(plaidBody) : error?.message || error);
       
       // Handle specific Plaid errors
-      if (error?.response?.data?.error_code) {
-        const plaidError = error.response.data;
+      if (plaidBody?.error_code) {
         return res.status(400).json({ 
           error: "Plaid error", 
-          errorCode: plaidError.error_code,
-          message: plaidError.error_message || "Failed to generate asset report"
+          errorCode: plaidBody.error_code,
+          message: plaidBody.error_message || "Failed to generate asset report",
+          displayMessage: plaidBody.display_message
         });
       }
       
