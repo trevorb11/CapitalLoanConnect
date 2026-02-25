@@ -82,7 +82,7 @@ export class PlaidService {
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: userId },
       client_name: 'Today Capital Group',
-      products: [Products.Statements, Products.Assets],
+      products: [Products.Statements, Products.Assets, Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
       statements: {

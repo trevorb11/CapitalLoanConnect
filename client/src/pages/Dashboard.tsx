@@ -1160,12 +1160,12 @@ function TransactionsModal({
             <div className="p-6">
               <div className="flex items-center gap-2 text-destructive mb-2">
                 <AlertTriangle className="w-5 h-5" />
-                <span className="font-medium">Unable to load transactions</span>
+                <span className="font-medium">Transactions not available for this connection</span>
               </div>
-              <p className="text-sm text-muted-foreground">{(error as Error).message}</p>
-              <p className="text-xs text-muted-foreground mt-2">
-                If this says "Transactions product not enabled", the bank will need to reconnect once to authorize transaction access.
-              </p>
+              <p className="text-sm text-muted-foreground mb-3">{(error as Error).message}</p>
+              <div className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
+                This bank was connected before transaction access was enabled. Use the <strong>Reconnect</strong> button on the bank card — it takes about 30 seconds and the client re-authenticates through Plaid without losing any existing data. After reconnecting, transactions and asset reports will both be available.
+              </div>
             </div>
           )}
 
