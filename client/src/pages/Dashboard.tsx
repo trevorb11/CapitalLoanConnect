@@ -1072,6 +1072,162 @@ const INDUSTRIES = [
 
 // BusinessDecisionDialogData removed - approvals and declines now use separate dialogs
 
+function TransactionsModal({
+  plaidItemId,
+  institutionName,
+  isOpen,
+  onClose,
+}: {
+  plaidItemId: string;
+  institutionName: string;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const today = new Date();
+  const defaultStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+  const defaultEnd = today.toISOString().split('T')[0];
+
+  const [startDate, setStartDate] = useState(defaultStart);
+  const [endDate, setEndDate] = useState(defaultEnd);
+  const [fetchKey, setFetchKey] = useState(0);
+
+  const { data, isLoading, error } = useQuery<{ accounts: any[]; transactions: any[]; total: number }>({
+    queryKey: ['/api/plaid/transactions', plaidItemId, startDate, endDate, fetchKey],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/plaid/transactions/${plaidItemId}?startDate=${startDate}&endDate=${endDate}`,
+        { credentials: 'include' }
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || err.error || 'Failed to fetch transactions');
+      }
+      return res.json();
+    },
+    enabled: isOpen && !!plaidItemId,
+  });
+
+  const credits = data?.transactions.filter(t => t.amount < 0) || [];
+  const debits = data?.transactions.filter(t => t.amount > 0) || [];
+  const totalCredits = credits.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const totalDebits = debits.reduce((sum, t) => sum + t.amount, 0);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" data-testid="dialog-transactions">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            Transactions — {institutionName}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex flex-wrap items-end gap-3 pt-1 pb-3 border-b">
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">Start Date</Label>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="w-40"
+              data-testid="input-txn-start-date"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs text-muted-foreground">End Date</Label>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              className="w-40"
+              data-testid="input-txn-end-date"
+            />
+          </div>
+          <Button size="sm" onClick={() => setFetchKey(k => k + 1)} data-testid="button-txn-fetch">
+            Fetch
+          </Button>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          {isLoading && (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <span className="ml-3 text-muted-foreground">Fetching transactions from Plaid…</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="p-6">
+              <div className="flex items-center gap-2 text-destructive mb-2">
+                <AlertTriangle className="w-5 h-5" />
+                <span className="font-medium">Unable to load transactions</span>
+              </div>
+              <p className="text-sm text-muted-foreground">{(error as Error).message}</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                If this says "Transactions product not enabled", the bank will need to reconnect once to authorize transaction access.
+              </p>
+            </div>
+          )}
+
+          {data && !isLoading && (
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <Card className="p-3 text-center">
+                  <div className="text-xs text-muted-foreground mb-1">Total Transactions</div>
+                  <div className="font-semibold text-lg">{data.total}</div>
+                </Card>
+                <Card className="p-3 text-center">
+                  <div className="text-xs text-muted-foreground mb-1">Total Credits (In)</div>
+                  <div className="font-semibold text-lg text-emerald-600">${totalCredits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                </Card>
+                <Card className="p-3 text-center">
+                  <div className="text-xs text-muted-foreground mb-1">Total Debits (Out)</div>
+                  <div className="font-semibold text-lg text-red-500">${totalDebits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                </Card>
+              </div>
+
+              {data.accounts.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {data.accounts.map(acc => (
+                    <Badge key={acc.accountId} variant="outline" className="text-xs">
+                      {acc.name} {acc.mask ? `••${acc.mask}` : ''} — Balance: ${(acc.currentBalance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-1">
+                {data.transactions.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-8">No transactions found for this date range.</p>
+                )}
+                {data.transactions.map(txn => (
+                  <div
+                    key={txn.transactionId}
+                    className="flex items-center justify-between py-2 px-3 rounded-md hover-elevate text-sm"
+                    data-testid={`row-txn-${txn.transactionId}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{txn.merchantName || txn.name}</div>
+                      <div className="text-xs text-muted-foreground flex gap-2">
+                        <span>{txn.date}</span>
+                        {txn.pending && <Badge variant="outline" className="text-xs py-0">Pending</Badge>}
+                        {txn.category?.[0] && <span className="truncate">{txn.category[0]}</span>}
+                      </div>
+                    </div>
+                    <div className={cn("font-semibold ml-4 tabular-nums", txn.amount < 0 ? "text-emerald-600" : "text-foreground")}>
+                      {txn.amount < 0 ? '+' : '-'}${Math.abs(txn.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ReconnectPlaidButton({ plaidItemId, onSuccess }: { plaidItemId: string; onSuccess: () => void }) {
   const { toast } = useToast();
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -1190,6 +1346,7 @@ function BankStatementsTab() {
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
   const [selectedAssetReport, setSelectedAssetReport] = useState<BankConnection | null>(null);
   const [selectedStatements, setSelectedStatements] = useState<BankConnection | null>(null);
+  const [selectedTransactions, setSelectedTransactions] = useState<BankConnection | null>(null);
 
   const { data: authData } = useQuery<AuthState | null>({
     queryKey: ['/api/auth/check'],
@@ -2406,6 +2563,15 @@ function BankStatementsTab() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => setSelectedTransactions(connection)}
+                        data-testid={`button-view-transactions-${connection.id}`}
+                      >
+                        <TrendingUp className="w-4 h-4 mr-2" />
+                        Transactions
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => handleAnalyzePlaid(connection)}
                         data-testid={`button-analyze-plaid-${connection.id}`}
                       >
@@ -2451,6 +2617,15 @@ function BankStatementsTab() {
           institutionName={selectedStatements.institutionName}
           isOpen={!!selectedStatements}
           onClose={() => setSelectedStatements(null)}
+        />
+      )}
+
+      {selectedTransactions && (
+        <TransactionsModal
+          plaidItemId={selectedTransactions.plaidItemId}
+          institutionName={selectedTransactions.institutionName}
+          isOpen={!!selectedTransactions}
+          onClose={() => setSelectedTransactions(null)}
         />
       )}
 

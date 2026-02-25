@@ -474,6 +474,56 @@ export class PlaidService {
     };
   }
 
+  async getTransactionsByDateRange(
+    accessToken: string,
+    startDate: string,
+    endDate: string
+  ): Promise<{ accounts: any[]; transactions: any[]; total: number }> {
+    let allTransactions: any[] = [];
+    let accountsData: any[] = [];
+    let offset = 0;
+    let total = 0;
+
+    do {
+      const response = await plaidClient.transactionsGet({
+        access_token: accessToken,
+        start_date: startDate,
+        end_date: endDate,
+        options: { offset, count: 500 },
+      });
+      const data = response.data;
+      allTransactions = allTransactions.concat(data.transactions);
+      accountsData = data.accounts;
+      total = data.total_transactions;
+      offset = allTransactions.length;
+    } while (allTransactions.length < total);
+
+    return {
+      accounts: accountsData.map((acc: any) => ({
+        accountId: acc.account_id,
+        name: acc.name,
+        type: acc.type,
+        subtype: acc.subtype || '',
+        currentBalance: acc.balances.current ?? 0,
+        availableBalance: acc.balances.available ?? null,
+        mask: acc.mask,
+      })),
+      transactions: allTransactions.map((txn: any) => ({
+        transactionId: txn.transaction_id,
+        accountId: txn.account_id,
+        date: txn.date,
+        name: txn.name,
+        merchantName: txn.merchant_name || null,
+        amount: txn.amount,
+        category: txn.category || [],
+        pending: txn.pending,
+        paymentChannel: txn.payment_channel || null,
+        isoCurrencyCode: txn.iso_currency_code || 'USD',
+      })),
+      total,
+    };
+  }
+
   // Statements API Methods
   async listStatements(accessToken: string): Promise<PlaidStatementsListResult> {
     console.log('[PLAID] Fetching statements list...');

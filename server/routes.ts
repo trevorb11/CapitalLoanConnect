@@ -1862,6 +1862,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 6d. Get Transactions by Plaid item ID (no reconnect needed)
+  app.get("/api/plaid/transactions/:plaidItemId", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    try {
+      const { plaidItemId } = req.params;
+      const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
+
+      const plaidItem = await storage.getPlaidItem(plaidItemId);
+      if (!plaidItem) {
+        return res.status(404).json({ error: "Bank connection not found" });
+      }
+
+      const end = endDate || new Date().toISOString().split('T')[0];
+      const start = startDate || (() => {
+        const d = new Date();
+        d.setDate(1); // beginning of current month
+        return d.toISOString().split('T')[0];
+      })();
+
+      console.log(`[PLAID TRANSACTIONS] Fetching transactions for item ${plaidItemId} from ${start} to ${end}`);
+      const result = await plaidService.getTransactionsByDateRange(plaidItem.accessToken, start, end);
+      console.log(`[PLAID TRANSACTIONS] Got ${result.total} transactions`);
+      res.json(result);
+    } catch (error: any) {
+      const plaidBody = error?.response?.data;
+      console.error("[PLAID TRANSACTIONS] Error:", plaidBody ? JSON.stringify(plaidBody) : error?.message);
+      if (plaidBody?.error_code) {
+        return res.status(400).json({
+          error: "Plaid error",
+          errorCode: plaidBody.error_code,
+          message: plaidBody.error_message || "Failed to fetch transactions",
+        });
+      }
+      res.status(500).json({ error: "Failed to fetch transactions" });
+    }
+  });
+
   // 7. List Plaid Statements for a connected bank
   app.get("/api/plaid/statements/:plaidItemId", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
