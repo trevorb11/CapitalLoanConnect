@@ -6301,16 +6301,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Funded: sum advanceAmount per assignedRep where status = "funded" (past week by fundedDate or createdAt)
       const fundedAmounts: Record<string, number> = {};
       const fundedCounts: Record<string, number> = {};
+      // Also track funded by lender for the dashboard
+      const fundedByLenderAmounts: Record<string, number> = {};
+      const fundedByLenderCounts: Record<string, number> = {};
       for (const d of decisions) {
         if (d.status !== "funded") continue;
         const rep = d.assignedRep;
-        if (!rep) continue;
         const dateRef = d.fundedDate || d.createdAt;
         if (dateRef && new Date(dateRef) < cutoffDate) continue;
         const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
         if (isNaN(amount)) continue;
-        fundedAmounts[rep] = (fundedAmounts[rep] || 0) + amount;
-        fundedCounts[rep] = (fundedCounts[rep] || 0) + 1;
+        if (rep) {
+          fundedAmounts[rep] = (fundedAmounts[rep] || 0) + amount;
+          fundedCounts[rep] = (fundedCounts[rep] || 0) + 1;
+        }
+        // Track by lender
+        const lender = d.lender || "Unknown";
+        fundedByLenderAmounts[lender] = (fundedByLenderAmounts[lender] || 0) + amount;
+        fundedByLenderCounts[lender] = (fundedByLenderCounts[lender] || 0) + 1;
+      }
+
+      // Total funded YTD
+      const yearStart = new Date(new Date().getFullYear(), 0, 1);
+      let totalFundedYTD = 0;
+      let totalFundedUnitsYTD = 0;
+      for (const d of decisions) {
+        if (d.status !== "funded") continue;
+        const dateRef = d.fundedDate || d.createdAt;
+        if (dateRef && new Date(dateRef) < yearStart) continue;
+        const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
+        if (!isNaN(amount)) {
+          totalFundedYTD += amount;
+          totalFundedUnitsYTD += 1;
+        }
       }
 
       // Build sorted arrays
@@ -6326,10 +6349,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .map(([name, amount]) => ({ name, amount, count: fundedCounts[name] || 0 }))
         .sort((a, b) => b.amount - a.amount);
 
+      const fundedByLender = Object.entries(fundedByLenderAmounts)
+        .map(([name, amount]) => ({ name, amount, count: fundedByLenderCounts[name] || 0 }))
+        .sort((a, b) => b.amount - a.amount);
+
       res.json({
         applications: applicationLeaderboard,
         approvals: approvalLeaderboard,
         funded: fundedLeaderboard,
+        fundedByLender,
+        totalFundedYTD,
+        totalFundedUnitsYTD,
       });
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
