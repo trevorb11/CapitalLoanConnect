@@ -2648,7 +2648,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Email is required" });
       }
 
-      const GHL_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2e946cd8-a2e4-4b69-a97f-83a5d2af38bb";
+      const GHL_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35";
 
       const payload = {
         event: "documents_submitted",
