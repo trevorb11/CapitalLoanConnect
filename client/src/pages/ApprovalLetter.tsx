@@ -20,6 +20,7 @@ interface ApprovalEntry {
 
 interface ApprovalData {
   businessName: string | null;
+  businessEmail: string | null;
   advanceAmount: string | null;
   term: string | null;
   paymentFrequency: string | null;
@@ -155,6 +156,14 @@ export default function ApprovalLetter() {
   const advanceAmount = formatCurrency(current.advanceAmount);
   const paymentTypeLabel = getPaymentTypeLabel(current.paymentFrequency);
   const businessName = approval.businessName || "Valued Customer";
+  const businessEmail = approval.businessEmail || "";
+
+  // Build the Accept Offer / congratulations URL with pre-filled context
+  const congratsParams = new URLSearchParams();
+  if (businessEmail) congratsParams.set("email", businessEmail);
+  if (businessName) congratsParams.set("businessName", businessName);
+  const congratulationsUrl = `/congratulations${congratsParams.toString() ? `?${congratsParams.toString()}` : ""}`;
+
   const factorRate = current.factorRate || "1.25";
   const lender = current.lender || "Standard Program";
   const approvalDateStr = current.approvalDate ? format(new Date(current.approvalDate), "MMMM d, yyyy") : format(new Date(), "MMMM d, yyyy");
@@ -350,19 +359,16 @@ export default function ApprovalLetter() {
             <h3 style={{ fontSize: "1.375rem", fontWeight: 800, marginBottom: "6px", color: "#0B1120" }}>Ready to Move Forward?</h3>
             <p style={{ color: "rgba(11, 17, 32, 0.7)", marginBottom: "24px", fontSize: "0.9375rem" }}>No obligation — let's get you funded.</p>
             <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
-              <a href={SCHEDULING_LINK} style={{
+              <a href={congratulationsUrl} style={{
                 display: "inline-flex", alignItems: "center", gap: "8px",
                 padding: "14px 28px", borderRadius: "9999px", fontWeight: 700,
                 fontSize: "0.9375rem", textDecoration: "none", background: "#0B1120", color: "#fff",
                 transition: "all 0.3s ease"
-              }} data-testid="link-schedule">
+              }} data-testid="link-accept-offer">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: "18px", height: "18px" }}>
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
+                  <polyline points="20 6 9 17 4 12" />
                 </svg>
-                Schedule a Call
+                Accept Offer
               </a>
               <a href={`tel:+${PHONE_NUMBER.replace(/\D/g, "")}`} style={{
                 display: "inline-flex", alignItems: "center", gap: "8px",
