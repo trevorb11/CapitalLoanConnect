@@ -3,6 +3,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { Pool } from "@neondatabase/serverless";
 import { registerRoutes } from "./routes";
+import { registerMcpRoutes } from "./mcp";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
@@ -145,6 +146,7 @@ app.use((req, res, next) => {
   try {
     console.log('[STARTUP] Registering routes...');
     const server = await registerRoutes(app);
+    registerMcpRoutes(app);
     console.log('[STARTUP] Routes registered successfully');
 
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

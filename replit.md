@@ -84,3 +84,13 @@ The Approvals admin page (`/approvals`) provides underwriting team members with 
   - Creates synthetic email format (`businessname@imported.local`) for imported records.
 - **Approval Letter Generation**: Public URLs for approved businesses to view their approval letters.
 - **Visit Tracking**: Analytics for approval letter page visits.
+
+### MCP Server (Claude Desktop Integration)
+
+An MCP (Model Context Protocol) server is exposed at `/api/mcp` allowing Claude Desktop or other MCP clients to read the database and interact with GoHighLevel.
+
+- **SSE Endpoint**: `GET /api/mcp` — establishes the persistent connection
+- **Message Endpoint**: `POST /api/mcp/message` — sends tool calls
+- **Health Check**: `GET /api/mcp/health` — no auth required
+- **Auth**: Bearer token via `MCP_API_KEY` environment variable
+- **Available tools**: `list_loan_applications`, `get_loan_application`, `update_loan_application_status`, `list_lender_approvals`, `get_lender_approval`, `list_bank_statement_uploads`, `get_database_stats`, `ghl_search_contact`, `ghl_get_opportunities`, `ghl_get_opportunity`, `ghl_update_opportunity`, `ghl_sync_approval_to_opportunity`
