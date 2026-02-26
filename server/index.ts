@@ -33,6 +33,16 @@ declare module 'http' {
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+// Prevent database/network errors from crashing the server process
+process.on('uncaughtException', (err) => {
+  console.error('[PROCESS] Uncaught exception (server kept alive):', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  console.error('[PROCESS] Unhandled promise rejection (server kept alive):', msg);
+});
+
 // Log startup
 console.log(`[STARTUP] Starting server in ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
 console.log(`[STARTUP] DATABASE_URL: ${process.env.DATABASE_URL ? 'SET' : 'NOT SET'}`);
@@ -70,6 +80,9 @@ if (isProduction) {
       console.log('[STARTUP] Creating PostgreSQL session store...');
       const PgSession = connectPgSimple(session);
       const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      pool.on('error', (err) => {
+        console.error('[SESSION POOL] Connection error (non-fatal):', err.message);
+      });
       sessionStore = new PgSession({
         pool,
         tableName: 'user_sessions',
