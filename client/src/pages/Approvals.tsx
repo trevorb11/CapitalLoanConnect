@@ -818,6 +818,14 @@ export default function Approvals() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <Button
+                onClick={() => setLocation('/internal-upload')}
+                className="flex items-center gap-2"
+                data-testid="button-add-approval"
+              >
+                <Plus className="w-4 h-4" />
+                Add Approval
+              </Button>
+              <Button
                 variant="outline"
                 onClick={handleExportCsv}
                 className="flex items-center gap-2"
