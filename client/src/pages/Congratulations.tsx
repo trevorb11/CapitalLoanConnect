@@ -56,6 +56,12 @@ export default function Congratulations() {
   const [email, setEmail] = useState(params.get("email") ? decodeURIComponent(params.get("email")!) : "");
   const [businessName, setBusinessName] = useState(params.get("businessName") ? decodeURIComponent(params.get("businessName")!) : "");
 
+  // Additional params from approval letter / CRM (passed silently)
+  const ownerName = params.get("ownerName") ? decodeURIComponent(params.get("ownerName")!) : "";
+  const phone = params.get("phone") ? decodeURIComponent(params.get("phone")!) : "";
+  const contactId = params.get("contactId") ? decodeURIComponent(params.get("contactId")!) : "";
+  const opportunityId = params.get("opportunityId") ? decodeURIComponent(params.get("opportunityId")!) : "";
+
   const [voidedCheckFile, setVoidedCheckFile] = useState<File | null>(null);
   const [driversLicenseFile, setDriversLicenseFile] = useState<File | null>(null);
   const [isDraggingCheck, setIsDraggingCheck] = useState(false);
@@ -154,8 +160,27 @@ export default function Congratulations() {
     setUploadProgress(50);
 
     await uploadMutation.mutateAsync({ file: driversLicenseFile, docType: "drivers_license" });
-    setUploadProgress(100);
+    setUploadProgress(90);
 
+    // Notify GHL that both documents have been submitted
+    try {
+      await fetch("/api/congratulations/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          businessName,
+          ownerName: ownerName || undefined,
+          phone: phone || undefined,
+          contactId: contactId || undefined,
+          opportunityId: opportunityId || undefined,
+        }),
+      });
+    } catch {
+      // Non-fatal — documents were uploaded successfully even if notification fails
+    }
+
+    setUploadProgress(100);
     setIsComplete(true);
     toast({ title: "Documents Uploaded", description: "All documents have been submitted successfully" });
   };

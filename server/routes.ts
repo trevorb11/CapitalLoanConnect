@@ -2639,6 +2639,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Fire GHL webhook when both congratulations documents have been submitted
+  app.post("/api/congratulations/complete", async (req, res) => {
+    try {
+      const { email, businessName, contactId, opportunityId, phone, ownerName } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      const GHL_WEBHOOK_URL = "https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2e946cd8-a2e4-4b69-a97f-83a5d2af38bb";
+
+      const payload = {
+        event: "documents_submitted",
+        email,
+        businessName: businessName || null,
+        ownerName: ownerName || null,
+        phone: phone || null,
+        contactId: contactId || null,
+        opportunityId: opportunityId || null,
+        documents: ["voided_check", "drivers_license"],
+        submittedAt: new Date().toISOString(),
+      };
+
+      console.log(`[CONGRATS COMPLETE] Firing GHL webhook for ${email}`, payload);
+
+      const webhookResponse = await fetch(GHL_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!webhookResponse.ok) {
+        const text = await webhookResponse.text();
+        console.error(`[CONGRATS COMPLETE] GHL webhook failed (${webhookResponse.status}): ${text}`);
+        return res.status(502).json({ error: "Failed to notify CRM. Documents were uploaded successfully." });
+      }
+
+      console.log(`[CONGRATS COMPLETE] GHL webhook sent successfully for ${email}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[CONGRATS COMPLETE] Error firing webhook:", error);
+      res.status(500).json({ error: "Failed to send notification. Documents were uploaded successfully." });
+    }
+  });
+
   // ============= Business Underwriting Decisions =============
   
   // Get all business underwriting decisions
