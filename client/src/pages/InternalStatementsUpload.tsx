@@ -461,8 +461,6 @@ export default function InternalStatementsUpload() {
                   setTerm('');
                   setPaymentFrequency('Weekly');
                   setFactorRate('');
-                  setTotalPayback('');
-                  setNetAfterFees('');
                   setSubmittedInfo({ filesUploaded: 0, decisionSaved: false, decisionType: '' });
                 }}
                 data-testid="button-upload-more"

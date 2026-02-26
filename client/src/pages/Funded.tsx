@@ -754,6 +754,7 @@ export default function Funded() {
                     notes: '',
                     approvalDate: new Date().toISOString().split('T')[0],
                     fundedDate: new Date().toISOString().split('T')[0],
+                    assignedRep: '',
                   });
                 }}
                 className="flex items-center gap-2"
