@@ -412,8 +412,8 @@ export type LenderApproval = typeof lenderApprovals.$inferSelect;
 export const businessUnderwritingDecisions = pgTable("business_underwriting_decisions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   
-  // Business identifier (using email as the unique key for the business)
-  businessEmail: text("business_email").notNull().unique(),
+  // Business identifier (email of the business contact - multiple deals allowed per email)
+  businessEmail: text("business_email").notNull(),
   businessName: text("business_name"),
   businessPhone: text("business_phone"),
   

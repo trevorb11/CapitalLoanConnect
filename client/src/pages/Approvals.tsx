@@ -76,6 +76,7 @@ interface FullApprovalEntry {
   netAfterFees: string;
   notes: string;
   approvalDate: string;
+  fundedDate: string;
   isPrimary: boolean;
   createdAt: string;
 }
@@ -131,6 +132,7 @@ export default function Approvals() {
     lender: '',
     notes: '',
     approvalDate: '',
+    fundedDate: '',
   });
   const [saving, setSaving] = useState(false);
   
@@ -345,6 +347,7 @@ export default function Approvals() {
         netAfterFees: decision.netAfterFees?.toString() || '',
         notes: decision.notes || '',
         approvalDate: decision.approvalDate ? new Date(decision.approvalDate).toISOString().split('T')[0] : '',
+        fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString().split('T')[0] : '',
         isPrimary: true,
         createdAt: decision.createdAt ? new Date(decision.createdAt).toISOString() : new Date().toISOString(),
       });
@@ -364,6 +367,7 @@ export default function Approvals() {
           netAfterFees: old.netAfterFees || '',
           notes: old.notes || '',
           approvalDate: old.approvalDate || '',
+          fundedDate: old.fundedDate || '',
           isPrimary: false,
           createdAt: new Date().toISOString(),
         });
@@ -472,6 +476,7 @@ export default function Approvals() {
           lender: existing.lender,
           notes: existing.notes,
           approvalDate: existing.approvalDate || '',
+          fundedDate: existing.fundedDate || '',
         });
       }
     } else {
@@ -486,6 +491,7 @@ export default function Approvals() {
         lender: '',
         notes: '',
         approvalDate: new Date().toISOString().split('T')[0],
+        fundedDate: '',
       });
     }
     setEditingApproval({ decision, approvalId });
@@ -510,6 +516,7 @@ export default function Approvals() {
         netAfterFees: editForm.netAfterFees,
         notes: editForm.notes,
         approvalDate: editForm.approvalDate,
+        fundedDate: editForm.fundedDate,
         isPrimary: approvals.length === 0,
         createdAt: approvalId
           ? (approvals.find(a => a.id === approvalId)?.createdAt || new Date().toISOString())
@@ -1327,15 +1334,27 @@ export default function Approvals() {
                 />
               </div>
             </div>
-            <div>
-              <Label htmlFor="edit-approvalDate">Approval Date</Label>
-              <Input
-                id="edit-approvalDate"
-                type="date"
-                value={editForm.approvalDate}
-                onChange={(e) => setEditForm(prev => ({ ...prev, approvalDate: e.target.value }))}
-                data-testid="input-edit-approval-date"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-approvalDate">Approval Date</Label>
+                <Input
+                  id="edit-approvalDate"
+                  type="date"
+                  value={editForm.approvalDate}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, approvalDate: e.target.value }))}
+                  data-testid="input-edit-approval-date"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-fundedDate">Funded Date</Label>
+                <Input
+                  id="edit-fundedDate"
+                  type="date"
+                  value={editForm.fundedDate}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, fundedDate: e.target.value }))}
+                  data-testid="input-edit-funded-date"
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="edit-notes">Notes</Label>

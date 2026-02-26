@@ -113,6 +113,7 @@ export interface IStorage {
   createOrUpdateBusinessUnderwritingDecision(decision: InsertBusinessUnderwritingDecision): Promise<BusinessUnderwritingDecision>;
   getBusinessUnderwritingDecision(id: string): Promise<BusinessUnderwritingDecision | undefined>;
   getBusinessUnderwritingDecisionByEmail(email: string): Promise<BusinessUnderwritingDecision | undefined>;
+  getBusinessUnderwritingDecisionsByEmail(email: string): Promise<BusinessUnderwritingDecision[]>;
   getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined>;
   getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]>;
   updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision>): Promise<BusinessUnderwritingDecision | undefined>;
@@ -593,38 +594,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createOrUpdateBusinessUnderwritingDecision(decision: InsertBusinessUnderwritingDecision): Promise<BusinessUnderwritingDecision> {
-    const existing = await this.getBusinessUnderwritingDecisionByEmail(decision.businessEmail);
-    console.log(`[STORAGE] createOrUpdateBusinessUnderwritingDecision: email=${decision.businessEmail}, status=${decision.status}, existing=${!!existing}, additionalApprovals=${Array.isArray(decision.additionalApprovals) ? decision.additionalApprovals.length : 'null'}`);
-    
-    let approvalSlug = existing?.approvalSlug;
-    if (decision.status === 'approved' && !approvalSlug) {
+    console.log(`[STORAGE] createOrUpdateBusinessUnderwritingDecision: email=${decision.businessEmail}, status=${decision.status}, additionalApprovals=${Array.isArray(decision.additionalApprovals) ? decision.additionalApprovals.length : 'null'}`);
+
+    let approvalSlug: string | null = null;
+    if (decision.status === 'approved') {
       approvalSlug = this.generateApprovalSlug(decision.businessName || null, decision.businessEmail);
-    } else if (decision.status === 'declined' || decision.status === 'unqualified') {
-      approvalSlug = null;
     }
-    
-    if (existing) {
-      console.log(`[STORAGE] Updating existing decision ${existing.id} for ${decision.businessEmail}`);
-      const [updated] = await db
-        .update(businessUnderwritingDecisions)
-        .set({
-          ...decision,
-          approvalSlug,
-          updatedAt: new Date(),
-        })
-        .where(eq(businessUnderwritingDecisions.id, existing.id))
-        .returning();
-      console.log(`[STORAGE] Updated decision ${updated.id}, additionalApprovals saved: ${Array.isArray(updated.additionalApprovals) ? (updated.additionalApprovals as any[]).length : 'null'}`);
-      return updated;
-    } else {
-      console.log(`[STORAGE] Creating new decision for ${decision.businessEmail}`);
-      const [newDecision] = await db
-        .insert(businessUnderwritingDecisions)
-        .values({ ...decision, approvalSlug })
-        .returning();
-      console.log(`[STORAGE] Created decision ${newDecision.id}, additionalApprovals saved: ${Array.isArray(newDecision.additionalApprovals) ? (newDecision.additionalApprovals as any[]).length : 'null'}`);
-      return newDecision;
-    }
+
+    console.log(`[STORAGE] Creating new decision for ${decision.businessEmail}`);
+    const [newDecision] = await db
+      .insert(businessUnderwritingDecisions)
+      .values({ ...decision, approvalSlug })
+      .returning();
+    console.log(`[STORAGE] Created decision ${newDecision.id}, additionalApprovals saved: ${Array.isArray(newDecision.additionalApprovals) ? (newDecision.additionalApprovals as any[]).length : 'null'}`);
+    return newDecision;
   }
 
   async getBusinessUnderwritingDecision(id: string): Promise<BusinessUnderwritingDecision | undefined> {
@@ -639,8 +622,18 @@ export class DatabaseStorage implements IStorage {
     const [decision] = await db
       .select()
       .from(businessUnderwritingDecisions)
-      .where(sql`LOWER(${businessUnderwritingDecisions.businessEmail}) = LOWER(${email})`);
+      .where(sql`LOWER(${businessUnderwritingDecisions.businessEmail}) = LOWER(${email})`)
+      .orderBy(desc(businessUnderwritingDecisions.updatedAt))
+      .limit(1);
     return decision || undefined;
+  }
+
+  async getBusinessUnderwritingDecisionsByEmail(email: string): Promise<BusinessUnderwritingDecision[]> {
+    return await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(sql`LOWER(${businessUnderwritingDecisions.businessEmail}) = LOWER(${email})`)
+      .orderBy(desc(businessUnderwritingDecisions.updatedAt));
   }
 
   async getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined> {

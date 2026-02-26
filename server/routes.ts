@@ -2678,8 +2678,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     try {
-      const decision = await storage.getBusinessUnderwritingDecisionByEmail(email);
-      res.json(decision || null);
+      const decisions = await storage.getBusinessUnderwritingDecisionsByEmail(email);
+      // Return array of all deals for this contact, or the first one for backwards compatibility
+      res.json(decisions.length > 0 ? decisions : null);
     } catch (error) {
       console.error("Error fetching underwriting decision:", error);
       res.status(500).json({ error: "Failed to fetch decision" });
