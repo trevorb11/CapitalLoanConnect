@@ -1665,6 +1665,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin: Edit a Plaid bank connection (funding analysis)
+  app.patch("/api/plaid/connections/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Authentication required" });
+    if (req.session.user.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    const { id } = req.params;
+    const { businessName, email } = req.body as { businessName?: string; email?: string };
+    try {
+      const updated = await storage.updateFundingAnalysis(id, { businessName, email });
+      if (!updated) return res.status(404).json({ error: "Connection not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating plaid connection:", error);
+      res.status(500).json({ error: "Failed to update connection" });
+    }
+  });
+
+  // Admin: Delete a Plaid bank connection (funding analysis + plaid item)
+  app.delete("/api/plaid/connections/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Authentication required" });
+    if (req.session.user.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    const { id } = req.params;
+    try {
+      await storage.deleteFundingAnalysis(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting plaid connection:", error);
+      res.status(500).json({ error: "Failed to delete connection" });
+    }
+  });
+
   // 6. Get bank statements by Plaid item ID (for bank statements tab)
   app.get("/api/plaid/statements-by-item/:plaidItemId", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
@@ -2545,6 +2575,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating bank statement approval:", error);
       res.status(500).json({ error: "Failed to update approval status" });
+    }
+  });
+
+  // Admin: Edit a bank statement upload (businessName / email)
+  app.patch("/api/bank-statements/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Authentication required" });
+    if (req.session.user.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    const { id } = req.params;
+    const { businessName, email } = req.body as { businessName?: string; email?: string };
+    try {
+      const updated = await storage.updateBankStatementUpload(id, { businessName, email });
+      if (!updated) return res.status(404).json({ error: "Upload not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating bank statement upload:", error);
+      res.status(500).json({ error: "Failed to update upload" });
+    }
+  });
+
+  // Admin: Delete a bank statement upload record (does not remove file from object storage)
+  app.delete("/api/bank-statements/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Authentication required" });
+    if (req.session.user.role !== 'admin') return res.status(403).json({ error: "Admin access required" });
+    const { id } = req.params;
+    try {
+      await storage.deleteBankStatementUpload(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting bank statement upload:", error);
+      res.status(500).json({ error: "Failed to delete upload" });
     }
   });
 

@@ -1348,6 +1348,18 @@ function BankStatementsTab() {
   const [selectedStatements, setSelectedStatements] = useState<BankConnection | null>(null);
   const [selectedTransactions, setSelectedTransactions] = useState<BankConnection | null>(null);
 
+  // Admin: Plaid connection delete/edit state
+  const [deletingConnectionId, setDeletingConnectionId] = useState<string | null>(null);
+  const [editingConnection, setEditingConnection] = useState<BankConnection | null>(null);
+  const [editConnectionForm, setEditConnectionForm] = useState({ businessName: '', email: '' });
+  const [savingConnectionEdit, setSavingConnectionEdit] = useState(false);
+
+  // Admin: Bank upload delete/edit state
+  const [deletingUploadId, setDeletingUploadId] = useState<string | null>(null);
+  const [editingUpload, setEditingUpload] = useState<BankStatementUpload | null>(null);
+  const [editUploadForm, setEditUploadForm] = useState({ businessName: '', email: '' });
+  const [savingUploadEdit, setSavingUploadEdit] = useState(false);
+
   const { data: authData } = useQuery<AuthState | null>({
     queryKey: ['/api/auth/check'],
   });
@@ -1754,6 +1766,78 @@ function BankStatementsTab() {
       }
     } catch (error) {
       console.error('Error resetting decision:', error);
+    }
+  };
+
+  // Admin: Delete a Plaid bank connection
+  const handleDeleteConnection = async (id: string) => {
+    try {
+      const res = await fetch(`/api/plaid/connections/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete');
+      queryClient.invalidateQueries({ queryKey: ['/api/plaid/all'] });
+      toast({ title: "Deleted", description: "Bank connection removed" });
+    } catch {
+      toast({ title: "Error", description: "Failed to delete connection", variant: "destructive" });
+    } finally {
+      setDeletingConnectionId(null);
+    }
+  };
+
+  // Admin: Save edits to a Plaid bank connection
+  const handleSaveConnectionEdit = async () => {
+    if (!editingConnection) return;
+    setSavingConnectionEdit(true);
+    try {
+      const res = await fetch(`/api/plaid/connections/${editingConnection.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(editConnectionForm),
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      queryClient.invalidateQueries({ queryKey: ['/api/plaid/all'] });
+      toast({ title: "Saved", description: "Bank connection updated" });
+      setEditingConnection(null);
+    } catch {
+      toast({ title: "Error", description: "Failed to save changes", variant: "destructive" });
+    } finally {
+      setSavingConnectionEdit(false);
+    }
+  };
+
+  // Admin: Delete a single bank statement upload
+  const handleDeleteUpload = async (id: string) => {
+    try {
+      const res = await fetch(`/api/bank-statements/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete');
+      queryClient.invalidateQueries({ queryKey: ['/api/bank-statements/uploads'] });
+      toast({ title: "Deleted", description: "Statement upload removed" });
+    } catch {
+      toast({ title: "Error", description: "Failed to delete upload", variant: "destructive" });
+    } finally {
+      setDeletingUploadId(null);
+    }
+  };
+
+  // Admin: Save edits to a bank statement upload
+  const handleSaveUploadEdit = async () => {
+    if (!editingUpload) return;
+    setSavingUploadEdit(true);
+    try {
+      const res = await fetch(`/api/bank-statements/${editingUpload.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(editUploadForm),
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      queryClient.invalidateQueries({ queryKey: ['/api/bank-statements/uploads'] });
+      toast({ title: "Saved", description: "Statement upload updated" });
+      setEditingUpload(null);
+    } catch {
+      toast({ title: "Error", description: "Failed to save changes", variant: "destructive" });
+    } finally {
+      setSavingUploadEdit(false);
     }
   };
 
@@ -2485,6 +2569,18 @@ function BankStatementsTab() {
                               <Download className="w-4 h-4 mr-1" />
                               Download
                             </Button>
+                            {authData?.role === 'admin' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 border-red-200 dark:border-red-800"
+                                data-testid={`button-delete-upload-${upload.id}`}
+                                onClick={() => setDeletingUploadId(upload.id)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Delete
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2582,6 +2678,33 @@ function BankStatementsTab() {
                         plaidItemId={connection.plaidItemId}
                         onSuccess={() => queryClient.invalidateQueries({ queryKey: ['/api/plaid/all'] })}
                       />
+                      {authData?.role === 'admin' && (
+                        <div className="flex gap-2 pt-1 border-t border-border mt-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-blue-600 border-blue-200 dark:border-blue-800"
+                            data-testid={`button-edit-connection-${connection.id}`}
+                            onClick={() => {
+                              setEditingConnection(connection);
+                              setEditConnectionForm({ businessName: connection.businessName, email: connection.email });
+                            }}
+                          >
+                            <Pencil className="w-3 h-3 mr-1" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-red-600 border-red-200 dark:border-red-800"
+                            data-testid={`button-delete-connection-${connection.id}`}
+                            onClick={() => setDeletingConnectionId(connection.id)}
+                          >
+                            <Trash2 className="w-3 h-3 mr-1" />
+                            Delete
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -2641,6 +2764,144 @@ function BankStatementsTab() {
         error={analysisError}
         title={analysisTitle}
       />
+
+      {/* Admin: Edit Plaid Connection Dialog */}
+      <Dialog open={!!editingConnection} onOpenChange={(open) => !open && setEditingConnection(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" />
+              Edit Bank Connection
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>Business Name</Label>
+              <Input
+                data-testid="input-edit-connection-business"
+                value={editConnectionForm.businessName}
+                onChange={(e) => setEditConnectionForm(f => ({ ...f, businessName: e.target.value }))}
+                placeholder="Business name"
+              />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input
+                data-testid="input-edit-connection-email"
+                value={editConnectionForm.email}
+                onChange={(e) => setEditConnectionForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="Email address"
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" className="flex-1" onClick={() => setEditingConnection(null)}>Cancel</Button>
+              <Button
+                className="flex-1"
+                disabled={savingConnectionEdit}
+                data-testid="button-save-connection-edit"
+                onClick={handleSaveConnectionEdit}
+              >
+                {savingConnectionEdit ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+                Save
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin: Delete Plaid Connection Confirm Dialog */}
+      <Dialog open={!!deletingConnectionId} onOpenChange={(open) => !open && setDeletingConnectionId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-4 h-4" />
+              Delete Bank Connection
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">This will permanently remove this bank connection and its analysis data. This cannot be undone.</p>
+          <div className="flex gap-2 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setDeletingConnectionId(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              data-testid="button-confirm-delete-connection"
+              onClick={() => deletingConnectionId && handleDeleteConnection(deletingConnectionId)}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin: Edit Bank Statement Upload Dialog */}
+      <Dialog open={!!editingUpload} onOpenChange={(open) => !open && setEditingUpload(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" />
+              Edit Statement Upload
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>Business Name</Label>
+              <Input
+                data-testid="input-edit-upload-business"
+                value={editUploadForm.businessName}
+                onChange={(e) => setEditUploadForm(f => ({ ...f, businessName: e.target.value }))}
+                placeholder="Business name"
+              />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input
+                data-testid="input-edit-upload-email"
+                value={editUploadForm.email}
+                onChange={(e) => setEditUploadForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="Email address"
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" className="flex-1" onClick={() => setEditingUpload(null)}>Cancel</Button>
+              <Button
+                className="flex-1"
+                disabled={savingUploadEdit}
+                data-testid="button-save-upload-edit"
+                onClick={handleSaveUploadEdit}
+              >
+                {savingUploadEdit ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+                Save
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin: Delete Bank Statement Upload Confirm Dialog */}
+      <Dialog open={!!deletingUploadId} onOpenChange={(open) => !open && setDeletingUploadId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-4 h-4" />
+              Delete Statement Upload
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">This will permanently remove this statement upload record. The file may still exist in storage. This cannot be undone.</p>
+          <div className="flex gap-2 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setDeletingUploadId(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              data-testid="button-confirm-delete-upload"
+              onClick={() => deletingUploadId && handleDeleteUpload(deletingUploadId)}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Approval Form Dialog - For adding/editing a single approval */}
       <Dialog open={!!approvalFormDialog} onOpenChange={(open) => !open && setApprovalFormDialog(null)}>

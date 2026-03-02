@@ -70,6 +70,8 @@ export interface IStorage {
   createFundingAnalysis(analysis: InsertFundingAnalysis): Promise<FundingAnalysis>;
   getFundingAnalysisByEmail(email: string): Promise<FundingAnalysis | undefined>;
   getAllFundingAnalyses(): Promise<FundingAnalysis[]>;
+  updateFundingAnalysis(id: string, updates: { businessName?: string; email?: string }): Promise<FundingAnalysis | undefined>;
+  deleteFundingAnalysis(id: string): Promise<void>;
   
   // Plaid Statements methods
   createPlaidStatement(statement: InsertPlaidStatement): Promise<PlaidStatementRecord>;
@@ -85,6 +87,8 @@ export interface IStorage {
   getBankStatementUploadsByEmail(email: string): Promise<BankStatementUpload[]>;
   getBankStatementUploadsByAgentEmail(agentEmail: string): Promise<BankStatementUpload[]>;
   updateBankStatementApproval(id: string, approvalStatus: string | null, approvalNotes: string | null, reviewedBy: string | null): Promise<BankStatementUpload | undefined>;
+  updateBankStatementUpload(id: string, updates: { businessName?: string; email?: string }): Promise<BankStatementUpload | undefined>;
+  deleteBankStatementUpload(id: string): Promise<void>;
 
   // Bot Attempts methods
   createBotAttempt(attempt: InsertBotAttempt): Promise<BotAttempt>;
@@ -298,6 +302,19 @@ export class DatabaseStorage implements IStorage {
     return analysis || undefined;
   }
 
+  async updateFundingAnalysis(id: string, updates: { businessName?: string; email?: string }): Promise<FundingAnalysis | undefined> {
+    const [updated] = await db
+      .update(fundingAnalyses)
+      .set(updates)
+      .where(eq(fundingAnalyses.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteFundingAnalysis(id: string): Promise<void> {
+    await db.delete(fundingAnalyses).where(eq(fundingAnalyses.id, id));
+  }
+
   async getApplicationByEmail(email: string): Promise<LoanApplication | undefined> {
     const [application] = await db
       .select()
@@ -439,6 +456,19 @@ export class DatabaseStorage implements IStorage {
       .where(eq(bankStatementUploads.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  async updateBankStatementUpload(id: string, updates: { businessName?: string; email?: string }): Promise<BankStatementUpload | undefined> {
+    const [updated] = await db
+      .update(bankStatementUploads)
+      .set(updates)
+      .where(eq(bankStatementUploads.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteBankStatementUpload(id: string): Promise<void> {
+    await db.delete(bankStatementUploads).where(eq(bankStatementUploads.id, id));
   }
 
   // Bot Attempts methods
