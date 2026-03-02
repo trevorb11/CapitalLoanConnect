@@ -2000,7 +2000,7 @@ function BankStatementsTab() {
   const emailHasDecision = (email: string): boolean => {
     if (!email) return false;
     const decision = getBusinessDecision(email);
-    return !!decision && ['approved', 'declined', 'unqualified'].includes(decision.status);
+    return !!decision && ['approved', 'declined', 'unqualified', 'funded'].includes(decision.status);
   };
 
   // Filter connections and uploads by search query, excluding decided businesses
