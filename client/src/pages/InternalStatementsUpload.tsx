@@ -95,6 +95,7 @@ export default function InternalStatementsUpload() {
     const query = searchQuery.toLowerCase();
     return (
       app.businessName?.toLowerCase().includes(query) ||
+      app.legalBusinessName?.toLowerCase().includes(query) ||
       app.email?.toLowerCase().includes(query) ||
       app.fullName?.toLowerCase().includes(query)
     );
@@ -103,11 +104,11 @@ export default function InternalStatementsUpload() {
   const selectApplication = (app: LoanApplication) => {
     setSelectedApplication({
       id: app.id,
-      businessName: app.businessName || '',
+      businessName: app.businessName || app.legalBusinessName || '',
       email: app.email || '',
       createdAt: app.createdAt ? app.createdAt.toString() : ''
     });
-    setBusinessName(app.businessName || '');
+    setBusinessName(app.businessName || app.legalBusinessName || '');
     setEmail(app.email || '');
     setSearchQuery('');
     setShowSearchResults(false);
@@ -538,7 +539,7 @@ export default function InternalStatementsUpload() {
                         >
                           <Building2 className="w-4 h-4 mt-1 text-muted-foreground flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium truncate">{app.businessName || 'No Business Name'}</p>
+                            <p className="font-medium truncate">{app.businessName || app.legalBusinessName || 'No Business Name'}</p>
                             <p className="text-sm text-muted-foreground truncate">{app.email}</p>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                               <Calendar className="w-3 h-3" />

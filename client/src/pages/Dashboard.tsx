@@ -2978,39 +2978,22 @@ function BankStatementsTab() {
                 />
               </div>
               <div>
-                <Label htmlFor="maxUpsell">Max Upsell</Label>
-                <Input
-                  id="maxUpsell"
-                  type="number"
-                  placeholder="$75,000"
-                  value={approvalForm.maxUpsell}
-                  onChange={(e) => setApprovalForm(prev => ({ ...prev, maxUpsell: e.target.value }))}
-                  data-testid="input-max-upsell"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="netAfterFees">Net After Fees</Label>
-                <Input
-                  id="netAfterFees"
-                  type="number"
-                  placeholder="$48,500"
-                  value={approvalForm.netAfterFees}
-                  onChange={(e) => setApprovalForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
-                  data-testid="input-net-after-fees"
-                />
-              </div>
-              <div>
-                <Label htmlFor="totalPayback">Total Payback</Label>
-                <Input
-                  id="totalPayback"
-                  type="number"
-                  placeholder="$62,500"
-                  value={approvalForm.totalPayback}
-                  onChange={(e) => setApprovalForm(prev => ({ ...prev, totalPayback: e.target.value }))}
-                  data-testid="input-total-payback"
-                />
+                <Label htmlFor="maxUpsell">Max Upsell (%)</Label>
+                <div className="relative">
+                  <Input
+                    id="maxUpsell"
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="100"
+                    placeholder="20"
+                    value={approvalForm.maxUpsell}
+                    onChange={(e) => setApprovalForm(prev => ({ ...prev, maxUpsell: e.target.value }))}
+                    data-testid="input-max-upsell"
+                    className="pr-8"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">%</span>
+                </div>
               </div>
             </div>
             <div>
