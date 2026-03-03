@@ -2868,6 +2868,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // For funded deals, build a fundedEntry and accumulate in additionalFundings
+      let incomingAdditionalFundings = req.body.additionalFundings || null;
+      if (status === 'funded' && !incomingAdditionalFundings) {
+        const fundedEntry = {
+          id: crypto.randomUUID(),
+          lender: syncedLender || null,
+          advanceAmount: syncedAdvanceAmount?.toString() || null,
+          term: syncedTerm || null,
+          paymentFrequency: syncedPaymentFrequency || null,
+          factorRate: syncedFactorRate?.toString() || null,
+          maxUpsell: req.body.maxUpsell?.toString() || null,
+          totalPayback: syncedTotalPayback?.toString() || null,
+          netAfterFees: syncedNetAfterFees?.toString() || null,
+          notes: syncedNotes || null,
+          fundedDate: fundedDate ? new Date(fundedDate).toISOString() : new Date().toISOString(),
+          assignedRep: assignedRep || null,
+          createdAt: new Date().toISOString(),
+        };
+        incomingAdditionalFundings = [fundedEntry];
+      }
+
       const decision = await storage.createOrUpdateBusinessUnderwritingDecision({
         businessEmail,
         businessName: businessName || null,
@@ -2886,6 +2907,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         followUpWorthy: followUpWorthy || false,
         followUpDate: followUpDate ? new Date(followUpDate) : null,
         additionalApprovals: additionalApprovals || null,
+        additionalFundings: incomingAdditionalFundings,
         reviewedBy: reviewerEmail,
         fundedDate: fundedDate ? new Date(fundedDate) : null,
         assignedRep: assignedRep || null,
@@ -3263,7 +3285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const assignedRep = values[headerMap['assigned rep']]?.trim() || '';
 
         try {
-          const approval = {
+          const fundedEntry = {
             id: crypto.randomUUID(),
             lender,
             advanceAmount,
@@ -3274,8 +3296,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             totalPayback,
             netAfterFees,
             notes,
-            approvalDate: parseDate(approvalDateRaw) || new Date().toISOString(),
-            isPrimary: true,
+            fundedDate: fundedDateRaw ? (parseDate(fundedDateRaw) || new Date().toISOString()) : new Date().toISOString(),
+            assignedRep: assignedRep || null,
             createdAt: new Date().toISOString(),
           };
 
@@ -3296,7 +3318,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             approvalDate: approvalDateRaw ? new Date(parseDate(approvalDateRaw) || Date.now()) : new Date(),
             fundedDate: fundedDateRaw ? new Date(parseDate(fundedDateRaw) || Date.now()) : new Date(),
             assignedRep: assignedRep || null,
-            additionalApprovals: [approval],
+            additionalFundings: [fundedEntry],
             reviewedBy: reviewerEmail,
           });
 

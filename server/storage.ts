@@ -638,10 +638,22 @@ export class DatabaseStorage implements IStorage {
 
     if (existing) {
       console.log(`[STORAGE] Record exists (id=${existing.id}) for ${decision.businessEmail} — updating`);
+
+      let mergedFundings = existing.additionalFundings as any[] | null;
+
+      // When adding a new funded deal, accumulate rather than overwrite
+      if (decision.status === 'funded' && decision.additionalFundings) {
+        const incomingEntries = Array.isArray(decision.additionalFundings) ? decision.additionalFundings : [];
+        const existingEntries = Array.isArray(mergedFundings) ? mergedFundings : [];
+        // Prepend new entries so newest is first
+        mergedFundings = [...incomingEntries, ...existingEntries];
+      }
+
       const [updated] = await db
         .update(businessUnderwritingDecisions)
         .set({
           ...decision,
+          additionalFundings: mergedFundings,
           approvalSlug: approvalSlug ?? existing.approvalSlug,
           updatedAt: new Date(),
         })

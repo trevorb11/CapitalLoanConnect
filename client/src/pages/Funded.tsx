@@ -92,6 +92,22 @@ interface FullApprovalEntry {
   createdAt: string;
 }
 
+interface FundedEntry {
+  id: string;
+  lender: string | null;
+  advanceAmount: string | null;
+  term: string | null;
+  paymentFrequency: string | null;
+  factorRate: string | null;
+  maxUpsell: string | null;
+  totalPayback: string | null;
+  netAfterFees: string | null;
+  notes: string | null;
+  fundedDate: string;
+  assignedRep: string | null;
+  createdAt: string;
+}
+
 function formatCurrency(value: string | number | null | undefined): string {
   if (!value) return "N/A";
   const num = typeof value === "string" ? parseFloat(value) : value;
@@ -123,6 +139,7 @@ export default function Funded() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedAdditionalApprovals, setExpandedAdditionalApprovals] = useState<Set<string>>(new Set());
   const [expandedStatements, setExpandedStatements] = useState<Set<string>>(new Set());
+  const [expandedFundings, setExpandedFundings] = useState<Set<string>>(new Set());
 
   const [editingFunded, setEditingFunded] = useState<{
     decision: BusinessUnderwritingDecision;
@@ -290,26 +307,27 @@ export default function Funded() {
 
   const generateApprovalId = () => `appr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-  const openEditDialog = (decision: BusinessUnderwritingDecision, approvalId?: string) => {
-    const approvals = getApprovalsForDecision(decision);
-    if (approvalId) {
-      const existing = approvals.find(a => a.id === approvalId);
-      if (existing) {
-        setEditForm({
-          advanceAmount: existing.advanceAmount,
-          term: existing.term,
-          paymentFrequency: existing.paymentFrequency || 'weekly',
-          factorRate: existing.factorRate,
-          maxUpsell: existing.maxUpsell || '',
-          totalPayback: existing.totalPayback,
-          netAfterFees: existing.netAfterFees,
-          lender: existing.lender,
-          notes: existing.notes,
-          approvalDate: existing.approvalDate || '',
-          fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString().split('T')[0] : '',
-          assignedRep: decision.assignedRep || '',
-        });
-      }
+  const openEditDialog = (decision: BusinessUnderwritingDecision, fundingId?: string) => {
+    // Check additionalFundings first, then fall back to additionalApprovals for legacy data
+    const fundings = getFundingsForDecision(decision);
+    const entry = fundingId ? fundings.find(f => f.id === fundingId) : fundings[0];
+    if (entry) {
+      const fd = entry.fundedDate ? new Date(entry.fundedDate).toISOString().split('T')[0] : '';
+      setEditForm({
+        advanceAmount: entry.advanceAmount || '',
+        term: entry.term || '',
+        paymentFrequency: entry.paymentFrequency || 'weekly',
+        factorRate: entry.factorRate || '',
+        maxUpsell: entry.maxUpsell || '',
+        totalPayback: entry.totalPayback || '',
+        netAfterFees: entry.netAfterFees || '',
+        lender: entry.lender || '',
+        notes: entry.notes || '',
+        approvalDate: fd,
+        fundedDate: fd,
+        assignedRep: entry.assignedRep || decision.assignedRep || '',
+      });
+      setEditingFunded({ decision, approvalId: entry.id });
     } else {
       setEditForm({
         advanceAmount: '',
@@ -325,8 +343,8 @@ export default function Funded() {
         fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         assignedRep: decision.assignedRep || '',
       });
+      setEditingFunded({ decision });
     }
-    setEditingFunded({ decision, approvalId });
   };
 
   const handleSaveEdit = async () => {
@@ -334,38 +352,45 @@ export default function Funded() {
     setSaving(true);
     try {
       const { decision, approvalId } = editingFunded;
-      let approvals = getApprovalsForDecision(decision);
+      let fundings = getFundingsForDecision(decision);
 
-      const newEntry: FullApprovalEntry = {
+      const updatedEntry: FundedEntry = {
         id: approvalId || generateApprovalId(),
-        lender: editForm.lender,
-        advanceAmount: editForm.advanceAmount,
-        term: editForm.term,
-        paymentFrequency: editForm.paymentFrequency,
-        factorRate: editForm.factorRate,
-        maxUpsell: editForm.maxUpsell,
-        totalPayback: editForm.totalPayback,
-        netAfterFees: editForm.netAfterFees,
-        notes: editForm.notes,
-        approvalDate: editForm.approvalDate,
-        isPrimary: approvals.length === 0,
+        lender: editForm.lender || null,
+        advanceAmount: editForm.advanceAmount || null,
+        term: editForm.term || null,
+        paymentFrequency: editForm.paymentFrequency || null,
+        factorRate: editForm.factorRate || null,
+        maxUpsell: editForm.maxUpsell || null,
+        totalPayback: editForm.totalPayback || null,
+        netAfterFees: editForm.netAfterFees || null,
+        notes: editForm.notes || null,
+        fundedDate: editForm.fundedDate
+          ? new Date(editForm.fundedDate + 'T12:00:00').toISOString()
+          : new Date().toISOString(),
+        assignedRep: editForm.assignedRep || null,
         createdAt: approvalId
-          ? (approvals.find(a => a.id === approvalId)?.createdAt || new Date().toISOString())
+          ? (fundings.find(f => f.id === approvalId)?.createdAt || new Date().toISOString())
           : new Date().toISOString(),
       };
 
       if (approvalId) {
-        const wasEdited = approvals.find(a => a.id === approvalId);
-        newEntry.isPrimary = wasEdited?.isPrimary || false;
-        approvals = approvals.map(a => a.id === approvalId ? newEntry : a);
+        // Replace existing entry
+        const exists = fundings.find(f => f.id === approvalId);
+        if (exists) {
+          fundings = fundings.map(f => f.id === approvalId ? updatedEntry : f);
+        } else {
+          // Legacy id not found in additionalFundings; prepend as new
+          fundings = [updatedEntry, ...fundings];
+        }
       } else {
-        approvals.push(newEntry);
+        fundings = [updatedEntry, ...fundings];
       }
 
       await updateMutation.mutateAsync({
         id: decision.id,
         updates: {
-          additionalApprovals: approvals,
+          additionalFundings: fundings,
           fundedDate: editForm.fundedDate,
           assignedRep: editForm.assignedRep || null,
         },
@@ -385,19 +410,19 @@ export default function Funded() {
     }
     setAddSaving(true);
     try {
-      const approval: FullApprovalEntry = {
+      const fundedEntry: FundedEntry = {
         id: generateApprovalId(),
-        lender: addForm.lender,
-        advanceAmount: addForm.advanceAmount,
-        term: addForm.term,
-        paymentFrequency: addForm.paymentFrequency,
-        factorRate: addForm.factorRate,
-        maxUpsell: addForm.maxUpsell,
-        totalPayback: addForm.totalPayback,
-        netAfterFees: addForm.netAfterFees,
-        notes: addForm.notes,
-        approvalDate: addForm.approvalDate,
-        isPrimary: true,
+        lender: addForm.lender || null,
+        advanceAmount: addForm.advanceAmount || null,
+        term: addForm.term || null,
+        paymentFrequency: addForm.paymentFrequency || null,
+        factorRate: addForm.factorRate || null,
+        maxUpsell: addForm.maxUpsell || null,
+        totalPayback: addForm.totalPayback || null,
+        netAfterFees: addForm.netAfterFees || null,
+        notes: addForm.notes || null,
+        fundedDate: addForm.fundedDate || new Date().toISOString(),
+        assignedRep: addForm.assignedRep || null,
         createdAt: new Date().toISOString(),
       };
 
@@ -407,7 +432,7 @@ export default function Funded() {
         status: 'funded',
         fundedDate: addForm.fundedDate,
         assignedRep: addForm.assignedRep || null,
-        additionalApprovals: [approval],
+        additionalFundings: [fundedEntry],
       });
       setShowAddFunded(false);
       setAddForm({
@@ -537,6 +562,38 @@ export default function Funded() {
     }
 
     return result;
+  };
+
+  // Helper: get all funded deal entries for a decision (newest first)
+  const getFundingsForDecision = (decision: BusinessUnderwritingDecision): FundedEntry[] => {
+    const raw = (decision as any).additionalFundings as any[] | null;
+    if (raw && raw.length > 0) {
+      // Already sorted newest-first by the storage layer; sort by fundedDate desc as safety
+      return [...raw].sort((a, b) => {
+        const da = a.fundedDate ? new Date(a.fundedDate).getTime() : new Date(a.createdAt || 0).getTime();
+        const db2 = b.fundedDate ? new Date(b.fundedDate).getTime() : new Date(b.createdAt || 0).getTime();
+        return db2 - da;
+      }) as FundedEntry[];
+    }
+    // Migration fallback: build a single entry from the main record fields
+    if (decision.advanceAmount || decision.lender || decision.fundedDate) {
+      return [{
+        id: 'legacy-' + decision.id,
+        lender: decision.lender || null,
+        advanceAmount: decision.advanceAmount?.toString() || null,
+        term: decision.term || null,
+        paymentFrequency: decision.paymentFrequency || null,
+        factorRate: decision.factorRate?.toString() || null,
+        maxUpsell: decision.maxUpsell?.toString() || null,
+        totalPayback: decision.totalPayback?.toString() || null,
+        netAfterFees: decision.netAfterFees?.toString() || null,
+        notes: decision.notes || null,
+        fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString() : new Date(decision.createdAt || Date.now()).toISOString(),
+        assignedRep: decision.assignedRep || null,
+        createdAt: decision.createdAt ? new Date(decision.createdAt).toISOString() : new Date().toISOString(),
+      }];
+    }
+    return [];
   };
 
   // Helper: get the most recent approval date for a decision
@@ -856,93 +913,119 @@ export default function Funded() {
         ) : (
           <div className="space-y-4">
             {filteredDecisions.map((decision) => {
+              const fundings = getFundingsForDecision(decision);
+              const newestFunding = fundings[0] || null;
+              const olderFundings = fundings.slice(1);
+              const isFundingsExpanded = expandedFundings.has(decision.id);
+
               const approvals = getApprovalsForDecision(decision);
               const sortedApprovals = [...approvals].sort((a, b) => (a.isPrimary ? -1 : b.isPrimary ? 1 : 0));
-              const bestApproval = sortedApprovals[0];
-              const additionalApprovals = sortedApprovals.slice(1);
               const isAdditionalExpanded = expandedAdditionalApprovals.has(decision.id);
 
-              const renderApproval = (appr: FullApprovalEntry) => (
+              const renderFundedEntry = (entry: FundedEntry, isNewest: boolean) => (
                 <div
-                  key={appr.id}
+                  key={entry.id}
                   className={`p-4 rounded-lg border ${
-                    appr.isPrimary
-                      ? 'bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800'
+                    isNewest
+                      ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800'
                       : 'bg-muted/30 border-transparent'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2">
-                      {appr.isPrimary && (
-                        <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                      )}
-                      {appr.isPrimary && (
-                        <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 text-xs">
-                          Best Approval
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isNewest && <Star className="w-4 h-4 text-emerald-600 fill-emerald-500" />}
+                      {isNewest && (
+                        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 text-xs">
+                          Latest Funding
                         </Badge>
                       )}
                       <span className="font-semibold flex items-center gap-1">
                         <Landmark className="w-3 h-3 text-muted-foreground" />
-                        {appr.lender || 'No lender'}
+                        {entry.lender || 'No lender'}
                       </span>
+                      {entry.assignedRep && (
+                        <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                          <UserCheck className="w-3 h-3" />
+                          {entry.assignedRep}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium flex-shrink-0">
+                      <Calendar className="w-3 h-3" />
+                      {formatDate(entry.fundedDate)}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
                       <div className="text-muted-foreground">Advance Amount</div>
-                      <div className="font-semibold text-purple-600 dark:text-purple-400">
-                        {formatCurrency(appr.advanceAmount)}
+                      <div className="font-semibold text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(entry.advanceAmount)}
                       </div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Term</div>
-                      <div className="font-medium">{appr.term || "N/A"}</div>
+                      <div className="font-medium">{entry.term || "N/A"}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Factor Rate</div>
                       <div className="font-medium">
-                        {appr.factorRate ? `${appr.factorRate}x` : "N/A"}
+                        {entry.factorRate ? `${entry.factorRate}x` : "N/A"}
                       </div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Payment Frequency</div>
-                      <div className="font-medium capitalize">{appr.paymentFrequency || "N/A"}</div>
+                      <div className="font-medium capitalize">{entry.paymentFrequency || "N/A"}</div>
                     </div>
                   </div>
-                  {(appr.totalPayback || appr.netAfterFees) && (
+                  {(entry.totalPayback || entry.netAfterFees || entry.maxUpsell) && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3 pt-3 border-t">
-                      <div>
-                        <div className="text-muted-foreground">Total Payback</div>
-                        <div className="font-medium">{formatCurrency(appr.totalPayback)}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Net After Fees</div>
-                        <div className="font-medium">{formatCurrency(appr.netAfterFees)}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Approval Date</div>
-                        <div className="font-medium flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {formatDate(appr.approvalDate)}
-                        </div>
-                      </div>
-                      {decision.fundedDate && (
+                      {entry.totalPayback && (
                         <div>
-                          <div className="text-muted-foreground">Funded Date</div>
-                          <div className="font-medium flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                            <Calendar className="w-3 h-3" />
-                            {formatDate(decision.fundedDate)}
-                          </div>
+                          <div className="text-muted-foreground">Total Payback</div>
+                          <div className="font-medium">{formatCurrency(entry.totalPayback)}</div>
+                        </div>
+                      )}
+                      {entry.netAfterFees && (
+                        <div>
+                          <div className="text-muted-foreground">Net After Fees</div>
+                          <div className="font-medium">{formatCurrency(entry.netAfterFees)}</div>
+                        </div>
+                      )}
+                      {entry.maxUpsell && (
+                        <div>
+                          <div className="text-muted-foreground">Max Upsell</div>
+                          <div className="font-medium">{entry.maxUpsell}%</div>
                         </div>
                       )}
                     </div>
                   )}
-                  {appr.notes && (
+                  {entry.notes && (
                     <div className="mt-3 pt-3 border-t text-sm">
                       <div className="text-muted-foreground mb-1">Notes</div>
-                      <div className="whitespace-pre-wrap">{appr.notes}</div>
+                      <div className="whitespace-pre-wrap">{entry.notes}</div>
                     </div>
                   )}
+                </div>
+              );
+
+              const renderApprovalEntry = (appr: FullApprovalEntry) => (
+                <div key={appr.id} className="p-3 rounded-lg bg-muted/30 border border-transparent text-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    {appr.isPrimary && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
+                    <span className="font-medium flex items-center gap-1">
+                      <Landmark className="w-3 h-3 text-muted-foreground" />
+                      {appr.lender || 'No lender'}
+                    </span>
+                    {appr.isPrimary && (
+                      <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 text-xs">Primary</Badge>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div><div className="text-muted-foreground text-xs">Amount</div><div className="font-medium">{formatCurrency(appr.advanceAmount)}</div></div>
+                    <div><div className="text-muted-foreground text-xs">Term</div><div className="font-medium">{appr.term || "N/A"}</div></div>
+                    <div><div className="text-muted-foreground text-xs">Factor Rate</div><div className="font-medium">{appr.factorRate ? `${appr.factorRate}x` : "N/A"}</div></div>
+                    <div><div className="text-muted-foreground text-xs">Approval Date</div><div className="font-medium flex items-center gap-1"><Calendar className="w-3 h-3" />{formatDate(appr.approvalDate)}</div></div>
+                  </div>
                 </div>
               );
 
@@ -961,7 +1044,7 @@ export default function Funded() {
                           Funded
                         </Badge>
                         <Badge variant="secondary" className="text-xs">
-                          {approvals.length} {approvals.length === 1 ? 'Approval' : 'Approvals'}
+                          {fundings.length} {fundings.length === 1 ? 'Funding' : 'Fundings'}
                         </Badge>
                         {decision.approvalSlug && (
                           <Button
@@ -981,9 +1064,8 @@ export default function Funded() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            const primary = sortedApprovals.find(a => a.isPrimary) || sortedApprovals[0];
-                            if (primary) {
-                              openEditDialog(decision, primary.id);
+                            if (newestFunding) {
+                              openEditDialog(decision, newestFunding.id);
                             } else {
                               openEditDialog(decision);
                             }
@@ -1043,32 +1125,56 @@ export default function Funded() {
                       )}
                     </div>
 
-                    {/* Best Approval at top with dropdown for additional */}
+                    {/* Funded Deal Entries — newest first, older ones in dropdown */}
                     <div className="space-y-3">
-                      {bestApproval && renderApproval(bestApproval)}
-                      {additionalApprovals.length > 0 && (
+                      {newestFunding && renderFundedEntry(newestFunding, true)}
+                      {olderFundings.length > 0 && (
                         <div>
                           <button
-                            onClick={() => setExpandedAdditionalApprovals(prev => {
+                            onClick={() => setExpandedFundings(prev => {
                               const next = new Set(prev);
                               if (next.has(decision.id)) next.delete(decision.id);
                               else next.add(decision.id);
                               return next;
                             })}
                             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
-                            data-testid={`button-toggle-additional-${decision.id}`}
+                            data-testid={`button-toggle-fundings-${decision.id}`}
                           >
-                            {isAdditionalExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            {isAdditionalExpanded ? 'Hide' : 'View'} {additionalApprovals.length} Additional {additionalApprovals.length === 1 ? 'Approval' : 'Approvals'}
+                            {isFundingsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            {isFundingsExpanded ? 'Hide' : 'View'} {olderFundings.length} Previous {olderFundings.length === 1 ? 'Funding' : 'Fundings'}
                           </button>
-                          {isAdditionalExpanded && (
+                          {isFundingsExpanded && (
                             <div className="space-y-3">
-                              {additionalApprovals.map(renderApproval)}
+                              {olderFundings.map(e => renderFundedEntry(e, false))}
                             </div>
                           )}
                         </div>
                       )}
                     </div>
+
+                    {/* Approval Packages (if any — shown for businesses that had a prior approval) */}
+                    {sortedApprovals.length > 0 && (
+                      <div className="pt-3 border-t">
+                        <button
+                          onClick={() => setExpandedAdditionalApprovals(prev => {
+                            const next = new Set(prev);
+                            if (next.has(decision.id)) next.delete(decision.id);
+                            else next.add(decision.id);
+                            return next;
+                          })}
+                          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+                          data-testid={`button-toggle-approvals-${decision.id}`}
+                        >
+                          {isAdditionalExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          {isAdditionalExpanded ? 'Hide' : 'View'} {sortedApprovals.length} Approval {sortedApprovals.length === 1 ? 'Package' : 'Packages'}
+                        </button>
+                        {isAdditionalExpanded && (
+                          <div className="space-y-2 mt-2">
+                            {sortedApprovals.map(renderApprovalEntry)}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Bank Statements */}
                     {(() => {

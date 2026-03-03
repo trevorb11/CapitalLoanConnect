@@ -439,6 +439,9 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   // Additional approvals (secondary lender offers)
   additionalApprovals: jsonb("additional_approvals"), // Array of { lender, amount, term?, factorRate?, showOnLetter? }
 
+  // Additional funded deals — accumulates each time this business is funded
+  additionalFundings: jsonb("additional_fundings"), // Array of { id, lender, advanceAmount, term, paymentFrequency, factorRate, maxUpsell, notes, fundedDate, assignedRep, createdAt }
+
   // Decline fields (populated when status = "declined")
   declineReason: text("decline_reason"),
   
