@@ -140,6 +140,8 @@ export default function Funded() {
   const [expandedAdditionalApprovals, setExpandedAdditionalApprovals] = useState<Set<string>>(new Set());
   const [expandedStatements, setExpandedStatements] = useState<Set<string>>(new Set());
   const [expandedFundings, setExpandedFundings] = useState<Set<string>>(new Set());
+  const [deletingFundingEntry, setDeletingFundingEntry] = useState<{ decisionId: string; entryId: string } | null>(null);
+  const [deletingFundingEntryLoading, setDeletingFundingEntryLoading] = useState(false);
 
   const [editingFunded, setEditingFunded] = useState<{
     decision: BusinessUnderwritingDecision;
@@ -402,6 +404,25 @@ export default function Funded() {
     }
   };
 
+
+  const handleDeleteFundingEntry = async () => {
+    if (!deletingFundingEntry) return;
+    setDeletingFundingEntryLoading(true);
+    try {
+      const decision = allDecisions?.find(d => d.id === deletingFundingEntry.decisionId);
+      if (!decision) return;
+      const fundings = getFundingsForDecision(decision);
+      const remaining = fundings.filter(f => f.id !== deletingFundingEntry.entryId);
+      await updateMutation.mutateAsync({
+        id: decision.id,
+        updates: { additionalFundings: remaining },
+      });
+      setDeletingFundingEntry(null);
+      toast({ title: "Deleted", description: "Funding entry removed." });
+    } finally {
+      setDeletingFundingEntryLoading(false);
+    }
+  };
 
   const handleAddFundedDeal = async () => {
     if (!addForm.businessEmail.trim()) {
@@ -950,9 +971,30 @@ export default function Funded() {
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium flex-shrink-0">
-                      <Calendar className="w-3 h-3" />
-                      {formatDate(entry.fundedDate)}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+                        <Calendar className="w-3 h-3" />
+                        {formatDate(entry.fundedDate)}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEditDialog(decision, entry.id)}
+                        data-testid={`button-edit-entry-${entry.id}`}
+                        title="Edit this funding entry"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive"
+                        onClick={() => setDeletingFundingEntry({ decisionId: decision.id, entryId: entry.id })}
+                        data-testid={`button-delete-entry-${entry.id}`}
+                        title="Delete this funding entry"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -1060,21 +1102,6 @@ export default function Funded() {
                         )}
                       </div>
                       <div className="flex gap-2 flex-wrap">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (newestFunding) {
-                              openEditDialog(decision, newestFunding.id);
-                            } else {
-                              openEditDialog(decision);
-                            }
-                          }}
-                          data-testid={`button-edit-funded-${decision.id}`}
-                        >
-                          <Pencil className="w-3 h-3 mr-1" />
-                          Edit
-                        </Button>
                         <StatusToggle decision={decision} currentStatus="funded" />
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -1736,6 +1763,32 @@ export default function Funded() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete individual funding entry confirmation */}
+      <AlertDialog open={!!deletingFundingEntry} onOpenChange={(open) => !open && setDeletingFundingEntry(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Funding Entry</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this funding entry? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-entry">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteFundingEntry}
+              className="bg-destructive text-destructive-foreground"
+              data-testid="button-confirm-delete-entry"
+            >
+              {deletingFundingEntryLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
