@@ -645,8 +645,37 @@ export class DatabaseStorage implements IStorage {
       if (decision.status === 'funded' && decision.additionalFundings) {
         const incomingEntries = Array.isArray(decision.additionalFundings) ? decision.additionalFundings : [];
         const existingEntries = Array.isArray(mergedFundings) ? mergedFundings : [];
-        // Prepend new entries so newest is first
-        mergedFundings = [...incomingEntries, ...existingEntries];
+
+        // Migration: if the existing record has no additionalFundings entries yet but has
+        // top-level funded columns, preserve that data as a legacy entry so it isn't lost
+        let legacyEntries: any[] = [];
+        if (existingEntries.length === 0 && existing.status === 'funded' &&
+            (existing.advanceAmount || existing.lender || existing.fundedDate)) {
+          legacyEntries = [{
+            id: `legacy-${existing.id}`,
+            lender: existing.lender || null,
+            advanceAmount: existing.advanceAmount != null ? String(existing.advanceAmount) : null,
+            term: existing.term || null,
+            paymentFrequency: existing.paymentFrequency || null,
+            factorRate: existing.factorRate != null ? String(existing.factorRate) : null,
+            maxUpsell: existing.maxUpsell != null ? String(existing.maxUpsell) : null,
+            totalPayback: existing.totalPayback != null ? String(existing.totalPayback) : null,
+            netAfterFees: existing.netAfterFees != null ? String(existing.netAfterFees) : null,
+            notes: existing.notes || null,
+            fundedDate: existing.fundedDate
+              ? new Date(existing.fundedDate).toISOString()
+              : existing.createdAt
+                ? new Date(existing.createdAt).toISOString()
+                : new Date().toISOString(),
+            assignedRep: existing.assignedRep || null,
+            createdAt: existing.createdAt
+              ? new Date(existing.createdAt).toISOString()
+              : new Date().toISOString(),
+          }];
+        }
+
+        // Prepend new entries so newest is first; legacy entry goes at the end
+        mergedFundings = [...incomingEntries, ...existingEntries, ...legacyEntries];
       }
 
       const [updated] = await db
