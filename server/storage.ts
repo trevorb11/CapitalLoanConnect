@@ -626,9 +626,29 @@ export class DatabaseStorage implements IStorage {
   async createOrUpdateBusinessUnderwritingDecision(decision: InsertBusinessUnderwritingDecision): Promise<BusinessUnderwritingDecision> {
     console.log(`[STORAGE] createOrUpdateBusinessUnderwritingDecision: email=${decision.businessEmail}, status=${decision.status}, additionalApprovals=${Array.isArray(decision.additionalApprovals) ? decision.additionalApprovals.length : 'null'}`);
 
+    // Check for an existing record by email first (the DB has a unique constraint on business_email)
+    const existing = decision.businessEmail
+      ? await this.getBusinessUnderwritingDecisionByEmail(decision.businessEmail)
+      : undefined;
+
     let approvalSlug: string | null = null;
     if (decision.status === 'approved') {
       approvalSlug = this.generateApprovalSlug(decision.businessName || null, decision.businessEmail);
+    }
+
+    if (existing) {
+      console.log(`[STORAGE] Record exists (id=${existing.id}) for ${decision.businessEmail} — updating`);
+      const [updated] = await db
+        .update(businessUnderwritingDecisions)
+        .set({
+          ...decision,
+          approvalSlug: approvalSlug ?? existing.approvalSlug,
+          updatedAt: new Date(),
+        })
+        .where(eq(businessUnderwritingDecisions.id, existing.id))
+        .returning();
+      console.log(`[STORAGE] Updated decision ${updated.id}`);
+      return updated;
     }
 
     console.log(`[STORAGE] Creating new decision for ${decision.businessEmail}`);
