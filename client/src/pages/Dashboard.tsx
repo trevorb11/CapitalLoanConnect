@@ -1341,7 +1341,9 @@ function BankStatementsTab() {
     lender: '',
     notes: '',
     approvalDate: new Date().toISOString().split('T')[0],
+    assignedRep: '',
   });
+  const [declineAssignedRep, setDeclineAssignedRep] = useState('');
 
   const [selectedConnection, setSelectedConnection] = useState<BankConnection | null>(null);
   const [selectedAssetReport, setSelectedAssetReport] = useState<BankConnection | null>(null);
@@ -1382,6 +1384,15 @@ function BankStatementsTab() {
       if (!res.ok) {
         throw new Error('Failed to fetch bank statement uploads');
       }
+      return res.json();
+    },
+  });
+
+  const { data: agents } = useQuery<{ name: string; email: string }[]>({
+    queryKey: ['/api/agents'],
+    queryFn: async () => {
+      const res = await fetch('/api/agents', { credentials: 'include' });
+      if (!res.ok) return [];
       return res.json();
     },
   });
@@ -1468,6 +1479,7 @@ function BankStatementsTab() {
 
   // Open approval form dialog (for adding or editing a single approval)
   const openApprovalForm = (businessEmail: string, businessName: string, editingId?: string) => {
+    const decision = getBusinessDecision(businessEmail);
     if (editingId) {
       const approvals = getApprovalsForBusiness(businessEmail);
       const existing = approvals.find(a => a.id === editingId);
@@ -1483,6 +1495,7 @@ function BankStatementsTab() {
           lender: existing.lender,
           notes: existing.notes,
           approvalDate: existing.approvalDate || new Date().toISOString().split('T')[0],
+          assignedRep: decision?.assignedRep || '',
         });
       }
     } else {
@@ -1497,6 +1510,7 @@ function BankStatementsTab() {
         lender: '',
         notes: '',
         approvalDate: new Date().toISOString().split('T')[0],
+        assignedRep: decision?.assignedRep || '',
       });
     }
     setApprovalFormDialog({ businessEmail, businessName, editingApprovalId: editingId });
@@ -1508,6 +1522,7 @@ function BankStatementsTab() {
     setDeclineReason(existing?.declineReason || '');
     setDeclineFollowUp(existing?.followUpWorthy || false);
     setDeclineFollowUpDate(existing?.followUpDate ? new Date(existing.followUpDate).toISOString().split('T')[0] : '');
+    setDeclineAssignedRep(existing?.assignedRep || '');
     setDeclineDialog({ businessEmail, businessName });
   };
 
@@ -1562,7 +1577,10 @@ function BankStatementsTab() {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ additionalApprovals: approvals }),
+          body: JSON.stringify({
+            additionalApprovals: approvals,
+            assignedRep: approvalForm.assignedRep || null,
+          }),
         });
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
@@ -1581,6 +1599,7 @@ function BankStatementsTab() {
             businessName,
             status: 'approved',
             additionalApprovals: approvals,
+            assignedRep: approvalForm.assignedRep || null,
           }),
         });
         if (!res.ok) {
@@ -1681,6 +1700,7 @@ function BankStatementsTab() {
           declineReason: declineReason || null,
           followUpWorthy: declineFollowUp || false,
           followUpDate: declineFollowUp && declineFollowUpDate ? declineFollowUpDate + 'T12:00:00.000Z' : null,
+          assignedRep: declineAssignedRep || null,
         }),
       });
       if (res.ok) {
@@ -3033,6 +3053,23 @@ function BankStatementsTab() {
                 data-testid="input-notes"
               />
             </div>
+            <div>
+              <Label htmlFor="approval-assignedRep">Assigned Rep</Label>
+              <Select
+                value={approvalForm.assignedRep}
+                onValueChange={(value) => setApprovalForm(prev => ({ ...prev, assignedRep: value === '__none__' ? '' : value }))}
+              >
+                <SelectTrigger id="approval-assignedRep" data-testid="select-approval-assigned-rep">
+                  <SelectValue placeholder="Select rep (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {(agents || []).map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"
@@ -3135,6 +3172,23 @@ function BankStatementsTab() {
                 </Popover>
               </div>
             )}
+            <div>
+              <Label htmlFor="decline-assignedRep">Assigned Rep</Label>
+              <Select
+                value={declineAssignedRep}
+                onValueChange={(value) => setDeclineAssignedRep(value === '__none__' ? '' : value)}
+              >
+                <SelectTrigger id="decline-assignedRep" data-testid="select-decline-assigned-rep">
+                  <SelectValue placeholder="Select rep (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {(agents || []).map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"

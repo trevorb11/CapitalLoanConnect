@@ -7,12 +7,6 @@ export interface Agent {
 
 export const AGENTS: Agent[] = [
   {
-    initials: "aw",
-    name: "Alex Walker",
-    email: "alex@todaycapitalgroup.com",
-    ghlId: "",
-  },
-  {
     initials: "dl",
     name: "Dillon LeBlanc",
     email: "Dillon@todaycapitalgroup.com",
@@ -47,12 +41,6 @@ export const AGENTS: Agent[] = [
     name: "Ryan Wilcox",
     email: "ryan@todaycapitalgroup.com",
     ghlId: "wlaFqqBVxwucMUnogZG9",
-  },
-  {
-    initials: "sr",
-    name: "Sage Robinson",
-    email: "sage@todaycapitalgroup.com",
-    ghlId: "GxuuCIet62gbUyac6acX",
   },
   {
     initials: "bj",
