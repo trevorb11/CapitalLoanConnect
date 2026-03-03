@@ -65,6 +65,7 @@ export default function InternalStatementsUpload() {
   const [term, setTerm] = useState("");
   const [paymentFrequency, setPaymentFrequency] = useState("Weekly");
   const [factorRate, setFactorRate] = useState("");
+  const [maxUpsell, setMaxUpsell] = useState("");
   const [approvalMonth, setApprovalMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [approvalDay, setApprovalDay] = useState(String(new Date().getDate()).padStart(2, '0'));
   const [approvalYear, setApprovalYear] = useState(String(new Date().getFullYear()));
@@ -153,6 +154,7 @@ export default function InternalStatementsUpload() {
         if (term) formData.append("term", term);
         if (paymentFrequency) formData.append("paymentFrequency", paymentFrequency);
         if (factorRate) formData.append("factorRate", factorRate);
+        if (maxUpsell) formData.append("maxUpsell", maxUpsell);
         const computedApprovalDate = `${approvalYear}-${approvalMonth}-${approvalDay}`;
         if (computedApprovalDate) formData.append("approvalDate", computedApprovalDate);
       }
@@ -320,6 +322,7 @@ export default function InternalStatementsUpload() {
           decisionPayload.term = term || null;
           decisionPayload.paymentFrequency = paymentFrequency || null;
           decisionPayload.factorRate = factorRate ? parseFloat(factorRate) : null;
+          decisionPayload.maxUpsell = maxUpsell || null;
           decisionPayload.notes = approvalNotes || null;
           decisionPayload.approvalDate = approvalDate;
         } else if (approvalStatus === "declined" || approvalStatus === "unqualified") {
@@ -771,6 +774,26 @@ export default function InternalStatementsUpload() {
                         data-testid="input-factor-rate"
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="maxUpsell">Max Upsell (%)</Label>
+                      <div className="relative">
+                        <Input
+                          id="maxUpsell"
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="100"
+                          value={maxUpsell}
+                          onChange={(e) => setMaxUpsell(e.target.value)}
+                          placeholder="20"
+                          className="pr-8"
+                          data-testid="input-max-upsell"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="lenderSearch">Lender</Label>
                       <div className="relative">
