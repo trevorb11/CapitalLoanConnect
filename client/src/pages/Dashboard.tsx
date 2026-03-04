@@ -1135,6 +1135,7 @@ function BankStatementsTab() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisTitle, setAnalysisTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showAllStatements, setShowAllStatements] = useState(false);
   const [generatingTokens, setGeneratingTokens] = useState(false);
   const [tokenGenResult, setTokenGenResult] = useState<{ success: boolean; message: string } | null>(null);
   const [updatingApproval, setUpdatingApproval] = useState<string | null>(null);
@@ -1950,12 +1951,13 @@ function BankStatementsTab() {
     return !!decision && ['approved', 'declined', 'unqualified', 'funded'].includes(decision.status);
   };
 
-  // Filter connections and uploads by search query
+  // Filter connections and uploads by search query (and optionally by decision status)
   const lowerQuery = searchQuery.toLowerCase().trim();
   const filteredUploadsByBusiness = Object.entries(uploadsByBusiness).filter(
     ([businessName, uploads]) => {
       const matchesSearch = !lowerQuery || businessName.toLowerCase().includes(lowerQuery);
-      return matchesSearch;
+      const notDecided = showAllStatements || !emailHasDecision(uploads[0]?.email || '');
+      return matchesSearch && notDecided;
     }
   ).sort(([, uploadsA], [, uploadsB]) => {
     const getBestDate = (u: BankStatementUpload): number => {
@@ -1968,11 +1970,12 @@ function BankStatementsTab() {
     return mostRecentB - mostRecentA;
   });
 
-  // Filter & sort Plaid connections (newest first, show all including decided businesses)
+  // Filter & sort Plaid connections (newest first; hide decided businesses unless showAllStatements)
   const filteredConnections = (bankConnections || [])
     .filter(conn => {
       const matchesSearch = !lowerQuery || conn.businessName.toLowerCase().includes(lowerQuery) || conn.email.toLowerCase().includes(lowerQuery);
-      return matchesSearch;
+      const notDecided = showAllStatements || !emailHasDecision(conn.email);
+      return matchesSearch && notDecided;
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -2025,8 +2028,16 @@ function BankStatementsTab() {
               data-testid="input-bank-search"
             />
           </div>
-          
-          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowAllStatements(v => !v)}
+            className={showAllStatements ? "toggle-elevate toggle-elevated" : "toggle-elevate"}
+            data-testid="button-toggle-show-all-statements"
+          >
+            <Eye className="w-4 h-4 mr-2" />
+            {showAllStatements ? "Pending Only" : "Show All Statements"}
+          </Button>
         </div>
 
         {/* No results message */}
