@@ -2107,13 +2107,12 @@ function BankStatementsTab() {
     return !!decision && ['approved', 'declined', 'unqualified', 'funded'].includes(decision.status);
   };
 
-  // Filter connections and uploads by search query, excluding decided businesses
+  // Filter connections and uploads by search query
   const lowerQuery = searchQuery.toLowerCase().trim();
   const filteredUploadsByBusiness = Object.entries(uploadsByBusiness).filter(
     ([businessName, uploads]) => {
       const matchesSearch = !lowerQuery || businessName.toLowerCase().includes(lowerQuery);
-      const notDecided = !emailHasDecision(uploads[0]?.email || '');
-      return matchesSearch && notDecided;
+      return matchesSearch;
     }
   ).sort(([, uploadsA], [, uploadsB]) => {
     const getBestDate = (u: BankStatementUpload): number => {
@@ -2126,12 +2125,11 @@ function BankStatementsTab() {
     return mostRecentB - mostRecentA;
   });
 
-  // Filter & sort Plaid connections (newest first, not decided)
+  // Filter & sort Plaid connections (newest first, show all including decided businesses)
   const filteredConnections = (bankConnections || [])
     .filter(conn => {
       const matchesSearch = !lowerQuery || conn.businessName.toLowerCase().includes(lowerQuery) || conn.email.toLowerCase().includes(lowerQuery);
-      const notDecided = !emailHasDecision(conn.email);
-      return matchesSearch && notDecided;
+      return matchesSearch;
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -2635,6 +2633,25 @@ function BankStatementsTab() {
                           {connection.institutionName}
                         </Badge>
                         <Badge className="bg-emerald-600 text-white">Plaid Connected</Badge>
+                        {(() => {
+                          const decision = getBusinessDecision(connection.email);
+                          if (!decision) return null;
+                          const statusColors: Record<string, string> = {
+                            approved: 'bg-blue-600 text-white',
+                            funded: 'bg-purple-600 text-white',
+                            declined: 'bg-red-600 text-white',
+                            unqualified: 'bg-amber-600 text-white',
+                          };
+                          const statusLabels: Record<string, string> = {
+                            approved: 'Approved',
+                            funded: 'Funded',
+                            declined: 'Declined',
+                            unqualified: 'Unqualified',
+                          };
+                          const cls = statusColors[decision.status] || 'bg-muted text-muted-foreground';
+                          const label = statusLabels[decision.status] || decision.status;
+                          return <Badge className={cls}>{label}</Badge>;
+                        })()}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
                         <div className="flex items-center gap-2 text-sm">
