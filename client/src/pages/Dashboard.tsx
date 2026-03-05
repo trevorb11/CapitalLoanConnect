@@ -2789,6 +2789,23 @@ function BankStatementsTab() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
+            <div>
+              <Label htmlFor="approval-assignedRep">Assigned Rep</Label>
+              <Select
+                value={approvalForm.assignedRep}
+                onValueChange={(value) => setApprovalForm(prev => ({ ...prev, assignedRep: value === '__none__' ? '' : value }))}
+              >
+                <SelectTrigger id="approval-assignedRep" data-testid="select-approval-assigned-rep">
+                  <SelectValue placeholder="Select rep (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {(agents || []).map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="advanceAmount">Advance Amount</Label>
@@ -2909,23 +2926,6 @@ function BankStatementsTab() {
                 data-testid="input-notes"
               />
             </div>
-            <div>
-              <Label htmlFor="approval-assignedRep">Assigned Rep</Label>
-              <Select
-                value={approvalForm.assignedRep}
-                onValueChange={(value) => setApprovalForm(prev => ({ ...prev, assignedRep: value === '__none__' ? '' : value }))}
-              >
-                <SelectTrigger id="approval-assignedRep" data-testid="select-approval-assigned-rep">
-                  <SelectValue placeholder="Select rep (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None</SelectItem>
-                  {(agents || []).map(agent => (
-                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"
@@ -2967,6 +2967,23 @@ function BankStatementsTab() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
+            <div>
+              <Label htmlFor="decline-assignedRep">Assigned Rep</Label>
+              <Select
+                value={declineAssignedRep}
+                onValueChange={(value) => setDeclineAssignedRep(value === '__none__' ? '' : value)}
+              >
+                <SelectTrigger id="decline-assignedRep" data-testid="select-decline-assigned-rep">
+                  <SelectValue placeholder="Select rep (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {(agents || []).map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label htmlFor="declineReason">Reason for Decline</Label>
               <Input
@@ -3028,23 +3045,6 @@ function BankStatementsTab() {
                 </Popover>
               </div>
             )}
-            <div>
-              <Label htmlFor="decline-assignedRep">Assigned Rep</Label>
-              <Select
-                value={declineAssignedRep}
-                onValueChange={(value) => setDeclineAssignedRep(value === '__none__' ? '' : value)}
-              >
-                <SelectTrigger id="decline-assignedRep" data-testid="select-decline-assigned-rep">
-                  <SelectValue placeholder="Select rep (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None</SelectItem>
-                  {(agents || []).map(agent => (
-                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"
@@ -3086,6 +3086,23 @@ function BankStatementsTab() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
+            <div>
+              <Label htmlFor="unqualified-assignedRep">Assigned Rep</Label>
+              <Select
+                value={unqualifiedAssignedRep}
+                onValueChange={(value) => setUnqualifiedAssignedRep(value === '__none__' ? '' : value)}
+              >
+                <SelectTrigger id="unqualified-assignedRep" data-testid="select-unqualified-assigned-rep">
+                  <SelectValue placeholder="Select rep (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {(agents || []).map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <p className="text-sm text-muted-foreground">
               This applicant did not qualify to be sent out to lenders.
             </p>
@@ -3150,23 +3167,6 @@ function BankStatementsTab() {
                 </Popover>
               </div>
             )}
-            <div>
-              <Label htmlFor="unqualified-assignedRep">Assigned Rep</Label>
-              <Select
-                value={unqualifiedAssignedRep}
-                onValueChange={(value) => setUnqualifiedAssignedRep(value === '__none__' ? '' : value)}
-              >
-                <SelectTrigger id="unqualified-assignedRep" data-testid="select-unqualified-assigned-rep">
-                  <SelectValue placeholder="Select rep (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None</SelectItem>
-                  {(agents || []).map(agent => (
-                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"
