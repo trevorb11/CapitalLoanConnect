@@ -1151,6 +1151,7 @@ function BankStatementsTab() {
   const [unqualifiedReason, setUnqualifiedReason] = useState('');
   const [unqualifiedFollowUp, setUnqualifiedFollowUp] = useState(false);
   const [unqualifiedFollowUpDate, setUnqualifiedFollowUpDate] = useState('');
+  const [unqualifiedAssignedRep, setUnqualifiedAssignedRep] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
   const [expandedAdditionalApprovals, setExpandedAdditionalApprovals] = useState<Set<string>>(new Set());
 
@@ -1376,6 +1377,7 @@ function BankStatementsTab() {
     setUnqualifiedReason(existing?.declineReason || '');
     setUnqualifiedFollowUp(existing?.followUpWorthy || false);
     setUnqualifiedFollowUpDate(existing?.followUpDate ? new Date(existing.followUpDate).toISOString().split('T')[0] : '');
+    setUnqualifiedAssignedRep(existing?.assignedRep || '');
     setUnqualifiedDialog({ businessEmail, businessName });
   };
 
@@ -1579,6 +1581,7 @@ function BankStatementsTab() {
           declineReason: unqualifiedReason || null,
           followUpWorthy: unqualifiedFollowUp || false,
           followUpDate: unqualifiedFollowUp && unqualifiedFollowUpDate ? unqualifiedFollowUpDate + 'T12:00:00.000Z' : null,
+          assignedRep: unqualifiedAssignedRep || null,
         }),
       });
       if (res.ok) {
@@ -3147,6 +3150,23 @@ function BankStatementsTab() {
                 </Popover>
               </div>
             )}
+            <div>
+              <Label htmlFor="unqualified-assignedRep">Assigned Rep</Label>
+              <Select
+                value={unqualifiedAssignedRep}
+                onValueChange={(value) => setUnqualifiedAssignedRep(value === '__none__' ? '' : value)}
+              >
+                <SelectTrigger id="unqualified-assignedRep" data-testid="select-unqualified-assigned-rep">
+                  <SelectValue placeholder="Select rep (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {(agents || []).map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"

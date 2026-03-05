@@ -66,6 +66,7 @@ export default function InternalStatementsUpload() {
   const [paymentFrequency, setPaymentFrequency] = useState("Weekly");
   const [factorRate, setFactorRate] = useState("");
   const [maxUpsell, setMaxUpsell] = useState("");
+  const [assignedRep, setAssignedRep] = useState("");
   const [approvalMonth, setApprovalMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [approvalDay, setApprovalDay] = useState(String(new Date().getDate()).padStart(2, '0'));
   const [approvalYear, setApprovalYear] = useState(String(new Date().getFullYear()));
@@ -84,6 +85,14 @@ export default function InternalStatementsUpload() {
 
   const { data: lenders } = useQuery<Lender[]>({
     queryKey: ['/api/lenders'],
+  });
+
+  const { data: agents } = useQuery<{ name: string; email: string }[]>({
+    queryKey: ['/api/agents'],
+    queryFn: async () => {
+      const res = await fetch('/api/agents', { credentials: 'include' });
+      return res.json();
+    },
   });
 
   const filteredLenders = (lenders || []).filter((lender) => {
@@ -301,6 +310,7 @@ export default function InternalStatementsUpload() {
           businessEmail: email,
           businessName: businessName || email,
           status: approvalStatus,
+          assignedRep: assignedRep || null,
         };
 
         if (approvalStatus === "approved") {
@@ -1027,6 +1037,27 @@ export default function InternalStatementsUpload() {
                       data-testid="input-decline-reason"
                     />
                   </div>
+                </div>
+              )}
+
+              {/* Assigned Rep — shown whenever a decision is set */}
+              {hasDecision && (
+                <div className="space-y-2 pt-2 border-t">
+                  <Label htmlFor="assignedRep">Assigned Rep</Label>
+                  <Select
+                    value={assignedRep}
+                    onValueChange={(value) => setAssignedRep(value === '__none__' ? '' : value)}
+                  >
+                    <SelectTrigger id="assignedRep" data-testid="select-assigned-rep">
+                      <SelectValue placeholder="Select rep (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {(agents || []).map(agent => (
+                        <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>
