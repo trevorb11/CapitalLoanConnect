@@ -24,6 +24,7 @@ The database schema, defined using Drizzle ORM for PostgreSQL, includes:
 - `loan_applications`: Stores comprehensive application data, including contact, business, financial, and owner information, as well as application status, GHL contact ID, and agent view URL.
 - `plaid_items`: Stores Plaid access tokens and institution data for bank connections.
 - `funding_analyses`: Stores calculated funding analysis results like monthly revenue and funding recommendations.
+- `congratulations_uploads`: Tracks voided check and driver's license uploads submitted on the /congratulations page, including the object storage path, file metadata, email, business name, and GHL contact/opportunity IDs.
 
 ### Design System
 

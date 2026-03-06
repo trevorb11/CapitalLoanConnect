@@ -519,3 +519,25 @@ export const insertVisitLogSchema = createInsertSchema(visitLogs).omit({
 
 export type InsertVisitLog = z.infer<typeof insertVisitLogSchema>;
 export type VisitLog = typeof visitLogs.$inferSelect;
+
+// Congratulations page document uploads (voided check + driver's license)
+export const congratulationsUploads = pgTable("congratulations_uploads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  businessName: text("business_name"),
+  docType: text("doc_type").notNull(), // 'voided_check' | 'drivers_license'
+  objectName: text("object_name").notNull(), // path in object storage
+  originalFileName: text("original_file_name").notNull(),
+  fileSize: integer("file_size").notNull(),
+  contactId: text("contact_id"), // GHL contact ID if available
+  opportunityId: text("opportunity_id"), // GHL opportunity ID if available
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCongratulationsUploadSchema = createInsertSchema(congratulationsUploads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCongratulationsUpload = z.infer<typeof insertCongratulationsUploadSchema>;
+export type CongratulationsUpload = typeof congratulationsUploads.$inferSelect;

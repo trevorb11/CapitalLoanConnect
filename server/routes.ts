@@ -2638,15 +2638,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[CONGRATS UPLOAD] Uploaded ${docType} for ${email}: ${objectName} (${file.size} bytes)`);
 
-      // Try to find and log the linked application
-      const existingApp = await storage.getLoanApplicationByEmail(email);
-      if (existingApp) {
-        console.log(`[CONGRATS UPLOAD] Linked to application ${existingApp.id} for ${email}`);
-      }
+      // Save record to database
+      const { contactId, opportunityId } = req.body;
+      const dbRecord = await storage.createCongratulationsUpload({
+        email: email.toLowerCase(),
+        businessName: businessName || null,
+        docType,
+        objectName,
+        originalFileName: file.originalname,
+        fileSize: file.size,
+        contactId: contactId || null,
+        opportunityId: opportunityId || null,
+      });
+
+      console.log(`[CONGRATS UPLOAD] Saved DB record ${dbRecord.id} for ${email}`);
 
       res.json({
         success: true,
         upload: {
+          id: dbRecord.id,
           objectName,
           docType,
           originalFileName: file.originalname,
@@ -2661,7 +2671,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Fire GHL webhook when both congratulations documents have been submitted
+  // GET all congratulations document uploads (admin only)
+  app.get("/api/congratulations/uploads", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const uploads = await storage.getAllCongratulationsUploads();
+      res.json(uploads);
+    } catch (error) {
+      console.error("[CONGRATS UPLOADS] Error fetching uploads:", error);
+      res.status(500).json({ error: "Failed to fetch uploads" });
+    }
+  });
+
+  // GET uploads by email
+  app.get("/api/congratulations/uploads/by-email/:email", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const uploads = await storage.getCongratulationsUploadsByEmail(req.params.email);
+      res.json(uploads);
+    } catch (error) {
+      console.error("[CONGRATS UPLOADS] Error fetching uploads by email:", error);
+      res.status(500).json({ error: "Failed to fetch uploads" });
+    }
+  });
+
   app.post("/api/congratulations/complete", async (req, res) => {
     try {
       const { email, businessName, contactId, opportunityId, phone, ownerName } = req.body;

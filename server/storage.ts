@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -9,7 +9,8 @@ import {
   type BusinessUnderwritingDecision, type InsertBusinessUnderwritingDecision,
   type Lender, type InsertLender,
   type VisitLog, type InsertVisitLog,
-  type PlaidStatement as PlaidStatementRecord, type InsertPlaidStatement
+  type PlaidStatement as PlaidStatementRecord, type InsertPlaidStatement,
+  type CongratulationsUpload, type InsertCongratulationsUpload,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -132,6 +133,11 @@ export interface IStorage {
   createVisitLog(log: InsertVisitLog): Promise<VisitLog>;
   getVisitLogsByEmail(email: string): Promise<VisitLog[]>;
   getVisitLogsByPhone(phone: string): Promise<VisitLog[]>;
+
+  // Congratulations uploads
+  createCongratulationsUpload(upload: InsertCongratulationsUpload): Promise<CongratulationsUpload>;
+  getCongratulationsUploadsByEmail(email: string): Promise<CongratulationsUpload[]>;
+  getAllCongratulationsUploads(): Promise<CongratulationsUpload[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -831,6 +837,29 @@ export class DatabaseStorage implements IStorage {
       .from(visitLogs)
       .where(eq(visitLogs.phone, phone))
       .orderBy(desc(visitLogs.createdAt));
+  }
+
+  async createCongratulationsUpload(upload: InsertCongratulationsUpload): Promise<CongratulationsUpload> {
+    const [record] = await db
+      .insert(congratulationsUploads)
+      .values(upload)
+      .returning();
+    return record;
+  }
+
+  async getCongratulationsUploadsByEmail(email: string): Promise<CongratulationsUpload[]> {
+    return await db
+      .select()
+      .from(congratulationsUploads)
+      .where(eq(congratulationsUploads.email, email.toLowerCase()))
+      .orderBy(desc(congratulationsUploads.createdAt));
+  }
+
+  async getAllCongratulationsUploads(): Promise<CongratulationsUpload[]> {
+    return await db
+      .select()
+      .from(congratulationsUploads)
+      .orderBy(desc(congratulationsUploads.createdAt));
   }
 }
 
