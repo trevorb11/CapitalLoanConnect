@@ -266,6 +266,32 @@ export default function Funded() {
     },
   });
 
+  const resendInviteMutation = useMutation({
+    mutationFn: async (decisionId: string) => {
+      const res = await fetch('/api/merchant/resend-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ decisionId }),
+      });
+      if (!res.ok) throw new Error('Failed to send invite');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Portal invite sent",
+        description: data.message || "The merchant portal invite has been sent.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to send the portal invite.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const updateMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Record<string, any> }) => {
       const res = await fetch(`/api/underwriting-decisions/${id}`, {
@@ -1103,6 +1129,17 @@ export default function Funded() {
                       </div>
                       <div className="flex gap-2 flex-wrap">
                         <StatusToggle decision={decision} currentStatus="funded" />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => resendInviteMutation.mutate(decision.id)}
+                          disabled={resendInviteMutation.isPending}
+                          className="text-xs"
+                          data-testid={`button-resend-invite-${decision.id}`}
+                        >
+                          <Mail className="w-3 h-3 mr-1" />
+                          {resendInviteMutation.isPending ? "Sending..." : "Resend Portal Invite"}
+                        </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button

@@ -46,6 +46,8 @@ import SBALanding from "@/pages/SBALanding";
 import SignatureApplication from "@/pages/SignatureApplication";
 import Congratulations from "@/pages/Congratulations";
 import Leaderboard from "@/pages/Leaderboard";
+import MerchantPortal from "@/pages/MerchantPortal";
+import MerchantActivate from "@/pages/MerchantActivate";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -117,6 +119,10 @@ function Router() {
 
       {/* Approval Letter - Public page for approved businesses */}
       <Route path="/approved/:slug" component={ApprovalLetter} />
+
+      {/* Merchant Portal Routes */}
+      <Route path="/merchant" component={MerchantPortal} />
+      <Route path="/merchant/activate" component={MerchantActivate} />
 
       {/* Partner Portal Routes */}
       <Route path="/partner" component={PartnerDashboard} />

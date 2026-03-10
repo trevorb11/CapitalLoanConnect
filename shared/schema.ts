@@ -452,6 +452,11 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   // Approval letter page slug (generated when approved)
   approvalSlug: text("approval_slug").unique(),
 
+  // Merchant portal auth
+  merchantEmail: text("merchant_email"), // login email for portal access (copy of businessEmail)
+  merchantPasswordHash: text("merchant_password_hash"), // scrypt hashed password
+  merchantPortalToken: text("merchant_portal_token"), // one-time magic link token (nulled after use)
+
   // GHL sync tracking
   ghlSynced: boolean("ghl_synced").default(false),
   ghlSyncedAt: timestamp("ghl_synced_at"),

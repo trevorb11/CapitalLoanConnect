@@ -597,6 +597,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         response.partnerEmail = req.session.user.partnerEmail;
         response.partnerName = req.session.user.partnerName;
         response.companyName = req.session.user.companyName;
+      } else if (req.session.user.role === 'merchant') {
+        response.merchantEmail = req.session.user.merchantEmail;
+        response.merchantName = req.session.user.merchantName;
       }
 
       return res.json(response);
@@ -2914,6 +2917,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`[UNDERWRITING] ${reviewerEmail} set ${status} for business ${businessEmail}`);
 
+      // Provision merchant portal access when deal is funded
+      if (status === 'funded' && businessEmail) {
+        try {
+          const portalToken = randomBytes(32).toString('hex');
+          await storage.updateBusinessUnderwritingDecision(decision.id, {
+            merchantEmail: businessEmail.toLowerCase(),
+            merchantPortalToken: portalToken,
+          });
+          console.log(`[MERCHANT] Portal token generated for ${businessEmail}`);
+
+          // Send invite email (async, non-blocking)
+          sendMerchantInviteEmail(businessEmail, businessName || '', portalToken).catch(err => {
+            console.error(`[MERCHANT] Failed to send invite email to ${businessEmail}:`, err);
+          });
+        } catch (portalError) {
+          console.error(`[MERCHANT] Failed to provision portal for ${businessEmail}:`, portalError);
+        }
+      }
+
       // Sync to GHL opportunity (async, non-blocking)
       ghlService.syncUnderwritingDecision(decision).then(async (ghlResult) => {
         try {
@@ -3002,6 +3024,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`[UNDERWRITING] Decision ${id} updated by ${req.session.user.agentEmail || 'admin'}`);
+
+      // Provision merchant portal when status changes to funded
+      if (updates.status === 'funded' && updated.businessEmail && !updated.merchantPasswordHash) {
+        try {
+          const portalToken = randomBytes(32).toString('hex');
+          await storage.updateBusinessUnderwritingDecision(id, {
+            merchantEmail: updated.businessEmail.toLowerCase(),
+            merchantPortalToken: portalToken,
+          });
+          console.log(`[MERCHANT] Portal token generated for ${updated.businessEmail} (via PATCH)`);
+
+          sendMerchantInviteEmail(updated.businessEmail, updated.businessName || '', portalToken).catch(err => {
+            console.error(`[MERCHANT] Failed to send invite email to ${updated.businessEmail}:`, err);
+          });
+        } catch (portalError) {
+          console.error(`[MERCHANT] Failed to provision portal for ${updated.businessEmail}:`, portalError);
+        }
+      }
 
       // Sync updated decision to GHL opportunity (async, non-blocking)
       ghlService.syncUnderwritingDecision(updated).then(async (ghlResult) => {
@@ -6521,6 +6561,284 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
       res.status(500).json({ error: "Failed to fetch leaderboard data" });
+    }
+  });
+
+  // ========================================
+  // MERCHANT PORTAL ROUTES
+  // ========================================
+
+  // Helper: send merchant portal invite email via Gmail API
+  async function sendMerchantInviteEmail(toEmail: string, businessName: string, token: string): Promise<boolean> {
+    try {
+      const { google } = await import('googleapis');
+      // Reuse Gmail connector auth
+      const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+      const xReplitToken = process.env.REPL_IDENTITY
+        ? 'repl ' + process.env.REPL_IDENTITY
+        : process.env.WEB_REPL_RENEWAL
+        ? 'depl ' + process.env.WEB_REPL_RENEWAL
+        : null;
+
+      if (!xReplitToken || !hostname) {
+        console.log('[MERCHANT] Gmail connector not available, skipping email send');
+        return false;
+      }
+
+      const connRes = await fetch(
+        'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-mail',
+        { headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken } }
+      ).then(r => r.json());
+
+      const accessToken = connRes.items?.[0]?.settings?.access_token || connRes.items?.[0]?.settings?.oauth?.credentials?.access_token;
+      if (!accessToken) {
+        console.log('[MERCHANT] No Gmail access token available');
+        return false;
+      }
+
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials({ access_token: accessToken });
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+        : 'https://todaycapitalgroup.com';
+
+      const activateUrl = `${baseUrl}/merchant/activate?token=${token}`;
+
+      const subject = 'Your Today Capital Group portal is ready';
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #14B8A6;">Today Capital Group</h2>
+          <p>Hello${businessName ? ` ${businessName}` : ''},</p>
+          <p>Your funded deal is now live in the <strong>Today Capital Group Merchant Portal</strong>. You can use it to track your payoff progress, view payment details, and see your remaining balance at any time.</p>
+          <p style="margin: 24px 0;">
+            <a href="${activateUrl}" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+              Set Up Your Portal Access
+            </a>
+          </p>
+          <p style="color: #666; font-size: 13px;">If the button doesn't work, copy and paste this link into your browser:</p>
+          <p style="color: #666; font-size: 13px; word-break: break-all;">${activateUrl}</p>
+          <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;" />
+          <p style="color: #999; font-size: 12px;">Today Capital Group · Merchant Portal</p>
+        </div>
+      `;
+
+      const raw = Buffer.from(
+        `To: ${toEmail}\r\n` +
+        `Subject: ${subject}\r\n` +
+        `Content-Type: text/html; charset=utf-8\r\n` +
+        `\r\n` +
+        htmlBody
+      ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+      await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw },
+      });
+
+      console.log(`[MERCHANT] Invite email sent to ${toEmail}`);
+      return true;
+    } catch (error) {
+      console.error('[MERCHANT] Failed to send invite email:', error);
+      return false;
+    }
+  }
+
+  // Merchant Login
+  app.post("/api/merchant/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+
+      const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(email.toLowerCase());
+      if (!decision || !decision.merchantPasswordHash) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      const isValid = verifyPassword(password, decision.merchantPasswordHash);
+      if (!isValid) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      req.session.user = {
+        isAuthenticated: true,
+        role: 'merchant',
+        merchantEmail: decision.merchantEmail!,
+        merchantName: decision.businessName || undefined,
+      };
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[MERCHANT] Login error:", error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // Merchant Activate (magic link handler)
+  app.post("/api/merchant/activate", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return res.status(400).json({ error: "Token and password are required" });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const decision = await storage.getBusinessUnderwritingDecisionByMerchantToken(token);
+      if (!decision) {
+        return res.status(400).json({ error: "Invalid or expired activation token" });
+      }
+
+      const passwordHash = hashPassword(password);
+      await storage.updateBusinessUnderwritingDecision(decision.id, {
+        merchantPasswordHash: passwordHash,
+        merchantPortalToken: null,
+      });
+
+      req.session.user = {
+        isAuthenticated: true,
+        role: 'merchant',
+        merchantEmail: decision.merchantEmail || decision.businessEmail,
+        merchantName: decision.businessName || undefined,
+      };
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[MERCHANT] Activation error:", error);
+      res.status(500).json({ error: "Activation failed" });
+    }
+  });
+
+  // Merchant Auth Check
+  app.get("/api/merchant/auth/check", (req, res) => {
+    if (req.session.user?.isAuthenticated && req.session.user.role === 'merchant') {
+      return res.json({
+        isAuthenticated: true,
+        email: req.session.user.merchantEmail,
+        name: req.session.user.merchantName,
+      });
+    }
+    res.json({ isAuthenticated: false });
+  });
+
+  // Merchant Logout
+  app.post("/api/merchant/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Logout failed" });
+      }
+      res.json({ success: true });
+    });
+  });
+
+  // Merchant Deals - returns funded deals for authenticated merchant
+  app.get("/api/merchant/deals", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+
+    try {
+      const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(req.session.user.merchantEmail);
+      const deals: any[] = [];
+
+      for (const decision of decisions) {
+        if (decision.status !== 'funded') continue;
+
+        // Build deals from additionalFundings JSONB array
+        const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
+
+        for (const funding of fundings) {
+          deals.push({
+            id: funding.id || decision.id,
+            businessName: decision.businessName || 'N/A',
+            lender: funding.lender || decision.lender || 'N/A',
+            advanceAmount: parseFloat(funding.advanceAmount || decision.advanceAmount || '0'),
+            factorRate: parseFloat(funding.factorRate || decision.factorRate || '1'),
+            totalPayback: parseFloat(funding.totalPayback || decision.totalPayback || '0'),
+            paymentFrequency: funding.paymentFrequency || decision.paymentFrequency || 'daily',
+            fundedDate: funding.fundedDate || (decision.fundedDate ? new Date(decision.fundedDate).toISOString() : new Date().toISOString()),
+            term: funding.term || decision.term || '6 months',
+            status: 'active',
+          });
+        }
+
+        // If no additionalFundings, use top-level fields
+        if (fundings.length === 0) {
+          deals.push({
+            id: decision.id,
+            businessName: decision.businessName || 'N/A',
+            lender: decision.lender || 'N/A',
+            advanceAmount: parseFloat(decision.advanceAmount || '0'),
+            factorRate: parseFloat(decision.factorRate || '1'),
+            totalPayback: parseFloat(decision.totalPayback || '0'),
+            paymentFrequency: decision.paymentFrequency || 'daily',
+            fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString() : new Date().toISOString(),
+            term: decision.term || '6 months',
+            status: 'active',
+          });
+        }
+      }
+
+      res.json(deals);
+    } catch (error) {
+      console.error("[MERCHANT] Error fetching deals:", error);
+      res.status(500).json({ error: "Failed to fetch deals" });
+    }
+  });
+
+  // Resend merchant portal invite (staff only)
+  app.post("/api/merchant/resend-invite", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only staff can resend invites" });
+    }
+
+    try {
+      const { decisionId } = req.body;
+      if (!decisionId) {
+        return res.status(400).json({ error: "decisionId is required" });
+      }
+
+      const decision = await storage.getBusinessUnderwritingDecision(decisionId);
+      if (!decision) {
+        return res.status(404).json({ error: "Decision not found" });
+      }
+
+      if (!decision.businessEmail) {
+        return res.status(400).json({ error: "No business email on record" });
+      }
+
+      const token = randomBytes(32).toString('hex');
+      await storage.updateBusinessUnderwritingDecision(decision.id, {
+        merchantEmail: decision.businessEmail.toLowerCase(),
+        merchantPortalToken: token,
+      });
+
+      const emailSent = await sendMerchantInviteEmail(
+        decision.businessEmail,
+        decision.businessName || '',
+        token
+      );
+
+      res.json({
+        success: true,
+        emailSent,
+        message: emailSent
+          ? `Portal invite sent to ${decision.businessEmail}`
+          : `Token generated but email could not be sent. Manual activation link needed.`,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Resend invite error:", error);
+      res.status(500).json({ error: "Failed to resend invite" });
     }
   });
 
