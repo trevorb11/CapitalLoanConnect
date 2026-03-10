@@ -119,6 +119,9 @@ export interface IStorage {
   getBusinessUnderwritingDecision(id: string): Promise<BusinessUnderwritingDecision | undefined>;
   getBusinessUnderwritingDecisionByEmail(email: string): Promise<BusinessUnderwritingDecision | undefined>;
   getBusinessUnderwritingDecisionsByEmail(email: string): Promise<BusinessUnderwritingDecision[]>;
+  getBusinessUnderwritingDecisionByMerchantEmail(email: string): Promise<BusinessUnderwritingDecision | undefined>;
+  getBusinessUnderwritingDecisionsByMerchantEmail(email: string): Promise<BusinessUnderwritingDecision[]>;
+  getBusinessUnderwritingDecisionByMerchantToken(token: string): Promise<BusinessUnderwritingDecision | undefined>;
   getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined>;
   getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]>;
   updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision>): Promise<BusinessUnderwritingDecision | undefined>;
@@ -731,6 +734,33 @@ export class DatabaseStorage implements IStorage {
       .from(businessUnderwritingDecisions)
       .where(sql`LOWER(${businessUnderwritingDecisions.businessEmail}) = LOWER(${email})`)
       .orderBy(desc(businessUnderwritingDecisions.updatedAt));
+  }
+
+  async getBusinessUnderwritingDecisionByMerchantEmail(email: string): Promise<BusinessUnderwritingDecision | undefined> {
+    const [decision] = await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(sql`LOWER(${businessUnderwritingDecisions.merchantEmail}) = LOWER(${email})`)
+      .orderBy(desc(businessUnderwritingDecisions.updatedAt))
+      .limit(1);
+    return decision || undefined;
+  }
+
+  async getBusinessUnderwritingDecisionsByMerchantEmail(email: string): Promise<BusinessUnderwritingDecision[]> {
+    return await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(sql`LOWER(${businessUnderwritingDecisions.merchantEmail}) = LOWER(${email})`)
+      .orderBy(desc(businessUnderwritingDecisions.updatedAt));
+  }
+
+  async getBusinessUnderwritingDecisionByMerchantToken(token: string): Promise<BusinessUnderwritingDecision | undefined> {
+    const [decision] = await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(eq(businessUnderwritingDecisions.merchantPortalToken, token))
+      .limit(1);
+    return decision || undefined;
   }
 
   async getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined> {
