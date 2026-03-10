@@ -14,6 +14,7 @@ import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
+import { fireSmsStageEvent } from "./sms-middleware";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
@@ -887,6 +888,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (webhookError) {
           console.error("Intake webhook error (non-blocking):", webhookError);
         }
+        // SMS: app_submitted
+        const _smsApp = updatedApp || application;
+        if (_smsApp?.phone) {
+          const _smsParts = (_smsApp.fullName || '').trim().split(' ');
+          fireSmsStageEvent({
+            stage: 'app_submitted',
+            phone: _smsApp.phone,
+            email: _smsApp.email || undefined,
+            first_name: _smsParts[0] || undefined,
+            last_name: _smsParts.slice(1).join(' ') || undefined,
+            business_name: _smsApp.businessName || (_smsApp as any).legalBusinessName || undefined,
+            deal_id: _smsApp.id,
+          });
+        }
       }
       
       // Return with validation errors if any (data was still saved)
@@ -1130,6 +1145,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ghlService.sendWebhook(updatedApp).catch(err => 
           console.error("Webhook error (non-blocking):", err)
         );
+        // SMS: app_submitted (full 11-step application)
+        if (updatedApp.phone) {
+          const _parts = (updatedApp.fullName || '').trim().split(' ');
+          fireSmsStageEvent({
+            stage: 'app_submitted',
+            phone: updatedApp.phone,
+            email: updatedApp.email || undefined,
+            first_name: _parts[0] || undefined,
+            last_name: _parts.slice(1).join(' ') || undefined,
+            business_name: updatedApp.businessName || undefined,
+            deal_id: updatedApp.id,
+          });
+        }
       }
 
       // Return with validation errors if any (data was still saved)
@@ -2453,6 +2481,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // SMS: bank_statements_uploaded
+      const _smsPhone = matchingApp?.phone;
+      if (_smsPhone) {
+        const _smsBsParts = (matchingApp?.fullName || '').trim().split(' ');
+        fireSmsStageEvent({
+          stage: 'bank_statements_uploaded',
+          phone: _smsPhone,
+          email: email || undefined,
+          first_name: _smsBsParts[0] || undefined,
+          last_name: _smsBsParts.slice(1).join(' ') || undefined,
+          business_name: businessName || matchingApp?.businessName || undefined,
+          deal_id: linkedApplicationId || undefined,
+        });
+      }
+
       res.json({
         success: true,
         upload: {
@@ -2656,6 +2699,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[CONGRATS UPLOAD] Saved DB record ${dbRecord.id} for ${email}`);
 
+      // SMS: docs_uploaded — look up phone from linked application
+      const _duApp = await storage.getLoanApplicationByEmail(email).catch(() => null);
+      if (_duApp?.phone) {
+        const _duParts = (_duApp.fullName || '').trim().split(' ');
+        fireSmsStageEvent({
+          stage: 'docs_uploaded',
+          phone: _duApp.phone,
+          email: email || undefined,
+          first_name: _duParts[0] || undefined,
+          last_name: _duParts.slice(1).join(' ') || undefined,
+          business_name: businessName || _duApp.businessName || undefined,
+          deal_id: _duApp.id,
+          ghl_contact_id: contactId || undefined,
+          metadata: { docType },
+        });
+      }
+
       res.json({
         success: true,
         upload: {
@@ -2739,6 +2799,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`[CONGRATS COMPLETE] GHL webhook sent successfully for ${email}`);
+
+      // SMS: congratulations_reached (fires after both docs submitted and GHL notified)
+      if (phone) {
+        const _cgParts = (ownerName || '').trim().split(' ');
+        // Look up deal_id from application
+        const _cgApp = await storage.getLoanApplicationByEmail(email).catch(() => null);
+        fireSmsStageEvent({
+          stage: 'congratulations_reached',
+          phone,
+          email: email || undefined,
+          first_name: _cgParts[0] || undefined,
+          last_name: _cgParts.slice(1).join(' ') || undefined,
+          business_name: businessName || undefined,
+          deal_id: _cgApp?.id || undefined,
+          ghl_contact_id: contactId || undefined,
+        });
+      }
+
       res.json({ success: true });
     } catch (error) {
       console.error("[CONGRATS COMPLETE] Error firing webhook:", error);
@@ -2953,6 +3031,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[UNDERWRITING] GHL sync error for ${businessEmail}:`, err);
       });
 
+      // SMS: approval_issued
+      if (status === 'approved' && businessPhone) {
+        const _proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const _host = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
+        const _approvalLink = decision.approvalSlug ? `${_proto}://${_host}/approval-letter/${decision.approvalSlug}` : undefined;
+        const _topAmount = decision.advanceAmount ? parseFloat(String(decision.advanceAmount)) : undefined;
+        fireSmsStageEvent({
+          stage: 'approval_issued',
+          phone: businessPhone,
+          email: businessEmail || undefined,
+          business_name: businessName || undefined,
+          deal_id: decision.id,
+          approval_link: _approvalLink,
+          amount: _topAmount,
+          lender: decision.lender || undefined,
+        });
+      }
+
+      // SMS: funded
+      if (status === 'funded' && businessPhone) {
+        const _fundedAmount = decision.advanceAmount ? parseFloat(String(decision.advanceAmount)) : undefined;
+        fireSmsStageEvent({
+          stage: 'funded',
+          phone: businessPhone,
+          email: businessEmail || undefined,
+          business_name: businessName || undefined,
+          deal_id: decision.id,
+          amount: _fundedAmount,
+          lender: decision.lender || undefined,
+        });
+      }
+
       res.json(decision);
     } catch (error: any) {
       console.error("Error saving underwriting decision:", error);
@@ -3059,6 +3169,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).catch(err => {
         console.error(`[UNDERWRITING] GHL sync error for decision ${id}:`, err);
       });
+
+      // SMS: approval_issued (PATCH path)
+      if (updates.status === 'approved' && updated.businessPhone) {
+        const _pProto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const _pHost = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
+        const _pLink = updated.approvalSlug ? `${_pProto}://${_pHost}/approval-letter/${updated.approvalSlug}` : undefined;
+        fireSmsStageEvent({
+          stage: 'approval_issued',
+          phone: updated.businessPhone,
+          email: updated.businessEmail || undefined,
+          business_name: updated.businessName || undefined,
+          deal_id: updated.id,
+          approval_link: _pLink,
+          amount: updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined,
+          lender: updated.lender || undefined,
+        });
+      }
+
+      // SMS: funded (PATCH path)
+      if (updates.status === 'funded' && updated.businessPhone) {
+        fireSmsStageEvent({
+          stage: 'funded',
+          phone: updated.businessPhone,
+          email: updated.businessEmail || undefined,
+          business_name: updated.businessName || undefined,
+          deal_id: updated.id,
+          amount: updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined,
+          lender: updated.lender || undefined,
+        });
+      }
 
       res.json(updated);
     } catch (error) {
