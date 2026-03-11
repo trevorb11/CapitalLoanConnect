@@ -15,6 +15,7 @@ import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, 
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
@@ -3305,6 +3306,7 @@ export default function Dashboard() {
   const [selectedAppForStatements, setSelectedAppForStatements] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<LoanApplication>>({});
+  const [resignApplication, setResignApplication] = useState(false);
 
   const { data: authData, isLoading: authLoading, refetch: refetchAuth } = useQuery<AuthState | null>({
     queryKey: ["/api/auth/check"],
@@ -3410,14 +3412,20 @@ export default function Dashboard() {
   const handleCancelEdit = () => {
     setIsEditMode(false);
     setEditFormData({});
+    setResignApplication(false);
   };
 
   const handleSaveEdit = () => {
     if (selectedAppDetails?.id) {
+      const dataToSave: Partial<LoanApplication> = { ...editFormData };
+      if (resignApplication) {
+        dataToSave.signatureDate = new Date().toISOString();
+      }
       saveApplicationMutation.mutate({
         id: selectedAppDetails.id,
-        data: editFormData,
+        data: dataToSave,
       });
+      setResignApplication(false);
     }
   };
 
@@ -4395,6 +4403,31 @@ export default function Dashboard() {
                       onChange={(e) => handleEditFieldChange("socialSecurityNumber", e.target.value)}
                       placeholder="XXX-XX-XXXX"
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Re-sign Application */}
+              <div className="pt-4 border-t">
+                <div className="flex items-start gap-3 p-3 rounded-md bg-muted/50">
+                  <Checkbox
+                    id="resign-application"
+                    checked={resignApplication}
+                    onCheckedChange={(checked) => setResignApplication(checked === true)}
+                    data-testid="checkbox-resign-application"
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="resign-application" className="cursor-pointer font-medium">
+                      Re-sign Application
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Check this box to update the e-signature date to the current date and time, overriding the original submission date.
+                      {resignApplication && (
+                        <span className="block mt-1 font-medium text-foreground">
+                          New signature date will be set to: {new Date().toLocaleString()}
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </div>
               </div>

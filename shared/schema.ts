@@ -93,6 +93,7 @@ export const loanApplications = pgTable("loan_applications", {
   
   // Signature
   applicantSignature: text("applicant_signature"), // Base64 encoded signature
+  signatureDate: text("signature_date"), // ISO date string of when the application was signed/re-signed
 
   // --- Plaid Integration ---
   plaidItemId: text("plaid_item_id"), // Link to Plaid access token for retrieving statements
