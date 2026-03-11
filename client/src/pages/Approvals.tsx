@@ -48,6 +48,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusToggle } from "@/components/StatusToggle";
 import type { BusinessUnderwritingDecision } from "@shared/schema";
+import { AGENTS } from "@shared/agents";
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -122,6 +123,7 @@ export default function Approvals() {
     approvalId?: string; // undefined = adding new
   } | null>(null);
   const [editForm, setEditForm] = useState({
+    assignedRep: '',
     advanceAmount: '',
     term: '',
     paymentFrequency: 'weekly',
@@ -466,6 +468,7 @@ export default function Approvals() {
       const existing = approvals.find(a => a.id === approvalId);
       if (existing) {
         setEditForm({
+          assignedRep: decision.assignedRep || '',
           advanceAmount: existing.advanceAmount,
           term: existing.term,
           paymentFrequency: existing.paymentFrequency || 'weekly',
@@ -481,6 +484,7 @@ export default function Approvals() {
       }
     } else {
       setEditForm({
+        assignedRep: decision.assignedRep || '',
         advanceAmount: '',
         term: '',
         paymentFrequency: 'weekly',
@@ -531,9 +535,13 @@ export default function Approvals() {
         approvals.push(newEntry);
       }
 
+      const updates: Record<string, unknown> = { additionalApprovals: approvals };
+      if (editForm.assignedRep !== (decision.assignedRep || '')) {
+        updates.assignedRep = editForm.assignedRep || null;
+      }
       await updateMutation.mutateAsync({
         id: decision.id,
-        updates: { additionalApprovals: approvals },
+        updates,
       });
     } finally {
       setSaving(false);
@@ -1242,6 +1250,23 @@ export default function Approvals() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
+            <div>
+              <Label htmlFor="edit-assignedRep">Sales Rep</Label>
+              <Select
+                value={editForm.assignedRep}
+                onValueChange={(value) => setEditForm(prev => ({ ...prev, assignedRep: value === '__none__' ? '' : value }))}
+              >
+                <SelectTrigger id="edit-assignedRep" data-testid="select-edit-assigned-rep">
+                  <SelectValue placeholder="Select rep (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {AGENTS.map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-advanceAmount">Advance Amount</Label>
@@ -1307,39 +1332,22 @@ export default function Approvals() {
                 />
               </div>
               <div>
-                <Label htmlFor="edit-maxUpsell">Max Upsell</Label>
-                <Input
-                  id="edit-maxUpsell"
-                  type="number"
-                  placeholder="$75,000"
-                  value={editForm.maxUpsell}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, maxUpsell: e.target.value }))}
-                  data-testid="input-edit-max-upsell"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="edit-netAfterFees">Net After Fees</Label>
-                <Input
-                  id="edit-netAfterFees"
-                  type="number"
-                  placeholder="$48,500"
-                  value={editForm.netAfterFees}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, netAfterFees: e.target.value }))}
-                  data-testid="input-edit-net-after-fees"
-                />
-              </div>
-              <div>
-                <Label htmlFor="edit-totalPayback">Total Payback</Label>
-                <Input
-                  id="edit-totalPayback"
-                  type="number"
-                  placeholder="$62,500"
-                  value={editForm.totalPayback}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, totalPayback: e.target.value }))}
-                  data-testid="input-edit-total-payback"
-                />
+                <Label htmlFor="edit-maxUpsell">Max Upsell (%)</Label>
+                <div className="relative">
+                  <Input
+                    id="edit-maxUpsell"
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="100"
+                    placeholder="20"
+                    value={editForm.maxUpsell}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, maxUpsell: e.target.value }))}
+                    data-testid="input-edit-max-upsell"
+                    className="pr-8"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">%</span>
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
