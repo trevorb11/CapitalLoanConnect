@@ -39,6 +39,7 @@ interface Deal {
   fundedDate: string;
   term: string;
   status: string;
+  assignedRep: string | null;
 }
 
 interface CalcResult {
@@ -1067,9 +1068,119 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
 
       <div className="contact-strip">
         <div className="contact-strip-text">
-          Questions about your position? <strong>Your rep at Today Capital Group is here to help.</strong>
+          Questions about your position?{" "}
+          <strong>
+            {deal.assignedRep
+              ? `${deal.assignedRep} at Today Capital Group is here to help.`
+              : "Your rep at Today Capital Group is here to help."}
+          </strong>
         </div>
-        <button className="contact-cta">Contact My Rep</button>
+        <button
+          className="contact-cta"
+          onClick={() => {
+            const subject = encodeURIComponent(`Question about my position — ${deal.lender}`);
+            const body = encodeURIComponent(
+              `Hi${deal.assignedRep ? ` ${deal.assignedRep.split(" ")[0]}` : ""},\n\nI have a question about my funded position with ${deal.lender}.\n\nBusiness: ${deal.businessName}\n\nThank you`
+            );
+            window.location.href = `mailto:info@todaycapitalgroup.com?subject=${subject}&body=${body}`;
+          }}
+        >
+          Contact My Rep
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleReset = async () => {
+    if (!email) {
+      setError("Please enter your email address.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/merchant/reset-password/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSent(true);
+      } else {
+        setError(data.error || "Something went wrong. Please try again.");
+      }
+    } catch {
+      setError("Request failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-wrap">
+      <div className="login-card">
+        <div className="login-logo">
+          <div className="login-logo-mark">TCG</div>
+          <div>
+            <div className="login-logo-text">Today Capital Group</div>
+            <div className="login-logo-sub">Merchant Portal</div>
+          </div>
+        </div>
+
+        {sent ? (
+          <>
+            <div className="login-title">Check Your Email</div>
+            <div className="login-sub" style={{ marginBottom: "24px" }}>
+              If an account exists with that email, we've sent a password reset link. Please check your inbox.
+            </div>
+            <button className="login-btn" onClick={onBack}>
+              Back to Sign In
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="login-title">Reset Password</div>
+            <div className="login-sub">Enter your email and we'll send you a link to reset your password.</div>
+
+            <label className="field-label">Email address</label>
+            <input
+              className="field-input"
+              type="email"
+              value={email}
+              onChange={e => { setEmail(e.target.value); setError(""); }}
+              placeholder="you@yourbusiness.com"
+              onKeyDown={e => e.key === "Enter" && handleReset()}
+            />
+
+            {error && <div className="login-error">{error}</div>}
+
+            <button
+              className="login-btn"
+              onClick={handleReset}
+              disabled={loading}
+              style={{ marginTop: error ? "16px" : "0" }}
+            >
+              {loading ? "Sending..." : "Send Reset Link"}
+            </button>
+
+            <div className="login-hint">
+              <button
+                onClick={onBack}
+                style={{ background: "none", border: "none", color: "#14B8A6", cursor: "pointer", fontFamily: "inherit", fontSize: "12px" }}
+              >
+                Back to Sign In
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1080,6 +1191,11 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+
+  if (showForgot) {
+    return <ForgotPasswordScreen onBack={() => setShowForgot(false)} />;
+  }
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -1151,8 +1267,16 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           {loading ? "Signing in..." : "Sign In"}
         </button>
 
-        <div className="login-hint">
-          Don't have an account? Your login is created automatically<br />when your deal is funded. Contact your rep for help.
+        <div className="login-hint" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+          <button
+            onClick={() => setShowForgot(true)}
+            style={{ background: "none", border: "none", color: "#14B8A6", cursor: "pointer", fontFamily: "inherit", fontSize: "12px" }}
+          >
+            Forgot your password?
+          </button>
+          <span>
+            Don't have an account? Your login is created automatically<br />when your deal is funded. Contact your rep for help.
+          </span>
         </div>
       </div>
     </div>

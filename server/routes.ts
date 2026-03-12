@@ -6787,6 +6787,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // Helper: send merchant password reset email via Gmail API
+  async function sendMerchantResetEmail(toEmail: string, businessName: string, token: string): Promise<boolean> {
+    try {
+      const { google } = await import('googleapis');
+      const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+      const xReplitToken = process.env.REPL_IDENTITY
+        ? 'repl ' + process.env.REPL_IDENTITY
+        : process.env.WEB_REPL_RENEWAL
+        ? 'depl ' + process.env.WEB_REPL_RENEWAL
+        : null;
+
+      if (!xReplitToken || !hostname) {
+        console.log('[MERCHANT] Gmail connector not available, skipping reset email');
+        return false;
+      }
+
+      const connRes = await fetch(
+        'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-mail',
+        { headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken } }
+      ).then(r => r.json());
+
+      const accessToken = connRes.items?.[0]?.settings?.access_token || connRes.items?.[0]?.settings?.oauth?.credentials?.access_token;
+      if (!accessToken) {
+        console.log('[MERCHANT] No Gmail access token available for reset email');
+        return false;
+      }
+
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials({ access_token: accessToken });
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+        : 'https://todaycapitalgroup.com';
+
+      const resetUrl = `${baseUrl}/merchant/reset-password?token=${token}`;
+
+      const subject = 'Reset your Today Capital Group portal password';
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #14B8A6;">Today Capital Group</h2>
+          <p>Hello${businessName ? ` ${businessName}` : ''},</p>
+          <p>We received a request to reset your Merchant Portal password. Click the button below to set a new password:</p>
+          <p style="margin: 24px 0;">
+            <a href="${resetUrl}" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+              Reset My Password
+            </a>
+          </p>
+          <p style="color: #666; font-size: 13px;">If the button doesn't work, copy and paste this link into your browser:</p>
+          <p style="color: #666; font-size: 13px; word-break: break-all;">${resetUrl}</p>
+          <p style="color: #666; font-size: 13px; margin-top: 16px;">If you didn't request this, you can safely ignore this email. Your password will not be changed.</p>
+          <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;" />
+          <p style="color: #999; font-size: 12px;">Today Capital Group · Merchant Portal</p>
+        </div>
+      `;
+
+      const raw = Buffer.from(
+        `To: ${toEmail}\r\n` +
+        `Subject: ${subject}\r\n` +
+        `Content-Type: text/html; charset=utf-8\r\n` +
+        `\r\n` +
+        htmlBody
+      ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+      await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw },
+      });
+
+      console.log(`[MERCHANT] Reset email sent to ${toEmail}`);
+      return true;
+    } catch (error) {
+      console.error('[MERCHANT] Failed to send reset email:', error);
+      return false;
+    }
+  }
+
+  // Rate limiter for merchant login — max 5 attempts per email per 15 minutes
+  const merchantLoginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+  const MERCHANT_LOGIN_MAX_ATTEMPTS = 5;
+  const MERCHANT_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
   // Merchant Login
   app.post("/api/merchant/login", async (req, res) => {
     try {
@@ -6795,15 +6879,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Email and password are required" });
       }
 
-      const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(email.toLowerCase());
+      // Rate limiting check
+      const normalizedEmail = email.toLowerCase();
+      const now = Date.now();
+      const attempts = merchantLoginAttempts.get(normalizedEmail);
+      if (attempts) {
+        if (now - attempts.firstAttempt > MERCHANT_LOGIN_WINDOW_MS) {
+          merchantLoginAttempts.delete(normalizedEmail);
+        } else if (attempts.count >= MERCHANT_LOGIN_MAX_ATTEMPTS) {
+          return res.status(429).json({ error: "Too many login attempts. Please try again in 15 minutes." });
+        }
+      }
+
+      const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(normalizedEmail);
       if (!decision || !decision.merchantPasswordHash) {
+        // Track failed attempt
+        const entry = merchantLoginAttempts.get(normalizedEmail);
+        if (entry) { entry.count++; } else { merchantLoginAttempts.set(normalizedEmail, { count: 1, firstAttempt: now }); }
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
       const isValid = verifyPassword(password, decision.merchantPasswordHash);
       if (!isValid) {
+        // Track failed attempt
+        const entry = merchantLoginAttempts.get(normalizedEmail);
+        if (entry) { entry.count++; } else { merchantLoginAttempts.set(normalizedEmail, { count: 1, firstAttempt: now }); }
         return res.status(401).json({ error: "Invalid email or password" });
       }
+
+      // Clear rate limit on successful login
+      merchantLoginAttempts.delete(normalizedEmail);
 
       req.session.user = {
         isAuthenticated: true,
@@ -6906,6 +7011,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             fundedDate: funding.fundedDate || (decision.fundedDate ? new Date(decision.fundedDate).toISOString() : new Date().toISOString()),
             term: funding.term || decision.term || '6 months',
             status: 'active',
+            assignedRep: funding.assignedRep || decision.assignedRep || null,
           });
         }
 
@@ -6922,6 +7028,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString() : new Date().toISOString(),
             term: decision.term || '6 months',
             status: 'active',
+            assignedRep: decision.assignedRep || null,
           });
         }
       }
@@ -6930,6 +7037,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[MERCHANT] Error fetching deals:", error);
       res.status(500).json({ error: "Failed to fetch deals" });
+    }
+  });
+
+  // Merchant Password Reset - Request
+  app.post("/api/merchant/reset-password/request", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(email.toLowerCase());
+      // Always return success to prevent email enumeration
+      if (!decision || !decision.merchantPasswordHash) {
+        return res.json({ success: true, message: "If an account exists with that email, a reset link has been sent." });
+      }
+
+      const token = randomBytes(32).toString('hex');
+      await storage.updateBusinessUnderwritingDecision(decision.id, {
+        merchantPortalToken: token,
+      });
+
+      // Send reset email
+      await sendMerchantResetEmail(decision.merchantEmail || email, decision.businessName || '', token);
+
+      res.json({ success: true, message: "If an account exists with that email, a reset link has been sent." });
+    } catch (error) {
+      console.error("[MERCHANT] Password reset request error:", error);
+      res.status(500).json({ error: "Password reset request failed" });
+    }
+  });
+
+  // Merchant Password Reset - Execute
+  app.post("/api/merchant/reset-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return res.status(400).json({ error: "Token and password are required" });
+      }
+
+      if (password.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const decision = await storage.getBusinessUnderwritingDecisionByMerchantToken(token);
+      if (!decision) {
+        return res.status(400).json({ error: "Invalid or expired reset link" });
+      }
+
+      const passwordHash = hashPassword(password);
+      await storage.updateBusinessUnderwritingDecision(decision.id, {
+        merchantPasswordHash: passwordHash,
+        merchantPortalToken: null,
+      });
+
+      req.session.user = {
+        isAuthenticated: true,
+        role: 'merchant',
+        merchantEmail: decision.merchantEmail || decision.businessEmail,
+        merchantName: decision.businessName || undefined,
+      };
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[MERCHANT] Password reset error:", error);
+      res.status(500).json({ error: "Password reset failed" });
     }
   });
 
