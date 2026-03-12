@@ -48,6 +48,7 @@ import Congratulations from "@/pages/Congratulations";
 import Leaderboard from "@/pages/Leaderboard";
 import MerchantPortal from "@/pages/MerchantPortal";
 import MerchantActivate from "@/pages/MerchantActivate";
+import MerchantResetPassword from "@/pages/MerchantResetPassword";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -123,6 +124,7 @@ function Router() {
       {/* Merchant Portal Routes */}
       <Route path="/merchant" component={MerchantPortal} />
       <Route path="/merchant/activate" component={MerchantActivate} />
+      <Route path="/merchant/reset-password" component={MerchantResetPassword} />
 
       {/* Partner Portal Routes */}
       <Route path="/partner" component={PartnerDashboard} />
