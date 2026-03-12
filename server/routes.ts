@@ -2995,24 +2995,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`[UNDERWRITING] ${reviewerEmail} set ${status} for business ${businessEmail}`);
 
-      // Provision merchant portal access when deal is funded
-      if (status === 'funded' && businessEmail) {
-        try {
-          const portalToken = randomBytes(32).toString('hex');
-          await storage.updateBusinessUnderwritingDecision(decision.id, {
-            merchantEmail: businessEmail.toLowerCase(),
-            merchantPortalToken: portalToken,
-          });
-          console.log(`[MERCHANT] Portal token generated for ${businessEmail}`);
-
-          // Send invite email (async, non-blocking)
-          sendMerchantInviteEmail(businessEmail, businessName || '', portalToken).catch(err => {
-            console.error(`[MERCHANT] Failed to send invite email to ${businessEmail}:`, err);
-          });
-        } catch (portalError) {
-          console.error(`[MERCHANT] Failed to provision portal for ${businessEmail}:`, portalError);
-        }
-      }
+      // Portal activation is now manual — staff clicks "Activate Portal" on the funded dashboard
 
       // Sync to GHL opportunity (async, non-blocking)
       ghlService.syncUnderwritingDecision(decision).then(async (ghlResult) => {
@@ -3135,23 +3118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[UNDERWRITING] Decision ${id} updated by ${req.session.user.agentEmail || 'admin'}`);
 
-      // Provision merchant portal when status changes to funded
-      if (updates.status === 'funded' && updated.businessEmail && !updated.merchantPasswordHash) {
-        try {
-          const portalToken = randomBytes(32).toString('hex');
-          await storage.updateBusinessUnderwritingDecision(id, {
-            merchantEmail: updated.businessEmail.toLowerCase(),
-            merchantPortalToken: portalToken,
-          });
-          console.log(`[MERCHANT] Portal token generated for ${updated.businessEmail} (via PATCH)`);
-
-          sendMerchantInviteEmail(updated.businessEmail, updated.businessName || '', portalToken).catch(err => {
-            console.error(`[MERCHANT] Failed to send invite email to ${updated.businessEmail}:`, err);
-          });
-        } catch (portalError) {
-          console.error(`[MERCHANT] Failed to provision portal for ${updated.businessEmail}:`, portalError);
-        }
-      }
+      // Portal activation is now manual — staff clicks "Activate Portal" on the funded dashboard
 
       // Sync updated decision to GHL opportunity (async, non-blocking)
       ghlService.syncUnderwritingDecision(updated).then(async (ghlResult) => {
