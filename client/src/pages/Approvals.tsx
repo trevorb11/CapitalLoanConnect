@@ -1229,7 +1229,7 @@ export default function Approvals() {
 
                     {decision.reviewedBy && (
                       <div className="text-xs text-muted-foreground">
-                        Reviewed by: {decision.reviewedBy} | Updated: {formatDate(decision.updatedAt)}
+                        Reviewed by: {decision.reviewedBy} | Last Approval: {formatDate(new Date(getMostRecentApprovalDate(decision)))}
                       </div>
                     )}
                   </div>
