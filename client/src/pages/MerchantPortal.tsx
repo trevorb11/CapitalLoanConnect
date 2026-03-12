@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // ── CALC ENGINE ──────────────────────────────────────────────────────────
 function isWeekday(date: Date) {
@@ -990,6 +990,552 @@ const CSS = `
     color: #4b5568;
     padding: 16px 0;
   }
+
+  /* ── EARLY PAYOFF CALCULATOR ── */
+  .payoff-calc {
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(45,212,191,0.15);
+    border-radius: 16px;
+    padding: 28px;
+    margin-top: 20px;
+  }
+
+  .payoff-calc-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: #e8eaf0;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .payoff-calc-sub {
+    font-size: 13px;
+    color: #7b8499;
+    margin-bottom: 20px;
+  }
+
+  .payoff-slider-wrap {
+    margin-bottom: 20px;
+  }
+
+  .payoff-slider-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #7b8499;
+    margin-bottom: 8px;
+  }
+
+  .payoff-slider-val {
+    font-weight: 600;
+    color: #2dd4bf;
+  }
+
+  .payoff-slider {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    background: rgba(255,255,255,0.07);
+    border-radius: 99px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .payoff-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
+    cursor: pointer;
+    box-shadow: 0 0 12px rgba(45,212,191,0.5);
+  }
+
+  .payoff-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 12px rgba(45,212,191,0.5);
+  }
+
+  .payoff-results {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .payoff-result-card {
+    text-align: center;
+  }
+
+  .payoff-result-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #7b8499;
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .payoff-result-val {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    color: #e8eaf0;
+  }
+
+  .payoff-result-val.savings { color: #34d399; }
+  .payoff-result-val.teal { color: #2dd4bf; }
+
+  /* ── RENEWAL ELIGIBILITY ── */
+  .renewal-tracker {
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(168,85,247,0.15);
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-top: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .renewal-tracker::after {
+    content: '';
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 140px; height: 140px;
+    background: radial-gradient(circle, rgba(168,85,247,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .renewal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .renewal-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: #e8eaf0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .renewal-badge {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .renewal-badge.eligible {
+    background: rgba(52,211,153,0.15);
+    color: #34d399;
+    border: 1px solid rgba(52,211,153,0.25);
+  }
+
+  .renewal-badge.progress {
+    background: rgba(168,85,247,0.15);
+    color: #c084fc;
+    border: 1px solid rgba(168,85,247,0.25);
+  }
+
+  .renewal-bar-wrap {
+    margin-bottom: 12px;
+  }
+
+  .renewal-bar-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #7b8499;
+  }
+
+  .renewal-bar-pct {
+    font-weight: 700;
+    color: #c084fc;
+  }
+
+  .renewal-bar-track {
+    height: 10px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 99px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .renewal-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7c3aed, #a855f7, #c084fc);
+    border-radius: 99px;
+    transition: width 1s ease;
+    box-shadow: 0 0 12px rgba(168,85,247,0.4);
+  }
+
+  .renewal-bar-milestone {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 3px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 2px;
+  }
+
+  .renewal-detail {
+    font-size: 13px;
+    color: #9ba3b8;
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+
+  .renewal-eligible-msg {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    background: rgba(52,211,153,0.06);
+    border: 1px solid rgba(52,211,153,0.15);
+    border-radius: 12px;
+    margin-top: 12px;
+  }
+
+  .renewal-eligible-msg-text {
+    font-size: 14px;
+    color: #34d399;
+    font-weight: 500;
+  }
+
+  .renewal-eligible-msg-sub {
+    font-size: 12px;
+    color: #7b8499;
+    margin-top: 2px;
+  }
+
+  /* ── MESSAGING ── */
+  .messaging-section {
+    margin-top: 20px;
+  }
+
+  .messaging-card {
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(59,130,246,0.15);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .messaging-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .messaging-header:hover {
+    background: rgba(59,130,246,0.04);
+  }
+
+  .messaging-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .messaging-header-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    color: #e8eaf0;
+  }
+
+  .messaging-unread {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: #3b82f6;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .messaging-toggle {
+    font-size: 12px;
+    color: #7b8499;
+  }
+
+  .messaging-body {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 16px 24px;
+  }
+
+  .messaging-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: #4b5568;
+    font-size: 14px;
+  }
+
+  .msg-bubble {
+    max-width: 80%;
+    padding: 12px 16px;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-wrap: break-word;
+  }
+
+  .msg-bubble.merchant {
+    background: rgba(20,184,166,0.12);
+    border: 1px solid rgba(45,212,191,0.15);
+    color: #e8eaf0;
+    margin-left: auto;
+    border-bottom-right-radius: 4px;
+  }
+
+  .msg-bubble.rep {
+    background: rgba(59,130,246,0.1);
+    border: 1px solid rgba(59,130,246,0.15);
+    color: #e8eaf0;
+    margin-right: auto;
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg-meta {
+    font-size: 11px;
+    color: #4b5568;
+    margin-bottom: 16px;
+  }
+
+  .msg-meta.merchant { text-align: right; }
+
+  .messaging-input-wrap {
+    display: flex;
+    gap: 10px;
+    padding: 16px 24px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    background: rgba(8,13,24,0.5);
+  }
+
+  .messaging-input {
+    flex: 1;
+    padding: 11px 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    color: #e8eaf0;
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+    resize: none;
+    min-height: 42px;
+    max-height: 120px;
+  }
+
+  .messaging-input:focus {
+    border-color: rgba(59,130,246,0.4);
+  }
+
+  .messaging-send {
+    padding: 0 18px;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+  }
+
+  .messaging-send:hover { opacity: 0.9; }
+  .messaging-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── DOCUMENT VAULT ── */
+  .vault-section {
+    margin-top: 20px;
+  }
+
+  .vault-card {
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 24px 28px;
+  }
+
+  .vault-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: #e8eaf0;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .vault-sub {
+    font-size: 13px;
+    color: #7b8499;
+    margin-bottom: 20px;
+  }
+
+  .vault-category {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #4b5568;
+    margin-bottom: 10px;
+    margin-top: 18px;
+  }
+
+  .vault-category:first-of-type { margin-top: 0; }
+
+  .vault-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  @media (min-width: 600px) {
+    .vault-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .vault-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(8,13,24,0.5);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.2s;
+  }
+
+  .vault-item:hover { border-color: rgba(45,212,191,0.25); }
+
+  .vault-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 15px;
+  }
+
+  .vault-icon.check { background: rgba(52,211,153,0.12); color: #34d399; }
+  .vault-icon.id { background: rgba(251,191,36,0.12); color: #fbbf24; }
+  .vault-icon.statement { background: rgba(20,184,166,0.12); color: #2dd4bf; }
+
+  .vault-item-info { flex: 1; min-width: 0; }
+
+  .vault-item-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #e8eaf0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .vault-item-meta {
+    font-size: 11px;
+    color: #4b5568;
+    margin-top: 2px;
+  }
+
+  .vault-item-action {
+    font-size: 11px;
+    color: #14B8A6;
+    flex-shrink: 0;
+  }
+
+  /* ── NAV TABS ── */
+  .portal-nav {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 28px;
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 4px;
+  }
+
+  .portal-nav-btn {
+    flex: 1;
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    border-radius: 8px;
+    color: #7b8499;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    position: relative;
+  }
+
+  .portal-nav-btn:hover {
+    color: #e8eaf0;
+    background: rgba(255,255,255,0.04);
+  }
+
+  .portal-nav-btn.active {
+    background: rgba(45,212,191,0.1);
+    color: #2dd4bf;
+    font-weight: 600;
+  }
+
+  .nav-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: #3b82f6;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+  }
 `;
 
 // ── COMPONENTS ───────────────────────────────────────────────────────────
@@ -1169,7 +1715,13 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
         </>
       )}
 
-      <div className="contact-strip">
+      {/* Early Payoff Calculator */}
+      <EarlyPayoffCalculator deal={deal} />
+
+      {/* Renewal Eligibility Tracker */}
+      <RenewalEligibilityTracker deal={deal} />
+
+      <div className="contact-strip" style={{ marginTop: "20px" }}>
         <div className="contact-strip-text">
           Questions about your position?{" "}
           <strong>
@@ -1190,6 +1742,376 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
         >
           Contact My Rep
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── EARLY PAYOFF CALCULATOR ──────────────────────────────────────────────
+function EarlyPayoffCalculator({ deal }: { deal: Deal }) {
+  const calc = calcDeal(deal);
+  if (calc.isComplete) return null;
+
+  const minDays = 1;
+  const maxDays = calc.paymentsRemaining;
+  const [earlyDays, setEarlyDays] = useState(Math.floor(maxDays * 0.5));
+
+  // Calculate savings if paying off early
+  const earlyPaymentsRemaining = Math.max(0, calc.paymentsRemaining - earlyDays);
+  const earlyAmountPaid = calc.amountPaid + (earlyDays * calc.paymentAmount);
+  const earlyBuyoutAmount = Math.max(0, calc.remaining - (earlyDays * calc.paymentAmount));
+  const savings = calc.remaining - earlyBuyoutAmount;
+  const isDaily = deal.paymentFrequency === "daily";
+
+  let earlyPayoffDate: Date;
+  if (isDaily) {
+    earlyPayoffDate = addBusinessDays(new Date(), earlyDays);
+  } else {
+    const isBiWeekly = deal.paymentFrequency === "bi-weekly" || deal.paymentFrequency === "biweekly";
+    const isMonthly = deal.paymentFrequency === "monthly";
+    const msPerPeriod = isMonthly ? 30 * 24 * 60 * 60 * 1000 : isBiWeekly ? 14 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+    earlyPayoffDate = new Date(Date.now() + earlyDays * msPerPeriod);
+  }
+
+  const freqLabel = isDaily ? "business days" : deal.paymentFrequency === "monthly" ? "months" : "payments";
+
+  return (
+    <div className="payoff-calc">
+      <div className="payoff-calc-title">
+        <span style={{ fontSize: "18px" }}>&#9889;</span>
+        Early Payoff Calculator
+      </div>
+      <div className="payoff-calc-sub">
+        Slide to see how much you save by paying off early. Contact your rep for an exact buyout quote.
+      </div>
+
+      <div className="payoff-slider-wrap">
+        <div className="payoff-slider-label">
+          <span>Pay off in <span className="payoff-slider-val">{earlyDays} {freqLabel}</span></span>
+          <span>Instead of {calc.paymentsRemaining} remaining</span>
+        </div>
+        <input
+          className="payoff-slider"
+          type="range"
+          min={minDays}
+          max={maxDays}
+          value={earlyDays}
+          onChange={e => setEarlyDays(parseInt(e.target.value))}
+        />
+      </div>
+
+      <div className="payoff-results">
+        <div className="payoff-result-card">
+          <div className="payoff-result-label">Buyout Amount</div>
+          <div className="payoff-result-val teal">{fmt$(earlyBuyoutAmount)}</div>
+        </div>
+        <div className="payoff-result-card">
+          <div className="payoff-result-label">You Save</div>
+          <div className="payoff-result-val savings">{fmt$(savings)}</div>
+        </div>
+        <div className="payoff-result-card">
+          <div className="payoff-result-label">Payoff Date</div>
+          <div className="payoff-result-val" style={{ fontSize: "15px" }}>{fmtDate(earlyPayoffDate)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── RENEWAL ELIGIBILITY TRACKER ──────────────────────────────────────────
+function RenewalEligibilityTracker({ deal }: { deal: Deal }) {
+  const calc = calcDeal(deal);
+  const renewalThreshold = 65; // percent paid off to be eligible for renewal
+  const isEligible = calc.pctComplete >= renewalThreshold;
+  const progressToRenewal = Math.min((calc.pctComplete / renewalThreshold) * 100, 100);
+
+  return (
+    <div className="renewal-tracker">
+      <div className="renewal-header">
+        <div className="renewal-title">
+          <span style={{ fontSize: "16px" }}>&#9733;</span>
+          Renewal Eligibility
+        </div>
+        <span className={`renewal-badge ${isEligible ? "eligible" : "progress"}`}>
+          {isEligible ? "Eligible" : `${calc.pctComplete.toFixed(0)}% of ${renewalThreshold}%`}
+        </span>
+      </div>
+
+      <div className="renewal-bar-wrap">
+        <div className="renewal-bar-labels">
+          <span>Progress to renewal</span>
+          <span className="renewal-bar-pct">{progressToRenewal.toFixed(0)}%</span>
+        </div>
+        <div className="renewal-bar-track">
+          <div className="renewal-bar-fill" style={{ width: `${progressToRenewal}%` }} />
+          <div className="renewal-bar-milestone" style={{ left: `${renewalThreshold}%` }} title={`${renewalThreshold}% threshold`} />
+        </div>
+      </div>
+
+      {isEligible ? (
+        <div className="renewal-eligible-msg">
+          <span style={{ fontSize: "22px" }}>&#10003;</span>
+          <div>
+            <div className="renewal-eligible-msg-text">You qualify for a renewal or second position</div>
+            <div className="renewal-eligible-msg-sub">Contact your rep to explore pre-approved renewal offers with new terms.</div>
+          </div>
+        </div>
+      ) : (
+        <div className="renewal-detail">
+          You'll be eligible for renewal at {renewalThreshold}% payoff — that's about{" "}
+          <strong style={{ color: "#c084fc" }}>
+            {fmt$(calc.totalPayback * (renewalThreshold / 100) - calc.amountPaid)}
+          </strong>{" "}
+          more in payments. At your current pace, you'll hit this around{" "}
+          <strong style={{ color: "#c084fc" }}>
+            {fmtDate((() => {
+              const remainingToThreshold = Math.max(0, (calc.totalPayback * (renewalThreshold / 100)) - calc.amountPaid);
+              const paymentsNeeded = Math.ceil(remainingToThreshold / calc.paymentAmount);
+              const isDaily = deal.paymentFrequency === "daily";
+              if (isDaily) return addBusinessDays(new Date(), paymentsNeeded);
+              const isBiWeekly = deal.paymentFrequency === "bi-weekly" || deal.paymentFrequency === "biweekly";
+              const isMonthly = deal.paymentFrequency === "monthly";
+              const msPerPeriod = isMonthly ? 30 * 24 * 60 * 60 * 1000 : isBiWeekly ? 14 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+              return new Date(Date.now() + paymentsNeeded * msPerPeriod);
+            })())}
+          </strong>.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MERCHANT MESSAGING ──────────────────────────────────────────────────
+interface Message {
+  id: string;
+  merchantEmail: string;
+  dealId: string | null;
+  senderRole: string;
+  senderName: string | null;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand = false }: { merchantEmail: string; merchantName: string; assignedRep: string | null; autoExpand?: boolean }) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMsg, setNewMsg] = useState("");
+  const [sending, setSending] = useState(false);
+  const [expanded, setExpanded] = useState(autoExpand);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  const fetchMessages = () => {
+    setLoading(true);
+    fetch("/api/merchant/messages")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setMessages(data);
+          setUnreadCount(0); // Messages are marked read on fetch
+        }
+      })
+      .catch(err => console.error("Failed to fetch messages:", err))
+      .finally(() => setLoading(false));
+  };
+
+  const fetchUnread = () => {
+    fetch("/api/merchant/messages/unread")
+      .then(r => r.json())
+      .then(data => setUnreadCount(data.count || 0))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30000); // Poll every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (expanded) {
+      fetchMessages();
+    }
+  }, [expanded]);
+
+  useEffect(() => {
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!newMsg.trim() || sending) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/merchant/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: newMsg.trim() }),
+      });
+      const data = await res.json();
+      if (data.id) {
+        setMessages(prev => [...prev, data]);
+        setNewMsg("");
+      }
+    } catch {
+      console.error("Failed to send message");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const repName = assignedRep || "Today Capital Group";
+
+  return (
+    <div className="messaging-section">
+      <div className="messaging-card">
+        <div className="messaging-header" onClick={() => setExpanded(!expanded)}>
+          <div className="messaging-header-left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span className="messaging-header-title">
+              Message {repName}
+            </span>
+            {unreadCount > 0 && <span className="messaging-unread">{unreadCount}</span>}
+          </div>
+          <span className="messaging-toggle">{expanded ? "Collapse" : "Expand"}</span>
+        </div>
+
+        {expanded && (
+          <>
+            <div className="messaging-body" ref={bodyRef}>
+              {loading ? (
+                <div className="messaging-empty">Loading messages...</div>
+              ) : messages.length === 0 ? (
+                <div className="messaging-empty">
+                  No messages yet. Send a message to your rep and they'll respond here.
+                </div>
+              ) : (
+                messages.map(msg => (
+                  <div key={msg.id}>
+                    <div className={`msg-bubble ${msg.senderRole === 'merchant' ? 'merchant' : 'rep'}`}>
+                      {msg.message}
+                    </div>
+                    <div className={`msg-meta ${msg.senderRole === 'merchant' ? 'merchant' : ''}`}>
+                      {msg.senderName || (msg.senderRole === 'merchant' ? 'You' : repName)} &middot;{" "}
+                      {new Date(msg.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="messaging-input-wrap">
+              <textarea
+                className="messaging-input"
+                placeholder="Type a message..."
+                value={newMsg}
+                onChange={e => setNewMsg(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                rows={1}
+                maxLength={2000}
+              />
+              <button
+                className="messaging-send"
+                onClick={handleSend}
+                disabled={!newMsg.trim() || sending}
+              >
+                {sending ? "..." : "Send"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── DOCUMENT VAULT ──────────────────────────────────────────────────────
+interface VaultDocument {
+  id: string;
+  type: string;
+  name: string;
+  fileSize: number;
+  category: 'closing' | 'statements';
+  createdAt: string;
+  downloadUrl: string | null;
+}
+
+function DocumentVault({ documents, loading }: { documents: VaultDocument[]; loading: boolean }) {
+  if (loading) return null;
+
+  const closingDocs = documents.filter(d => d.category === 'closing');
+  const statementDocs = documents.filter(d => d.category === 'statements');
+
+  if (documents.length === 0) return null;
+
+  const iconForType = (type: string) => {
+    if (type === 'voided_check') return { cls: 'check', label: '&#10003;' };
+    if (type === 'drivers_license') return { cls: 'id', label: 'ID' };
+    return { cls: 'statement', label: '&#9776;' };
+  };
+
+  const labelForType = (type: string) => {
+    if (type === 'voided_check') return 'Voided Check';
+    if (type === 'drivers_license') return "Driver's License";
+    return 'Bank Statement';
+  };
+
+  const renderDoc = (doc: VaultDocument) => {
+    const icon = iconForType(doc.type);
+    const dateStr = new Date(doc.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const content = (
+      <>
+        <div className={`vault-icon ${icon.cls}`} dangerouslySetInnerHTML={{ __html: icon.label }} />
+        <div className="vault-item-info">
+          <div className="vault-item-name">{doc.name}</div>
+          <div className="vault-item-meta">{labelForType(doc.type)} &middot; {dateStr} &middot; {fmtFileSize(doc.fileSize)}</div>
+        </div>
+        {doc.downloadUrl && <div className="vault-item-action">View &#8599;</div>}
+      </>
+    );
+
+    if (doc.downloadUrl) {
+      return (
+        <a key={doc.id} className="vault-item" href={doc.downloadUrl} target="_blank" rel="noopener noreferrer">
+          {content}
+        </a>
+      );
+    }
+    return <div key={doc.id} className="vault-item" style={{ opacity: 0.7 }}>{content}</div>;
+  };
+
+  return (
+    <div className="vault-section">
+      <div className="vault-card">
+        <div className="vault-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Document Vault
+        </div>
+        <div className="vault-sub">All your funding documents securely stored in one place.</div>
+
+        {closingDocs.length > 0 && (
+          <>
+            <div className="vault-category">Closing Documents</div>
+            <div className="vault-grid">
+              {closingDocs.map(renderDoc)}
+            </div>
+          </>
+        )}
+
+        {statementDocs.length > 0 && (
+          <>
+            <div className="vault-category">Bank Statements</div>
+            <div className="vault-grid">
+              {statementDocs.map(renderDoc)}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1403,6 +2325,9 @@ export default function MerchantPortal() {
   const [loadingDeals, setLoadingDeals] = useState(false);
   const [statements, setStatements] = useState<BankStatement[]>([]);
   const [loadingStatements, setLoadingStatements] = useState(false);
+  const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
+  const [loadingVault, setLoadingVault] = useState(false);
+  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents'>('positions');
 
   // Check auth on mount
   useEffect(() => {
@@ -1436,6 +2361,13 @@ export default function MerchantPortal() {
       .then(data => { if (Array.isArray(data)) setStatements(data); })
       .catch(err => console.error("Failed to fetch statements:", err))
       .finally(() => setLoadingStatements(false));
+
+    setLoadingVault(true);
+    fetch("/api/merchant/documents")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setVaultDocs(data); })
+      .catch(err => console.error("Failed to fetch vault docs:", err))
+      .finally(() => setLoadingVault(false));
   }, [loggedIn]);
 
   const handleLogin = () => {
@@ -1455,8 +2387,10 @@ export default function MerchantPortal() {
       setSelectedDeal(null);
       setDeals([]);
       setStatements([]);
+      setVaultDocs([]);
       setMerchantEmail("");
       setMerchantName("");
+      setActiveTab('positions');
     });
   };
 
@@ -1498,117 +2432,84 @@ export default function MerchantPortal() {
 
             <div className="page-wrap">
               {selectedDeal ? (
-                <DealDetail deal={selectedDeal} onBack={() => setSelectedDeal(null)} />
-              ) : loadingDeals ? (
-                <div className="loading-wrap">Loading your positions...</div>
-              ) : deals.length === 0 ? (
-                <div>
-                  <div className="page-title">My Positions</div>
-                  <div className="page-subtitle">No funded deals found for your account yet.</div>
-                  {!loadingStatements && statements.length > 0 && (
-                    <div className="documents-section">
-                      <div className="section-label">My Documents</div>
-                      <div className="documents-grid">
-                        {statements.map(stmt => {
-                          const dateStr = stmt.receivedAt || stmt.createdAt;
-                          const date = new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-                          const href = stmt.viewToken ? `/api/bank-statements/public/view/${stmt.viewToken}` : null;
-                          const content = (
-                            <>
-                              <div className="document-icon">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                              </div>
-                              <div className="document-info">
-                                <div className="document-name">{stmt.originalFileName}</div>
-                                <div className="document-meta">{date} &middot; {fmtFileSize(stmt.fileSize)}</div>
-                              </div>
-                              <div className="document-open">View &#8599;</div>
-                            </>
-                          );
-                          return href ? (
-                            <a key={stmt.id} className="document-row" href={href} target="_blank" rel="noopener noreferrer">{content}</a>
-                          ) : (
-                            <div key={stmt.id} className="document-row" style={{ opacity: 0.5 }}>{content}</div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <DealDetail deal={selectedDeal} onBack={() => { setSelectedDeal(null); setActiveTab('positions'); }} />
               ) : (
                 <>
-                  <div className="page-title">My Positions</div>
+                  <div className="page-title">My Portal</div>
                   <div className="page-subtitle">
-                    Hello, {merchantName ? merchantName.split(" ")[0] : "there"}. Here's the current status of your funded deals.
+                    Hello, {merchantName ? merchantName.split(" ")[0] : "there"}. Welcome to your funded merchant portal.
                   </div>
 
-                  {activeDeals.length > 0 && (
-                    <>
-                      <div className="section-label">Active</div>
-                      <div className="deals-grid">
-                        {activeDeals.map(d => (
-                          <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />
-                        ))}
-                      </div>
-                    </>
-                  )}
+                  {/* Navigation Tabs */}
+                  <div className="portal-nav">
+                    <button
+                      className={`portal-nav-btn ${activeTab === 'positions' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('positions')}
+                    >
+                      Positions
+                    </button>
+                    <button
+                      className={`portal-nav-btn ${activeTab === 'messages' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('messages')}
+                    >
+                      Messages
+                    </button>
+                    <button
+                      className={`portal-nav-btn ${activeTab === 'documents' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('documents')}
+                    >
+                      Documents
+                    </button>
+                  </div>
 
-                  {completedDeals.length > 0 && (
+                  {/* ── POSITIONS TAB ── */}
+                  {activeTab === 'positions' && (
                     <>
-                      <div className="section-label">Completed</div>
-                      <div className="deals-grid">
-                        {completedDeals.map(d => (
-                          <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />
-                        ))}
-                      </div>
-                    </>
-                  )}
-
-                  {/* Bank Statements / Documents */}
-                  {!loadingStatements && (
-                    <div className="documents-section">
-                      <div className="section-label">My Documents</div>
-                      {statements.length === 0 ? (
-                        <div className="no-documents">No documents on file.</div>
+                      {loadingDeals ? (
+                        <div className="loading-wrap" style={{ minHeight: "200px" }}>Loading your positions...</div>
+                      ) : deals.length === 0 ? (
+                        <div className="no-documents">No funded deals found for your account yet.</div>
                       ) : (
-                        <div className="documents-grid">
-                          {statements.map(stmt => {
-                            const dateStr = stmt.receivedAt || stmt.createdAt;
-                            const date = new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-                            const href = stmt.viewToken
-                              ? `/api/bank-statements/public/view/${stmt.viewToken}`
-                              : null;
-                            const content = (
-                              <>
-                                <div className="document-icon">
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                                </div>
-                                <div className="document-info">
-                                  <div className="document-name">{stmt.originalFileName}</div>
-                                  <div className="document-meta">{date} &middot; {fmtFileSize(stmt.fileSize)}</div>
-                                </div>
-                                <div className="document-open">View &#8599;</div>
-                              </>
-                            );
-                            return href ? (
-                              <a
-                                key={stmt.id}
-                                className="document-row"
-                                href={href}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {content}
-                              </a>
-                            ) : (
-                              <div key={stmt.id} className="document-row" style={{ opacity: 0.5 }}>
-                                {content}
+                        <>
+                          {activeDeals.length > 0 && (
+                            <>
+                              <div className="section-label">Active</div>
+                              <div className="deals-grid">
+                                {activeDeals.map(d => (
+                                  <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />
+                                ))}
                               </div>
-                            );
-                          })}
-                        </div>
+                            </>
+                          )}
+
+                          {completedDeals.length > 0 && (
+                            <>
+                              <div className="section-label">Completed</div>
+                              <div className="deals-grid">
+                                {completedDeals.map(d => (
+                                  <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </>
                       )}
-                    </div>
+                    </>
+                  )}
+
+                  {/* ── MESSAGES TAB ── */}
+                  {activeTab === 'messages' && (
+                    <MessagingPanel
+                      merchantEmail={merchantEmail}
+                      merchantName={merchantName}
+                      assignedRep={deals.length > 0 ? deals[0].assignedRep : null}
+                      autoExpand
+                    />
+                  )}
+
+                  {/* ── DOCUMENTS TAB ── */}
+                  {activeTab === 'documents' && (
+                    <DocumentVault documents={vaultDocs} loading={loadingVault} />
                   )}
                 </>
               )}
