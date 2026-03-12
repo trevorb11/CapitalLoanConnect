@@ -42,6 +42,15 @@ interface Deal {
   assignedRep: string | null;
 }
 
+interface BankStatement {
+  id: string;
+  originalFileName: string;
+  fileSize: number;
+  viewToken: string | null;
+  receivedAt: string | null;
+  createdAt: string;
+}
+
 interface CalcResult {
   totalPayback: number;
   paymentAmount: number;
@@ -902,6 +911,85 @@ const CSS = `
     color: #7b8499;
     font-size: 14px;
   }
+
+  .documents-section {
+    margin-top: 40px;
+  }
+
+  .documents-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  @media (min-width: 600px) {
+    .documents-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .document-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    padding: 14px 18px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .document-row:hover {
+    border-color: rgba(45,212,191,0.3);
+    background: rgba(15,23,41,0.9);
+  }
+
+  .document-icon {
+    width: 36px;
+    height: 36px;
+    background: rgba(20,184,166,0.12);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #2dd4bf;
+    font-size: 16px;
+  }
+
+  .document-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .document-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #e8eaf0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .document-meta {
+    font-size: 11px;
+    color: #4b5568;
+    margin-top: 2px;
+  }
+
+  .document-open {
+    font-size: 12px;
+    color: #14B8A6;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .no-documents {
+    font-size: 14px;
+    color: #4b5568;
+    padding: 16px 0;
+  }
 `;
 
 // ── COMPONENTS ───────────────────────────────────────────────────────────
@@ -1299,6 +1387,12 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 }
 
 // ── MAIN APP ─────────────────────────────────────────────────────────────
+function fmtFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function MerchantPortal() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
@@ -1307,6 +1401,8 @@ export default function MerchantPortal() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [loadingDeals, setLoadingDeals] = useState(false);
+  const [statements, setStatements] = useState<BankStatement[]>([]);
+  const [loadingStatements, setLoadingStatements] = useState(false);
 
   // Check auth on mount
   useEffect(() => {
@@ -1323,19 +1419,23 @@ export default function MerchantPortal() {
       .catch(() => setAuthChecked(true));
   }, []);
 
-  // Fetch deals when logged in
+  // Fetch deals and statements when logged in
   useEffect(() => {
     if (!loggedIn) return;
+
     setLoadingDeals(true);
     fetch("/api/merchant/deals")
       .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setDeals(data);
-        }
-      })
+      .then(data => { if (Array.isArray(data)) setDeals(data); })
       .catch(err => console.error("Failed to fetch deals:", err))
       .finally(() => setLoadingDeals(false));
+
+    setLoadingStatements(true);
+    fetch("/api/merchant/statements")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setStatements(data); })
+      .catch(err => console.error("Failed to fetch statements:", err))
+      .finally(() => setLoadingStatements(false));
   }, [loggedIn]);
 
   const handleLogin = () => {
@@ -1354,6 +1454,7 @@ export default function MerchantPortal() {
       setLoggedIn(false);
       setSelectedDeal(null);
       setDeals([]);
+      setStatements([]);
       setMerchantEmail("");
       setMerchantName("");
     });
@@ -1404,6 +1505,35 @@ export default function MerchantPortal() {
                 <div>
                   <div className="page-title">My Positions</div>
                   <div className="page-subtitle">No funded deals found for your account yet.</div>
+                  {!loadingStatements && statements.length > 0 && (
+                    <div className="documents-section">
+                      <div className="section-label">My Documents</div>
+                      <div className="documents-grid">
+                        {statements.map(stmt => {
+                          const dateStr = stmt.receivedAt || stmt.createdAt;
+                          const date = new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                          const href = stmt.viewToken ? `/api/bank-statements/public/view/${stmt.viewToken}` : null;
+                          const content = (
+                            <>
+                              <div className="document-icon">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                              </div>
+                              <div className="document-info">
+                                <div className="document-name">{stmt.originalFileName}</div>
+                                <div className="document-meta">{date} &middot; {fmtFileSize(stmt.fileSize)}</div>
+                              </div>
+                              <div className="document-open">View &#8599;</div>
+                            </>
+                          );
+                          return href ? (
+                            <a key={stmt.id} className="document-row" href={href} target="_blank" rel="noopener noreferrer">{content}</a>
+                          ) : (
+                            <div key={stmt.id} className="document-row" style={{ opacity: 0.5 }}>{content}</div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
@@ -1432,6 +1562,53 @@ export default function MerchantPortal() {
                         ))}
                       </div>
                     </>
+                  )}
+
+                  {/* Bank Statements / Documents */}
+                  {!loadingStatements && (
+                    <div className="documents-section">
+                      <div className="section-label">My Documents</div>
+                      {statements.length === 0 ? (
+                        <div className="no-documents">No documents on file.</div>
+                      ) : (
+                        <div className="documents-grid">
+                          {statements.map(stmt => {
+                            const dateStr = stmt.receivedAt || stmt.createdAt;
+                            const date = new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                            const href = stmt.viewToken
+                              ? `/api/bank-statements/public/view/${stmt.viewToken}`
+                              : null;
+                            const content = (
+                              <>
+                                <div className="document-icon">
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                </div>
+                                <div className="document-info">
+                                  <div className="document-name">{stmt.originalFileName}</div>
+                                  <div className="document-meta">{date} &middot; {fmtFileSize(stmt.fileSize)}</div>
+                                </div>
+                                <div className="document-open">View &#8599;</div>
+                              </>
+                            );
+                            return href ? (
+                              <a
+                                key={stmt.id}
+                                className="document-row"
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {content}
+                              </a>
+                            ) : (
+                              <div key={stmt.id} className="document-row" style={{ opacity: 0.5 }}>
+                                {content}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </>
               )}

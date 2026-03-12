@@ -7040,6 +7040,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Merchant Bank Statements - returns uploaded statements for authenticated merchant
+  app.get("/api/merchant/statements", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const uploads = await storage.getBankStatementUploadsByEmail(req.session.user.merchantEmail);
+      const statements = uploads.map(u => ({
+        id: u.id,
+        originalFileName: u.originalFileName,
+        fileSize: u.fileSize,
+        viewToken: u.viewToken,
+        receivedAt: u.receivedAt,
+        createdAt: u.createdAt,
+      }));
+      res.json(statements);
+    } catch (error) {
+      console.error("[MERCHANT] Error fetching statements:", error);
+      res.status(500).json({ error: "Failed to fetch statements" });
+    }
+  });
+
   // Merchant Password Reset - Request
   app.post("/api/merchant/reset-password/request", async (req, res) => {
     try {
