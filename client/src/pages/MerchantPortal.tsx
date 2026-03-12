@@ -63,18 +63,27 @@ function calcDeal(deal: Deal): CalcResult {
 
   let paymentsMade: number, paymentAmount: number, totalPayments: number;
 
+  const isWeekly = deal.paymentFrequency === "weekly";
+  const isBiWeekly = deal.paymentFrequency === "bi-weekly" || deal.paymentFrequency === "biweekly";
+  const isMonthly = deal.paymentFrequency === "monthly";
+
   if (isDaily) {
     totalPayments = businessDaysBetween(funded, new Date(funded.getTime() + 180 * 24 * 60 * 60 * 1000));
     paymentAmount = totalPayback / totalPayments;
     paymentsMade = businessDaysBetween(funded, today);
   } else {
-    const msPerWeek = 7 * 24 * 60 * 60 * 1000;
     const termMonths = deal.term ? parseInt(deal.term) : 6;
-    const isWeekly = deal.paymentFrequency === "weekly";
-    totalPayments = termMonths * (isWeekly ? 4.33 : 2);
-    totalPayments = Math.round(totalPayments);
+    const paymentsPerMonth = isWeekly ? 4.33 : isBiWeekly ? 2 : 1;
+    totalPayments = Math.round(termMonths * paymentsPerMonth);
     paymentAmount = totalPayback / totalPayments;
-    paymentsMade = Math.floor((today.getTime() - funded.getTime()) / msPerWeek);
+
+    if (isMonthly) {
+      const monthsElapsed = (today.getFullYear() - funded.getFullYear()) * 12 + (today.getMonth() - funded.getMonth());
+      paymentsMade = Math.max(0, monthsElapsed);
+    } else {
+      const msPerPeriod = isBiWeekly ? 14 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+      paymentsMade = Math.floor((today.getTime() - funded.getTime()) / msPerPeriod);
+    }
   }
 
   paymentsMade = Math.min(paymentsMade, totalPayments);
@@ -86,8 +95,12 @@ function calcDeal(deal: Deal): CalcResult {
   let projectedPayoff: Date;
   if (isDaily) {
     projectedPayoff = addBusinessDays(today, paymentsRemaining);
+  } else if (isMonthly) {
+    projectedPayoff = new Date(today);
+    projectedPayoff.setMonth(projectedPayoff.getMonth() + paymentsRemaining);
   } else {
-    projectedPayoff = new Date(today.getTime() + paymentsRemaining * 7 * 24 * 60 * 60 * 1000);
+    const msPerPeriod = isBiWeekly ? 14 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+    projectedPayoff = new Date(today.getTime() + paymentsRemaining * msPerPeriod);
   }
 
   if (deal.status === "completed") {
