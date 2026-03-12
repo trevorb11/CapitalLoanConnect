@@ -434,8 +434,9 @@ const CSS = `
 
   .deal-lender {
     font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 18px;
+    letter-spacing: -0.01em;
     color: #e8eaf0;
   }
 
@@ -482,8 +483,8 @@ const CSS = `
   }
 
   .deal-stat-val {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
     font-size: 16px;
     color: #e8eaf0;
   }
@@ -535,8 +536,8 @@ const CSS = `
   }
 
   .remaining-amount {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
     font-size: 15px;
     color: #e8eaf0;
   }
@@ -598,7 +599,8 @@ const CSS = `
   .detail-title {
     font-family: 'Syne', sans-serif;
     font-size: 26px;
-    font-weight: 800;
+    font-weight: 700;
+    letter-spacing: -0.02em;
     color: #fff;
   }
 
@@ -636,8 +638,8 @@ const CSS = `
   }
 
   .stat-card-val {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
     font-size: 20px;
     color: #e8eaf0;
   }
@@ -670,9 +672,9 @@ const CSS = `
   }
 
   .tracker-pct-display {
-    font-family: 'Syne', sans-serif;
+    font-family: 'DM Sans', sans-serif;
     font-size: 64px;
-    font-weight: 800;
+    font-weight: 700;
     line-height: 1;
     margin-bottom: 6px;
     background: linear-gradient(135deg, #2dd4bf, #14B8A6);
@@ -726,9 +728,9 @@ const CSS = `
   }
 
   .tracker-paid strong {
-    font-family: 'Syne', sans-serif;
+    font-family: 'DM Sans', sans-serif;
     color: #2dd4bf;
-    font-weight: 700;
+    font-weight: 600;
   }
 
   .tracker-total {
@@ -755,8 +757,8 @@ const CSS = `
   }
 
   .tracker-metric-val {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
     font-size: 18px;
     color: #e8eaf0;
   }
@@ -790,9 +792,9 @@ const CSS = `
   }
 
   .balance-amount {
-    font-family: 'Syne', sans-serif;
+    font-family: 'DM Sans', sans-serif;
     font-size: 36px;
-    font-weight: 800;
+    font-weight: 700;
     color: #fff;
   }
 
@@ -816,9 +818,9 @@ const CSS = `
   }
 
   .payoff-date-val {
-    font-family: 'Syne', sans-serif;
+    font-family: 'DM Sans', sans-serif;
     font-size: 22px;
-    font-weight: 700;
+    font-weight: 600;
     color: #2dd4bf;
   }
 
