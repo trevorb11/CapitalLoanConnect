@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -11,6 +11,7 @@ import {
   type VisitLog, type InsertVisitLog,
   type PlaidStatement as PlaidStatementRecord, type InsertPlaidStatement,
   type CongratulationsUpload, type InsertCongratulationsUpload,
+  type MerchantMessage, type InsertMerchantMessage,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -141,6 +142,12 @@ export interface IStorage {
   createCongratulationsUpload(upload: InsertCongratulationsUpload): Promise<CongratulationsUpload>;
   getCongratulationsUploadsByEmail(email: string): Promise<CongratulationsUpload[]>;
   getAllCongratulationsUploads(): Promise<CongratulationsUpload[]>;
+
+  // Merchant Messages
+  createMerchantMessage(msg: InsertMerchantMessage): Promise<MerchantMessage>;
+  getMerchantMessagesByEmail(merchantEmail: string): Promise<MerchantMessage[]>;
+  markMerchantMessagesRead(merchantEmail: string, role: string): Promise<void>;
+  getUnreadMerchantMessageCount(merchantEmail: string, role: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -890,6 +897,54 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(congratulationsUploads)
       .orderBy(desc(congratulationsUploads.createdAt));
+  }
+
+  async createMerchantMessage(msg: InsertMerchantMessage): Promise<MerchantMessage> {
+    const [record] = await db
+      .insert(merchantMessages)
+      .values(msg)
+      .returning();
+    return record;
+  }
+
+  async getMerchantMessagesByEmail(merchantEmail: string): Promise<MerchantMessage[]> {
+    return await db
+      .select()
+      .from(merchantMessages)
+      .where(eq(merchantMessages.merchantEmail, merchantEmail.toLowerCase()))
+      .orderBy(merchantMessages.createdAt);
+  }
+
+  async markMerchantMessagesRead(merchantEmail: string, role: string): Promise<void> {
+    // Mark messages as read where the reader is the opposite role of the sender
+    const readerIsRep = role === 'rep' || role === 'admin' || role === 'underwriting';
+    const senderRole = readerIsRep ? 'merchant' : 'rep';
+    await db
+      .update(merchantMessages)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(merchantMessages.merchantEmail, merchantEmail.toLowerCase()),
+          eq(merchantMessages.senderRole, senderRole),
+          eq(merchantMessages.isRead, false)
+        )
+      );
+  }
+
+  async getUnreadMerchantMessageCount(merchantEmail: string, role: string): Promise<number> {
+    const readerIsRep = role === 'rep' || role === 'admin' || role === 'underwriting';
+    const senderRole = readerIsRep ? 'merchant' : 'rep';
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(merchantMessages)
+      .where(
+        and(
+          eq(merchantMessages.merchantEmail, merchantEmail.toLowerCase()),
+          eq(merchantMessages.senderRole, senderRole),
+          eq(merchantMessages.isRead, false)
+        )
+      );
+    return result[0]?.count || 0;
   }
 }
 

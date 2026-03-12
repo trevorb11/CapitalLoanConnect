@@ -7177,5 +7177,151 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── MERCHANT PORTAL PREMIUM FEATURES ─────────────────────────────────
+
+  // Merchant Documents (Document Vault) - returns congratulations uploads (voided check, driver's license) + bank statements
+  app.get("/api/merchant/documents", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const [congrats, statements] = await Promise.all([
+        storage.getCongratulationsUploadsByEmail(email),
+        storage.getBankStatementUploadsByEmail(email),
+      ]);
+      const documents = [
+        ...congrats.map(c => ({
+          id: c.id,
+          type: c.docType, // 'voided_check' or 'drivers_license'
+          name: c.originalFileName,
+          fileSize: c.fileSize,
+          category: 'closing' as const,
+          createdAt: c.createdAt,
+          downloadUrl: null, // Object storage - served via separate endpoint
+        })),
+        ...statements.map(s => ({
+          id: s.id,
+          type: 'bank_statement',
+          name: s.originalFileName,
+          fileSize: s.fileSize,
+          category: 'statements' as const,
+          createdAt: s.createdAt,
+          downloadUrl: s.viewToken ? `/api/bank-statements/public/view/${s.viewToken}` : null,
+        })),
+      ];
+      res.json(documents);
+    } catch (error) {
+      console.error("[MERCHANT] Error fetching documents:", error);
+      res.status(500).json({ error: "Failed to fetch documents" });
+    }
+  });
+
+  // Merchant Messages - List messages for authenticated merchant
+  app.get("/api/merchant/messages", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const messages = await storage.getMerchantMessagesByEmail(req.session.user.merchantEmail);
+      // Mark rep messages as read when merchant views them
+      await storage.markMerchantMessagesRead(req.session.user.merchantEmail, 'merchant');
+      res.json(messages);
+    } catch (error) {
+      console.error("[MERCHANT] Error fetching messages:", error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  // Merchant Messages - Send a message from merchant
+  app.post("/api/merchant/messages", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const { message, dealId } = req.body;
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+      if (message.length > 2000) {
+        return res.status(400).json({ error: "Message must be under 2000 characters" });
+      }
+      const msg = await storage.createMerchantMessage({
+        merchantEmail: req.session.user.merchantEmail,
+        dealId: dealId || null,
+        senderRole: 'merchant',
+        senderName: req.session.user.merchantName || req.session.user.merchantEmail,
+        message: message.trim(),
+        isRead: false,
+      });
+      res.json(msg);
+    } catch (error) {
+      console.error("[MERCHANT] Error sending message:", error);
+      res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  // Merchant Messages - Unread count for merchant
+  app.get("/api/merchant/messages/unread", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const count = await storage.getUnreadMerchantMessageCount(req.session.user.merchantEmail, 'merchant');
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get unread count" });
+    }
+  });
+
+  // Staff: Send message to merchant (admin/underwriting only)
+  app.post("/api/merchant/messages/staff", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
+      return res.status(403).json({ error: "Staff access required" });
+    }
+    try {
+      const { merchantEmail, message, dealId, senderName } = req.body;
+      if (!merchantEmail || !message) {
+        return res.status(400).json({ error: "merchantEmail and message are required" });
+      }
+      if (message.length > 2000) {
+        return res.status(400).json({ error: "Message must be under 2000 characters" });
+      }
+      const msg = await storage.createMerchantMessage({
+        merchantEmail: merchantEmail.toLowerCase(),
+        dealId: dealId || null,
+        senderRole: 'rep',
+        senderName: senderName || 'Today Capital Group',
+        message: message.trim(),
+        isRead: false,
+      });
+      res.json(msg);
+    } catch (error) {
+      console.error("[MERCHANT] Staff message error:", error);
+      res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  // Staff: Get messages for a merchant (admin/underwriting only)
+  app.get("/api/merchant/messages/staff/:email", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
+      return res.status(403).json({ error: "Staff access required" });
+    }
+    try {
+      const messages = await storage.getMerchantMessagesByEmail(req.params.email);
+      await storage.markMerchantMessagesRead(req.params.email, 'rep');
+      res.json(messages);
+    } catch (error) {
+      console.error("[MERCHANT] Staff messages fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
   return httpServer;
 }

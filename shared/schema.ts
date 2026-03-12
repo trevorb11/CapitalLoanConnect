@@ -547,3 +547,23 @@ export const insertCongratulationsUploadSchema = createInsertSchema(congratulati
 
 export type InsertCongratulationsUpload = z.infer<typeof insertCongratulationsUploadSchema>;
 export type CongratulationsUpload = typeof congratulationsUploads.$inferSelect;
+
+// Merchant Messages - In-portal messaging between merchants and their assigned reps
+export const merchantMessages = pgTable("merchant_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  merchantEmail: text("merchant_email").notNull(),
+  dealId: text("deal_id"), // optional link to a specific deal
+  senderRole: text("sender_role").notNull(), // 'merchant' or 'rep'
+  senderName: text("sender_name"),
+  message: text("message").notNull(),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMerchantMessageSchema = createInsertSchema(merchantMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMerchantMessage = z.infer<typeof insertMerchantMessageSchema>;
+export type MerchantMessage = typeof merchantMessages.$inferSelect;
