@@ -8,6 +8,7 @@ import { type Agent } from "@shared/agents";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { trackApplicationSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
+import { useExitIntent } from "@/hooks/use-exit-intent";
 
 interface UploadedFile {
   id: string;
@@ -96,6 +97,14 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Exit-intent: fire abandonment trigger when user leaves mid-application
+  useExitIntent({
+    applicationId,
+    isCompleted: showSuccess,
+    abandonedPage: 'agent_application',
+    currentStep,
+  });
 
   useEffect(() => {
     // Track page view for agent application and capture UTM params

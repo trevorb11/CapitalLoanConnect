@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { usePlaidLink } from "react-plaid-link";
 
 // ── CALC ENGINE ──────────────────────────────────────────────────────────
 function isWeekday(date: Date) {
@@ -40,6 +41,26 @@ interface Deal {
   term: string;
   status: string;
   assignedRep: string | null;
+  maxUpsell: number | null;
+  approvalDeadline: string | null;
+  additionalApprovals: AdditionalApproval[];
+  decisionId: number;
+}
+
+interface AdditionalApproval {
+  lender: string;
+  amount: number | string;
+  term?: string;
+  factorRate?: number | string;
+}
+
+interface ActivityItem {
+  id: string;
+  type: 'milestone' | 'message' | 'offer';
+  icon: string;
+  title: string;
+  description: string;
+  timestamp: string;
 }
 
 interface BankStatement {
@@ -1536,6 +1557,573 @@ const CSS = `
     font-weight: 700;
     color: #fff;
   }
+
+  /* ── OFFER BANNER ── */
+  .offer-banner {
+    background: linear-gradient(135deg, rgba(20,184,166,0.12) 0%, rgba(168,85,247,0.08) 100%);
+    border: 1px solid rgba(45,212,191,0.25);
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .offer-banner::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 240px; height: 240px;
+    background: radial-gradient(circle, rgba(20,184,166,0.1) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .offer-banner-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    background: rgba(20,184,166,0.2);
+    border: 1px solid rgba(45,212,191,0.3);
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #2dd4bf;
+    margin-bottom: 16px;
+  }
+
+  .offer-banner-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+
+  .offer-banner-amount {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 40px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #2dd4bf, #14B8A6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+    line-height: 1.1;
+  }
+
+  .offer-banner-desc {
+    font-size: 14px;
+    color: #9ba3b8;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .offer-countdown {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .offer-countdown-item {
+    text-align: center;
+    min-width: 56px;
+  }
+
+  .offer-countdown-num {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+  }
+
+  .offer-countdown-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #7b8499;
+    margin-top: 4px;
+  }
+
+  .offer-countdown-sep {
+    font-size: 24px;
+    color: #4b5568;
+    font-weight: 300;
+    margin-top: -8px;
+  }
+
+  .offer-claim-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    border: none;
+    border-radius: 12px;
+    color: #080d18;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.02em;
+  }
+
+  .offer-claim-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .offer-claim-btn:active { transform: translateY(0); }
+
+  .offer-expired {
+    font-size: 13px;
+    color: #ef4444;
+    font-weight: 500;
+  }
+
+  .offer-additional {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .offer-additional-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #7b8499;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  .offer-additional-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  @media (min-width: 600px) {
+    .offer-additional-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .offer-additional-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: rgba(8,13,24,0.6);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+  }
+
+  .offer-additional-lender {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e8eaf0;
+  }
+
+  .offer-additional-amount {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: #2dd4bf;
+  }
+
+  .offer-additional-term {
+    font-size: 11px;
+    color: #7b8499;
+    margin-top: 2px;
+  }
+
+  /* ── ACTIVITY FEED ── */
+  .activity-feed {
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+
+  .activity-feed-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: #e8eaf0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .activity-feed-sub {
+    font-size: 13px;
+    color: #7b8499;
+    margin-bottom: 20px;
+  }
+
+  .activity-item {
+    display: flex;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    position: relative;
+  }
+
+  .activity-item:last-child { border-bottom: none; }
+
+  .activity-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 16px;
+  }
+
+  .activity-icon.dollar { background: rgba(52,211,153,0.12); color: #34d399; }
+  .activity-icon.message { background: rgba(59,130,246,0.12); color: #60a5fa; }
+  .activity-icon.star { background: rgba(251,191,36,0.12); color: #fbbf24; }
+  .activity-icon.check { background: rgba(20,184,166,0.12); color: #2dd4bf; }
+
+  .activity-content { flex: 1; min-width: 0; }
+
+  .activity-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .activity-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #e8eaf0;
+  }
+
+  .activity-time {
+    font-size: 11px;
+    color: #4b5568;
+    flex-shrink: 0;
+  }
+
+  .activity-desc {
+    font-size: 13px;
+    color: #7b8499;
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  .activity-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: #4b5568;
+    font-size: 14px;
+  }
+
+  /* ── PAYOFF COUNTDOWN WIDGET ── */
+  .payoff-countdown-widget {
+    background: linear-gradient(135deg, rgba(15,23,41,0.9) 0%, rgba(20,184,166,0.06) 100%);
+    border: 1px solid rgba(45,212,191,0.2);
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .payoff-countdown-widget::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; left: 50%;
+    transform: translateX(-50%);
+    width: 300px; height: 150px;
+    background: radial-gradient(ellipse, rgba(20,184,166,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .payoff-countdown-days {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 72px;
+    font-weight: 700;
+    line-height: 1;
+    background: linear-gradient(135deg, #2dd4bf, #14B8A6, #0d9488);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+  }
+
+  .payoff-countdown-unit {
+    font-size: 16px;
+    font-weight: 600;
+    color: #7b8499;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 16px;
+  }
+
+  .payoff-countdown-date {
+    font-size: 14px;
+    color: #9ba3b8;
+    margin-bottom: 4px;
+  }
+
+  .payoff-countdown-date strong {
+    color: #2dd4bf;
+    font-weight: 600;
+  }
+
+  .payoff-countdown-sub {
+    font-size: 12px;
+    color: #4b5568;
+  }
+
+  /* ── APPLICATION STATUS BANNER ── */
+  .app-status-banner {
+    background: linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(20,184,166,0.06) 100%);
+    border: 1px solid rgba(59,130,246,0.2);
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .app-status-banner::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 240px; height: 240px;
+    background: radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .app-status-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .app-status-desc {
+    font-size: 14px;
+    color: #9ba3b8;
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  .app-status-steps {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .app-status-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(8,13,24,0.6);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .app-status-step.done {
+    border-color: rgba(52,211,153,0.3);
+    background: rgba(52,211,153,0.06);
+  }
+
+  .app-status-step.current {
+    border-color: rgba(59,130,246,0.3);
+    background: rgba(59,130,246,0.06);
+  }
+
+  .app-status-step-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .app-status-step-icon.done {
+    background: rgba(52,211,153,0.2);
+    color: #34d399;
+  }
+
+  .app-status-step-icon.current {
+    background: rgba(59,130,246,0.2);
+    color: #60a5fa;
+  }
+
+  .app-status-step-icon.pending {
+    background: rgba(255,255,255,0.06);
+    color: #4b5568;
+  }
+
+  .app-status-step-text {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .app-status-step-text.done { color: #34d399; }
+  .app-status-step-text.current { color: #60a5fa; }
+  .app-status-step-text.pending { color: #4b5568; }
+
+  .app-status-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+  }
+
+  .app-status-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+  .app-status-cta:active { transform: translateY(0); }
+
+  .app-status-cta.secondary {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #e8eaf0;
+    margin-left: 12px;
+  }
+
+  /* ── FINANCIALS TAB ─── */
+  .financials-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 4px 0;
+  }
+
+  .insight-card {
+    background: rgba(15, 23, 41, 0.7);
+    border: 1px solid rgba(45, 212, 191, 0.15);
+    border-radius: 16px;
+    padding: 20px;
+    backdrop-filter: blur(12px);
+  }
+
+  .health-indicator {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin: 0 auto;
+    display: block;
+  }
+  .health-strong { background: linear-gradient(135deg, #14B8A6, #2dd4bf); box-shadow: 0 0 16px rgba(45, 212, 191, 0.4); }
+  .health-moderate { background: linear-gradient(135deg, #f59e0b, #fbbf24); box-shadow: 0 0 16px rgba(245, 158, 11, 0.4); }
+  .health-needs-attention { background: linear-gradient(135deg, #ef4444, #f87171); box-shadow: 0 0 16px rgba(239, 68, 68, 0.4); }
+
+  .plaid-connection-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(45, 212, 191, 0.08);
+  }
+  .plaid-connection-row:last-child { border-bottom: none; }
+
+  .connect-bank-cta {
+    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .connect-bank-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+  .connect-bank-cta:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .observation-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+  .observation-positive {
+    background: rgba(45, 212, 191, 0.12);
+    border: 1px solid rgba(45, 212, 191, 0.25);
+    color: #2dd4bf;
+  }
+  .observation-warning {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+  }
+
+  .renewal-nudge {
+    background: rgba(45, 212, 191, 0.08);
+    border: 1px solid rgba(45, 212, 191, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 14px;
+    color: #e8eaf0;
+    cursor: pointer;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .renewal-nudge:hover { background: rgba(45, 212, 191, 0.12); }
+
+  .analyze-btn {
+    background: rgba(45, 212, 191, 0.12);
+    border: 1px solid rgba(45, 212, 191, 0.3);
+    color: #2dd4bf;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .analyze-btn:hover { background: rgba(45, 212, 191, 0.2); }
+  .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .skeleton-line {
+    height: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.8; }
+  }
 `;
 
 // ── COMPONENTS ───────────────────────────────────────────────────────────
@@ -1715,6 +2303,9 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
         </>
       )}
 
+      {/* Payoff Countdown */}
+      <PayoffCountdownWidget deal={deal} />
+
       {/* Early Payoff Calculator */}
       <EarlyPayoffCalculator deal={deal} />
 
@@ -1849,12 +2440,25 @@ function RenewalEligibilityTracker({ deal }: { deal: Deal }) {
       </div>
 
       {isEligible ? (
-        <div className="renewal-eligible-msg">
+        <div className="renewal-eligible-msg" style={{ flexWrap: "wrap" }}>
           <span style={{ fontSize: "22px" }}>&#10003;</span>
-          <div>
+          <div style={{ flex: 1 }}>
             <div className="renewal-eligible-msg-text">You qualify for a renewal or second position</div>
-            <div className="renewal-eligible-msg-sub">Contact your rep to explore pre-approved renewal offers with new terms.</div>
+            <div className="renewal-eligible-msg-sub">You've hit the {renewalThreshold}% threshold. Claim your renewal offer now.</div>
           </div>
+          <button
+            className="offer-claim-btn"
+            style={{ marginTop: "8px", fontSize: "12px", padding: "10px 20px" }}
+            onClick={() => {
+              const subject = encodeURIComponent(`Renewal inquiry — ${deal.businessName}`);
+              const body = encodeURIComponent(
+                `Hi,\n\nI've reached ${calc.pctComplete.toFixed(0)}% payoff on my position with ${deal.lender} and would like to discuss renewal options.\n\nBusiness: ${deal.businessName}\n\nThank you`
+              );
+              window.location.href = `mailto:info@todaycapitalgroup.com?subject=${subject}&body=${body}`;
+            }}
+          >
+            Explore Renewal &rarr;
+          </button>
         </div>
       ) : (
         <div className="renewal-detail">
@@ -2117,6 +2721,657 @@ function DocumentVault({ documents, loading }: { documents: VaultDocument[]; loa
   );
 }
 
+// ── PRE-QUALIFIED OFFER BANNER ────────────────────────────────────────────
+function PreQualifiedOfferBanner({ deals }: { deals: Deal[] }) {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Find the best active offer across all deals
+  const activeOffers = deals
+    .filter(d => d.maxUpsell && d.maxUpsell > 0)
+    .sort((a, b) => (b.maxUpsell || 0) - (a.maxUpsell || 0));
+
+  const bestOffer = activeOffers[0];
+  if (!bestOffer) return null;
+
+  const hasDeadline = bestOffer.approvalDeadline;
+  const deadline = hasDeadline ? new Date(bestOffer.approvalDeadline!) : null;
+  const isExpired = deadline ? now > deadline : false;
+
+  // Calculate countdown
+  let days = 0, hours = 0, minutes = 0, seconds = 0;
+  if (deadline && !isExpired) {
+    const diff = deadline.getTime() - now.getTime();
+    days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    minutes = Math.floor((diff / (1000 * 60)) % 60);
+    seconds = Math.floor((diff / 1000) % 60);
+  }
+
+  // Collect additional approvals from all deals
+  const allAdditionalApprovals = deals.flatMap(d => d.additionalApprovals || []);
+
+  return (
+    <div className="offer-banner">
+      <div className="offer-banner-badge">
+        <span style={{ fontSize: "14px" }}>&#9733;</span>
+        Pre-Qualified Offer
+      </div>
+
+      <div className="offer-banner-title">You're pre-qualified for additional funding</div>
+      <div className="offer-banner-amount">{fmt$(bestOffer.maxUpsell!)}</div>
+      <div className="offer-banner-desc">
+        Based on your payment history with {bestOffer.lender}, you qualify for up to {fmt$(bestOffer.maxUpsell!)} in additional capital.
+        {deadline && !isExpired && " Claim before the deadline to lock in this offer."}
+      </div>
+
+      {deadline && !isExpired && (
+        <div className="offer-countdown">
+          <div className="offer-countdown-item">
+            <div className="offer-countdown-num">{String(days).padStart(2, '0')}</div>
+            <div className="offer-countdown-label">Days</div>
+          </div>
+          <div className="offer-countdown-sep">:</div>
+          <div className="offer-countdown-item">
+            <div className="offer-countdown-num">{String(hours).padStart(2, '0')}</div>
+            <div className="offer-countdown-label">Hours</div>
+          </div>
+          <div className="offer-countdown-sep">:</div>
+          <div className="offer-countdown-item">
+            <div className="offer-countdown-num">{String(minutes).padStart(2, '0')}</div>
+            <div className="offer-countdown-label">Min</div>
+          </div>
+          <div className="offer-countdown-sep">:</div>
+          <div className="offer-countdown-item">
+            <div className="offer-countdown-num">{String(seconds).padStart(2, '0')}</div>
+            <div className="offer-countdown-label">Sec</div>
+          </div>
+        </div>
+      )}
+
+      {isExpired ? (
+        <div className="offer-expired">This offer has expired. Contact your rep for current options.</div>
+      ) : (
+        <button
+          className="offer-claim-btn"
+          onClick={() => {
+            const subject = encodeURIComponent(`I'd like to claim my pre-qualified offer — ${bestOffer.businessName}`);
+            const body = encodeURIComponent(
+              `Hi${bestOffer.assignedRep ? ` ${bestOffer.assignedRep.split(" ")[0]}` : ""},\n\nI'd like to learn more about my pre-qualified offer of ${fmt$(bestOffer.maxUpsell!)}.\n\nBusiness: ${bestOffer.businessName}\n\nThank you`
+            );
+            window.location.href = `mailto:info@todaycapitalgroup.com?subject=${subject}&body=${body}`;
+          }}
+        >
+          Claim This Offer &rarr;
+        </button>
+      )}
+
+      {allAdditionalApprovals.length > 0 && (
+        <div className="offer-additional">
+          <div className="offer-additional-title">Additional Lender Offers</div>
+          <div className="offer-additional-grid">
+            {allAdditionalApprovals.map((ap, i) => (
+              <div key={i} className="offer-additional-card">
+                <div>
+                  <div className="offer-additional-lender">{ap.lender}</div>
+                  <div className="offer-additional-term">
+                    {ap.term || "Flexible terms"}{ap.factorRate ? ` · ${ap.factorRate}x` : ""}
+                  </div>
+                </div>
+                <div className="offer-additional-amount">
+                  {fmt$(typeof ap.amount === 'string' ? parseFloat(ap.amount) : ap.amount)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── PLAID LINK BUTTON ─────────────────────────────────────────────────────
+function PlaidLinkButton({ onSuccess, label = "Connect Your Bank" }: { onSuccess: () => void; label?: string }) {
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLinkToken = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/merchant/plaid/create-link-token", { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to create link token");
+      const data = await res.json();
+      setLinkToken(data.link_token);
+    } catch (e) {
+      setError("Could not initialize bank connection. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
+    try {
+      const res = await fetch("/api/merchant/plaid/exchange-token", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicToken, metadata }),
+      });
+      if (!res.ok) throw new Error("Failed to exchange token");
+      onSuccess();
+    } catch (e) {
+      setError("Bank connection failed. Please try again.");
+    }
+  }, [onSuccess]);
+
+  const { open, ready } = usePlaidLink({
+    token: linkToken,
+    onSuccess: onPlaidSuccess,
+  });
+
+  return (
+    <div>
+      {!linkToken ? (
+        <button className="connect-bank-cta" onClick={fetchLinkToken} disabled={loading}>
+          {loading ? "Initializing..." : label}
+        </button>
+      ) : (
+        <button className="connect-bank-cta" onClick={() => open()} disabled={!ready}>
+          {ready ? label : "Loading..."}
+        </button>
+      )}
+      {error && <p style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{error}</p>}
+    </div>
+  );
+}
+
+// ── FINANCIALS TAB ────────────────────────────────────────────────────────
+interface FinancialInsights {
+  hasStatements: boolean;
+  hasPlaidConnection: boolean;
+  pdfInsights: {
+    cashFlowHealth: 'strong' | 'moderate' | 'needs-attention';
+    estimatedMonthlyRevenue: number;
+    averageDailyBalance: number;
+    positiveIndicators: string[];
+    concerns: string[];
+    tips: string[];
+    summary: string;
+    analyzedAt: string;
+  } | null;
+  plaidInsights: {
+    accounts: { name: string; type: string; currentBalance: number; institutionName: string }[];
+    monthlyRevenue: number;
+    avgBalance: number;
+    revenueTrend: 'growing' | 'stable' | 'declining';
+    lastUpdated: string;
+  } | null;
+  renewalNudge: { eligible: boolean; message: string };
+}
+
+interface PlaidConnection {
+  id: string;
+  institutionName: string | null;
+  connectedAt: string | null;
+  isActive: boolean;
+  source: 'portal' | 'intake';
+}
+
+function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages }: {
+  merchantEmail: string;
+  merchantName: string;
+  assignedRep: string | null;
+  onSwitchToMessages: () => void;
+}) {
+  const [insights, setInsights] = useState<FinancialInsights | null>(null);
+  const [connections, setConnections] = useState<PlaidConnection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [insightsRes, connectionsRes] = await Promise.all([
+        fetch("/api/merchant/financial-insights", { credentials: "include" }),
+        fetch("/api/merchant/plaid/connections", { credentials: "include" }),
+      ]);
+      if (insightsRes.ok) setInsights(await insightsRes.json());
+      if (connectionsRes.ok) setConnections(await connectionsRes.json());
+    } catch (e) {
+      console.error("Failed to load financial data:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleAnalyze = async () => {
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    try {
+      const res = await fetch("/api/merchant/bank-statements/analyze", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Analysis failed");
+      }
+      await fetchData(); // Refresh insights
+    } catch (e: any) {
+      setAnalyzeError(e.message || "Analysis failed. Please try again.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleDisconnect = async (id: string) => {
+    try {
+      await fetch(`/api/merchant/plaid/connections/${id}`, { method: "DELETE", credentials: "include" });
+      await fetchData();
+    } catch (e) {
+      console.error("Failed to disconnect:", e);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="financials-section">
+        <div className="insight-card" style={{ textAlign: "center", padding: 40 }}>
+          <div className="skeleton-line" style={{ width: "60%", margin: "0 auto 12px" }} />
+          <div className="skeleton-line" style={{ width: "40%", margin: "0 auto 12px" }} />
+          <div className="skeleton-line" style={{ width: "50%", margin: "0 auto" }} />
+        </div>
+      </div>
+    );
+  }
+
+  const hasAnyData = insights?.pdfInsights || insights?.plaidInsights;
+  const pdf = insights?.pdfInsights;
+  const plaid = insights?.plaidInsights;
+
+  // Use Plaid data when available, fall back to PDF
+  const monthlyRevenue = plaid?.monthlyRevenue || pdf?.estimatedMonthlyRevenue || 0;
+  const avgBalance = plaid?.avgBalance || pdf?.averageDailyBalance || 0;
+  const cashFlowHealth = pdf?.cashFlowHealth || (plaid ? 'moderate' : null);
+
+  return (
+    <div className="financials-section">
+      {/* ── Connected Banks ── */}
+      <div className="insight-card">
+        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+          Connected Banks
+        </h3>
+        {connections.length > 0 ? (
+          <>
+            {connections.map(conn => (
+              <div key={conn.id} className="plaid-connection-row">
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span className="health-indicator health-strong" style={{ width: 8, height: 8 }} />
+                  <span style={{ fontWeight: 500 }}>{conn.institutionName || "Connected Bank"}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: "#94a3b8" }}>
+                  {conn.connectedAt && <span>Connected {new Date(conn.connectedAt).toLocaleDateString()}</span>}
+                  {conn.source === 'portal' && (
+                    <button onClick={() => handleDisconnect(conn.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12 }}>
+                      Disconnect
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div style={{ marginTop: 12 }}>
+              <PlaidLinkButton onSuccess={fetchData} label="Connect Another Bank" />
+            </div>
+          </>
+        ) : (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <p style={{ color: "#94a3b8", marginBottom: 16, fontSize: 14, lineHeight: 1.6 }}>
+              Connect your bank to get live financial insights and make future funding faster.
+            </p>
+            <PlaidLinkButton onSuccess={fetchData} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Uploaded Statements ── */}
+      {insights?.hasStatements && (
+        <div className="insight-card">
+          <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+            Uploaded Statements
+          </h3>
+          {pdf ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ color: "#94a3b8", fontSize: 13 }}>
+                Last analyzed: {new Date(pdf.analyzedAt).toLocaleDateString()}
+              </span>
+              <button className="analyze-btn" onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? "Re-analyzing..." : "Re-analyze"}
+              </button>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "12px 0" }}>
+              <p style={{ color: "#94a3b8", marginBottom: 12, fontSize: 14 }}>
+                Click below to generate insights from your bank statements.
+              </p>
+              <button className="analyze-btn" onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? "Analyzing..." : "Analyze My Statements"}
+              </button>
+              {analyzeError && <p style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{analyzeError}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Financial Insights ── */}
+      {hasAnyData ? (
+        <>
+          {/* Cash Flow Health */}
+          {cashFlowHealth && (
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+                Cash Flow Health
+              </h3>
+              <div className={`health-indicator health-${cashFlowHealth}`} />
+              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 600, marginTop: 8, textTransform: "capitalize" }}>
+                {cashFlowHealth === 'needs-attention' ? 'Needs Attention' : cashFlowHealth}
+              </p>
+            </div>
+          )}
+
+          {/* Revenue & Balance Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Est. Monthly Revenue</p>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
+                ${monthlyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+            </div>
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Avg. Daily Balance</p>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
+                ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+            </div>
+          </div>
+
+          {/* Account Balances (Plaid) */}
+          {plaid && plaid.accounts.length > 0 && (
+            <div className="insight-card">
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
+                Account Balances
+              </h3>
+              {plaid.accounts.map((acct, i) => (
+                <div key={i} className="plaid-connection-row">
+                  <div>
+                    <span style={{ fontWeight: 500 }}>{acct.name}</span>
+                    <span style={{ color: "#94a3b8", fontSize: 12, marginLeft: 8 }}>{acct.type}</span>
+                  </div>
+                  <span style={{ fontWeight: 600, color: "#2dd4bf" }}>
+                    ${acct.currentBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              ))}
+              {plaid.revenueTrend && (
+                <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>
+                  Revenue trend: <span style={{ color: plaid.revenueTrend === 'growing' ? '#2dd4bf' : plaid.revenueTrend === 'declining' ? '#f87171' : '#94a3b8', fontWeight: 500, textTransform: 'capitalize' }}>{plaid.revenueTrend}</span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Key Observations */}
+          {pdf && (pdf.positiveIndicators.length > 0 || pdf.concerns.length > 0) && (
+            <div className="insight-card">
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
+                Key Observations
+              </h3>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {pdf.positiveIndicators.map((item, i) => (
+                  <span key={`pos-${i}`} className="observation-badge observation-positive">{item}</span>
+                ))}
+                {pdf.concerns.map((item, i) => (
+                  <span key={`warn-${i}`} className="observation-badge observation-warning">{item}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tips */}
+          {pdf && pdf.tips.length > 0 && (
+            <div className="insight-card">
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
+                Tips to Strengthen Your Position
+              </h3>
+              <ul style={{ paddingLeft: 18, lineHeight: 1.8, color: "#94a3b8", fontSize: 14 }}>
+                {pdf.tips.map((tip, i) => <li key={i}>{tip}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {/* Summary */}
+          {pdf?.summary && (
+            <div className="insight-card">
+              <p style={{ lineHeight: 1.7, fontSize: 14, color: "#94a3b8" }}>{pdf.summary}</p>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="insight-card" style={{ textAlign: "center", padding: "32px 20px" }}>
+          <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7 }}>
+            {insights?.hasStatements
+              ? "Click 'Analyze' above to generate insights from your bank statements."
+              : "Upload bank statements or connect your bank to see financial insights."}
+          </p>
+        </div>
+      )}
+
+      {/* ── Renewal Nudge ── */}
+      {insights?.renewalNudge?.eligible && (
+        <div className="renewal-nudge" onClick={onSwitchToMessages} role="button" tabIndex={0}>
+          <span>{insights.renewalNudge.message}</span>
+          <span style={{ color: "#2dd4bf", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>Talk to your rep →</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ACTIVITY FEED ─────────────────────────────────────────────────────────
+function ActivityFeed({ merchantEmail }: { merchantEmail: string }) {
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/merchant/activity")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setActivities(data); })
+      .catch(err => console.error("Failed to fetch activity:", err))
+      .finally(() => setLoading(false));
+  }, [merchantEmail]);
+
+  const iconContent: Record<string, string> = {
+    dollar: '$',
+    message: '\u2709',
+    star: '\u2605',
+    check: '\u2713',
+  };
+
+  const timeAgo = (ts: string) => {
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    return fmtDate(ts);
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="activity-feed">
+      <div className="activity-feed-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Activity
+      </div>
+      <div className="activity-feed-sub">Recent updates and milestones for your account</div>
+
+      {activities.length === 0 ? (
+        <div className="activity-empty">No activity yet. Your milestones will appear here.</div>
+      ) : (
+        activities.slice(0, 15).map(item => (
+          <div key={item.id} className="activity-item">
+            <div className={`activity-icon ${item.icon}`}>
+              {iconContent[item.icon] || '\u2022'}
+            </div>
+            <div className="activity-content">
+              <div className="activity-title-row">
+                <div className="activity-title">{item.title}</div>
+                <div className="activity-time">{timeAgo(item.timestamp)}</div>
+              </div>
+              <div className="activity-desc">{item.description}</div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ── PAYOFF COUNTDOWN WIDGET ───────────────────────────────────────────────
+function PayoffCountdownWidget({ deal }: { deal: Deal }) {
+  const calc = calcDeal(deal);
+  if (calc.isComplete) return null;
+
+  const now = new Date();
+  const payoff = calc.projectedPayoff;
+  const diffMs = payoff.getTime() - now.getTime();
+  const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+  return (
+    <div className="payoff-countdown-widget">
+      <div className="payoff-countdown-days">{daysLeft}</div>
+      <div className="payoff-countdown-unit">Days Remaining</div>
+      <div className="payoff-countdown-date">
+        Estimated payoff: <strong>{fmtDate(payoff)}</strong>
+      </div>
+      <div className="payoff-countdown-sub">
+        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} left
+      </div>
+    </div>
+  );
+}
+
+// ── APPLICATION STATUS BANNER ──────────────────────────────────────────────
+function ApplicationStatusBanner({ appStatus }: {
+  appStatus: {
+    hasApplication: boolean;
+    applicationId?: number;
+    businessName?: string;
+    isIntakeCompleted?: boolean;
+    isFullApplicationCompleted?: boolean;
+    currentStep?: number;
+    bankStatementsUploaded?: boolean;
+    bankStatementCount?: number;
+  };
+}) {
+  if (!appStatus.hasApplication) {
+    // No application yet - show prompt to start
+    return (
+      <div className="app-status-banner">
+        <div className="app-status-title">
+          <span style={{ fontSize: "22px" }}>&#128221;</span>
+          Start Your Funding Application
+        </div>
+        <div className="app-status-desc">
+          Get started with your business funding application. It takes just a few minutes to see what you qualify for.
+        </div>
+        <a href="/" className="app-status-cta" style={{ textDecoration: "none" }}>
+          Start Application &rarr;
+        </a>
+      </div>
+    );
+  }
+
+  const steps = [
+    { label: "Interest Form", done: !!appStatus.isIntakeCompleted },
+    { label: "Full Application", done: !!appStatus.isFullApplicationCompleted },
+    { label: "Bank Statements", done: !!appStatus.bankStatementsUploaded },
+  ];
+
+  // Determine the current step
+  let currentIdx = steps.findIndex(s => !s.done);
+  if (currentIdx === -1) currentIdx = steps.length; // all done
+
+  // If everything is done, don't show this banner
+  if (steps.every(s => s.done)) return null;
+
+  // Determine CTA
+  let ctaHref = "/";
+  let ctaLabel = "Continue Application";
+  if (!appStatus.isIntakeCompleted) {
+    ctaHref = "/intake/quiz";
+    ctaLabel = "Complete Interest Form";
+  } else if (!appStatus.isFullApplicationCompleted) {
+    ctaHref = "/";
+    ctaLabel = "Complete Application";
+  } else if (!appStatus.bankStatementsUploaded) {
+    ctaHref = "/upload-statements";
+    ctaLabel = "Upload Bank Statements";
+  }
+
+  return (
+    <div className="app-status-banner">
+      <div className="app-status-title">
+        <span style={{ fontSize: "22px" }}>&#128203;</span>
+        {appStatus.businessName ? `${appStatus.businessName} — Application Progress` : "Your Application Progress"}
+      </div>
+      <div className="app-status-desc">
+        {!appStatus.isFullApplicationCompleted
+          ? "Complete your application to move forward with funding. Pick up right where you left off."
+          : "Your application is submitted! Upload your bank statements to speed up the review process."
+        }
+      </div>
+
+      <div className="app-status-steps">
+        {steps.map((step, i) => {
+          const status = step.done ? 'done' : i === currentIdx ? 'current' : 'pending';
+          return (
+            <div key={step.label} className={`app-status-step ${status}`}>
+              <div className={`app-status-step-icon ${status}`}>
+                {step.done ? '\u2713' : i === currentIdx ? '\u25CF' : String(i + 1)}
+              </div>
+              <div className={`app-status-step-text ${status}`}>{step.label}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div>
+        <a href={ctaHref} className="app-status-cta" style={{ textDecoration: "none" }}>
+          {ctaLabel} &rarr;
+        </a>
+        {appStatus.isFullApplicationCompleted && !appStatus.bankStatementsUploaded && (
+          <a href="/connect-bank" className="app-status-cta secondary" style={{ textDecoration: "none" }}>
+            Connect Bank Instead
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -2327,7 +3582,17 @@ export default function MerchantPortal() {
   const [loadingStatements, setLoadingStatements] = useState(false);
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [loadingVault, setLoadingVault] = useState(false);
-  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents'>('positions');
+  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials'>('positions');
+  const [appStatus, setAppStatus] = useState<{
+    hasApplication: boolean;
+    applicationId?: number;
+    businessName?: string;
+    isIntakeCompleted?: boolean;
+    isFullApplicationCompleted?: boolean;
+    currentStep?: number;
+    bankStatementsUploaded?: boolean;
+    bankStatementCount?: number;
+  } | null>(null);
 
   // Check auth on mount
   useEffect(() => {
@@ -2368,6 +3633,12 @@ export default function MerchantPortal() {
       .then(data => { if (Array.isArray(data)) setVaultDocs(data); })
       .catch(err => console.error("Failed to fetch vault docs:", err))
       .finally(() => setLoadingVault(false));
+
+    // Fetch application status (for non-funded merchants)
+    fetch("/api/merchant/application-status")
+      .then(r => r.json())
+      .then(data => setAppStatus(data))
+      .catch(() => {});
   }, [loggedIn]);
 
   const handleLogin = () => {
@@ -2391,6 +3662,7 @@ export default function MerchantPortal() {
       setMerchantEmail("");
       setMerchantName("");
       setActiveTab('positions');
+      setAppStatus(null);
     });
   };
 
@@ -2460,15 +3732,52 @@ export default function MerchantPortal() {
                     >
                       Documents
                     </button>
+                    <button
+                      className={`portal-nav-btn ${activeTab === 'financials' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('financials')}
+                    >
+                      Financials
+                    </button>
                   </div>
 
                   {/* ── POSITIONS TAB ── */}
                   {activeTab === 'positions' && (
                     <>
+                      {/* Application Status Banner - for non-funded merchants */}
+                      {!loadingDeals && appStatus && appStatus.hasApplication && deals.length === 0 && (
+                        <ApplicationStatusBanner appStatus={appStatus} />
+                      )}
+                      {!loadingDeals && appStatus && !appStatus.hasApplication && deals.length === 0 && (
+                        <ApplicationStatusBanner appStatus={appStatus} />
+                      )}
+                      {/* Application progress for funded merchants who haven't uploaded statements */}
+                      {!loadingDeals && appStatus && appStatus.hasApplication && deals.length > 0 && !appStatus.bankStatementsUploaded && appStatus.isFullApplicationCompleted && (
+                        <ApplicationStatusBanner appStatus={appStatus} />
+                      )}
+
+                      {/* Pre-Qualified Offer Banner */}
+                      {!loadingDeals && deals.length > 0 && (
+                        <PreQualifiedOfferBanner deals={deals} />
+                      )}
+
+                      {/* Payoff Countdown Widget - show for primary active deal */}
+                      {!loadingDeals && activeDeals.length > 0 && (
+                        <PayoffCountdownWidget deal={activeDeals[0]} />
+                      )}
+
+                      {/* Activity Feed */}
+                      {!loadingDeals && deals.length > 0 && (
+                        <ActivityFeed merchantEmail={merchantEmail} />
+                      )}
+
                       {loadingDeals ? (
                         <div className="loading-wrap" style={{ minHeight: "200px" }}>Loading your positions...</div>
                       ) : deals.length === 0 ? (
-                        <div className="no-documents">No funded deals found for your account yet.</div>
+                        <div className="no-documents" style={{ marginTop: appStatus?.hasApplication ? "8px" : "0" }}>
+                          {appStatus?.hasApplication
+                            ? "Your funded positions will appear here once your deal closes."
+                            : "No funded deals found for your account yet."}
+                        </div>
                       ) : (
                         <>
                           {activeDeals.length > 0 && (
@@ -2510,6 +3819,16 @@ export default function MerchantPortal() {
                   {/* ── DOCUMENTS TAB ── */}
                   {activeTab === 'documents' && (
                     <DocumentVault documents={vaultDocs} loading={loadingVault} />
+                  )}
+
+                  {/* ── FINANCIALS TAB ── */}
+                  {activeTab === 'financials' && (
+                    <FinancialsTab
+                      merchantEmail={merchantEmail}
+                      merchantName={merchantName}
+                      assignedRep={deals.length > 0 ? deals[0].assignedRep : null}
+                      onSwitchToMessages={() => setActiveTab('messages')}
+                    />
                   )}
                 </>
               )}

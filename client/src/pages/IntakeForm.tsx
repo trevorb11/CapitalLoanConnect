@@ -7,6 +7,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Check } from "lucide-react";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
+import { useExitIntent } from "@/hooks/use-exit-intent";
 
 // US States list
 const US_STATES = [
@@ -95,6 +96,14 @@ export default function IntakeForm() {
   const [showSignatureError, setShowSignatureError] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+
+  // Exit-intent: fire abandonment trigger when user leaves mid-intake
+  useExitIntent({
+    applicationId,
+    isCompleted: showSuccess,
+    abandonedPage: 'intake',
+    currentStep,
+  });
 
   // Initialize UTM tracking on mount
   useEffect(() => {

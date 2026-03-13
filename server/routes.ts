@@ -16,6 +16,7 @@ import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { notifyMerchantNewMessage } from "./services/twilio";
 import { fireSmsStageEvent } from "./sms-middleware";
+import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
@@ -903,8 +904,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             deal_id: _smsApp.id,
           });
         }
+
+        // Auto-create portal account after intake form completion
+        if (_smsApp?.email) {
+          autoCreatePortalAccount({
+            email: _smsApp.email,
+            name: _smsApp.fullName || undefined,
+            phone: _smsApp.phone || undefined,
+            businessName: _smsApp.businessName || (_smsApp as any).legalBusinessName || undefined,
+            applicationId: _smsApp.id,
+            triggerKey: 'trigger.portal_after_intake',
+            sendLink: true,
+          });
+        }
       }
-      
+
       // Return with validation errors if any (data was still saved)
       if (postStepValidationErrors.length > 0) {
         return res.json({
@@ -1159,6 +1173,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             deal_id: updatedApp.id,
           });
         }
+
+        // Auto-create portal account after full application completion
+        if (updatedApp.email) {
+          autoCreatePortalAccount({
+            email: updatedApp.email,
+            name: updatedApp.fullName || undefined,
+            phone: updatedApp.phone || undefined,
+            businessName: updatedApp.businessName || updatedApp.legalBusinessName || undefined,
+            applicationId: updatedApp.id,
+            triggerKey: 'trigger.portal_after_application',
+            sendLink: true,
+          });
+        }
       }
 
       // Return with validation errors if any (data was still saved)
@@ -1192,12 +1219,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Only send abandoned webhook if application was NOT completed
       if (!application.isFullApplicationCompleted && !application.isCompleted) {
         console.log(`[ABANDON] Sending abandoned webhook for application ${id}`);
-        
+
         // Send the partial application webhook with "App Started" tag
-        ghlService.sendPartialApplicationWebhook(application).catch(err => 
+        ghlService.sendPartialApplicationWebhook(application).catch(err =>
           console.error("Abandoned application webhook error (non-blocking):", err)
         );
-        
+
+        // Auto-trigger: send SMS/email nudge to complete application & upload bank statements
+        const { abandonedPage, lastStep } = req.body || {};
+        const _abandonParts = (application.fullName || '').trim().split(' ');
+        triggerAppAbandoned({
+          applicationId: id,
+          phone: application.phone || undefined,
+          email: application.email || undefined,
+          firstName: _abandonParts[0] || undefined,
+          lastName: _abandonParts.slice(1).join(' ') || undefined,
+          businessName: application.businessName || undefined,
+          lastStep: lastStep || application.currentStep || undefined,
+          abandonedPage: abandonedPage || 'application',
+        });
+
+        // If they completed intake but abandoned during full app, send portal link
+        // (so they can finish their app from the portal)
+        if (application.isCompleted && application.email) {
+          autoCreatePortalAccount({
+            email: application.email,
+            name: application.fullName || undefined,
+            phone: application.phone || undefined,
+            businessName: application.businessName || undefined,
+            applicationId: application.id,
+            triggerKey: 'trigger.portal_after_intake',
+            sendLink: true,
+          });
+        }
+
         return res.json({ success: true, message: "Abandoned webhook sent" });
       }
       
@@ -3015,7 +3070,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[UNDERWRITING] GHL sync error for ${businessEmail}:`, err);
       });
 
-      // SMS: approval_issued
+      // SMS: approval_issued + auto congratulations message
       if (status === 'approved' && businessPhone) {
         const _proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
         const _host = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
@@ -3031,9 +3086,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           amount: _topAmount,
           lender: decision.lender || undefined,
         });
+
+        // Auto-trigger: congratulations SMS to merchant
+        const _approvalNameParts = (businessName || '').trim().split(' ');
+        triggerApprovalCongratulations({
+          decisionId: decision.id,
+          phone: businessPhone,
+          email: businessEmail || undefined,
+          firstName: _approvalNameParts[0] || undefined,
+          businessName: businessName || undefined,
+          approvalLink: _approvalLink,
+          amount: _topAmount,
+          lender: decision.lender || undefined,
+        });
       }
 
-      // SMS: funded
+      // SMS: funded + auto congratulations message
       if (status === 'funded' && businessPhone) {
         const _fundedAmount = decision.advanceAmount ? parseFloat(String(decision.advanceAmount)) : undefined;
         fireSmsStageEvent({
@@ -3042,6 +3110,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: businessEmail || undefined,
           business_name: businessName || undefined,
           deal_id: decision.id,
+          amount: _fundedAmount,
+          lender: decision.lender || undefined,
+        });
+
+        // Auto-trigger: funded congratulations SMS to merchant
+        const _fundedNameParts = (businessName || '').trim().split(' ');
+        triggerFundedCongratulations({
+          decisionId: decision.id,
+          phone: businessPhone,
+          email: businessEmail || undefined,
+          firstName: _fundedNameParts[0] || undefined,
+          businessName: businessName || undefined,
           amount: _fundedAmount,
           lender: decision.lender || undefined,
         });
@@ -3138,11 +3218,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[UNDERWRITING] GHL sync error for decision ${id}:`, err);
       });
 
-      // SMS: approval_issued (PATCH path)
+      // SMS: approval_issued + auto congratulations (PATCH path)
       if (updates.status === 'approved' && updated.businessPhone) {
         const _pProto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
         const _pHost = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
         const _pLink = updated.approvalSlug ? `${_pProto}://${_pHost}/approval-letter/${updated.approvalSlug}` : undefined;
+        const _pAmount = updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined;
         fireSmsStageEvent({
           stage: 'approval_issued',
           phone: updated.businessPhone,
@@ -3150,20 +3231,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
           business_name: updated.businessName || undefined,
           deal_id: updated.id,
           approval_link: _pLink,
-          amount: updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined,
+          amount: _pAmount,
+          lender: updated.lender || undefined,
+        });
+
+        // Auto-trigger: congratulations SMS to merchant (PATCH path)
+        const _pNameParts = (updated.businessName || '').trim().split(' ');
+        triggerApprovalCongratulations({
+          decisionId: updated.id,
+          phone: updated.businessPhone,
+          email: updated.businessEmail || undefined,
+          firstName: _pNameParts[0] || undefined,
+          businessName: updated.businessName || undefined,
+          approvalLink: _pLink,
+          amount: _pAmount,
           lender: updated.lender || undefined,
         });
       }
 
-      // SMS: funded (PATCH path)
+      // SMS: funded + auto congratulations (PATCH path)
       if (updates.status === 'funded' && updated.businessPhone) {
+        const _pFundedAmount = updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined;
         fireSmsStageEvent({
           stage: 'funded',
           phone: updated.businessPhone,
           email: updated.businessEmail || undefined,
           business_name: updated.businessName || undefined,
           deal_id: updated.id,
-          amount: updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined,
+          amount: _pFundedAmount,
+          lender: updated.lender || undefined,
+        });
+
+        // Auto-trigger: funded congratulations SMS to merchant (PATCH path)
+        const _pFundedNameParts = (updated.businessName || '').trim().split(' ');
+        triggerFundedCongratulations({
+          decisionId: updated.id,
+          phone: updated.businessPhone,
+          email: updated.businessEmail || undefined,
+          firstName: _pFundedNameParts[0] || undefined,
+          businessName: updated.businessName || undefined,
+          amount: _pFundedAmount,
           lender: updated.lender || undefined,
         });
       }
@@ -6917,6 +7024,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // SYSTEM SETTINGS (admin-only)
+  // ========================================
+
+  // GET all settings (for the settings UI)
+  app.get("/api/settings", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    try {
+      const settings = await storage.getAllSettings();
+      // Return as a key-value map for easy consumption
+      const map: Record<string, string> = {};
+      for (const s of settings) {
+        map[s.key] = s.value;
+      }
+      res.json(map);
+    } catch (error) {
+      console.error("[SETTINGS] Error fetching settings:", error);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  // PUT a single setting
+  app.put("/api/settings/:key", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    try {
+      const { key } = req.params;
+      const { value } = req.body;
+      if (value === undefined || value === null) {
+        return res.status(400).json({ error: "value is required" });
+      }
+      await storage.setSetting(key, String(value), req.session.user.agentEmail || 'admin');
+      console.log(`[SETTINGS] ${key} set to "${value}" by ${req.session.user.agentEmail || 'admin'}`);
+      res.json({ success: true, key, value: String(value) });
+    } catch (error) {
+      console.error("[SETTINGS] Error saving setting:", error);
+      res.status(500).json({ error: "Failed to save setting" });
+    }
+  });
+
+  // ========================================
   // MERCHANT PORTAL ROUTES
   // ========================================
 
@@ -6965,7 +7115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #14B8A6;">Today Capital Group</h2>
           <p>Hello${businessName ? ` ${businessName}` : ''},</p>
-          <p>Your funded deal is now live in the <strong>Today Capital Group Merchant Portal</strong>. You can use it to track your payoff progress, view payment details, and see your remaining balance at any time.</p>
+          <p>Your <strong>Today Capital Group Merchant Portal</strong> is ready. Use it to track your application status, upload documents, view funding details, and communicate with your rep — all in one place.</p>
           <p style="margin: 24px 0;">
             <a href="${activateUrl}" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
               Set Up Your Portal Access
@@ -6996,6 +7146,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('[MERCHANT] Failed to send invite email:', error);
       return false;
+    }
+  }
+
+  // Helper: auto-create portal account and optionally send portal link
+  async function autoCreatePortalAccount(opts: {
+    email: string;
+    name?: string;
+    phone?: string;
+    businessName?: string;
+    applicationId?: number;
+    triggerKey: string; // which setting key to check
+    sendLink: boolean; // whether to actually send the email
+  }): Promise<void> {
+    try {
+      const normalizedEmail = opts.email.toLowerCase();
+
+      // Check if this trigger is enabled
+      const { isTriggerEnabled } = await import('./messaging-triggers');
+      const enabled = await isTriggerEnabled(opts.triggerKey);
+
+      // Always create the portal account (even if trigger is off, for manual sending later)
+      const token = randomBytes(32).toString('hex');
+      await storage.createMerchantPortalAccount({
+        email: normalizedEmail,
+        portalToken: token,
+        name: opts.name || null,
+        phone: opts.phone || null,
+        businessName: opts.businessName || null,
+        applicationId: opts.applicationId || null,
+        portalLinkSentAt: enabled && opts.sendLink ? new Date() : null,
+      });
+
+      if (enabled && opts.sendLink) {
+        await sendMerchantInviteEmail(normalizedEmail, opts.name || opts.businessName || '', token);
+        console.log(`[MERCHANT] Auto-sent portal link to ${normalizedEmail} (trigger: ${opts.triggerKey})`);
+      } else {
+        console.log(`[MERCHANT] Portal account created for ${normalizedEmail} (link not sent, trigger ${opts.triggerKey} ${enabled ? 'enabled but sendLink=false' : 'disabled'})`);
+      }
+    } catch (error) {
+      console.error('[MERCHANT] Auto-create portal account error:', error);
     }
   }
 
@@ -7181,17 +7371,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Check merchantPortalAccounts first (new system), then fall back to businessUnderwritingDecisions (legacy)
+      const portalAccount = await storage.getMerchantPortalAccountByEmail(normalizedEmail);
       const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(normalizedEmail);
-      if (!decision || !decision.merchantPasswordHash) {
-        // Track failed attempt
+
+      const passwordHash = portalAccount?.passwordHash || decision?.merchantPasswordHash;
+      if (!passwordHash) {
         const entry = merchantLoginAttempts.get(normalizedEmail);
         if (entry) { entry.count++; } else { merchantLoginAttempts.set(normalizedEmail, { count: 1, firstAttempt: now }); }
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
-      const isValid = verifyPassword(password, decision.merchantPasswordHash);
+      const isValid = verifyPassword(password, passwordHash);
       if (!isValid) {
-        // Track failed attempt
         const entry = merchantLoginAttempts.get(normalizedEmail);
         if (entry) { entry.count++; } else { merchantLoginAttempts.set(normalizedEmail, { count: 1, firstAttempt: now }); }
         return res.status(401).json({ error: "Invalid email or password" });
@@ -7200,11 +7392,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Clear rate limit on successful login
       merchantLoginAttempts.delete(normalizedEmail);
 
+      const merchantName = portalAccount?.name || portalAccount?.businessName || decision?.businessName;
       req.session.user = {
         isAuthenticated: true,
         role: 'merchant',
-        merchantEmail: decision.merchantEmail!,
-        merchantName: decision.businessName || undefined,
+        merchantEmail: normalizedEmail,
+        merchantName: merchantName || undefined,
       };
 
       res.json({ success: true });
@@ -7214,7 +7407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Merchant Activate (magic link handler)
+  // Merchant Activate (magic link handler) - checks both new portal accounts and legacy decisions
   app.post("/api/merchant/activate", async (req, res) => {
     try {
       const { token, password } = req.body;
@@ -7226,14 +7419,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Password must be at least 6 characters" });
       }
 
+      const hashedPw = hashPassword(password);
+
+      // Check new merchantPortalAccounts first
+      const portalAccount = await storage.getMerchantPortalAccountByToken(token);
+      if (portalAccount) {
+        await storage.updateMerchantPortalAccount(portalAccount.id, {
+          passwordHash: hashedPw,
+          portalToken: null,
+        });
+
+        req.session.user = {
+          isAuthenticated: true,
+          role: 'merchant',
+          merchantEmail: portalAccount.email,
+          merchantName: portalAccount.name || portalAccount.businessName || undefined,
+        };
+
+        return res.json({ success: true });
+      }
+
+      // Fall back to legacy businessUnderwritingDecisions
       const decision = await storage.getBusinessUnderwritingDecisionByMerchantToken(token);
       if (!decision) {
         return res.status(400).json({ error: "Invalid or expired activation token" });
       }
 
-      const passwordHash = hashPassword(password);
       await storage.updateBusinessUnderwritingDecision(decision.id, {
-        merchantPasswordHash: passwordHash,
+        merchantPasswordHash: hashedPw,
         merchantPortalToken: null,
       });
 
@@ -7286,6 +7499,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const decision of decisions) {
         if (decision.status !== 'funded') continue;
 
+        // Shared renewal/offer fields from the decision
+        const sharedFields = {
+          maxUpsell: decision.maxUpsell ? parseFloat(decision.maxUpsell) : null,
+          approvalDeadline: decision.approvalDeadline ? new Date(decision.approvalDeadline).toISOString() : null,
+          additionalApprovals: Array.isArray(decision.additionalApprovals) ? decision.additionalApprovals : [],
+          decisionId: decision.id,
+        };
+
         // Build deals from additionalFundings JSONB array
         const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
 
@@ -7302,6 +7523,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             term: funding.term || decision.term || '6 months',
             status: 'active',
             assignedRep: funding.assignedRep || decision.assignedRep || null,
+            ...sharedFields,
           });
         }
 
@@ -7319,6 +7541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             term: decision.term || '6 months',
             status: 'active',
             assignedRep: decision.assignedRep || null,
+            ...sharedFields,
           });
         }
       }
@@ -7349,6 +7572,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[MERCHANT] Error fetching statements:", error);
       res.status(500).json({ error: "Failed to fetch statements" });
+    }
+  });
+
+  // Merchant Activity Feed - aggregates milestones, messages, and offers
+  app.get("/api/merchant/activity", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const activities: any[] = [];
+
+      // Get decisions for milestone events
+      const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(email);
+      for (const d of decisions) {
+        if (d.status === 'funded' && d.fundedDate) {
+          activities.push({
+            id: `funded-${d.id}`,
+            type: 'milestone',
+            icon: 'dollar',
+            title: 'Deal Funded',
+            description: `${d.lender || 'Your lender'} funded ${d.advanceAmount ? '$' + parseFloat(d.advanceAmount).toLocaleString() : 'your advance'}`,
+            timestamp: new Date(d.fundedDate).toISOString(),
+          });
+        }
+        if (d.status === 'funded' && d.approvalDeadline) {
+          activities.push({
+            id: `offer-${d.id}`,
+            type: 'offer',
+            icon: 'star',
+            title: 'Renewal Offer Available',
+            description: d.maxUpsell ? `Pre-qualified for up to $${parseFloat(d.maxUpsell).toLocaleString()}` : 'You may qualify for additional funding',
+            timestamp: new Date(d.updatedAt || d.createdAt || d.fundedDate).toISOString(),
+          });
+        }
+        // Payment milestone estimates from additionalFundings
+        const fundings = Array.isArray(d.additionalFundings) ? d.additionalFundings as any[] : [];
+        for (const f of fundings) {
+          if (f.fundedDate) {
+            activities.push({
+              id: `funded-${f.id || d.id}-${f.lender}`,
+              type: 'milestone',
+              icon: 'dollar',
+              title: `Position Funded — ${f.lender}`,
+              description: `${f.lender} funded $${parseFloat(f.advanceAmount || '0').toLocaleString()}`,
+              timestamp: new Date(f.fundedDate).toISOString(),
+            });
+          }
+        }
+      }
+
+      // Get recent messages
+      const messages = await storage.getMerchantMessagesByEmail(email);
+      for (const m of messages.slice(-20)) {
+        activities.push({
+          id: `msg-${m.id}`,
+          type: 'message',
+          icon: 'message',
+          title: m.senderRole === 'merchant' ? 'You sent a message' : `Message from ${m.senderName || 'your rep'}`,
+          description: m.message.length > 80 ? m.message.substring(0, 80) + '...' : m.message,
+          timestamp: new Date(m.createdAt).toISOString(),
+        });
+      }
+
+      // Sort by timestamp descending
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      res.json(activities.slice(0, 50));
+    } catch (error) {
+      console.error("[MERCHANT] Error fetching activity:", error);
+      res.status(500).json({ error: "Failed to fetch activity" });
     }
   });
 
@@ -7464,6 +7757,395 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[MERCHANT] Resend invite error:", error);
       res.status(500).json({ error: "Failed to resend invite" });
+    }
+  });
+
+  // Send Portal Link - for any application (manual from dashboard)
+  app.post("/api/merchant/send-portal-link", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting' && req.session.user.role !== 'agent') {
+      return res.status(403).json({ error: "Staff access required" });
+    }
+
+    try {
+      const { applicationId, email } = req.body;
+      if (!applicationId && !email) {
+        return res.status(400).json({ error: "applicationId or email is required" });
+      }
+
+      let targetEmail = email?.toLowerCase();
+      let name = '';
+      let businessName = '';
+      let appId: number | null = null;
+
+      if (applicationId) {
+        const app = await storage.getLoanApplication(applicationId);
+        if (!app) return res.status(404).json({ error: "Application not found" });
+        targetEmail = app.email?.toLowerCase();
+        name = app.fullName || '';
+        businessName = app.businessName || app.legalBusinessName || '';
+        appId = app.id;
+      }
+
+      if (!targetEmail) {
+        return res.status(400).json({ error: "No email found for this application" });
+      }
+
+      const token = randomBytes(32).toString('hex');
+
+      // Create or update portal account
+      await storage.createMerchantPortalAccount({
+        email: targetEmail,
+        portalToken: token,
+        name: name || null,
+        businessName: businessName || null,
+        applicationId: appId,
+        portalLinkSentAt: new Date(),
+      });
+
+      const emailSent = await sendMerchantInviteEmail(targetEmail, name || businessName, token);
+
+      res.json({
+        success: true,
+        emailSent,
+        message: emailSent
+          ? `Portal link sent to ${targetEmail}`
+          : `Token generated but email could not be sent.`,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Send portal link error:", error);
+      res.status(500).json({ error: "Failed to send portal link" });
+    }
+  });
+
+  // Merchant Application Status - returns application progress for non-funded merchants
+  app.get("/api/merchant/application-status", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const app = await storage.getLoanApplicationByEmail(email);
+      if (!app) {
+        return res.json({ hasApplication: false });
+      }
+
+      // Check bank statement uploads
+      const uploads = await storage.getBankStatementUploadsByEmail(email);
+
+      res.json({
+        hasApplication: true,
+        applicationId: app.id,
+        businessName: app.businessName || app.legalBusinessName || null,
+        isIntakeCompleted: !!app.isCompleted,
+        isFullApplicationCompleted: !!app.isFullApplicationCompleted,
+        currentStep: app.currentStep || 0,
+        bankStatementsUploaded: uploads.length > 0,
+        bankStatementCount: uploads.length,
+        createdAt: app.createdAt,
+        updatedAt: app.updatedAt,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Application status error:", error);
+      res.status(500).json({ error: "Failed to fetch application status" });
+    }
+  });
+
+  // ── MERCHANT FINANCIALS ──────────────────────────────────────────────
+
+  // Route 1: Create Plaid Link Token for merchant
+  app.post("/api/merchant/plaid/create-link-token", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const tokenData = await plaidService.createMerchantLinkToken(req.session.user.merchantEmail);
+      res.json({ link_token: tokenData.link_token });
+    } catch (error) {
+      console.error("[MERCHANT PLAID] Create link token error:", error);
+      res.status(500).json({ error: "Failed to create link token" });
+    }
+  });
+
+  // Route 2: Exchange Plaid public token for merchant
+  app.post("/api/merchant/plaid/exchange-token", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const { publicToken, metadata } = req.body;
+      if (!publicToken) return res.status(400).json({ error: "publicToken is required" });
+
+      const merchantEmail = req.session.user.merchantEmail;
+      const tokenResponse = await plaidService.exchangePublicToken(publicToken);
+      const { item_id, access_token } = tokenResponse;
+      const institutionName = metadata?.institution?.name || null;
+
+      // Create plaidItems row
+      await storage.createPlaidItem({
+        itemId: item_id,
+        accessToken: access_token,
+        institutionName,
+      });
+
+      // Create merchantPlaidConnections row
+      await storage.createMerchantPlaidConnection({
+        merchantEmail: merchantEmail.toLowerCase(),
+        plaidItemId: item_id,
+        institutionName,
+      });
+
+      // Run initial financial analysis in background
+      (async () => {
+        try {
+          const analysisResult = await plaidService.analyzeFinancials(access_token);
+          if (analysisResult) {
+            await storage.createOrUpdateMerchantInsight({
+              merchantEmail: merchantEmail.toLowerCase(),
+              sourceType: 'plaid',
+              insightsData: analysisResult as any,
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+            });
+            console.log(`[MERCHANT PLAID] Cached initial Plaid insights for ${merchantEmail}`);
+          }
+        } catch (err) {
+          console.error('[MERCHANT PLAID] Background analysis failed:', err);
+        }
+      })();
+
+      res.json({ success: true, institutionName });
+    } catch (error) {
+      console.error("[MERCHANT PLAID] Exchange token error:", error);
+      res.status(500).json({ error: "Failed to connect bank account" });
+    }
+  });
+
+  // Route 3: Get merchant's Plaid connections
+  app.get("/api/merchant/plaid/connections", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const connections = await storage.getMerchantPlaidConnectionsByEmail(email);
+
+      // Also check fundingAnalyses for intake-linked items via access token lookup
+      const legacyTokens = await storage.getPlaidAccessTokensForMerchant(email);
+
+      const result = connections.map(c => ({
+        id: c.id,
+        institutionName: c.institutionName,
+        connectedAt: c.connectedAt,
+        isActive: c.isActive,
+        source: 'portal' as const,
+      }));
+
+      // Add legacy connections not already in the list
+      for (const lt of legacyTokens) {
+        if (!connections.some(c => c.institutionName === lt.institutionName)) {
+          result.push({
+            id: `legacy-${lt.institutionName || 'unknown'}`,
+            institutionName: lt.institutionName,
+            connectedAt: null as any,
+            isActive: true,
+            source: 'intake' as const,
+          });
+        }
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("[MERCHANT PLAID] Get connections error:", error);
+      res.status(500).json({ error: "Failed to fetch connections" });
+    }
+  });
+
+  // Route 4: Analyze merchant's uploaded PDF bank statements
+  app.post("/api/merchant/bank-statements/analyze", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const uploads = await storage.getBankStatementUploadsByEmail(email);
+
+      if (!uploads || uploads.length === 0) {
+        return res.status(400).json({ error: "No bank statements found to analyze" });
+      }
+
+      const extractedTexts: string[] = [];
+
+      for (const upload of uploads.slice(0, 6)) {
+        try {
+          let fileBuffer: Buffer;
+
+          if (upload.storedFileName && upload.storedFileName.includes("bank-statements/")) {
+            fileBuffer = await objectStorage.getFileBuffer(upload.storedFileName);
+          } else {
+            const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+            if (fs.existsSync(filePath)) {
+              fileBuffer = fs.readFileSync(filePath);
+            } else {
+              console.warn(`[MERCHANT PDF] File not found: ${upload.storedFileName}`);
+              continue;
+            }
+          }
+
+          const parser = new PDFParse({ data: fileBuffer });
+          const result = await parser.getText();
+          const text = result.text || "";
+          extractedTexts.push(`--- Statement: ${upload.originalFileName} ---\n${text}\n`);
+          await parser.destroy();
+        } catch (pdfError) {
+          console.error(`[MERCHANT PDF] Error parsing ${upload.originalFileName}:`, pdfError);
+        }
+      }
+
+      if (extractedTexts.length === 0) {
+        return res.status(400).json({ error: "Could not extract text from uploaded PDFs" });
+      }
+
+      const combinedText = extractedTexts.join("\n\n");
+      const analysis = await analyzeBankStatements(combinedText, {});
+
+      // Cache the result (7 day expiry for PDF)
+      await storage.createOrUpdateMerchantInsight({
+        merchantEmail: email.toLowerCase(),
+        sourceType: 'pdf',
+        insightsData: analysis as any,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+
+      console.log(`[MERCHANT PDF] Analysis complete for ${email}. Score: ${analysis.overallScore}`);
+      res.json({ success: true, analysis });
+    } catch (error) {
+      console.error("[MERCHANT PDF] Analysis error:", error);
+      res.status(500).json({ error: "Failed to analyze statements" });
+    }
+  });
+
+  // Route 5: Get combined financial insights
+  app.get("/api/merchant/financial-insights", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+
+      // Check cached insights
+      const pdfCache = await storage.getMerchantInsight(email, 'pdf');
+      const plaidCache = await storage.getMerchantInsight(email, 'plaid');
+
+      // Check if Plaid insights are stale and need refresh
+      let plaidData = plaidCache?.insightsData as any;
+      const plaidStale = plaidCache && plaidCache.expiresAt && new Date(plaidCache.expiresAt) < new Date();
+
+      if (plaidStale) {
+        // Re-fetch from Plaid in background
+        const tokens = await storage.getPlaidAccessTokensForMerchant(email);
+        if (tokens.length > 0) {
+          try {
+            const freshAnalysis = await plaidService.analyzeFinancials(tokens[0].accessToken);
+            if (freshAnalysis) {
+              await storage.createOrUpdateMerchantInsight({
+                merchantEmail: email.toLowerCase(),
+                sourceType: 'plaid',
+                insightsData: freshAnalysis as any,
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+              });
+              plaidData = freshAnalysis;
+            }
+          } catch (refreshErr) {
+            console.error('[MERCHANT] Plaid refresh failed, using stale cache:', refreshErr);
+          }
+        }
+      }
+
+      const pdfData = pdfCache?.insightsData as any;
+      const connections = await storage.getMerchantPlaidConnectionsByEmail(email);
+      const statements = await storage.getBankStatementUploadsByEmail(email);
+
+      // Translate PDF insights to merchant-friendly format
+      let pdfInsights = null;
+      if (pdfData) {
+        const score = pdfData.overallScore || 0;
+        const cashFlowHealth = score >= 75 ? 'strong' : score >= 50 ? 'moderate' : 'needs-attention';
+
+        pdfInsights = {
+          cashFlowHealth,
+          estimatedMonthlyRevenue: pdfData.estimatedMonthlyRevenue || 0,
+          averageDailyBalance: pdfData.averageDailyBalance || 0,
+          positiveIndicators: (pdfData.positiveIndicators || []).map((p: any) =>
+            typeof p === 'string' ? p : p.indicator || p.details || ''
+          ),
+          concerns: (pdfData.redFlags || []).map((f: any) => {
+            const issue = typeof f === 'string' ? f : f.issue || '';
+            // Reword underwriting jargon
+            if (issue.toLowerCase().includes('nsf')) return 'Some transactions were returned — consider maintaining a higher buffer';
+            if (issue.toLowerCase().includes('negative')) return 'Account balance dipped below zero on some days — try to keep a cushion';
+            return typeof f === 'string' ? f : f.details || f.issue || '';
+          }),
+          tips: pdfData.improvementSuggestions || [],
+          summary: pdfData.summary || '',
+          analyzedAt: pdfCache?.generatedAt?.toISOString() || new Date().toISOString(),
+        };
+      }
+
+      // Translate Plaid insights
+      let plaidInsights = null;
+      if (plaidData) {
+        plaidInsights = {
+          accounts: plaidData.accounts || [],
+          monthlyRevenue: plaidData.monthlyRevenue || plaidData.estimatedMonthlyRevenue || 0,
+          avgBalance: plaidData.averageBalance || plaidData.averageDailyBalance || 0,
+          revenueTrend: plaidData.revenueTrend || 'stable',
+          lastUpdated: plaidCache?.generatedAt?.toISOString() || new Date().toISOString(),
+        };
+      }
+
+      // Determine renewal nudge
+      const bestScore = pdfData?.overallScore || 0;
+      const revenue = pdfData?.estimatedMonthlyRevenue || plaidData?.monthlyRevenue || 0;
+      const renewalNudge = {
+        eligible: bestScore >= 60 && revenue > 10000,
+        message: bestScore >= 60 && revenue > 10000
+          ? "Based on your financial activity, you may qualify for additional funding. Talk to your rep to explore options."
+          : "",
+      };
+
+      res.json({
+        hasStatements: statements.length > 0,
+        hasPlaidConnection: connections.length > 0,
+        pdfInsights,
+        plaidInsights,
+        renewalNudge,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Financial insights error:", error);
+      res.status(500).json({ error: "Failed to fetch financial insights" });
+    }
+  });
+
+  // Route 6: Deactivate a Plaid connection
+  app.delete("/api/merchant/plaid/connections/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const { id } = req.params;
+      // Verify the connection belongs to this merchant
+      const connections = await storage.getMerchantPlaidConnectionsByEmail(req.session.user.merchantEmail);
+      const conn = connections.find(c => c.id === id);
+      if (!conn) {
+        return res.status(404).json({ error: "Connection not found" });
+      }
+      await storage.deactivateMerchantPlaidConnection(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[MERCHANT PLAID] Deactivate connection error:", error);
+      res.status(500).json({ error: "Failed to disconnect bank" });
     }
   });
 

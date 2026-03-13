@@ -567,3 +567,72 @@ export const insertMerchantMessageSchema = createInsertSchema(merchantMessages).
 
 export type InsertMerchantMessage = z.infer<typeof insertMerchantMessageSchema>;
 export type MerchantMessage = typeof merchantMessages.$inferSelect;
+
+// System settings (key-value store for feature flags, toggles, etc.)
+export const systemSettings = pgTable("system_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: text("updated_by"), // email of admin who last changed it
+});
+
+export type SystemSetting = typeof systemSettings.$inferSelect;
+
+// Merchant Portal Accounts - portal access for anyone (applicants, intake leads, funded merchants)
+export const merchantPortalAccounts = pgTable("merchant_portal_accounts", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  portalToken: text("portal_token"), // one-time activation link token
+  name: text("name"),
+  phone: text("phone"),
+  businessName: text("business_name"),
+  applicationId: integer("application_id"), // links to loan application if applicable
+  decisionId: text("decision_id"), // links to businessUnderwritingDecision if funded
+  portalLinkSentAt: timestamp("portal_link_sent_at"), // when the activation link was last sent
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMerchantPortalAccountSchema = createInsertSchema(merchantPortalAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMerchantPortalAccount = z.infer<typeof insertMerchantPortalAccountSchema>;
+export type MerchantPortalAccount = typeof merchantPortalAccounts.$inferSelect;
+
+// Merchant Plaid Connections - bridges merchant email to Plaid items
+export const merchantPlaidConnections = pgTable("merchant_plaid_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  merchantEmail: text("merchant_email").notNull(),
+  plaidItemId: text("plaid_item_id").notNull(),
+  institutionName: text("institution_name"),
+  isActive: boolean("is_active").default(true),
+  connectedAt: timestamp("connected_at").defaultNow(),
+});
+
+export const insertMerchantPlaidConnectionSchema = createInsertSchema(merchantPlaidConnections).omit({
+  id: true,
+  connectedAt: true,
+});
+
+export type InsertMerchantPlaidConnection = z.infer<typeof insertMerchantPlaidConnectionSchema>;
+export type MerchantPlaidConnection = typeof merchantPlaidConnections.$inferSelect;
+
+// Merchant Financial Insights - caches computed insights
+export const merchantFinancialInsights = pgTable("merchant_financial_insights", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  merchantEmail: text("merchant_email").notNull(),
+  sourceType: text("source_type").notNull(), // 'pdf' | 'plaid'
+  insightsData: jsonb("insights_data").notNull(),
+  generatedAt: timestamp("generated_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const insertMerchantFinancialInsightSchema = createInsertSchema(merchantFinancialInsights).omit({
+  id: true,
+  generatedAt: true,
+});
+
+export type InsertMerchantFinancialInsight = z.infer<typeof insertMerchantFinancialInsightSchema>;
+export type MerchantFinancialInsight = typeof merchantFinancialInsights.$inferSelect;
