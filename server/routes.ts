@@ -14,6 +14,7 @@ import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
+import { notifyMerchantNewMessage } from "./services/twilio";
 import { fireSmsStageEvent } from "./sms-middleware";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
@@ -6833,6 +6834,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // Helper: send notification email to assigned rep when merchant sends a portal message
+  async function sendRepMessageNotificationEmail(repEmail: string, merchantName: string, messagePreview: string): Promise<boolean> {
+    try {
+      const { google } = await import('googleapis');
+      const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+      const xReplitToken = process.env.REPL_IDENTITY
+        ? 'repl ' + process.env.REPL_IDENTITY
+        : process.env.WEB_REPL_RENEWAL
+        ? 'depl ' + process.env.WEB_REPL_RENEWAL
+        : null;
+
+      if (!xReplitToken || !hostname) {
+        console.log('[MERCHANT] Gmail connector not available, skipping rep notification');
+        return false;
+      }
+
+      const connRes = await fetch(
+        'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-mail',
+        { headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken } }
+      ).then(r => r.json());
+
+      const accessToken = connRes.items?.[0]?.settings?.access_token || connRes.items?.[0]?.settings?.oauth?.credentials?.access_token;
+      if (!accessToken) {
+        console.log('[MERCHANT] No Gmail access token for rep notification');
+        return false;
+      }
+
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials({ access_token: accessToken });
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+        : 'https://todaycapitalgroup.com';
+
+      const truncatedMsg = messagePreview.length > 200 ? messagePreview.slice(0, 200) + '...' : messagePreview;
+
+      const subject = `New portal message from ${merchantName}`;
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #14B8A6;">Today Capital Group</h2>
+          <p>You have a new message from <strong>${merchantName}</strong> on the Merchant Portal:</p>
+          <div style="background: #f4f4f5; border-radius: 8px; padding: 16px; margin: 16px 0; font-style: italic; color: #333;">
+            "${truncatedMsg}"
+          </div>
+          <p style="margin: 24px 0;">
+            <a href="${baseUrl}/dashboard" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+              View in Dashboard
+            </a>
+          </p>
+          <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;" />
+          <p style="color: #999; font-size: 12px;">Today Capital Group · Merchant Portal Notification</p>
+        </div>
+      `;
+
+      const raw = Buffer.from(
+        `To: ${repEmail}\r\n` +
+        `Subject: ${subject}\r\n` +
+        `Content-Type: text/html; charset=utf-8\r\n` +
+        `\r\n` +
+        htmlBody
+      ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+      await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw },
+      });
+
+      console.log(`[MERCHANT] Rep notification email sent to ${repEmail} for message from ${merchantName}`);
+      return true;
+    } catch (error) {
+      console.error('[MERCHANT] Failed to send rep notification email:', error);
+      return false;
+    }
+  }
+
   // Rate limiter for merchant login — max 5 attempts per email per 15 minutes
   const merchantLoginAttempts = new Map<string, { count: number; firstAttempt: number }>();
   const MERCHANT_LOGIN_MAX_ATTEMPTS = 5;
@@ -7221,6 +7300,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: message.trim(),
         isRead: false,
       });
+
+      // Notify assigned rep via email (async, non-blocking)
+      const decision = await storage.getBusinessUnderwritingDecisionByEmail(req.session.user.merchantEmail);
+      if (decision?.assignedRep) {
+        const repAgent = AGENTS.find(a => a.name.toLowerCase() === decision.assignedRep!.toLowerCase());
+        if (repAgent) {
+          const merchantLabel = req.session.user.merchantName || decision.businessName || req.session.user.merchantEmail;
+          sendRepMessageNotificationEmail(repAgent.email, merchantLabel, message.trim()).catch(err => {
+            console.error('[MERCHANT] Failed to email rep notification:', err);
+          });
+        }
+      }
+
       res.json(msg);
     } catch (error) {
       console.error("[MERCHANT] Error sending message:", error);
@@ -7265,6 +7357,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: message.trim(),
         isRead: false,
       });
+
+      // Send SMS notification to merchant (async, non-blocking)
+      const decision = await storage.getBusinessUnderwritingDecisionByEmail(merchantEmail.toLowerCase());
+      if (decision?.businessPhone) {
+        notifyMerchantNewMessage(decision.businessPhone, senderName || 'Today Capital Group').catch(err => {
+          console.error('[TWILIO] Failed to notify merchant:', err);
+        });
+      }
+
       res.json(msg);
     } catch (error) {
       console.error("[MERCHANT] Staff message error:", error);
