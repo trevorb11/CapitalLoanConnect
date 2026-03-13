@@ -3370,6 +3370,35 @@ export default function Dashboard() {
     },
   });
 
+  const sendPortalLinkMutation = useMutation({
+    mutationFn: async ({ applicationId, email }: { applicationId?: string; email?: string }) => {
+      const res = await fetch("/api/merchant/send-portal-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId, email }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to send portal link");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Portal Link Sent",
+        description: data.message || "Portal activation link has been emailed.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleLogout = () => {
     logoutMutation.mutate();
   };
@@ -3964,6 +3993,18 @@ export default function Dashboard() {
                       <ExternalLink className="w-4 h-4 mr-2" />
                       View Application
                     </Button>
+                    {app.email && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => sendPortalLinkMutation.mutate({ applicationId: app.id, email: app.email || undefined })}
+                        disabled={sendPortalLinkMutation.isPending}
+                        data-testid={`button-send-portal-link-${app.id}`}
+                      >
+                        <Mail className="w-4 h-4 mr-2" />
+                        {sendPortalLinkMutation.isPending ? "Sending..." : "Send Portal Link"}
+                      </Button>
+                    )}
                     <p className="text-xs text-muted-foreground text-center" data-testid={`text-app-id-${app.id}`}>ID: {app.id?.slice(0, 8)}...</p>
                   </div>
                 </div>

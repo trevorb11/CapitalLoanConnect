@@ -15,6 +15,8 @@ import {
   FileText,
   AlertTriangle,
   Loader2,
+  UserPlus,
+  Send,
 } from "lucide-react";
 
 interface TriggerConfig {
@@ -22,7 +24,7 @@ interface TriggerConfig {
   label: string;
   description: string;
   icon: React.ReactNode;
-  category: "instant" | "scheduled";
+  category: "instant" | "scheduled" | "portal";
 }
 
 const TRIGGERS: TriggerConfig[] = [
@@ -73,6 +75,22 @@ const TRIGGERS: TriggerConfig[] = [
       "Master toggle for ALL scheduled/timed checks (bank statement reminders + stale approval reminders). Turning this off stops the 30-minute background scan entirely.",
     icon: <Bell className="w-5 h-5 text-purple-500" />,
     category: "scheduled",
+  },
+  {
+    key: "trigger.portal_after_intake",
+    label: "Portal Link After Interest Form",
+    description:
+      "Automatically send a merchant portal activation link after someone completes an interest form and then leaves without finishing the full application.",
+    icon: <UserPlus className="w-5 h-5 text-teal-500" />,
+    category: "portal",
+  },
+  {
+    key: "trigger.portal_after_application",
+    label: "Portal Link After Application",
+    description:
+      "Automatically send a merchant portal activation link after someone completes the full application. For rep-specific applications, fires after the app is submitted.",
+    icon: <Send className="w-5 h-5 text-indigo-500" />,
+    category: "portal",
   },
 ];
 
@@ -182,6 +200,7 @@ export default function AutomatedTriggers() {
 
   const instantTriggers = TRIGGERS.filter((t) => t.category === "instant");
   const scheduledTriggers = TRIGGERS.filter((t) => t.category === "scheduled");
+  const portalTriggers = TRIGGERS.filter((t) => t.category === "portal");
   const allEnabled = TRIGGERS.every((t) => isEnabled(t.key));
   const allDisabled = TRIGGERS.every((t) => !isEnabled(t.key));
 
@@ -257,6 +276,26 @@ export default function AutomatedTriggers() {
         </p>
         <div className="space-y-3">
           {scheduledTriggers.map((trigger) => (
+            <TriggerCard
+              key={trigger.key}
+              trigger={trigger}
+              enabled={isEnabled(trigger.key)}
+              onToggle={() => handleToggle(trigger.key)}
+              isPending={toggleMutation.isPending}
+            />
+          ))}
+        </div>
+
+        {/* Portal Link Triggers */}
+        <h2 className="text-lg font-semibold mb-3 text-muted-foreground uppercase tracking-wide text-sm mt-8">
+          Merchant Portal Links
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Automatically send portal activation links to merchants after they submit an interest form or complete an application.
+          When off, portal links can still be sent manually from the dashboard.
+        </p>
+        <div className="space-y-3">
+          {portalTriggers.map((trigger) => (
             <TriggerCard
               key={trigger.key}
               trigger={trigger}

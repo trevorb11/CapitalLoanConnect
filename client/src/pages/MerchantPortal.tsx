@@ -1882,6 +1882,136 @@ const CSS = `
     font-size: 12px;
     color: #4b5568;
   }
+
+  /* ── APPLICATION STATUS BANNER ── */
+  .app-status-banner {
+    background: linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(20,184,166,0.06) 100%);
+    border: 1px solid rgba(59,130,246,0.2);
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .app-status-banner::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 240px; height: 240px;
+    background: radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .app-status-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .app-status-desc {
+    font-size: 14px;
+    color: #9ba3b8;
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  .app-status-steps {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .app-status-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(8,13,24,0.6);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .app-status-step.done {
+    border-color: rgba(52,211,153,0.3);
+    background: rgba(52,211,153,0.06);
+  }
+
+  .app-status-step.current {
+    border-color: rgba(59,130,246,0.3);
+    background: rgba(59,130,246,0.06);
+  }
+
+  .app-status-step-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .app-status-step-icon.done {
+    background: rgba(52,211,153,0.2);
+    color: #34d399;
+  }
+
+  .app-status-step-icon.current {
+    background: rgba(59,130,246,0.2);
+    color: #60a5fa;
+  }
+
+  .app-status-step-icon.pending {
+    background: rgba(255,255,255,0.06);
+    color: #4b5568;
+  }
+
+  .app-status-step-text {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .app-status-step-text.done { color: #34d399; }
+  .app-status-step-text.current { color: #60a5fa; }
+  .app-status-step-text.pending { color: #4b5568; }
+
+  .app-status-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+  }
+
+  .app-status-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+  .app-status-cta:active { transform: translateY(0); }
+
+  .app-status-cta.secondary {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #e8eaf0;
+    margin-left: 12px;
+  }
 `;
 
 // ── COMPONENTS ───────────────────────────────────────────────────────────
@@ -2680,6 +2810,105 @@ function PayoffCountdownWidget({ deal }: { deal: Deal }) {
   );
 }
 
+// ── APPLICATION STATUS BANNER ──────────────────────────────────────────────
+function ApplicationStatusBanner({ appStatus }: {
+  appStatus: {
+    hasApplication: boolean;
+    applicationId?: number;
+    businessName?: string;
+    isIntakeCompleted?: boolean;
+    isFullApplicationCompleted?: boolean;
+    currentStep?: number;
+    bankStatementsUploaded?: boolean;
+    bankStatementCount?: number;
+  };
+}) {
+  if (!appStatus.hasApplication) {
+    // No application yet - show prompt to start
+    return (
+      <div className="app-status-banner">
+        <div className="app-status-title">
+          <span style={{ fontSize: "22px" }}>&#128221;</span>
+          Start Your Funding Application
+        </div>
+        <div className="app-status-desc">
+          Get started with your business funding application. It takes just a few minutes to see what you qualify for.
+        </div>
+        <a href="/" className="app-status-cta" style={{ textDecoration: "none" }}>
+          Start Application &rarr;
+        </a>
+      </div>
+    );
+  }
+
+  const steps = [
+    { label: "Interest Form", done: !!appStatus.isIntakeCompleted },
+    { label: "Full Application", done: !!appStatus.isFullApplicationCompleted },
+    { label: "Bank Statements", done: !!appStatus.bankStatementsUploaded },
+  ];
+
+  // Determine the current step
+  let currentIdx = steps.findIndex(s => !s.done);
+  if (currentIdx === -1) currentIdx = steps.length; // all done
+
+  // If everything is done, don't show this banner
+  if (steps.every(s => s.done)) return null;
+
+  // Determine CTA
+  let ctaHref = "/";
+  let ctaLabel = "Continue Application";
+  if (!appStatus.isIntakeCompleted) {
+    ctaHref = "/intake/quiz";
+    ctaLabel = "Complete Interest Form";
+  } else if (!appStatus.isFullApplicationCompleted) {
+    ctaHref = "/";
+    ctaLabel = "Complete Application";
+  } else if (!appStatus.bankStatementsUploaded) {
+    ctaHref = "/upload-statements";
+    ctaLabel = "Upload Bank Statements";
+  }
+
+  return (
+    <div className="app-status-banner">
+      <div className="app-status-title">
+        <span style={{ fontSize: "22px" }}>&#128203;</span>
+        {appStatus.businessName ? `${appStatus.businessName} — Application Progress` : "Your Application Progress"}
+      </div>
+      <div className="app-status-desc">
+        {!appStatus.isFullApplicationCompleted
+          ? "Complete your application to move forward with funding. Pick up right where you left off."
+          : "Your application is submitted! Upload your bank statements to speed up the review process."
+        }
+      </div>
+
+      <div className="app-status-steps">
+        {steps.map((step, i) => {
+          const status = step.done ? 'done' : i === currentIdx ? 'current' : 'pending';
+          return (
+            <div key={step.label} className={`app-status-step ${status}`}>
+              <div className={`app-status-step-icon ${status}`}>
+                {step.done ? '\u2713' : i === currentIdx ? '\u25CF' : String(i + 1)}
+              </div>
+              <div className={`app-status-step-text ${status}`}>{step.label}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div>
+        <a href={ctaHref} className="app-status-cta" style={{ textDecoration: "none" }}>
+          {ctaLabel} &rarr;
+        </a>
+        {appStatus.isFullApplicationCompleted && !appStatus.bankStatementsUploaded && (
+          <a href="/connect-bank" className="app-status-cta secondary" style={{ textDecoration: "none" }}>
+            Connect Bank Instead
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -2891,6 +3120,16 @@ export default function MerchantPortal() {
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [loadingVault, setLoadingVault] = useState(false);
   const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents'>('positions');
+  const [appStatus, setAppStatus] = useState<{
+    hasApplication: boolean;
+    applicationId?: number;
+    businessName?: string;
+    isIntakeCompleted?: boolean;
+    isFullApplicationCompleted?: boolean;
+    currentStep?: number;
+    bankStatementsUploaded?: boolean;
+    bankStatementCount?: number;
+  } | null>(null);
 
   // Check auth on mount
   useEffect(() => {
@@ -2931,6 +3170,12 @@ export default function MerchantPortal() {
       .then(data => { if (Array.isArray(data)) setVaultDocs(data); })
       .catch(err => console.error("Failed to fetch vault docs:", err))
       .finally(() => setLoadingVault(false));
+
+    // Fetch application status (for non-funded merchants)
+    fetch("/api/merchant/application-status")
+      .then(r => r.json())
+      .then(data => setAppStatus(data))
+      .catch(() => {});
   }, [loggedIn]);
 
   const handleLogin = () => {
@@ -2954,6 +3199,7 @@ export default function MerchantPortal() {
       setMerchantEmail("");
       setMerchantName("");
       setActiveTab('positions');
+      setAppStatus(null);
     });
   };
 
@@ -3028,6 +3274,18 @@ export default function MerchantPortal() {
                   {/* ── POSITIONS TAB ── */}
                   {activeTab === 'positions' && (
                     <>
+                      {/* Application Status Banner - for non-funded merchants */}
+                      {!loadingDeals && appStatus && appStatus.hasApplication && deals.length === 0 && (
+                        <ApplicationStatusBanner appStatus={appStatus} />
+                      )}
+                      {!loadingDeals && appStatus && !appStatus.hasApplication && deals.length === 0 && (
+                        <ApplicationStatusBanner appStatus={appStatus} />
+                      )}
+                      {/* Application progress for funded merchants who haven't uploaded statements */}
+                      {!loadingDeals && appStatus && appStatus.hasApplication && deals.length > 0 && !appStatus.bankStatementsUploaded && appStatus.isFullApplicationCompleted && (
+                        <ApplicationStatusBanner appStatus={appStatus} />
+                      )}
+
                       {/* Pre-Qualified Offer Banner */}
                       {!loadingDeals && deals.length > 0 && (
                         <PreQualifiedOfferBanner deals={deals} />
@@ -3046,7 +3304,11 @@ export default function MerchantPortal() {
                       {loadingDeals ? (
                         <div className="loading-wrap" style={{ minHeight: "200px" }}>Loading your positions...</div>
                       ) : deals.length === 0 ? (
-                        <div className="no-documents">No funded deals found for your account yet.</div>
+                        <div className="no-documents" style={{ marginTop: appStatus?.hasApplication ? "8px" : "0" }}>
+                          {appStatus?.hasApplication
+                            ? "Your funded positions will appear here once your deal closes."
+                            : "No funded deals found for your account yet."}
+                        </div>
                       ) : (
                         <>
                           {activeDeals.length > 0 && (

@@ -29,6 +29,8 @@ export const TRIGGER_KEYS = {
   BANK_STMT_REMINDER:     'trigger.bank_statements_reminder',
   STALE_APPROVAL_REMINDER:'trigger.approval_stale_reminder',
   SCHEDULED_CHECKS:       'trigger.scheduled_checks',
+  PORTAL_AFTER_INTAKE:    'trigger.portal_after_intake',
+  PORTAL_AFTER_APPLICATION:'trigger.portal_after_application',
 } as const;
 
 // In-memory cache so we don't query DB on every single trigger fire.
@@ -49,7 +51,7 @@ async function refreshToggleCache(): Promise<void> {
   }
 }
 
-async function isTriggerEnabled(key: string): Promise<boolean> {
+export async function isTriggerEnabled(key: string): Promise<boolean> {
   if (Date.now() - toggleCacheAge > TOGGLE_CACHE_TTL) {
     await refreshToggleCache();
   }

@@ -904,8 +904,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             deal_id: _smsApp.id,
           });
         }
+
+        // Auto-create portal account after intake form completion
+        if (_smsApp?.email) {
+          autoCreatePortalAccount({
+            email: _smsApp.email,
+            name: _smsApp.fullName || undefined,
+            phone: _smsApp.phone || undefined,
+            businessName: _smsApp.businessName || (_smsApp as any).legalBusinessName || undefined,
+            applicationId: _smsApp.id,
+            triggerKey: 'trigger.portal_after_intake',
+            sendLink: true,
+          });
+        }
       }
-      
+
       // Return with validation errors if any (data was still saved)
       if (postStepValidationErrors.length > 0) {
         return res.json({
@@ -1160,6 +1173,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             deal_id: updatedApp.id,
           });
         }
+
+        // Auto-create portal account after full application completion
+        if (updatedApp.email) {
+          autoCreatePortalAccount({
+            email: updatedApp.email,
+            name: updatedApp.fullName || undefined,
+            phone: updatedApp.phone || undefined,
+            businessName: updatedApp.businessName || updatedApp.legalBusinessName || undefined,
+            applicationId: updatedApp.id,
+            triggerKey: 'trigger.portal_after_application',
+            sendLink: true,
+          });
+        }
       }
 
       // Return with validation errors if any (data was still saved)
@@ -1212,6 +1238,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastStep: lastStep || application.currentStep || undefined,
           abandonedPage: abandonedPage || 'application',
         });
+
+        // If they completed intake but abandoned during full app, send portal link
+        // (so they can finish their app from the portal)
+        if (application.isCompleted && application.email) {
+          autoCreatePortalAccount({
+            email: application.email,
+            name: application.fullName || undefined,
+            phone: application.phone || undefined,
+            businessName: application.businessName || undefined,
+            applicationId: application.id,
+            triggerKey: 'trigger.portal_after_intake',
+            sendLink: true,
+          });
+        }
 
         return res.json({ success: true, message: "Abandoned webhook sent" });
       }
@@ -7075,7 +7115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #14B8A6;">Today Capital Group</h2>
           <p>Hello${businessName ? ` ${businessName}` : ''},</p>
-          <p>Your funded deal is now live in the <strong>Today Capital Group Merchant Portal</strong>. You can use it to track your payoff progress, view payment details, and see your remaining balance at any time.</p>
+          <p>Your <strong>Today Capital Group Merchant Portal</strong> is ready. Use it to track your application status, upload documents, view funding details, and communicate with your rep — all in one place.</p>
           <p style="margin: 24px 0;">
             <a href="${activateUrl}" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
               Set Up Your Portal Access
@@ -7106,6 +7146,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('[MERCHANT] Failed to send invite email:', error);
       return false;
+    }
+  }
+
+  // Helper: auto-create portal account and optionally send portal link
+  async function autoCreatePortalAccount(opts: {
+    email: string;
+    name?: string;
+    phone?: string;
+    businessName?: string;
+    applicationId?: number;
+    triggerKey: string; // which setting key to check
+    sendLink: boolean; // whether to actually send the email
+  }): Promise<void> {
+    try {
+      const normalizedEmail = opts.email.toLowerCase();
+
+      // Check if this trigger is enabled
+      const { isTriggerEnabled } = await import('./messaging-triggers');
+      const enabled = await isTriggerEnabled(opts.triggerKey);
+
+      // Always create the portal account (even if trigger is off, for manual sending later)
+      const token = randomBytes(32).toString('hex');
+      await storage.createMerchantPortalAccount({
+        email: normalizedEmail,
+        portalToken: token,
+        name: opts.name || null,
+        phone: opts.phone || null,
+        businessName: opts.businessName || null,
+        applicationId: opts.applicationId || null,
+        portalLinkSentAt: enabled && opts.sendLink ? new Date() : null,
+      });
+
+      if (enabled && opts.sendLink) {
+        await sendMerchantInviteEmail(normalizedEmail, opts.name || opts.businessName || '', token);
+        console.log(`[MERCHANT] Auto-sent portal link to ${normalizedEmail} (trigger: ${opts.triggerKey})`);
+      } else {
+        console.log(`[MERCHANT] Portal account created for ${normalizedEmail} (link not sent, trigger ${opts.triggerKey} ${enabled ? 'enabled but sendLink=false' : 'disabled'})`);
+      }
+    } catch (error) {
+      console.error('[MERCHANT] Auto-create portal account error:', error);
     }
   }
 
@@ -7291,17 +7371,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Check merchantPortalAccounts first (new system), then fall back to businessUnderwritingDecisions (legacy)
+      const portalAccount = await storage.getMerchantPortalAccountByEmail(normalizedEmail);
       const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(normalizedEmail);
-      if (!decision || !decision.merchantPasswordHash) {
-        // Track failed attempt
+
+      const passwordHash = portalAccount?.passwordHash || decision?.merchantPasswordHash;
+      if (!passwordHash) {
         const entry = merchantLoginAttempts.get(normalizedEmail);
         if (entry) { entry.count++; } else { merchantLoginAttempts.set(normalizedEmail, { count: 1, firstAttempt: now }); }
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
-      const isValid = verifyPassword(password, decision.merchantPasswordHash);
+      const isValid = verifyPassword(password, passwordHash);
       if (!isValid) {
-        // Track failed attempt
         const entry = merchantLoginAttempts.get(normalizedEmail);
         if (entry) { entry.count++; } else { merchantLoginAttempts.set(normalizedEmail, { count: 1, firstAttempt: now }); }
         return res.status(401).json({ error: "Invalid email or password" });
@@ -7310,11 +7392,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Clear rate limit on successful login
       merchantLoginAttempts.delete(normalizedEmail);
 
+      const merchantName = portalAccount?.name || portalAccount?.businessName || decision?.businessName;
       req.session.user = {
         isAuthenticated: true,
         role: 'merchant',
-        merchantEmail: decision.merchantEmail!,
-        merchantName: decision.businessName || undefined,
+        merchantEmail: normalizedEmail,
+        merchantName: merchantName || undefined,
       };
 
       res.json({ success: true });
@@ -7324,7 +7407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Merchant Activate (magic link handler)
+  // Merchant Activate (magic link handler) - checks both new portal accounts and legacy decisions
   app.post("/api/merchant/activate", async (req, res) => {
     try {
       const { token, password } = req.body;
@@ -7336,14 +7419,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Password must be at least 6 characters" });
       }
 
+      const hashedPw = hashPassword(password);
+
+      // Check new merchantPortalAccounts first
+      const portalAccount = await storage.getMerchantPortalAccountByToken(token);
+      if (portalAccount) {
+        await storage.updateMerchantPortalAccount(portalAccount.id, {
+          passwordHash: hashedPw,
+          portalToken: null,
+        });
+
+        req.session.user = {
+          isAuthenticated: true,
+          role: 'merchant',
+          merchantEmail: portalAccount.email,
+          merchantName: portalAccount.name || portalAccount.businessName || undefined,
+        };
+
+        return res.json({ success: true });
+      }
+
+      // Fall back to legacy businessUnderwritingDecisions
       const decision = await storage.getBusinessUnderwritingDecisionByMerchantToken(token);
       if (!decision) {
         return res.status(400).json({ error: "Invalid or expired activation token" });
       }
 
-      const passwordHash = hashPassword(password);
       await storage.updateBusinessUnderwritingDecision(decision.id, {
-        merchantPasswordHash: passwordHash,
+        merchantPasswordHash: hashedPw,
         merchantPortalToken: null,
       });
 
@@ -7654,6 +7757,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[MERCHANT] Resend invite error:", error);
       res.status(500).json({ error: "Failed to resend invite" });
+    }
+  });
+
+  // Send Portal Link - for any application (manual from dashboard)
+  app.post("/api/merchant/send-portal-link", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting' && req.session.user.role !== 'agent') {
+      return res.status(403).json({ error: "Staff access required" });
+    }
+
+    try {
+      const { applicationId, email } = req.body;
+      if (!applicationId && !email) {
+        return res.status(400).json({ error: "applicationId or email is required" });
+      }
+
+      let targetEmail = email?.toLowerCase();
+      let name = '';
+      let businessName = '';
+      let appId: number | null = null;
+
+      if (applicationId) {
+        const app = await storage.getLoanApplication(applicationId);
+        if (!app) return res.status(404).json({ error: "Application not found" });
+        targetEmail = app.email?.toLowerCase();
+        name = app.fullName || '';
+        businessName = app.businessName || app.legalBusinessName || '';
+        appId = app.id;
+      }
+
+      if (!targetEmail) {
+        return res.status(400).json({ error: "No email found for this application" });
+      }
+
+      const token = randomBytes(32).toString('hex');
+
+      // Create or update portal account
+      await storage.createMerchantPortalAccount({
+        email: targetEmail,
+        portalToken: token,
+        name: name || null,
+        businessName: businessName || null,
+        applicationId: appId,
+        portalLinkSentAt: new Date(),
+      });
+
+      const emailSent = await sendMerchantInviteEmail(targetEmail, name || businessName, token);
+
+      res.json({
+        success: true,
+        emailSent,
+        message: emailSent
+          ? `Portal link sent to ${targetEmail}`
+          : `Token generated but email could not be sent.`,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Send portal link error:", error);
+      res.status(500).json({ error: "Failed to send portal link" });
+    }
+  });
+
+  // Merchant Application Status - returns application progress for non-funded merchants
+  app.get("/api/merchant/application-status", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const app = await storage.getLoanApplicationByEmail(email);
+      if (!app) {
+        return res.json({ hasApplication: false });
+      }
+
+      // Check bank statement uploads
+      const uploads = await storage.getBankStatementUploadsByEmail(email);
+
+      res.json({
+        hasApplication: true,
+        applicationId: app.id,
+        businessName: app.businessName || app.legalBusinessName || null,
+        isIntakeCompleted: !!app.isCompleted,
+        isFullApplicationCompleted: !!app.isFullApplicationCompleted,
+        currentStep: app.currentStep || 0,
+        bankStatementsUploaded: uploads.length > 0,
+        bankStatementCount: uploads.length,
+        createdAt: app.createdAt,
+        updatedAt: app.updatedAt,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Application status error:", error);
+      res.status(500).json({ error: "Failed to fetch application status" });
     }
   });
 

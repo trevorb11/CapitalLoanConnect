@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings, merchantPortalAccounts,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -13,6 +13,7 @@ import {
   type CongratulationsUpload, type InsertCongratulationsUpload,
   type MerchantMessage, type InsertMerchantMessage,
   type SystemSetting,
+  type MerchantPortalAccount, type InsertMerchantPortalAccount,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -154,6 +155,12 @@ export interface IStorage {
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string, updatedBy?: string): Promise<void>;
   getAllSettings(): Promise<SystemSetting[]>;
+
+  // Merchant Portal Accounts
+  createMerchantPortalAccount(account: InsertMerchantPortalAccount): Promise<MerchantPortalAccount>;
+  getMerchantPortalAccountByEmail(email: string): Promise<MerchantPortalAccount | undefined>;
+  getMerchantPortalAccountByToken(token: string): Promise<MerchantPortalAccount | undefined>;
+  updateMerchantPortalAccount(id: number, updates: Partial<InsertMerchantPortalAccount>): Promise<MerchantPortalAccount | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -974,6 +981,51 @@ export class DatabaseStorage implements IStorage {
 
   async getAllSettings(): Promise<SystemSetting[]> {
     return await db.select().from(systemSettings).orderBy(systemSettings.key);
+  }
+
+  // Merchant Portal Accounts
+  async createMerchantPortalAccount(account: InsertMerchantPortalAccount): Promise<MerchantPortalAccount> {
+    const [record] = await db
+      .insert(merchantPortalAccounts)
+      .values(account)
+      .onConflictDoUpdate({
+        target: merchantPortalAccounts.email,
+        set: {
+          name: account.name || undefined,
+          phone: account.phone || undefined,
+          businessName: account.businessName || undefined,
+          applicationId: account.applicationId || undefined,
+          decisionId: account.decisionId || undefined,
+          portalToken: account.portalToken || undefined,
+        },
+      })
+      .returning();
+    return record;
+  }
+
+  async getMerchantPortalAccountByEmail(email: string): Promise<MerchantPortalAccount | undefined> {
+    const [record] = await db
+      .select()
+      .from(merchantPortalAccounts)
+      .where(eq(merchantPortalAccounts.email, email.toLowerCase()));
+    return record;
+  }
+
+  async getMerchantPortalAccountByToken(token: string): Promise<MerchantPortalAccount | undefined> {
+    const [record] = await db
+      .select()
+      .from(merchantPortalAccounts)
+      .where(eq(merchantPortalAccounts.portalToken, token));
+    return record;
+  }
+
+  async updateMerchantPortalAccount(id: number, updates: Partial<InsertMerchantPortalAccount>): Promise<MerchantPortalAccount | undefined> {
+    const [record] = await db
+      .update(merchantPortalAccounts)
+      .set(updates)
+      .where(eq(merchantPortalAccounts.id, id))
+      .returning();
+    return record;
   }
 }
 

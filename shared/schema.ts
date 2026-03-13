@@ -577,3 +577,26 @@ export const systemSettings = pgTable("system_settings", {
 });
 
 export type SystemSetting = typeof systemSettings.$inferSelect;
+
+// Merchant Portal Accounts - portal access for anyone (applicants, intake leads, funded merchants)
+export const merchantPortalAccounts = pgTable("merchant_portal_accounts", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  portalToken: text("portal_token"), // one-time activation link token
+  name: text("name"),
+  phone: text("phone"),
+  businessName: text("business_name"),
+  applicationId: integer("application_id"), // links to loan application if applicable
+  decisionId: text("decision_id"), // links to businessUnderwritingDecision if funded
+  portalLinkSentAt: timestamp("portal_link_sent_at"), // when the activation link was last sent
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMerchantPortalAccountSchema = createInsertSchema(merchantPortalAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertMerchantPortalAccount = z.infer<typeof insertMerchantPortalAccountSchema>;
+export type MerchantPortalAccount = typeof merchantPortalAccounts.$inferSelect;
