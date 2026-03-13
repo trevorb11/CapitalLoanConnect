@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings, merchantPortalAccounts,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings, merchantPortalAccounts, merchantPlaidConnections, merchantFinancialInsights,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -14,6 +14,8 @@ import {
   type MerchantMessage, type InsertMerchantMessage,
   type SystemSetting,
   type MerchantPortalAccount, type InsertMerchantPortalAccount,
+  type MerchantPlaidConnection, type InsertMerchantPlaidConnection,
+  type MerchantFinancialInsight, type InsertMerchantFinancialInsight,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -161,6 +163,16 @@ export interface IStorage {
   getMerchantPortalAccountByEmail(email: string): Promise<MerchantPortalAccount | undefined>;
   getMerchantPortalAccountByToken(token: string): Promise<MerchantPortalAccount | undefined>;
   updateMerchantPortalAccount(id: number, updates: Partial<InsertMerchantPortalAccount>): Promise<MerchantPortalAccount | undefined>;
+
+  // Merchant Plaid Connections
+  createMerchantPlaidConnection(data: InsertMerchantPlaidConnection): Promise<MerchantPlaidConnection>;
+  getMerchantPlaidConnectionsByEmail(email: string): Promise<MerchantPlaidConnection[]>;
+  deactivateMerchantPlaidConnection(id: string): Promise<void>;
+
+  // Merchant Financial Insights
+  createOrUpdateMerchantInsight(data: InsertMerchantFinancialInsight): Promise<MerchantFinancialInsight>;
+  getMerchantInsight(email: string, sourceType: string): Promise<MerchantFinancialInsight | undefined>;
+  getPlaidAccessTokensForMerchant(email: string): Promise<{ accessToken: string; institutionName: string | null }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1026,6 +1038,108 @@ export class DatabaseStorage implements IStorage {
       .where(eq(merchantPortalAccounts.id, id))
       .returning();
     return record;
+  }
+
+  // Merchant Plaid Connections
+  async createMerchantPlaidConnection(data: InsertMerchantPlaidConnection): Promise<MerchantPlaidConnection> {
+    const [record] = await db.insert(merchantPlaidConnections).values(data).returning();
+    return record;
+  }
+
+  async getMerchantPlaidConnectionsByEmail(email: string): Promise<MerchantPlaidConnection[]> {
+    return await db
+      .select()
+      .from(merchantPlaidConnections)
+      .where(and(
+        eq(merchantPlaidConnections.merchantEmail, email.toLowerCase()),
+        eq(merchantPlaidConnections.isActive, true)
+      ))
+      .orderBy(desc(merchantPlaidConnections.connectedAt));
+  }
+
+  async deactivateMerchantPlaidConnection(id: string): Promise<void> {
+    await db
+      .update(merchantPlaidConnections)
+      .set({ isActive: false })
+      .where(eq(merchantPlaidConnections.id, id));
+  }
+
+  // Merchant Financial Insights
+  async createOrUpdateMerchantInsight(data: InsertMerchantFinancialInsight): Promise<MerchantFinancialInsight> {
+    // Check for existing insight with same email + sourceType
+    const [existing] = await db
+      .select()
+      .from(merchantFinancialInsights)
+      .where(and(
+        eq(merchantFinancialInsights.merchantEmail, data.merchantEmail.toLowerCase()),
+        eq(merchantFinancialInsights.sourceType, data.sourceType)
+      ));
+
+    if (existing) {
+      const [updated] = await db
+        .update(merchantFinancialInsights)
+        .set({
+          insightsData: data.insightsData,
+          generatedAt: new Date(),
+          expiresAt: data.expiresAt,
+        })
+        .where(eq(merchantFinancialInsights.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [record] = await db.insert(merchantFinancialInsights).values({
+      ...data,
+      merchantEmail: data.merchantEmail.toLowerCase(),
+    }).returning();
+    return record;
+  }
+
+  async getMerchantInsight(email: string, sourceType: string): Promise<MerchantFinancialInsight | undefined> {
+    const [record] = await db
+      .select()
+      .from(merchantFinancialInsights)
+      .where(and(
+        eq(merchantFinancialInsights.merchantEmail, email.toLowerCase()),
+        eq(merchantFinancialInsights.sourceType, sourceType)
+      ))
+      .orderBy(desc(merchantFinancialInsights.generatedAt));
+    return record;
+  }
+
+  async getPlaidAccessTokensForMerchant(email: string): Promise<{ accessToken: string; institutionName: string | null }[]> {
+    const connections = await this.getMerchantPlaidConnectionsByEmail(email);
+    const results: { accessToken: string; institutionName: string | null }[] = [];
+
+    for (const conn of connections) {
+      const [item] = await db
+        .select()
+        .from(plaidItems)
+        .where(eq(plaidItems.itemId, conn.plaidItemId));
+      if (item?.accessToken) {
+        results.push({ accessToken: item.accessToken, institutionName: conn.institutionName });
+      }
+    }
+
+    // Also check fundingAnalyses as fallback for intake-linked items
+    const analyses = await db
+      .select()
+      .from(fundingAnalyses)
+      .where(eq(fundingAnalyses.email, email.toLowerCase()));
+
+    for (const analysis of analyses) {
+      if (analysis.plaidItemId && !results.some(r => r.accessToken === analysis.plaidItemId)) {
+        const [item] = await db
+          .select()
+          .from(plaidItems)
+          .where(eq(plaidItems.itemId, analysis.plaidItemId));
+        if (item?.accessToken) {
+          results.push({ accessToken: item.accessToken, institutionName: item.institutionName });
+        }
+      }
+    }
+
+    return results;
   }
 }
 

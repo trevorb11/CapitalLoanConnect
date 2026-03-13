@@ -7853,6 +7853,302 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── MERCHANT FINANCIALS ──────────────────────────────────────────────
+
+  // Route 1: Create Plaid Link Token for merchant
+  app.post("/api/merchant/plaid/create-link-token", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const tokenData = await plaidService.createMerchantLinkToken(req.session.user.merchantEmail);
+      res.json({ link_token: tokenData.link_token });
+    } catch (error) {
+      console.error("[MERCHANT PLAID] Create link token error:", error);
+      res.status(500).json({ error: "Failed to create link token" });
+    }
+  });
+
+  // Route 2: Exchange Plaid public token for merchant
+  app.post("/api/merchant/plaid/exchange-token", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const { publicToken, metadata } = req.body;
+      if (!publicToken) return res.status(400).json({ error: "publicToken is required" });
+
+      const merchantEmail = req.session.user.merchantEmail;
+      const tokenResponse = await plaidService.exchangePublicToken(publicToken);
+      const { item_id, access_token } = tokenResponse;
+      const institutionName = metadata?.institution?.name || null;
+
+      // Create plaidItems row
+      await storage.createPlaidItem({
+        itemId: item_id,
+        accessToken: access_token,
+        institutionName,
+      });
+
+      // Create merchantPlaidConnections row
+      await storage.createMerchantPlaidConnection({
+        merchantEmail: merchantEmail.toLowerCase(),
+        plaidItemId: item_id,
+        institutionName,
+      });
+
+      // Run initial financial analysis in background
+      (async () => {
+        try {
+          const analysisResult = await plaidService.analyzeFinancials(access_token);
+          if (analysisResult) {
+            await storage.createOrUpdateMerchantInsight({
+              merchantEmail: merchantEmail.toLowerCase(),
+              sourceType: 'plaid',
+              insightsData: analysisResult as any,
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+            });
+            console.log(`[MERCHANT PLAID] Cached initial Plaid insights for ${merchantEmail}`);
+          }
+        } catch (err) {
+          console.error('[MERCHANT PLAID] Background analysis failed:', err);
+        }
+      })();
+
+      res.json({ success: true, institutionName });
+    } catch (error) {
+      console.error("[MERCHANT PLAID] Exchange token error:", error);
+      res.status(500).json({ error: "Failed to connect bank account" });
+    }
+  });
+
+  // Route 3: Get merchant's Plaid connections
+  app.get("/api/merchant/plaid/connections", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const connections = await storage.getMerchantPlaidConnectionsByEmail(email);
+
+      // Also check fundingAnalyses for intake-linked items via access token lookup
+      const legacyTokens = await storage.getPlaidAccessTokensForMerchant(email);
+
+      const result = connections.map(c => ({
+        id: c.id,
+        institutionName: c.institutionName,
+        connectedAt: c.connectedAt,
+        isActive: c.isActive,
+        source: 'portal' as const,
+      }));
+
+      // Add legacy connections not already in the list
+      for (const lt of legacyTokens) {
+        if (!connections.some(c => c.institutionName === lt.institutionName)) {
+          result.push({
+            id: `legacy-${lt.institutionName || 'unknown'}`,
+            institutionName: lt.institutionName,
+            connectedAt: null as any,
+            isActive: true,
+            source: 'intake' as const,
+          });
+        }
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("[MERCHANT PLAID] Get connections error:", error);
+      res.status(500).json({ error: "Failed to fetch connections" });
+    }
+  });
+
+  // Route 4: Analyze merchant's uploaded PDF bank statements
+  app.post("/api/merchant/bank-statements/analyze", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const uploads = await storage.getBankStatementUploadsByEmail(email);
+
+      if (!uploads || uploads.length === 0) {
+        return res.status(400).json({ error: "No bank statements found to analyze" });
+      }
+
+      const extractedTexts: string[] = [];
+
+      for (const upload of uploads.slice(0, 6)) {
+        try {
+          let fileBuffer: Buffer;
+
+          if (upload.storedFileName && upload.storedFileName.includes("bank-statements/")) {
+            fileBuffer = await objectStorage.getFileBuffer(upload.storedFileName);
+          } else {
+            const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+            if (fs.existsSync(filePath)) {
+              fileBuffer = fs.readFileSync(filePath);
+            } else {
+              console.warn(`[MERCHANT PDF] File not found: ${upload.storedFileName}`);
+              continue;
+            }
+          }
+
+          const parser = new PDFParse({ data: fileBuffer });
+          const result = await parser.getText();
+          const text = result.text || "";
+          extractedTexts.push(`--- Statement: ${upload.originalFileName} ---\n${text}\n`);
+          await parser.destroy();
+        } catch (pdfError) {
+          console.error(`[MERCHANT PDF] Error parsing ${upload.originalFileName}:`, pdfError);
+        }
+      }
+
+      if (extractedTexts.length === 0) {
+        return res.status(400).json({ error: "Could not extract text from uploaded PDFs" });
+      }
+
+      const combinedText = extractedTexts.join("\n\n");
+      const analysis = await analyzeBankStatements(combinedText, {});
+
+      // Cache the result (7 day expiry for PDF)
+      await storage.createOrUpdateMerchantInsight({
+        merchantEmail: email.toLowerCase(),
+        sourceType: 'pdf',
+        insightsData: analysis as any,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+
+      console.log(`[MERCHANT PDF] Analysis complete for ${email}. Score: ${analysis.overallScore}`);
+      res.json({ success: true, analysis });
+    } catch (error) {
+      console.error("[MERCHANT PDF] Analysis error:", error);
+      res.status(500).json({ error: "Failed to analyze statements" });
+    }
+  });
+
+  // Route 5: Get combined financial insights
+  app.get("/api/merchant/financial-insights", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+
+      // Check cached insights
+      const pdfCache = await storage.getMerchantInsight(email, 'pdf');
+      const plaidCache = await storage.getMerchantInsight(email, 'plaid');
+
+      // Check if Plaid insights are stale and need refresh
+      let plaidData = plaidCache?.insightsData as any;
+      const plaidStale = plaidCache && plaidCache.expiresAt && new Date(plaidCache.expiresAt) < new Date();
+
+      if (plaidStale) {
+        // Re-fetch from Plaid in background
+        const tokens = await storage.getPlaidAccessTokensForMerchant(email);
+        if (tokens.length > 0) {
+          try {
+            const freshAnalysis = await plaidService.analyzeFinancials(tokens[0].accessToken);
+            if (freshAnalysis) {
+              await storage.createOrUpdateMerchantInsight({
+                merchantEmail: email.toLowerCase(),
+                sourceType: 'plaid',
+                insightsData: freshAnalysis as any,
+                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+              });
+              plaidData = freshAnalysis;
+            }
+          } catch (refreshErr) {
+            console.error('[MERCHANT] Plaid refresh failed, using stale cache:', refreshErr);
+          }
+        }
+      }
+
+      const pdfData = pdfCache?.insightsData as any;
+      const connections = await storage.getMerchantPlaidConnectionsByEmail(email);
+      const statements = await storage.getBankStatementUploadsByEmail(email);
+
+      // Translate PDF insights to merchant-friendly format
+      let pdfInsights = null;
+      if (pdfData) {
+        const score = pdfData.overallScore || 0;
+        const cashFlowHealth = score >= 75 ? 'strong' : score >= 50 ? 'moderate' : 'needs-attention';
+
+        pdfInsights = {
+          cashFlowHealth,
+          estimatedMonthlyRevenue: pdfData.estimatedMonthlyRevenue || 0,
+          averageDailyBalance: pdfData.averageDailyBalance || 0,
+          positiveIndicators: (pdfData.positiveIndicators || []).map((p: any) =>
+            typeof p === 'string' ? p : p.indicator || p.details || ''
+          ),
+          concerns: (pdfData.redFlags || []).map((f: any) => {
+            const issue = typeof f === 'string' ? f : f.issue || '';
+            // Reword underwriting jargon
+            if (issue.toLowerCase().includes('nsf')) return 'Some transactions were returned — consider maintaining a higher buffer';
+            if (issue.toLowerCase().includes('negative')) return 'Account balance dipped below zero on some days — try to keep a cushion';
+            return typeof f === 'string' ? f : f.details || f.issue || '';
+          }),
+          tips: pdfData.improvementSuggestions || [],
+          summary: pdfData.summary || '',
+          analyzedAt: pdfCache?.generatedAt?.toISOString() || new Date().toISOString(),
+        };
+      }
+
+      // Translate Plaid insights
+      let plaidInsights = null;
+      if (plaidData) {
+        plaidInsights = {
+          accounts: plaidData.accounts || [],
+          monthlyRevenue: plaidData.monthlyRevenue || plaidData.estimatedMonthlyRevenue || 0,
+          avgBalance: plaidData.averageBalance || plaidData.averageDailyBalance || 0,
+          revenueTrend: plaidData.revenueTrend || 'stable',
+          lastUpdated: plaidCache?.generatedAt?.toISOString() || new Date().toISOString(),
+        };
+      }
+
+      // Determine renewal nudge
+      const bestScore = pdfData?.overallScore || 0;
+      const revenue = pdfData?.estimatedMonthlyRevenue || plaidData?.monthlyRevenue || 0;
+      const renewalNudge = {
+        eligible: bestScore >= 60 && revenue > 10000,
+        message: bestScore >= 60 && revenue > 10000
+          ? "Based on your financial activity, you may qualify for additional funding. Talk to your rep to explore options."
+          : "",
+      };
+
+      res.json({
+        hasStatements: statements.length > 0,
+        hasPlaidConnection: connections.length > 0,
+        pdfInsights,
+        plaidInsights,
+        renewalNudge,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Financial insights error:", error);
+      res.status(500).json({ error: "Failed to fetch financial insights" });
+    }
+  });
+
+  // Route 6: Deactivate a Plaid connection
+  app.delete("/api/merchant/plaid/connections/:id", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const { id } = req.params;
+      // Verify the connection belongs to this merchant
+      const connections = await storage.getMerchantPlaidConnectionsByEmail(req.session.user.merchantEmail);
+      const conn = connections.find(c => c.id === id);
+      if (!conn) {
+        return res.status(404).json({ error: "Connection not found" });
+      }
+      await storage.deactivateMerchantPlaidConnection(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[MERCHANT PLAID] Deactivate connection error:", error);
+      res.status(500).json({ error: "Failed to disconnect bank" });
+    }
+  });
+
   // ── MERCHANT PORTAL PREMIUM FEATURES ─────────────────────────────────
 
   // Merchant Documents (Document Vault) - returns congratulations uploads (voided check, driver's license) + bank statements

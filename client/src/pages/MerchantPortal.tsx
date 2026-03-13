@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { usePlaidLink } from "react-plaid-link";
 
 // ── CALC ENGINE ──────────────────────────────────────────────────────────
 function isWeekday(date: Date) {
@@ -2012,6 +2013,117 @@ const CSS = `
     color: #e8eaf0;
     margin-left: 12px;
   }
+
+  /* ── FINANCIALS TAB ─── */
+  .financials-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 4px 0;
+  }
+
+  .insight-card {
+    background: rgba(15, 23, 41, 0.7);
+    border: 1px solid rgba(45, 212, 191, 0.15);
+    border-radius: 16px;
+    padding: 20px;
+    backdrop-filter: blur(12px);
+  }
+
+  .health-indicator {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin: 0 auto;
+    display: block;
+  }
+  .health-strong { background: linear-gradient(135deg, #14B8A6, #2dd4bf); box-shadow: 0 0 16px rgba(45, 212, 191, 0.4); }
+  .health-moderate { background: linear-gradient(135deg, #f59e0b, #fbbf24); box-shadow: 0 0 16px rgba(245, 158, 11, 0.4); }
+  .health-needs-attention { background: linear-gradient(135deg, #ef4444, #f87171); box-shadow: 0 0 16px rgba(239, 68, 68, 0.4); }
+
+  .plaid-connection-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(45, 212, 191, 0.08);
+  }
+  .plaid-connection-row:last-child { border-bottom: none; }
+
+  .connect-bank-cta {
+    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .connect-bank-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+  .connect-bank-cta:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .observation-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+  .observation-positive {
+    background: rgba(45, 212, 191, 0.12);
+    border: 1px solid rgba(45, 212, 191, 0.25);
+    color: #2dd4bf;
+  }
+  .observation-warning {
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+  }
+
+  .renewal-nudge {
+    background: rgba(45, 212, 191, 0.08);
+    border: 1px solid rgba(45, 212, 191, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 14px;
+    color: #e8eaf0;
+    cursor: pointer;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .renewal-nudge:hover { background: rgba(45, 212, 191, 0.12); }
+
+  .analyze-btn {
+    background: rgba(45, 212, 191, 0.12);
+    border: 1px solid rgba(45, 212, 191, 0.3);
+    color: #2dd4bf;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .analyze-btn:hover { background: rgba(45, 212, 191, 0.2); }
+  .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .skeleton-line {
+    height: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.8; }
+  }
 `;
 
 // ── COMPONENTS ───────────────────────────────────────────────────────────
@@ -2722,6 +2834,357 @@ function PreQualifiedOfferBanner({ deals }: { deals: Deal[] }) {
   );
 }
 
+// ── PLAID LINK BUTTON ─────────────────────────────────────────────────────
+function PlaidLinkButton({ onSuccess, label = "Connect Your Bank" }: { onSuccess: () => void; label?: string }) {
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLinkToken = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/merchant/plaid/create-link-token", { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to create link token");
+      const data = await res.json();
+      setLinkToken(data.link_token);
+    } catch (e) {
+      setError("Could not initialize bank connection. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
+    try {
+      const res = await fetch("/api/merchant/plaid/exchange-token", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicToken, metadata }),
+      });
+      if (!res.ok) throw new Error("Failed to exchange token");
+      onSuccess();
+    } catch (e) {
+      setError("Bank connection failed. Please try again.");
+    }
+  }, [onSuccess]);
+
+  const { open, ready } = usePlaidLink({
+    token: linkToken,
+    onSuccess: onPlaidSuccess,
+  });
+
+  return (
+    <div>
+      {!linkToken ? (
+        <button className="connect-bank-cta" onClick={fetchLinkToken} disabled={loading}>
+          {loading ? "Initializing..." : label}
+        </button>
+      ) : (
+        <button className="connect-bank-cta" onClick={() => open()} disabled={!ready}>
+          {ready ? label : "Loading..."}
+        </button>
+      )}
+      {error && <p style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{error}</p>}
+    </div>
+  );
+}
+
+// ── FINANCIALS TAB ────────────────────────────────────────────────────────
+interface FinancialInsights {
+  hasStatements: boolean;
+  hasPlaidConnection: boolean;
+  pdfInsights: {
+    cashFlowHealth: 'strong' | 'moderate' | 'needs-attention';
+    estimatedMonthlyRevenue: number;
+    averageDailyBalance: number;
+    positiveIndicators: string[];
+    concerns: string[];
+    tips: string[];
+    summary: string;
+    analyzedAt: string;
+  } | null;
+  plaidInsights: {
+    accounts: { name: string; type: string; currentBalance: number; institutionName: string }[];
+    monthlyRevenue: number;
+    avgBalance: number;
+    revenueTrend: 'growing' | 'stable' | 'declining';
+    lastUpdated: string;
+  } | null;
+  renewalNudge: { eligible: boolean; message: string };
+}
+
+interface PlaidConnection {
+  id: string;
+  institutionName: string | null;
+  connectedAt: string | null;
+  isActive: boolean;
+  source: 'portal' | 'intake';
+}
+
+function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages }: {
+  merchantEmail: string;
+  merchantName: string;
+  assignedRep: string | null;
+  onSwitchToMessages: () => void;
+}) {
+  const [insights, setInsights] = useState<FinancialInsights | null>(null);
+  const [connections, setConnections] = useState<PlaidConnection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [insightsRes, connectionsRes] = await Promise.all([
+        fetch("/api/merchant/financial-insights", { credentials: "include" }),
+        fetch("/api/merchant/plaid/connections", { credentials: "include" }),
+      ]);
+      if (insightsRes.ok) setInsights(await insightsRes.json());
+      if (connectionsRes.ok) setConnections(await connectionsRes.json());
+    } catch (e) {
+      console.error("Failed to load financial data:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleAnalyze = async () => {
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    try {
+      const res = await fetch("/api/merchant/bank-statements/analyze", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Analysis failed");
+      }
+      await fetchData(); // Refresh insights
+    } catch (e: any) {
+      setAnalyzeError(e.message || "Analysis failed. Please try again.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleDisconnect = async (id: string) => {
+    try {
+      await fetch(`/api/merchant/plaid/connections/${id}`, { method: "DELETE", credentials: "include" });
+      await fetchData();
+    } catch (e) {
+      console.error("Failed to disconnect:", e);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="financials-section">
+        <div className="insight-card" style={{ textAlign: "center", padding: 40 }}>
+          <div className="skeleton-line" style={{ width: "60%", margin: "0 auto 12px" }} />
+          <div className="skeleton-line" style={{ width: "40%", margin: "0 auto 12px" }} />
+          <div className="skeleton-line" style={{ width: "50%", margin: "0 auto" }} />
+        </div>
+      </div>
+    );
+  }
+
+  const hasAnyData = insights?.pdfInsights || insights?.plaidInsights;
+  const pdf = insights?.pdfInsights;
+  const plaid = insights?.plaidInsights;
+
+  // Use Plaid data when available, fall back to PDF
+  const monthlyRevenue = plaid?.monthlyRevenue || pdf?.estimatedMonthlyRevenue || 0;
+  const avgBalance = plaid?.avgBalance || pdf?.averageDailyBalance || 0;
+  const cashFlowHealth = pdf?.cashFlowHealth || (plaid ? 'moderate' : null);
+
+  return (
+    <div className="financials-section">
+      {/* ── Connected Banks ── */}
+      <div className="insight-card">
+        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+          Connected Banks
+        </h3>
+        {connections.length > 0 ? (
+          <>
+            {connections.map(conn => (
+              <div key={conn.id} className="plaid-connection-row">
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span className="health-indicator health-strong" style={{ width: 8, height: 8 }} />
+                  <span style={{ fontWeight: 500 }}>{conn.institutionName || "Connected Bank"}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: "#94a3b8" }}>
+                  {conn.connectedAt && <span>Connected {new Date(conn.connectedAt).toLocaleDateString()}</span>}
+                  {conn.source === 'portal' && (
+                    <button onClick={() => handleDisconnect(conn.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12 }}>
+                      Disconnect
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div style={{ marginTop: 12 }}>
+              <PlaidLinkButton onSuccess={fetchData} label="Connect Another Bank" />
+            </div>
+          </>
+        ) : (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <p style={{ color: "#94a3b8", marginBottom: 16, fontSize: 14, lineHeight: 1.6 }}>
+              Connect your bank to get live financial insights and make future funding faster.
+            </p>
+            <PlaidLinkButton onSuccess={fetchData} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Uploaded Statements ── */}
+      {insights?.hasStatements && (
+        <div className="insight-card">
+          <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+            Uploaded Statements
+          </h3>
+          {pdf ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ color: "#94a3b8", fontSize: 13 }}>
+                Last analyzed: {new Date(pdf.analyzedAt).toLocaleDateString()}
+              </span>
+              <button className="analyze-btn" onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? "Re-analyzing..." : "Re-analyze"}
+              </button>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "12px 0" }}>
+              <p style={{ color: "#94a3b8", marginBottom: 12, fontSize: 14 }}>
+                Click below to generate insights from your bank statements.
+              </p>
+              <button className="analyze-btn" onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? "Analyzing..." : "Analyze My Statements"}
+              </button>
+              {analyzeError && <p style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{analyzeError}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Financial Insights ── */}
+      {hasAnyData ? (
+        <>
+          {/* Cash Flow Health */}
+          {cashFlowHealth && (
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+                Cash Flow Health
+              </h3>
+              <div className={`health-indicator health-${cashFlowHealth}`} />
+              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 600, marginTop: 8, textTransform: "capitalize" }}>
+                {cashFlowHealth === 'needs-attention' ? 'Needs Attention' : cashFlowHealth}
+              </p>
+            </div>
+          )}
+
+          {/* Revenue & Balance Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Est. Monthly Revenue</p>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
+                ${monthlyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+            </div>
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Avg. Daily Balance</p>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
+                ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+            </div>
+          </div>
+
+          {/* Account Balances (Plaid) */}
+          {plaid && plaid.accounts.length > 0 && (
+            <div className="insight-card">
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
+                Account Balances
+              </h3>
+              {plaid.accounts.map((acct, i) => (
+                <div key={i} className="plaid-connection-row">
+                  <div>
+                    <span style={{ fontWeight: 500 }}>{acct.name}</span>
+                    <span style={{ color: "#94a3b8", fontSize: 12, marginLeft: 8 }}>{acct.type}</span>
+                  </div>
+                  <span style={{ fontWeight: 600, color: "#2dd4bf" }}>
+                    ${acct.currentBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </span>
+                </div>
+              ))}
+              {plaid.revenueTrend && (
+                <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>
+                  Revenue trend: <span style={{ color: plaid.revenueTrend === 'growing' ? '#2dd4bf' : plaid.revenueTrend === 'declining' ? '#f87171' : '#94a3b8', fontWeight: 500, textTransform: 'capitalize' }}>{plaid.revenueTrend}</span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Key Observations */}
+          {pdf && (pdf.positiveIndicators.length > 0 || pdf.concerns.length > 0) && (
+            <div className="insight-card">
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
+                Key Observations
+              </h3>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {pdf.positiveIndicators.map((item, i) => (
+                  <span key={`pos-${i}`} className="observation-badge observation-positive">{item}</span>
+                ))}
+                {pdf.concerns.map((item, i) => (
+                  <span key={`warn-${i}`} className="observation-badge observation-warning">{item}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tips */}
+          {pdf && pdf.tips.length > 0 && (
+            <div className="insight-card">
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
+                Tips to Strengthen Your Position
+              </h3>
+              <ul style={{ paddingLeft: 18, lineHeight: 1.8, color: "#94a3b8", fontSize: 14 }}>
+                {pdf.tips.map((tip, i) => <li key={i}>{tip}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {/* Summary */}
+          {pdf?.summary && (
+            <div className="insight-card">
+              <p style={{ lineHeight: 1.7, fontSize: 14, color: "#94a3b8" }}>{pdf.summary}</p>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="insight-card" style={{ textAlign: "center", padding: "32px 20px" }}>
+          <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7 }}>
+            {insights?.hasStatements
+              ? "Click 'Analyze' above to generate insights from your bank statements."
+              : "Upload bank statements or connect your bank to see financial insights."}
+          </p>
+        </div>
+      )}
+
+      {/* ── Renewal Nudge ── */}
+      {insights?.renewalNudge?.eligible && (
+        <div className="renewal-nudge" onClick={onSwitchToMessages} role="button" tabIndex={0}>
+          <span>{insights.renewalNudge.message}</span>
+          <span style={{ color: "#2dd4bf", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>Talk to your rep →</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── ACTIVITY FEED ─────────────────────────────────────────────────────────
 function ActivityFeed({ merchantEmail }: { merchantEmail: string }) {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -3119,7 +3582,7 @@ export default function MerchantPortal() {
   const [loadingStatements, setLoadingStatements] = useState(false);
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [loadingVault, setLoadingVault] = useState(false);
-  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents'>('positions');
+  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials'>('positions');
   const [appStatus, setAppStatus] = useState<{
     hasApplication: boolean;
     applicationId?: number;
@@ -3269,6 +3732,12 @@ export default function MerchantPortal() {
                     >
                       Documents
                     </button>
+                    <button
+                      className={`portal-nav-btn ${activeTab === 'financials' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('financials')}
+                    >
+                      Financials
+                    </button>
                   </div>
 
                   {/* ── POSITIONS TAB ── */}
@@ -3350,6 +3819,16 @@ export default function MerchantPortal() {
                   {/* ── DOCUMENTS TAB ── */}
                   {activeTab === 'documents' && (
                     <DocumentVault documents={vaultDocs} loading={loadingVault} />
+                  )}
+
+                  {/* ── FINANCIALS TAB ── */}
+                  {activeTab === 'financials' && (
+                    <FinancialsTab
+                      merchantEmail={merchantEmail}
+                      merchantName={merchantName}
+                      assignedRep={deals.length > 0 ? deals[0].assignedRep : null}
+                      onSwitchToMessages={() => setActiveTab('messages')}
+                    />
                   )}
                 </>
               )}

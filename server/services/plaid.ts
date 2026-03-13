@@ -93,6 +93,25 @@ export class PlaidService {
     return response.data;
   }
 
+  async createMerchantLinkToken(merchantEmail: string) {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - 6);
+
+    const response = await plaidClient.linkTokenCreate({
+      user: { client_user_id: `merchant-${merchantEmail}` },
+      client_name: 'Today Capital Group',
+      products: [Products.Statements, Products.Assets, Products.Transactions],
+      country_codes: [CountryCode.Us],
+      language: 'en',
+      statements: {
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0],
+      },
+    });
+    return response.data;
+  }
+
   async createUpdateLinkToken(userId: string, accessToken: string) {
     const endDate = new Date();
     const startDate = new Date();
