@@ -267,27 +267,33 @@ export default function Funded() {
     },
   });
 
-  const accessPortalMutation = useMutation({
-    mutationFn: async (decisionId: string) => {
+  const [accessPortalLoadingId, setAccessPortalLoadingId] = useState<string | null>(null);
+
+  const handleAccessPortal = async (decisionId: string) => {
+    // Open blank window NOW (sync with user click) so browser doesn't block it as a popup
+    const win = window.open('', '_blank');
+    setAccessPortalLoadingId(decisionId);
+    try {
       const res = await fetch('/api/merchant/admin-access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ decisionId }),
       });
+      const data = await res.json();
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to generate preview');
+        if (win) win.close();
+        toast({ title: "Cannot access portal", description: data.error || 'Failed to generate preview', variant: "destructive" });
+        return;
       }
-      return res.json() as Promise<{ previewUrl: string }>;
-    },
-    onSuccess: (data) => {
-      window.open(data.previewUrl, '_blank', 'noopener,noreferrer');
-    },
-    onError: (err: Error) => {
-      toast({ title: "Cannot access portal", description: err.message, variant: "destructive" });
-    },
-  });
+      if (win) win.location.href = data.previewUrl;
+    } catch {
+      if (win) win.close();
+      toast({ title: "Error", description: "Failed to open portal preview", variant: "destructive" });
+    } finally {
+      setAccessPortalLoadingId(null);
+    }
+  };
 
   const createPortalMutation = useMutation({
     mutationFn: async (decisionId: string) => {
@@ -1198,13 +1204,13 @@ export default function Funded() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => accessPortalMutation.mutate(decision.id)}
-                                disabled={accessPortalMutation.isPending}
+                                onClick={() => handleAccessPortal(decision.id)}
+                                disabled={accessPortalLoadingId === decision.id}
                                 className="text-xs"
                                 data-testid={`button-access-portal-${decision.id}`}
                               >
                                 <ExternalLink className="w-3 h-3 mr-1" />
-                                {accessPortalMutation.isPending ? "Opening..." : "Access Portal"}
+                                {accessPortalLoadingId === decision.id ? "Opening..." : "Access Portal"}
                               </Button>
                               <Button
                                 variant="outline"

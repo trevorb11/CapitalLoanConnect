@@ -8000,9 +8000,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         expiresAt: Date.now() + 30 * 60 * 1000, // 30-minute TTL
       });
 
-      const protocol = req.headers['x-forwarded-proto'] || 'https';
-      const host = req.headers['x-forwarded-host'] || req.headers['host'] || '';
-      const baseUrl = `${protocol}://${host}`;
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0]?.trim();
+      const baseUrl = replitDomain
+        ? `https://${replitDomain}`
+        : `${(req.headers['x-forwarded-proto'] as string || 'http').split(',')[0].trim()}://${req.headers['host'] || 'localhost:5000'}`;
 
       console.log(`[MERCHANT] Admin preview token generated for ${email} by ${req.session.user.agentEmail || 'admin'}`);
       res.json({ previewUrl: `${baseUrl}/merchant/portal?adminPreview=${token}` });
