@@ -103,9 +103,9 @@ export default function AutomatedTriggers() {
     isAuthenticated: boolean;
     role: string;
   }>({
-    queryKey: ["/api/auth/status"],
+    queryKey: ["/api/auth/check"],
     queryFn: async () => {
-      const res = await fetch("/api/auth/status");
+      const res = await fetch("/api/auth/check");
       return res.json();
     },
   });
