@@ -40,6 +40,26 @@ interface Deal {
   term: string;
   status: string;
   assignedRep: string | null;
+  maxUpsell: number | null;
+  approvalDeadline: string | null;
+  additionalApprovals: AdditionalApproval[];
+  decisionId: number;
+}
+
+interface AdditionalApproval {
+  lender: string;
+  amount: number | string;
+  term?: string;
+  factorRate?: number | string;
+}
+
+interface ActivityItem {
+  id: string;
+  type: 'milestone' | 'message' | 'offer';
+  icon: string;
+  title: string;
+  description: string;
+  timestamp: string;
 }
 
 interface BankStatement {
@@ -1536,6 +1556,332 @@ const CSS = `
     font-weight: 700;
     color: #fff;
   }
+
+  /* ── OFFER BANNER ── */
+  .offer-banner {
+    background: linear-gradient(135deg, rgba(20,184,166,0.12) 0%, rgba(168,85,247,0.08) 100%);
+    border: 1px solid rgba(45,212,191,0.25);
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .offer-banner::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 240px; height: 240px;
+    background: radial-gradient(circle, rgba(20,184,166,0.1) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .offer-banner-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    background: rgba(20,184,166,0.2);
+    border: 1px solid rgba(45,212,191,0.3);
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #2dd4bf;
+    margin-bottom: 16px;
+  }
+
+  .offer-banner-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+
+  .offer-banner-amount {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 40px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #2dd4bf, #14B8A6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+    line-height: 1.1;
+  }
+
+  .offer-banner-desc {
+    font-size: 14px;
+    color: #9ba3b8;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .offer-countdown {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .offer-countdown-item {
+    text-align: center;
+    min-width: 56px;
+  }
+
+  .offer-countdown-num {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+  }
+
+  .offer-countdown-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #7b8499;
+    margin-top: 4px;
+  }
+
+  .offer-countdown-sep {
+    font-size: 24px;
+    color: #4b5568;
+    font-weight: 300;
+    margin-top: -8px;
+  }
+
+  .offer-claim-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    border: none;
+    border-radius: 12px;
+    color: #080d18;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.02em;
+  }
+
+  .offer-claim-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .offer-claim-btn:active { transform: translateY(0); }
+
+  .offer-expired {
+    font-size: 13px;
+    color: #ef4444;
+    font-weight: 500;
+  }
+
+  .offer-additional {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .offer-additional-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #7b8499;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  .offer-additional-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  @media (min-width: 600px) {
+    .offer-additional-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .offer-additional-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: rgba(8,13,24,0.6);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+  }
+
+  .offer-additional-lender {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e8eaf0;
+  }
+
+  .offer-additional-amount {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: #2dd4bf;
+  }
+
+  .offer-additional-term {
+    font-size: 11px;
+    color: #7b8499;
+    margin-top: 2px;
+  }
+
+  /* ── ACTIVITY FEED ── */
+  .activity-feed {
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+
+  .activity-feed-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: #e8eaf0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .activity-feed-sub {
+    font-size: 13px;
+    color: #7b8499;
+    margin-bottom: 20px;
+  }
+
+  .activity-item {
+    display: flex;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    position: relative;
+  }
+
+  .activity-item:last-child { border-bottom: none; }
+
+  .activity-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 16px;
+  }
+
+  .activity-icon.dollar { background: rgba(52,211,153,0.12); color: #34d399; }
+  .activity-icon.message { background: rgba(59,130,246,0.12); color: #60a5fa; }
+  .activity-icon.star { background: rgba(251,191,36,0.12); color: #fbbf24; }
+  .activity-icon.check { background: rgba(20,184,166,0.12); color: #2dd4bf; }
+
+  .activity-content { flex: 1; min-width: 0; }
+
+  .activity-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .activity-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #e8eaf0;
+  }
+
+  .activity-time {
+    font-size: 11px;
+    color: #4b5568;
+    flex-shrink: 0;
+  }
+
+  .activity-desc {
+    font-size: 13px;
+    color: #7b8499;
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  .activity-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: #4b5568;
+    font-size: 14px;
+  }
+
+  /* ── PAYOFF COUNTDOWN WIDGET ── */
+  .payoff-countdown-widget {
+    background: linear-gradient(135deg, rgba(15,23,41,0.9) 0%, rgba(20,184,166,0.06) 100%);
+    border: 1px solid rgba(45,212,191,0.2);
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .payoff-countdown-widget::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; left: 50%;
+    transform: translateX(-50%);
+    width: 300px; height: 150px;
+    background: radial-gradient(ellipse, rgba(20,184,166,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .payoff-countdown-days {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 72px;
+    font-weight: 700;
+    line-height: 1;
+    background: linear-gradient(135deg, #2dd4bf, #14B8A6, #0d9488);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+  }
+
+  .payoff-countdown-unit {
+    font-size: 16px;
+    font-weight: 600;
+    color: #7b8499;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 16px;
+  }
+
+  .payoff-countdown-date {
+    font-size: 14px;
+    color: #9ba3b8;
+    margin-bottom: 4px;
+  }
+
+  .payoff-countdown-date strong {
+    color: #2dd4bf;
+    font-weight: 600;
+  }
+
+  .payoff-countdown-sub {
+    font-size: 12px;
+    color: #4b5568;
+  }
 `;
 
 // ── COMPONENTS ───────────────────────────────────────────────────────────
@@ -1715,6 +2061,9 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
         </>
       )}
 
+      {/* Payoff Countdown */}
+      <PayoffCountdownWidget deal={deal} />
+
       {/* Early Payoff Calculator */}
       <EarlyPayoffCalculator deal={deal} />
 
@@ -1849,12 +2198,25 @@ function RenewalEligibilityTracker({ deal }: { deal: Deal }) {
       </div>
 
       {isEligible ? (
-        <div className="renewal-eligible-msg">
+        <div className="renewal-eligible-msg" style={{ flexWrap: "wrap" }}>
           <span style={{ fontSize: "22px" }}>&#10003;</span>
-          <div>
+          <div style={{ flex: 1 }}>
             <div className="renewal-eligible-msg-text">You qualify for a renewal or second position</div>
-            <div className="renewal-eligible-msg-sub">Contact your rep to explore pre-approved renewal offers with new terms.</div>
+            <div className="renewal-eligible-msg-sub">You've hit the {renewalThreshold}% threshold. Claim your renewal offer now.</div>
           </div>
+          <button
+            className="offer-claim-btn"
+            style={{ marginTop: "8px", fontSize: "12px", padding: "10px 20px" }}
+            onClick={() => {
+              const subject = encodeURIComponent(`Renewal inquiry — ${deal.businessName}`);
+              const body = encodeURIComponent(
+                `Hi,\n\nI've reached ${calc.pctComplete.toFixed(0)}% payoff on my position with ${deal.lender} and would like to discuss renewal options.\n\nBusiness: ${deal.businessName}\n\nThank you`
+              );
+              window.location.href = `mailto:info@todaycapitalgroup.com?subject=${subject}&body=${body}`;
+            }}
+          >
+            Explore Renewal &rarr;
+          </button>
         </div>
       ) : (
         <div className="renewal-detail">
@@ -2112,6 +2474,207 @@ function DocumentVault({ documents, loading }: { documents: VaultDocument[]; loa
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── PRE-QUALIFIED OFFER BANNER ────────────────────────────────────────────
+function PreQualifiedOfferBanner({ deals }: { deals: Deal[] }) {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Find the best active offer across all deals
+  const activeOffers = deals
+    .filter(d => d.maxUpsell && d.maxUpsell > 0)
+    .sort((a, b) => (b.maxUpsell || 0) - (a.maxUpsell || 0));
+
+  const bestOffer = activeOffers[0];
+  if (!bestOffer) return null;
+
+  const hasDeadline = bestOffer.approvalDeadline;
+  const deadline = hasDeadline ? new Date(bestOffer.approvalDeadline!) : null;
+  const isExpired = deadline ? now > deadline : false;
+
+  // Calculate countdown
+  let days = 0, hours = 0, minutes = 0, seconds = 0;
+  if (deadline && !isExpired) {
+    const diff = deadline.getTime() - now.getTime();
+    days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    minutes = Math.floor((diff / (1000 * 60)) % 60);
+    seconds = Math.floor((diff / 1000) % 60);
+  }
+
+  // Collect additional approvals from all deals
+  const allAdditionalApprovals = deals.flatMap(d => d.additionalApprovals || []);
+
+  return (
+    <div className="offer-banner">
+      <div className="offer-banner-badge">
+        <span style={{ fontSize: "14px" }}>&#9733;</span>
+        Pre-Qualified Offer
+      </div>
+
+      <div className="offer-banner-title">You're pre-qualified for additional funding</div>
+      <div className="offer-banner-amount">{fmt$(bestOffer.maxUpsell!)}</div>
+      <div className="offer-banner-desc">
+        Based on your payment history with {bestOffer.lender}, you qualify for up to {fmt$(bestOffer.maxUpsell!)} in additional capital.
+        {deadline && !isExpired && " Claim before the deadline to lock in this offer."}
+      </div>
+
+      {deadline && !isExpired && (
+        <div className="offer-countdown">
+          <div className="offer-countdown-item">
+            <div className="offer-countdown-num">{String(days).padStart(2, '0')}</div>
+            <div className="offer-countdown-label">Days</div>
+          </div>
+          <div className="offer-countdown-sep">:</div>
+          <div className="offer-countdown-item">
+            <div className="offer-countdown-num">{String(hours).padStart(2, '0')}</div>
+            <div className="offer-countdown-label">Hours</div>
+          </div>
+          <div className="offer-countdown-sep">:</div>
+          <div className="offer-countdown-item">
+            <div className="offer-countdown-num">{String(minutes).padStart(2, '0')}</div>
+            <div className="offer-countdown-label">Min</div>
+          </div>
+          <div className="offer-countdown-sep">:</div>
+          <div className="offer-countdown-item">
+            <div className="offer-countdown-num">{String(seconds).padStart(2, '0')}</div>
+            <div className="offer-countdown-label">Sec</div>
+          </div>
+        </div>
+      )}
+
+      {isExpired ? (
+        <div className="offer-expired">This offer has expired. Contact your rep for current options.</div>
+      ) : (
+        <button
+          className="offer-claim-btn"
+          onClick={() => {
+            const subject = encodeURIComponent(`I'd like to claim my pre-qualified offer — ${bestOffer.businessName}`);
+            const body = encodeURIComponent(
+              `Hi${bestOffer.assignedRep ? ` ${bestOffer.assignedRep.split(" ")[0]}` : ""},\n\nI'd like to learn more about my pre-qualified offer of ${fmt$(bestOffer.maxUpsell!)}.\n\nBusiness: ${bestOffer.businessName}\n\nThank you`
+            );
+            window.location.href = `mailto:info@todaycapitalgroup.com?subject=${subject}&body=${body}`;
+          }}
+        >
+          Claim This Offer &rarr;
+        </button>
+      )}
+
+      {allAdditionalApprovals.length > 0 && (
+        <div className="offer-additional">
+          <div className="offer-additional-title">Additional Lender Offers</div>
+          <div className="offer-additional-grid">
+            {allAdditionalApprovals.map((ap, i) => (
+              <div key={i} className="offer-additional-card">
+                <div>
+                  <div className="offer-additional-lender">{ap.lender}</div>
+                  <div className="offer-additional-term">
+                    {ap.term || "Flexible terms"}{ap.factorRate ? ` · ${ap.factorRate}x` : ""}
+                  </div>
+                </div>
+                <div className="offer-additional-amount">
+                  {fmt$(typeof ap.amount === 'string' ? parseFloat(ap.amount) : ap.amount)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ACTIVITY FEED ─────────────────────────────────────────────────────────
+function ActivityFeed({ merchantEmail }: { merchantEmail: string }) {
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/merchant/activity")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setActivities(data); })
+      .catch(err => console.error("Failed to fetch activity:", err))
+      .finally(() => setLoading(false));
+  }, [merchantEmail]);
+
+  const iconContent: Record<string, string> = {
+    dollar: '$',
+    message: '\u2709',
+    star: '\u2605',
+    check: '\u2713',
+  };
+
+  const timeAgo = (ts: string) => {
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    return fmtDate(ts);
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="activity-feed">
+      <div className="activity-feed-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Activity
+      </div>
+      <div className="activity-feed-sub">Recent updates and milestones for your account</div>
+
+      {activities.length === 0 ? (
+        <div className="activity-empty">No activity yet. Your milestones will appear here.</div>
+      ) : (
+        activities.slice(0, 15).map(item => (
+          <div key={item.id} className="activity-item">
+            <div className={`activity-icon ${item.icon}`}>
+              {iconContent[item.icon] || '\u2022'}
+            </div>
+            <div className="activity-content">
+              <div className="activity-title-row">
+                <div className="activity-title">{item.title}</div>
+                <div className="activity-time">{timeAgo(item.timestamp)}</div>
+              </div>
+              <div className="activity-desc">{item.description}</div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ── PAYOFF COUNTDOWN WIDGET ───────────────────────────────────────────────
+function PayoffCountdownWidget({ deal }: { deal: Deal }) {
+  const calc = calcDeal(deal);
+  if (calc.isComplete) return null;
+
+  const now = new Date();
+  const payoff = calc.projectedPayoff;
+  const diffMs = payoff.getTime() - now.getTime();
+  const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+  return (
+    <div className="payoff-countdown-widget">
+      <div className="payoff-countdown-days">{daysLeft}</div>
+      <div className="payoff-countdown-unit">Days Remaining</div>
+      <div className="payoff-countdown-date">
+        Estimated payoff: <strong>{fmtDate(payoff)}</strong>
+      </div>
+      <div className="payoff-countdown-sub">
+        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} left
       </div>
     </div>
   );
@@ -2465,6 +3028,21 @@ export default function MerchantPortal() {
                   {/* ── POSITIONS TAB ── */}
                   {activeTab === 'positions' && (
                     <>
+                      {/* Pre-Qualified Offer Banner */}
+                      {!loadingDeals && deals.length > 0 && (
+                        <PreQualifiedOfferBanner deals={deals} />
+                      )}
+
+                      {/* Payoff Countdown Widget - show for primary active deal */}
+                      {!loadingDeals && activeDeals.length > 0 && (
+                        <PayoffCountdownWidget deal={activeDeals[0]} />
+                      )}
+
+                      {/* Activity Feed */}
+                      {!loadingDeals && deals.length > 0 && (
+                        <ActivityFeed merchantEmail={merchantEmail} />
+                      )}
+
                       {loadingDeals ? (
                         <div className="loading-wrap" style={{ minHeight: "200px" }}>Loading your positions...</div>
                       ) : deals.length === 0 ? (

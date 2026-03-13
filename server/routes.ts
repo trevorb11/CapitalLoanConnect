@@ -7396,6 +7396,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const decision of decisions) {
         if (decision.status !== 'funded') continue;
 
+        // Shared renewal/offer fields from the decision
+        const sharedFields = {
+          maxUpsell: decision.maxUpsell ? parseFloat(decision.maxUpsell) : null,
+          approvalDeadline: decision.approvalDeadline ? new Date(decision.approvalDeadline).toISOString() : null,
+          additionalApprovals: Array.isArray(decision.additionalApprovals) ? decision.additionalApprovals : [],
+          decisionId: decision.id,
+        };
+
         // Build deals from additionalFundings JSONB array
         const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
 
@@ -7412,6 +7420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             term: funding.term || decision.term || '6 months',
             status: 'active',
             assignedRep: funding.assignedRep || decision.assignedRep || null,
+            ...sharedFields,
           });
         }
 
@@ -7429,6 +7438,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             term: decision.term || '6 months',
             status: 'active',
             assignedRep: decision.assignedRep || null,
+            ...sharedFields,
           });
         }
       }
@@ -7459,6 +7469,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[MERCHANT] Error fetching statements:", error);
       res.status(500).json({ error: "Failed to fetch statements" });
+    }
+  });
+
+  // Merchant Activity Feed - aggregates milestones, messages, and offers
+  app.get("/api/merchant/activity", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const activities: any[] = [];
+
+      // Get decisions for milestone events
+      const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(email);
+      for (const d of decisions) {
+        if (d.status === 'funded' && d.fundedDate) {
+          activities.push({
+            id: `funded-${d.id}`,
+            type: 'milestone',
+            icon: 'dollar',
+            title: 'Deal Funded',
+            description: `${d.lender || 'Your lender'} funded ${d.advanceAmount ? '$' + parseFloat(d.advanceAmount).toLocaleString() : 'your advance'}`,
+            timestamp: new Date(d.fundedDate).toISOString(),
+          });
+        }
+        if (d.status === 'funded' && d.approvalDeadline) {
+          activities.push({
+            id: `offer-${d.id}`,
+            type: 'offer',
+            icon: 'star',
+            title: 'Renewal Offer Available',
+            description: d.maxUpsell ? `Pre-qualified for up to $${parseFloat(d.maxUpsell).toLocaleString()}` : 'You may qualify for additional funding',
+            timestamp: new Date(d.updatedAt || d.createdAt || d.fundedDate).toISOString(),
+          });
+        }
+        // Payment milestone estimates from additionalFundings
+        const fundings = Array.isArray(d.additionalFundings) ? d.additionalFundings as any[] : [];
+        for (const f of fundings) {
+          if (f.fundedDate) {
+            activities.push({
+              id: `funded-${f.id || d.id}-${f.lender}`,
+              type: 'milestone',
+              icon: 'dollar',
+              title: `Position Funded — ${f.lender}`,
+              description: `${f.lender} funded $${parseFloat(f.advanceAmount || '0').toLocaleString()}`,
+              timestamp: new Date(f.fundedDate).toISOString(),
+            });
+          }
+        }
+      }
+
+      // Get recent messages
+      const messages = await storage.getMerchantMessagesByEmail(email);
+      for (const m of messages.slice(-20)) {
+        activities.push({
+          id: `msg-${m.id}`,
+          type: 'message',
+          icon: 'message',
+          title: m.senderRole === 'merchant' ? 'You sent a message' : `Message from ${m.senderName || 'your rep'}`,
+          description: m.message.length > 80 ? m.message.substring(0, 80) + '...' : m.message,
+          timestamp: new Date(m.createdAt).toISOString(),
+        });
+      }
+
+      // Sort by timestamp descending
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      res.json(activities.slice(0, 50));
+    } catch (error) {
+      console.error("[MERCHANT] Error fetching activity:", error);
+      res.status(500).json({ error: "Failed to fetch activity" });
     }
   });
 
