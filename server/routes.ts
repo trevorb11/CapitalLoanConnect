@@ -312,6 +312,15 @@ function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: 
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ── ADMIN PORTAL PREVIEW TOKEN STORE (in-memory, 30-min TTL) ──────────
+  const adminPreviewTokens = new Map<string, { email: string; name: string; businessName: string; expiresAt: number }>();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [token, data] of adminPreviewTokens.entries()) {
+      if (data.expiresAt <= now) adminPreviewTokens.delete(token);
+    }
+  }, 10 * 60 * 1000);
+
   // ========================================
   // HEALTH CHECK ENDPOINT (for deployment)
   // ========================================
@@ -7745,6 +7754,161 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[MERCHANT] Create portal error:", error);
       res.status(500).json({ error: "Failed to create portal" });
+    }
+  });
+
+  // Admin: Generate a short-lived preview token to access a merchant's portal without affecting admin session
+  app.post("/api/merchant/admin-access", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only staff can preview portals" });
+    }
+    try {
+      const { decisionId } = req.body;
+      if (!decisionId) return res.status(400).json({ error: "decisionId is required" });
+
+      const decision = await storage.getBusinessUnderwritingDecision(decisionId);
+      if (!decision) return res.status(404).json({ error: "Decision not found" });
+      if (!decision.merchantEmail && !decision.businessEmail) {
+        return res.status(400).json({ error: "No merchant email found — set up the portal first." });
+      }
+
+      const email = (decision.merchantEmail || decision.businessEmail || '').toLowerCase();
+      const name = decision.businessName || decision.businessEmail || 'Merchant';
+      const token = randomBytes(32).toString('hex');
+
+      adminPreviewTokens.set(token, {
+        email,
+        name,
+        businessName: decision.businessName || '',
+        expiresAt: Date.now() + 30 * 60 * 1000, // 30-minute TTL
+      });
+
+      const protocol = req.headers['x-forwarded-proto'] || 'https';
+      const host = req.headers['x-forwarded-host'] || req.headers['host'] || '';
+      const baseUrl = `${protocol}://${host}`;
+
+      console.log(`[MERCHANT] Admin preview token generated for ${email} by ${req.session.user.agentEmail || 'admin'}`);
+      res.json({ previewUrl: `${baseUrl}/merchant/portal?adminPreview=${token}` });
+    } catch (error) {
+      console.error("[MERCHANT] Admin access error:", error);
+      res.status(500).json({ error: "Failed to generate preview token" });
+    }
+  });
+
+  // Admin preview: Return all merchant portal data using a preview token (no session required)
+  app.get("/api/merchant/admin-preview-data", async (req, res) => {
+    const token = req.query.token as string;
+    if (!token) return res.status(400).json({ error: "token is required" });
+
+    const preview = adminPreviewTokens.get(token);
+    if (!preview || preview.expiresAt <= Date.now()) {
+      return res.status(401).json({ error: "Invalid or expired preview token" });
+    }
+
+    try {
+      const email = preview.email;
+
+      // Fetch all data in parallel
+      const [decisions, uploads, congrats, messages] = await Promise.all([
+        storage.getBusinessUnderwritingDecisionsByMerchantEmail(email),
+        storage.getBankStatementUploadsByEmail(email),
+        storage.getCongratulationsUploadsByEmail(email),
+        storage.getMerchantMessagesByEmail(email),
+      ]);
+
+      // Build deals (same logic as /api/merchant/deals)
+      const deals: any[] = [];
+      for (const decision of decisions) {
+        if (decision.status !== 'funded') continue;
+        const sharedFields = {
+          maxUpsell: decision.maxUpsell ? parseFloat(decision.maxUpsell) : null,
+          approvalDeadline: decision.approvalDeadline ? new Date(decision.approvalDeadline).toISOString() : null,
+          additionalApprovals: Array.isArray(decision.additionalApprovals) ? decision.additionalApprovals : [],
+          decisionId: decision.id,
+        };
+        const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
+        if (fundings.length > 0) {
+          for (const funding of fundings) {
+            deals.push({
+              id: funding.id || decision.id,
+              businessName: decision.businessName || 'N/A',
+              lender: funding.lender || decision.lender || 'N/A',
+              advanceAmount: parseFloat(funding.advanceAmount || decision.advanceAmount || '0'),
+              factorRate: parseFloat(funding.factorRate || decision.factorRate || '1'),
+              totalPayback: parseFloat(funding.totalPayback || decision.totalPayback || '0'),
+              paymentFrequency: funding.paymentFrequency || decision.paymentFrequency || 'daily',
+              fundedDate: funding.fundedDate || (decision.fundedDate ? new Date(decision.fundedDate).toISOString() : new Date().toISOString()),
+              term: funding.term || decision.term || '6 months',
+              status: 'active',
+              assignedRep: funding.assignedRep || decision.assignedRep || null,
+              ...sharedFields,
+            });
+          }
+        } else {
+          deals.push({
+            id: decision.id,
+            businessName: decision.businessName || 'N/A',
+            lender: decision.lender || 'N/A',
+            advanceAmount: parseFloat(decision.advanceAmount || '0'),
+            factorRate: parseFloat(decision.factorRate || '1'),
+            totalPayback: parseFloat(decision.totalPayback || '0'),
+            paymentFrequency: decision.paymentFrequency || 'daily',
+            fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString() : new Date().toISOString(),
+            term: decision.term || '6 months',
+            status: 'active',
+            assignedRep: decision.assignedRep || null,
+            ...sharedFields,
+          });
+        }
+      }
+
+      // Build statements
+      const statements = uploads.map(u => ({
+        id: u.id,
+        originalFileName: u.originalFileName,
+        fileSize: u.fileSize,
+        viewToken: u.viewToken,
+        receivedAt: u.receivedAt,
+        createdAt: u.createdAt,
+      }));
+
+      // Build documents
+      const documents = [
+        ...congrats.map(c => ({
+          id: c.id,
+          type: c.docType,
+          name: c.originalFileName,
+          fileSize: c.fileSize,
+          category: 'closing' as const,
+          createdAt: c.createdAt,
+          downloadUrl: null,
+        })),
+        ...uploads.map(s => ({
+          id: s.id,
+          type: 'bank_statement',
+          name: s.originalFileName,
+          fileSize: s.fileSize,
+          category: 'statements' as const,
+          createdAt: s.createdAt,
+          downloadUrl: s.viewToken ? `/api/bank-statements/public/view/${s.viewToken}` : null,
+        })),
+      ];
+
+      res.json({
+        merchant: { email, name: preview.name, businessName: preview.businessName },
+        deals,
+        statements,
+        documents,
+        messages,
+        isAdminPreview: true,
+        expiresAt: preview.expiresAt,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Admin preview data error:", error);
+      res.status(500).json({ error: "Failed to load preview data" });
     }
   });
 

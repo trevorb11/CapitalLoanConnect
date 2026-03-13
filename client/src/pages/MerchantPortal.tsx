@@ -3573,6 +3573,7 @@ function fmtFileSize(bytes: number) {
 export default function MerchantPortal() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [isAdminPreview, setIsAdminPreview] = useState(false);
   const [merchantEmail, setMerchantEmail] = useState("");
   const [merchantName, setMerchantName] = useState("");
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -3594,8 +3595,32 @@ export default function MerchantPortal() {
     bankStatementCount?: number;
   } | null>(null);
 
-  // Check auth on mount
+  // Check for admin preview token in URL — fetches bundled data without touching session
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const previewToken = params.get('adminPreview');
+    if (previewToken) {
+      setIsAdminPreview(true);
+      fetch(`/api/merchant/admin-preview-data?token=${encodeURIComponent(previewToken)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) {
+            setAuthChecked(true);
+            return;
+          }
+          setMerchantEmail(data.merchant?.email || '');
+          setMerchantName(data.merchant?.name || '');
+          if (Array.isArray(data.deals)) setDeals(data.deals);
+          if (Array.isArray(data.statements)) setStatements(data.statements);
+          if (Array.isArray(data.documents)) setVaultDocs(data.documents);
+          setLoggedIn(true);
+          setAuthChecked(true);
+        })
+        .catch(() => setAuthChecked(true));
+      return; // Skip normal auth check
+    }
+
+    // Normal auth check
     fetch("/api/merchant/auth/check")
       .then(r => r.json())
       .then(data => {
@@ -3609,9 +3634,9 @@ export default function MerchantPortal() {
       .catch(() => setAuthChecked(true));
   }, []);
 
-  // Fetch deals and statements when logged in
+  // Fetch deals and statements when logged in (skip in admin preview — data already loaded)
   useEffect(() => {
-    if (!loggedIn) return;
+    if (!loggedIn || isAdminPreview) return;
 
     setLoadingDeals(true);
     fetch("/api/merchant/deals")
@@ -3639,7 +3664,7 @@ export default function MerchantPortal() {
       .then(r => r.json())
       .then(data => setAppStatus(data))
       .catch(() => {});
-  }, [loggedIn]);
+  }, [loggedIn, isAdminPreview]);
 
   const handleLogin = () => {
     // Re-check auth to get merchant info
@@ -3689,6 +3714,24 @@ export default function MerchantPortal() {
           <LoginScreen onLogin={handleLogin} />
         ) : (
           <>
+            {isAdminPreview && (
+              <div style={{
+                background: '#f59e0b',
+                color: '#000',
+                padding: '8px 20px',
+                fontSize: '13px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                justifyContent: 'center',
+                letterSpacing: '0.01em',
+              }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                Admin Preview Mode — this is how {merchantName || merchantEmail} sees their portal. Token expires in 30 minutes.
+                <button onClick={() => window.close()} style={{ marginLeft: 'auto', background: 'rgba(0,0,0,0.15)', border: 'none', borderRadius: '4px', padding: '2px 10px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>Close Tab</button>
+              </div>
+            )}
             <header className="header">
               <div className="header-logo">
                 <div className="header-logo-mark">TCG</div>
@@ -3696,9 +3739,11 @@ export default function MerchantPortal() {
               </div>
               <div className="header-right">
                 <span className="header-user">{merchantEmail}</span>
-                <button className="logout-btn" onClick={handleLogout}>
-                  Sign out
-                </button>
+                {!isAdminPreview && (
+                  <button className="logout-btn" onClick={handleLogout}>
+                    Sign out
+                  </button>
+                )}
               </div>
             </header>
 

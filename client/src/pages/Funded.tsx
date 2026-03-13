@@ -38,6 +38,7 @@ import {
   Mail,
   UserCheck,
   Upload,
+  ExternalLink,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -263,6 +264,28 @@ export default function Funded() {
         description: "Failed to delete the funded record.",
         variant: "destructive",
       });
+    },
+  });
+
+  const accessPortalMutation = useMutation({
+    mutationFn: async (decisionId: string) => {
+      const res = await fetch('/api/merchant/admin-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ decisionId }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to generate preview');
+      }
+      return res.json() as Promise<{ previewUrl: string }>;
+    },
+    onSuccess: (data) => {
+      window.open(data.previewUrl, '_blank', 'noopener,noreferrer');
+    },
+    onError: (err: Error) => {
+      toast({ title: "Cannot access portal", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1171,17 +1194,30 @@ export default function Funded() {
                             );
                           }
                           return (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => resendInviteMutation.mutate(decision.id)}
-                              disabled={resendInviteMutation.isPending}
-                              className="text-xs"
-                              data-testid={`button-send-invite-${decision.id}`}
-                            >
-                              <Mail className="w-3 h-3 mr-1" />
-                              {resendInviteMutation.isPending ? "Sending..." : "Send Portal Invite"}
-                            </Button>
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => accessPortalMutation.mutate(decision.id)}
+                                disabled={accessPortalMutation.isPending}
+                                className="text-xs"
+                                data-testid={`button-access-portal-${decision.id}`}
+                              >
+                                <ExternalLink className="w-3 h-3 mr-1" />
+                                {accessPortalMutation.isPending ? "Opening..." : "Access Portal"}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => resendInviteMutation.mutate(decision.id)}
+                                disabled={resendInviteMutation.isPending}
+                                className="text-xs"
+                                data-testid={`button-send-invite-${decision.id}`}
+                              >
+                                <Mail className="w-3 h-3 mr-1" />
+                                {resendInviteMutation.isPending ? "Sending..." : "Send Portal Invite"}
+                              </Button>
+                            </>
                           );
                         })()}
                         <AlertDialog>
