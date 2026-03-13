@@ -8006,7 +8006,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : `${(req.headers['x-forwarded-proto'] as string || 'http').split(',')[0].trim()}://${req.headers['host'] || 'localhost:5000'}`;
 
       console.log(`[MERCHANT] Admin preview token generated for ${email} by ${req.session.user.agentEmail || 'admin'}`);
-      res.json({ previewUrl: `${baseUrl}/merchant/portal?adminPreview=${token}` });
+      res.json({ previewUrl: `${baseUrl}/merchant?adminPreview=${token}` });
     } catch (error) {
       console.error("[MERCHANT] Admin access error:", error);
       res.status(500).json({ error: "Failed to generate preview token" });
