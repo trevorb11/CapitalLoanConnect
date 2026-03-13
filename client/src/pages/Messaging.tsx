@@ -286,6 +286,7 @@ export default function Messaging() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
+                  data-testid="input-search-merchants"
                   placeholder="Search by name, email, phone, or rep..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -293,7 +294,7 @@ export default function Messaging() {
                 />
               </div>
               <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                <SelectTrigger className="w-full sm:w-48">
+                <SelectTrigger data-testid="select-source-filter" className="w-full sm:w-48">
                   <Filter className="w-4 h-4 mr-2" />
                   <SelectValue placeholder="Filter by source" />
                 </SelectTrigger>
@@ -312,6 +313,7 @@ export default function Messaging() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Checkbox
+                  data-testid="checkbox-select-all"
                   checked={allVisibleSelected && filteredMerchants.length > 0}
                   onCheckedChange={toggleSelectAll}
                   id="select-all"
@@ -421,6 +423,7 @@ export default function Messaging() {
                   <Label className="text-xs text-muted-foreground mb-1.5 block">Send via</Label>
                   <div className="flex gap-2">
                     <Button
+                      data-testid="button-channel-email"
                       variant={channel === "email" ? "default" : "outline"}
                       size="sm"
                       onClick={() => setChannel("email")}
@@ -430,6 +433,7 @@ export default function Messaging() {
                       Email
                     </Button>
                     <Button
+                      data-testid="button-channel-sms"
                       variant={channel === "sms" ? "default" : "outline"}
                       size="sm"
                       onClick={() => setChannel("sms")}
@@ -439,6 +443,7 @@ export default function Messaging() {
                       SMS
                     </Button>
                     <Button
+                      data-testid="button-channel-both"
                       variant={channel === "both" ? "default" : "outline"}
                       size="sm"
                       onClick={() => setChannel("both")}
@@ -457,6 +462,7 @@ export default function Messaging() {
                     </Label>
                     <Input
                       id="msg-subject"
+                      data-testid="input-message-subject"
                       placeholder="Email subject line..."
                       value={subject}
                       onChange={(e) => setSubject(e.target.value)}
@@ -471,6 +477,7 @@ export default function Messaging() {
                   </Label>
                   <Textarea
                     id="msg-body"
+                    data-testid="textarea-message-body"
                     placeholder={
                       channel === "sms"
                         ? "Type your SMS message (160 chars recommended)..."
@@ -510,6 +517,7 @@ export default function Messaging() {
 
                 {/* Send button */}
                 <Button
+                  data-testid="button-send-message"
                   className="w-full"
                   onClick={handleSend}
                   disabled={
