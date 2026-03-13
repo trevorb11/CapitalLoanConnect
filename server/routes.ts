@@ -6788,8 +6788,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
-      return res.status(403).json({ error: "Admin or underwriting access required" });
+    const userRole = req.session.user.role;
+    if (userRole !== 'admin' && userRole !== 'underwriting' && userRole !== 'agent') {
+      return res.status(403).json({ error: "Access required: admin, underwriting, or agent" });
     }
 
     try {
@@ -6876,9 +6877,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const merchants = Array.from(merchantMap.values()).sort((a, b) =>
+      let merchants = Array.from(merchantMap.values()).sort((a, b) =>
         (a.businessName || a.email).localeCompare(b.businessName || b.email)
       );
+
+      // Agents can only see merchants assigned to them
+      if (userRole === 'agent' && req.session.user.agentName) {
+        const agentName = req.session.user.agentName.toLowerCase();
+        merchants = merchants.filter((m) =>
+          m.assignedRep && m.assignedRep.toLowerCase() === agentName
+        );
+      }
 
       res.json(merchants);
     } catch (error) {
@@ -6892,8 +6901,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
-      return res.status(403).json({ error: "Admin or underwriting access required" });
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting' && req.session.user.role !== 'agent') {
+      return res.status(403).json({ error: "Access required: admin, underwriting, or agent" });
     }
 
     try {

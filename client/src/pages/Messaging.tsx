@@ -34,7 +34,7 @@ import {
 
 interface AuthState {
   isAuthenticated: boolean;
-  role?: "admin" | "agent" | "underwriting";
+  role?: "admin" | "agent" | "underwriting" | "user";
 }
 
 interface Merchant {
@@ -77,7 +77,7 @@ export default function Messaging() {
       try {
         const res = await fetch("/api/auth/check", { credentials: "include" });
         const data: AuthState = await res.json();
-        if (data.isAuthenticated && (data.role === "admin" || data.role === "underwriting")) {
+        if (data.isAuthenticated && (data.role === "admin" || data.role === "underwriting" || data.role === "agent")) {
           setIsAuthenticated(true);
         } else if (data.isAuthenticated) {
           setAccessDenied(true);
