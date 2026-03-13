@@ -266,6 +266,29 @@ export default function Funded() {
     },
   });
 
+  const createPortalMutation = useMutation({
+    mutationFn: async (decisionId: string) => {
+      const res = await fetch('/api/merchant/create-portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ decisionId }),
+      });
+      if (!res.ok) throw new Error('Failed to create portal');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Portal ready",
+        description: data.message || "Portal created. No invite sent yet — click 'Send Invite' when ready.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/underwriting-decisions"] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create the portal.", variant: "destructive" });
+    },
+  });
+
   const resendInviteMutation = useMutation({
     mutationFn: async (decisionId: string) => {
       const res = await fetch('/api/merchant/resend-invite', {
@@ -282,6 +305,7 @@ export default function Funded() {
         title: "Portal invite sent",
         description: data.message || "The merchant portal invite has been sent.",
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/underwriting-decisions"] });
     },
     onError: () => {
       toast({
@@ -1131,25 +1155,32 @@ export default function Funded() {
                         <StatusToggle decision={decision} currentStatus="funded" />
                         {(() => {
                           const hasPortalAccess = !!(decision as any).merchantPasswordHash || !!(decision as any).merchantPortalToken;
+                          if (!hasPortalAccess) {
+                            return (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => createPortalMutation.mutate(decision.id)}
+                                disabled={createPortalMutation.isPending}
+                                className="text-xs"
+                                data-testid={`button-setup-portal-${decision.id}`}
+                              >
+                                <UserCheck className="w-3 h-3 mr-1" />
+                                {createPortalMutation.isPending ? "Setting up..." : "Setup Portal"}
+                              </Button>
+                            );
+                          }
                           return (
                             <Button
-                              variant={hasPortalAccess ? "outline" : "default"}
+                              variant="outline"
                               size="sm"
                               onClick={() => resendInviteMutation.mutate(decision.id)}
                               disabled={resendInviteMutation.isPending}
-                              className={hasPortalAccess ? "text-xs" : "text-xs bg-emerald-600 hover:bg-emerald-700 text-white"}
-                              data-testid={`button-resend-invite-${decision.id}`}
+                              className="text-xs"
+                              data-testid={`button-send-invite-${decision.id}`}
                             >
-                              {hasPortalAccess ? (
-                                <Mail className="w-3 h-3 mr-1" />
-                              ) : (
-                                <UserCheck className="w-3 h-3 mr-1" />
-                              )}
-                              {resendInviteMutation.isPending
-                                ? "Sending..."
-                                : hasPortalAccess
-                                  ? "Resend Portal Invite"
-                                  : "Activate Portal"}
+                              <Mail className="w-3 h-3 mr-1" />
+                              {resendInviteMutation.isPending ? "Sending..." : "Send Portal Invite"}
                             </Button>
                           );
                         })()}

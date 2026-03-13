@@ -7711,7 +7711,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Resend merchant portal invite (staff only)
+  // Create portal account WITHOUT sending the invite email (staff sets up the portal first)
+  app.post("/api/merchant/create-portal", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Only staff can create portals" });
+    }
+
+    try {
+      const { decisionId } = req.body;
+      if (!decisionId) {
+        return res.status(400).json({ error: "decisionId is required" });
+      }
+
+      const decision = await storage.getBusinessUnderwritingDecision(decisionId);
+      if (!decision) {
+        return res.status(404).json({ error: "Decision not found" });
+      }
+      if (!decision.businessEmail) {
+        return res.status(400).json({ error: "No business email on record" });
+      }
+
+      const token = randomBytes(32).toString('hex');
+      await storage.updateBusinessUnderwritingDecision(decision.id, {
+        merchantEmail: decision.businessEmail.toLowerCase(),
+        merchantPortalToken: token,
+      });
+
+      console.log(`[MERCHANT] Portal created (no email sent) for ${decision.businessEmail} by ${req.session.user.agentEmail || 'admin'}`);
+      res.json({ success: true, message: `Portal created for ${decision.businessEmail}. No invite sent yet.` });
+    } catch (error) {
+      console.error("[MERCHANT] Create portal error:", error);
+      res.status(500).json({ error: "Failed to create portal" });
+    }
+  });
+
   app.post("/api/merchant/resend-invite", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
