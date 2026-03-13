@@ -8,6 +8,7 @@ import { type LoanApplication } from "@shared/schema";
 import { type Agent } from "@shared/agents";
 import { trackApplicationSubmitted, trackFormStepCompleted, trackPageView, trackCloseConvertLead } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
+import { useExitIntent } from "@/hooks/use-exit-intent";
 
 // --- CONSTANTS & DATA ---
 
@@ -183,6 +184,14 @@ export default function FullApplication(props?: FullApplicationProps) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [consentChecked, setConsentChecked] = useState(false);
   const [cameFromIntake, setCameFromIntake] = useState(false);
+
+  // Exit-intent: fire abandonment trigger when user leaves mid-application
+  useExitIntent({
+    applicationId,
+    isCompleted: showSuccess,
+    abandonedPage: 'full_application',
+    currentStep: currentStepIndex + 1,
+  });
 
   // Track page view and check for existing ID on mount
   useEffect(() => {

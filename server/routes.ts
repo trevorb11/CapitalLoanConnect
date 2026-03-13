@@ -16,6 +16,7 @@ import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { notifyMerchantNewMessage } from "./services/twilio";
 import { fireSmsStageEvent } from "./sms-middleware";
+import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
@@ -1192,12 +1193,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Only send abandoned webhook if application was NOT completed
       if (!application.isFullApplicationCompleted && !application.isCompleted) {
         console.log(`[ABANDON] Sending abandoned webhook for application ${id}`);
-        
+
         // Send the partial application webhook with "App Started" tag
-        ghlService.sendPartialApplicationWebhook(application).catch(err => 
+        ghlService.sendPartialApplicationWebhook(application).catch(err =>
           console.error("Abandoned application webhook error (non-blocking):", err)
         );
-        
+
+        // Auto-trigger: send SMS/email nudge to complete application & upload bank statements
+        const { abandonedPage, lastStep } = req.body || {};
+        const _abandonParts = (application.fullName || '').trim().split(' ');
+        triggerAppAbandoned({
+          applicationId: id,
+          phone: application.phone || undefined,
+          email: application.email || undefined,
+          firstName: _abandonParts[0] || undefined,
+          lastName: _abandonParts.slice(1).join(' ') || undefined,
+          businessName: application.businessName || undefined,
+          lastStep: lastStep || application.currentStep || undefined,
+          abandonedPage: abandonedPage || 'application',
+        });
+
         return res.json({ success: true, message: "Abandoned webhook sent" });
       }
       
@@ -3015,7 +3030,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[UNDERWRITING] GHL sync error for ${businessEmail}:`, err);
       });
 
-      // SMS: approval_issued
+      // SMS: approval_issued + auto congratulations message
       if (status === 'approved' && businessPhone) {
         const _proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
         const _host = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
@@ -3031,9 +3046,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           amount: _topAmount,
           lender: decision.lender || undefined,
         });
+
+        // Auto-trigger: congratulations SMS to merchant
+        const _approvalNameParts = (businessName || '').trim().split(' ');
+        triggerApprovalCongratulations({
+          decisionId: decision.id,
+          phone: businessPhone,
+          email: businessEmail || undefined,
+          firstName: _approvalNameParts[0] || undefined,
+          businessName: businessName || undefined,
+          approvalLink: _approvalLink,
+          amount: _topAmount,
+          lender: decision.lender || undefined,
+        });
       }
 
-      // SMS: funded
+      // SMS: funded + auto congratulations message
       if (status === 'funded' && businessPhone) {
         const _fundedAmount = decision.advanceAmount ? parseFloat(String(decision.advanceAmount)) : undefined;
         fireSmsStageEvent({
@@ -3042,6 +3070,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: businessEmail || undefined,
           business_name: businessName || undefined,
           deal_id: decision.id,
+          amount: _fundedAmount,
+          lender: decision.lender || undefined,
+        });
+
+        // Auto-trigger: funded congratulations SMS to merchant
+        const _fundedNameParts = (businessName || '').trim().split(' ');
+        triggerFundedCongratulations({
+          decisionId: decision.id,
+          phone: businessPhone,
+          email: businessEmail || undefined,
+          firstName: _fundedNameParts[0] || undefined,
+          businessName: businessName || undefined,
           amount: _fundedAmount,
           lender: decision.lender || undefined,
         });
@@ -3138,11 +3178,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[UNDERWRITING] GHL sync error for decision ${id}:`, err);
       });
 
-      // SMS: approval_issued (PATCH path)
+      // SMS: approval_issued + auto congratulations (PATCH path)
       if (updates.status === 'approved' && updated.businessPhone) {
         const _pProto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
         const _pHost = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
         const _pLink = updated.approvalSlug ? `${_pProto}://${_pHost}/approval-letter/${updated.approvalSlug}` : undefined;
+        const _pAmount = updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined;
         fireSmsStageEvent({
           stage: 'approval_issued',
           phone: updated.businessPhone,
@@ -3150,20 +3191,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
           business_name: updated.businessName || undefined,
           deal_id: updated.id,
           approval_link: _pLink,
-          amount: updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined,
+          amount: _pAmount,
+          lender: updated.lender || undefined,
+        });
+
+        // Auto-trigger: congratulations SMS to merchant (PATCH path)
+        const _pNameParts = (updated.businessName || '').trim().split(' ');
+        triggerApprovalCongratulations({
+          decisionId: updated.id,
+          phone: updated.businessPhone,
+          email: updated.businessEmail || undefined,
+          firstName: _pNameParts[0] || undefined,
+          businessName: updated.businessName || undefined,
+          approvalLink: _pLink,
+          amount: _pAmount,
           lender: updated.lender || undefined,
         });
       }
 
-      // SMS: funded (PATCH path)
+      // SMS: funded + auto congratulations (PATCH path)
       if (updates.status === 'funded' && updated.businessPhone) {
+        const _pFundedAmount = updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined;
         fireSmsStageEvent({
           stage: 'funded',
           phone: updated.businessPhone,
           email: updated.businessEmail || undefined,
           business_name: updated.businessName || undefined,
           deal_id: updated.id,
-          amount: updated.advanceAmount ? parseFloat(String(updated.advanceAmount)) : undefined,
+          amount: _pFundedAmount,
+          lender: updated.lender || undefined,
+        });
+
+        // Auto-trigger: funded congratulations SMS to merchant (PATCH path)
+        const _pFundedNameParts = (updated.businessName || '').trim().split(' ');
+        triggerFundedCongratulations({
+          decisionId: updated.id,
+          phone: updated.businessPhone,
+          email: updated.businessEmail || undefined,
+          firstName: _pFundedNameParts[0] || undefined,
+          businessName: updated.businessName || undefined,
+          amount: _pFundedAmount,
           lender: updated.lender || undefined,
         });
       }

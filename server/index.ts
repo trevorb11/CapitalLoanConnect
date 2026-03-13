@@ -5,6 +5,7 @@ import { Pool } from "@neondatabase/serverless";
 import { registerRoutes } from "./routes";
 import { registerMcpRoutes } from "./mcp";
 import { setupVite, serveStatic, log } from "./vite";
+import { startScheduledTriggers } from "./messaging-triggers";
 
 const app = express();
 
@@ -172,6 +173,9 @@ app.use((req, res, next) => {
     }, () => {
       console.log(`[STARTUP] Server successfully started on port ${port}`);
       log(`serving on port ${port}`);
+
+      // Start scheduled messaging triggers (stale approval reminders, incomplete app nudges)
+      startScheduledTriggers();
     });
   } catch (error) {
     console.error('[STARTUP] Failed to start server:', error);
