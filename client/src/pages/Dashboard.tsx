@@ -3668,6 +3668,16 @@ export default function Dashboard() {
                         Funded
                       </Button>
                     </Link>
+                    <Link href="/messaging">
+                      <Button
+                        variant="outline"
+                        data-testid="button-messaging"
+                        className="border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-400"
+                      >
+                        <Mail className="w-4 h-4 mr-2" />
+                        Messaging
+                      </Button>
+                    </Link>
                   </>
                 )}
               </div>

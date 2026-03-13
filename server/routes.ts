@@ -6673,6 +6673,250 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // MESSAGING CENTER ROUTES
+  // ========================================
+
+  // Get all merchants aggregated from applications, statements, approvals, funded deals
+  app.get("/api/messaging/merchants", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
+      return res.status(403).json({ error: "Admin or underwriting access required" });
+    }
+
+    try {
+      // Gather contacts from all sources
+      const [applications, decisions, bankUploads] = await Promise.all([
+        storage.getAllLoanApplications(),
+        storage.getAllBusinessUnderwritingDecisions(),
+        storage.getAllBankStatementUploads(),
+      ]);
+
+      // Use email as unique key, merge data from all sources
+      const merchantMap = new Map<string, {
+        email: string;
+        businessName: string;
+        phone: string;
+        sources: string[];
+        status: string | null;
+        assignedRep: string | null;
+      }>();
+
+      // Applications
+      for (const app of applications) {
+        if (!app.email) continue;
+        const key = app.email.toLowerCase();
+        const existing = merchantMap.get(key);
+        if (existing) {
+          if (!existing.sources.includes('application')) existing.sources.push('application');
+          if (!existing.businessName && app.businessName) existing.businessName = app.businessName;
+          if (!existing.phone && app.phone) existing.phone = app.phone;
+        } else {
+          merchantMap.set(key, {
+            email: app.email,
+            businessName: app.businessName || app.legalBusinessName || '',
+            phone: app.phone || '',
+            sources: ['application'],
+            status: null,
+            assignedRep: app.agentName || null,
+          });
+        }
+      }
+
+      // Bank statement uploads
+      for (const upload of bankUploads) {
+        if (!upload.email) continue;
+        const key = upload.email.toLowerCase();
+        const existing = merchantMap.get(key);
+        if (existing) {
+          if (!existing.sources.includes('statements')) existing.sources.push('statements');
+          if (!existing.businessName && upload.businessName) existing.businessName = upload.businessName;
+        } else {
+          merchantMap.set(key, {
+            email: upload.email,
+            businessName: upload.businessName || '',
+            phone: '',
+            sources: ['statements'],
+            status: null,
+            assignedRep: null,
+          });
+        }
+      }
+
+      // Underwriting decisions (approvals, funded, declines)
+      for (const dec of decisions) {
+        if (!dec.businessEmail) continue;
+        const key = dec.businessEmail.toLowerCase();
+        const existing = merchantMap.get(key);
+        const sourceLabel = dec.status === 'funded' ? 'funded' : dec.status === 'approved' ? 'approved' : dec.status || 'decision';
+        if (existing) {
+          if (!existing.sources.includes(sourceLabel)) existing.sources.push(sourceLabel);
+          if (!existing.businessName && dec.businessName) existing.businessName = dec.businessName;
+          if (!existing.phone && dec.businessPhone) existing.phone = dec.businessPhone;
+          // Prefer decision status/rep over application data
+          if (dec.status) existing.status = dec.status;
+          if (dec.assignedRep) existing.assignedRep = dec.assignedRep;
+        } else {
+          merchantMap.set(key, {
+            email: dec.businessEmail,
+            businessName: dec.businessName || '',
+            phone: dec.businessPhone || '',
+            sources: [sourceLabel],
+            status: dec.status || null,
+            assignedRep: dec.assignedRep || null,
+          });
+        }
+      }
+
+      const merchants = Array.from(merchantMap.values()).sort((a, b) =>
+        (a.businessName || a.email).localeCompare(b.businessName || b.email)
+      );
+
+      res.json(merchants);
+    } catch (error) {
+      console.error("[MESSAGING] Error fetching merchants:", error);
+      res.status(500).json({ error: "Failed to fetch merchants" });
+    }
+  });
+
+  // Send messages to merchants via email and/or SMS
+  app.post("/api/messaging/send", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
+      return res.status(403).json({ error: "Admin or underwriting access required" });
+    }
+
+    try {
+      const { recipients, subject, message, channel } = req.body as {
+        recipients: { email: string; phone?: string; businessName?: string }[];
+        subject: string;
+        message: string;
+        channel: 'email' | 'sms' | 'both';
+      };
+
+      if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+        return res.status(400).json({ error: "At least one recipient is required" });
+      }
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+      if (message.length > 5000) {
+        return res.status(400).json({ error: "Message must be under 5000 characters" });
+      }
+
+      const results: { email: string; emailSent?: boolean; smsSent?: boolean; error?: string }[] = [];
+
+      // Set up Gmail client once if needed for emails
+      let gmail: any = null;
+      if (channel === 'email' || channel === 'both') {
+        try {
+          const { google } = await import('googleapis');
+          const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+          const xReplitToken = process.env.REPL_IDENTITY
+            ? 'repl ' + process.env.REPL_IDENTITY
+            : process.env.WEB_REPL_RENEWAL
+            ? 'depl ' + process.env.WEB_REPL_RENEWAL
+            : null;
+
+          if (xReplitToken && hostname) {
+            const connRes = await fetch(
+              'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-mail',
+              { headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken } }
+            ).then(r => r.json());
+            const accessToken = connRes.items?.[0]?.settings?.access_token || connRes.items?.[0]?.settings?.oauth?.credentials?.access_token;
+            if (accessToken) {
+              const oauth2Client = new google.auth.OAuth2();
+              oauth2Client.setCredentials({ access_token: accessToken });
+              gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+            }
+          }
+        } catch (gmailErr) {
+          console.error('[MESSAGING] Gmail setup failed:', gmailErr);
+        }
+      }
+
+      const senderName = req.session.user.agentEmail || 'Today Capital Group';
+
+      for (const recipient of recipients) {
+        const result: typeof results[0] = { email: recipient.email };
+
+        // Send email
+        if ((channel === 'email' || channel === 'both') && gmail) {
+          try {
+            const emailSubject = subject || 'Message from Today Capital Group';
+            const htmlBody = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #14B8A6;">Today Capital Group</h2>
+                <p>Hello${recipient.businessName ? ` ${recipient.businessName}` : ''},</p>
+                <div style="white-space: pre-wrap; line-height: 1.6;">${message.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
+                <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;" />
+                <p style="color: #999; font-size: 12px;">Today Capital Group</p>
+              </div>
+            `;
+            const raw = Buffer.from(
+              `To: ${recipient.email}\r\n` +
+              `Subject: ${emailSubject}\r\n` +
+              `Content-Type: text/html; charset=utf-8\r\n` +
+              `\r\n` +
+              htmlBody
+            ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+            await gmail.users.messages.send({
+              userId: 'me',
+              requestBody: { raw },
+            });
+            result.emailSent = true;
+          } catch (emailErr) {
+            console.error(`[MESSAGING] Email to ${recipient.email} failed:`, emailErr);
+            result.emailSent = false;
+            result.error = 'Email send failed';
+          }
+        }
+
+        // Send SMS
+        if ((channel === 'sms' || channel === 'both') && recipient.phone) {
+          try {
+            const { sendSms } = await import('./services/twilio');
+            const smsResult = await sendSms(recipient.phone, message.trim());
+            result.smsSent = smsResult.success;
+            if (!smsResult.success && !result.error) {
+              result.error = smsResult.error || 'SMS send failed';
+            }
+          } catch (smsErr) {
+            console.error(`[MESSAGING] SMS to ${recipient.phone} failed:`, smsErr);
+            result.smsSent = false;
+          }
+        } else if ((channel === 'sms' || channel === 'both') && !recipient.phone) {
+          result.smsSent = false;
+          result.error = (result.error ? result.error + '; ' : '') + 'No phone number';
+        }
+
+        results.push(result);
+      }
+
+      const emailsSent = results.filter(r => r.emailSent).length;
+      const smsSent = results.filter(r => r.smsSent).length;
+      const failures = results.filter(r => r.error).length;
+
+      console.log(`[MESSAGING] Sent by ${senderName}: ${emailsSent} emails, ${smsSent} SMS, ${failures} failures`);
+
+      res.json({
+        sent: results.length,
+        emailsSent,
+        smsSent,
+        failures,
+        results,
+      });
+    } catch (error) {
+      console.error("[MESSAGING] Error sending messages:", error);
+      res.status(500).json({ error: "Failed to send messages" });
+    }
+  });
+
+  // ========================================
   // MERCHANT PORTAL ROUTES
   // ========================================
 

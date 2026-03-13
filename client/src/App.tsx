@@ -46,6 +46,7 @@ import SBALanding from "@/pages/SBALanding";
 import SignatureApplication from "@/pages/SignatureApplication";
 import Congratulations from "@/pages/Congratulations";
 import Leaderboard from "@/pages/Leaderboard";
+import Messaging from "@/pages/Messaging";
 import MerchantPortal from "@/pages/MerchantPortal";
 import MerchantActivate from "@/pages/MerchantActivate";
 import MerchantResetPassword from "@/pages/MerchantResetPassword";
@@ -109,6 +110,7 @@ function Router() {
       <Route path="/declines" component={Declines} />
       <Route path="/unqualified" component={Unqualified} />
       <Route path="/funded" component={Funded} />
+      <Route path="/messaging" component={Messaging} />
       <Route path="/agents" component={AgentSelector} />
 
       {/* Rep Console - Contact 360 View */}
