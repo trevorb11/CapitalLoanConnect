@@ -1,7 +1,8 @@
 /**
  * Automated Messaging Triggers
  *
- * Fires SMS + email (via the SMS middleware) at key moments in the merchant journey:
+ * SMS  → routed through the SMS middleware (fireSmsStageEvent)
+ * Email → sent directly via Gmail API
  *
  * INSTANT TRIGGERS (fired from route handlers)
  * ─────────────────────────────────────────────
@@ -13,20 +14,90 @@
  * SCHEDULED / CRON TRIGGERS (checked periodically)
  * ─────────────────────────────────────────────────
  * 5. approval_stale_reminder  – approval issued but not accepted after 24h / 48h / 72h
- * 6. app_incomplete_reminder  – application started but not completed after 1h
+ * 6. app_incomplete_reminder  – application started but not completed after 2h
  */
 
-import { fireSmsStageEvent, type StageEventPayload } from './sms-middleware';
-import { sendSms } from './services/twilio';
+import { fireSmsStageEvent } from './sms-middleware';
 import { storage } from './storage';
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 1. APPLICATION ABANDONED (merchant left before uploading bank statements)
-// Called from the client via beacon/API when the merchant navigates away from
-// the intake or bank-statement pages without completing the upload step.
+// GMAIL EMAIL HELPER
+// Sends an HTML email via the Gmail API (same auth pattern used elsewhere).
+// Non-blocking — errors are logged, never thrown.
 // ──────────────────────────────────────────────────────────────────────────────
 
+async function sendTriggerEmail(toEmail: string, subject: string, htmlBody: string): Promise<boolean> {
+  try {
+    const { google } = await import('googleapis');
+
+    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+    const xReplitToken = process.env.REPL_IDENTITY
+      ? 'repl ' + process.env.REPL_IDENTITY
+      : process.env.WEB_REPL_RENEWAL
+        ? 'depl ' + process.env.WEB_REPL_RENEWAL
+        : null;
+
+    if (!xReplitToken || !hostname) {
+      console.log('[TRIGGER EMAIL] Gmail connector not available, skipping email');
+      return false;
+    }
+
+    const connRes = await fetch(
+      'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-mail',
+      { headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken } }
+    ).then(r => r.json());
+
+    const accessToken = connRes.items?.[0]?.settings?.access_token || connRes.items?.[0]?.settings?.oauth?.credentials?.access_token;
+    if (!accessToken) {
+      console.log('[TRIGGER EMAIL] No Gmail access token available');
+      return false;
+    }
+
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ access_token: accessToken });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    const raw = Buffer.from(
+      `To: ${toEmail}\r\n` +
+      `Subject: ${subject}\r\n` +
+      `Content-Type: text/html; charset=utf-8\r\n` +
+      `\r\n` +
+      htmlBody
+    ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw },
+    });
+
+    console.log(`[TRIGGER EMAIL] Sent "${subject}" to ${toEmail}`);
+    return true;
+  } catch (err) {
+    console.error('[TRIGGER EMAIL] Send error (non-fatal):', err);
+    return false;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SHARED EMAIL TEMPLATE WRAPPER
+// ──────────────────────────────────────────────────────────────────────────────
+
+function wrapEmailHtml(bodyContent: string): string {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: #14B8A6; margin-bottom: 24px;">Today Capital Group</h2>
+      ${bodyContent}
+      <hr style="margin: 32px 0 16px; border: none; border-top: 1px solid #eee;" />
+      <p style="color: #999; font-size: 12px;">Today Capital Group</p>
+    </div>
+  `;
+}
+
 const BANK_STATEMENTS_LINK = 'https://bit.ly/3ZnW1kS';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 1. APPLICATION ABANDONED
+// ──────────────────────────────────────────────────────────────────────────────
 
 export async function triggerAppAbandoned(opts: {
   applicationId: string;
@@ -36,16 +107,16 @@ export async function triggerAppAbandoned(opts: {
   lastName?: string;
   businessName?: string;
   lastStep?: number;
-  abandonedPage?: string; // e.g. "intake", "bank_statements", "full_application"
+  abandonedPage?: string;
 }): Promise<void> {
   const { applicationId, phone, email, firstName, businessName, abandonedPage } = opts;
 
-  if (!phone && !email) return; // nothing to send to
+  if (!phone && !email) return;
 
   const name = firstName || 'there';
   const page = abandonedPage || 'application';
 
-  // Fire stage event to SMS middleware
+  // SMS → middleware
   if (phone) {
     fireSmsStageEvent({
       stage: 'app_abandoned',
@@ -57,14 +128,33 @@ export async function triggerAppAbandoned(opts: {
       deal_id: applicationId,
       metadata: { abandonedPage: page, lastStep: opts.lastStep },
     });
+  }
 
-    // Also send a direct SMS as an immediate follow-up
-    const smsBody = abandonedPage === 'bank_statements'
-      ? `Hi ${name}! We noticed you started your funding application but haven't uploaded your bank statements yet. You're almost there! You can reply to this text with photos of your statements or upload them here: ${BANK_STATEMENTS_LINK} — Today Capital Group`
-      : `Hi ${name}! We noticed you started your funding application but didn't finish. You're so close! Complete your application and upload your bank statements here: ${BANK_STATEMENTS_LINK} — Today Capital Group`;
+  // Email → Gmail
+  if (email) {
+    const isBankStatements = abandonedPage === 'bank_statements';
+    const subject = isBankStatements
+      ? "You're almost there — just upload your bank statements!"
+      : "Don't forget to finish your funding application!";
 
-    sendSms(phone, smsBody).catch(err => {
-      console.error('[TRIGGER] app_abandoned SMS error (non-fatal):', err);
+    const html = wrapEmailHtml(`
+      <p>Hi ${name},</p>
+      ${isBankStatements
+        ? `<p>We noticed you started your funding application but haven't uploaded your bank statements yet. You're <strong>almost there</strong>!</p>
+           <p>You can upload your bank statements here or simply reply to this email with photos of them:</p>`
+        : `<p>We noticed you started your funding application but didn't finish. You're <strong>so close</strong>!</p>
+           <p>Complete your application and upload your bank statements to get funded:</p>`
+      }
+      <p style="margin: 24px 0;">
+        <a href="${BANK_STATEMENTS_LINK}" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+          Upload Bank Statements
+        </a>
+      </p>
+      <p style="color: #666;">If you have any questions, simply reply to this email — we're here to help!</p>
+    `);
+
+    sendTriggerEmail(email, subject, html).catch(err => {
+      console.error('[TRIGGER] app_abandoned email error (non-fatal):', err);
     });
   }
 
@@ -73,7 +163,6 @@ export async function triggerAppAbandoned(opts: {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // 2. APPROVAL CONGRATULATIONS
-// Fired when a new approval is created for a merchant.
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function triggerApprovalCongratulations(opts: {
@@ -88,27 +177,58 @@ export async function triggerApprovalCongratulations(opts: {
 }): Promise<void> {
   const { phone, email, firstName, approvalLink, amount, lender } = opts;
 
-  if (!phone) return;
+  if (!phone && !email) return;
 
   const name = firstName || 'there';
   const amountStr = amount
     ? `$${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
     : 'your funding';
 
-  const smsBody = approvalLink
-    ? `Congratulations ${name}! 🎉 You've been approved for ${amountStr}${lender ? ` through ${lender}` : ''}! View and accept your offer here: ${approvalLink} — Today Capital Group`
-    : `Congratulations ${name}! 🎉 You've been approved for ${amountStr}${lender ? ` through ${lender}` : ''}! Log in to your portal to accept your offer. — Today Capital Group`;
+  // SMS → middleware (the existing approval_issued stage event in routes.ts already fires;
+  // we add a congratulations-specific one here so the middleware can differentiate)
+  if (phone) {
+    fireSmsStageEvent({
+      stage: 'approval_congratulations',
+      phone,
+      email: email || undefined,
+      first_name: firstName || undefined,
+      business_name: opts.businessName || undefined,
+      deal_id: opts.decisionId,
+      approval_link: approvalLink || undefined,
+      amount: amount || undefined,
+      lender: lender || undefined,
+    });
+  }
 
-  sendSms(phone, smsBody).catch(err => {
-    console.error('[TRIGGER] approval_congratulations SMS error (non-fatal):', err);
-  });
+  // Email → Gmail
+  if (email) {
+    const subject = `Congratulations! You've been approved for ${amountStr}!`;
+    const html = wrapEmailHtml(`
+      <p>Hi ${name},</p>
+      <p>Great news — <strong>you've been approved for ${amountStr}</strong>${lender ? ` through ${lender}` : ''}!</p>
+      ${approvalLink
+        ? `<p>View the details of your offer and accept it here:</p>
+           <p style="margin: 24px 0;">
+             <a href="${approvalLink}" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+               View & Accept Your Offer
+             </a>
+           </p>
+           <p style="color: #666; font-size: 13px;">Or copy and paste this link: ${approvalLink}</p>`
+        : `<p>Log in to your portal to review and accept your offer.</p>`
+      }
+      <p style="color: #666;">Questions? Simply reply to this email — we're here to help!</p>
+    `);
+
+    sendTriggerEmail(email, subject, html).catch(err => {
+      console.error('[TRIGGER] approval_congratulations email error (non-fatal):', err);
+    });
+  }
 
   console.log(`[TRIGGER] approval_congratulations fired for decision ${opts.decisionId}`);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // 3. FUNDED CONGRATULATIONS
-// Fired when a deal status changes to "funded".
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function triggerFundedCongratulations(opts: {
@@ -120,28 +240,54 @@ export async function triggerFundedCongratulations(opts: {
   amount?: number;
   lender?: string;
 }): Promise<void> {
-  const { phone, firstName, amount, lender } = opts;
+  const { phone, email, firstName, amount, lender } = opts;
 
-  if (!phone) return;
+  if (!phone && !email) return;
 
   const name = firstName || 'there';
   const amountStr = amount
     ? `$${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
     : 'your funds';
 
-  const smsBody = `Congratulations ${name}! 🎉 Your funding of ${amountStr}${lender ? ` from ${lender}` : ''} has been completed! Your funds should arrive shortly. If you have any questions, reply to this text. Thank you for choosing Today Capital Group!`;
+  // SMS → middleware
+  if (phone) {
+    fireSmsStageEvent({
+      stage: 'funded_congratulations',
+      phone,
+      email: email || undefined,
+      first_name: firstName || undefined,
+      business_name: opts.businessName || undefined,
+      deal_id: opts.decisionId,
+      amount: amount || undefined,
+      lender: lender || undefined,
+    });
+  }
 
-  sendSms(phone, smsBody).catch(err => {
-    console.error('[TRIGGER] funded_congratulations SMS error (non-fatal):', err);
-  });
+  // Email → Gmail
+  if (email) {
+    const subject = `Your funding of ${amountStr} is complete!`;
+    const html = wrapEmailHtml(`
+      <p>Hi ${name},</p>
+      <p><strong>Congratulations!</strong> Your funding of ${amountStr}${lender ? ` from ${lender}` : ''} has been completed!</p>
+      <p>Your funds should arrive in your account shortly. Here's what to expect next:</p>
+      <ul style="color: #444; line-height: 1.8;">
+        <li>Funds will be deposited into your business bank account</li>
+        <li>You'll receive a portal invite to track your payoff progress</li>
+        <li>Your assigned rep is available for any questions</li>
+      </ul>
+      <p style="color: #666;">If you have any questions at all, simply reply to this email. Thank you for choosing Today Capital Group!</p>
+    `);
+
+    sendTriggerEmail(email, subject, html).catch(err => {
+      console.error('[TRIGGER] funded_congratulations email error (non-fatal):', err);
+    });
+  }
 
   console.log(`[TRIGGER] funded_congratulations fired for decision ${opts.decisionId}`);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // 4. BANK STATEMENTS REMINDER
-// Fired when a merchant submitted an application but hasn't uploaded bank
-// statements after a certain period.  Called from the scheduled check.
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function triggerBankStatementsReminder(opts: {
@@ -151,31 +297,44 @@ export async function triggerBankStatementsReminder(opts: {
   firstName?: string;
   businessName?: string;
 }): Promise<void> {
-  const { phone, firstName, applicationId } = opts;
+  const { phone, firstName, applicationId, email } = opts;
   const name = firstName || 'there';
 
+  // SMS → middleware
   fireSmsStageEvent({
     stage: 'bank_statements_reminder',
     phone,
-    email: opts.email || undefined,
+    email: email || undefined,
     first_name: firstName || undefined,
     business_name: opts.businessName || undefined,
     deal_id: applicationId,
   });
 
-  const smsBody = `Hi ${name}! Just a quick reminder — we still need your bank statements to move forward with your funding application. You can reply to this text with photos of your statements or upload them here: ${BANK_STATEMENTS_LINK} — Today Capital Group`;
+  // Email → Gmail
+  if (email) {
+    const subject = "Reminder: We still need your bank statements";
+    const html = wrapEmailHtml(`
+      <p>Hi ${name},</p>
+      <p>Just a quick reminder — we still need your <strong>bank statements</strong> to move forward with your funding application.</p>
+      <p>You can upload them here or simply reply to this email with photos of your last 3 months of business bank statements:</p>
+      <p style="margin: 24px 0;">
+        <a href="${BANK_STATEMENTS_LINK}" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+          Upload Bank Statements
+        </a>
+      </p>
+      <p style="color: #666;">Questions? Reply to this email — we're happy to help!</p>
+    `);
 
-  sendSms(phone, smsBody).catch(err => {
-    console.error('[TRIGGER] bank_statements_reminder SMS error (non-fatal):', err);
-  });
+    sendTriggerEmail(email, subject, html).catch(err => {
+      console.error('[TRIGGER] bank_statements_reminder email error (non-fatal):', err);
+    });
+  }
 
   console.log(`[TRIGGER] bank_statements_reminder fired for application ${applicationId}`);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // 5. STALE APPROVAL REMINDER
-// Checks for approvals that have been sitting for 24h, 48h, or 72h without
-// being accepted/funded. Called from the scheduled interval.
 // ──────────────────────────────────────────────────────────────────────────────
 
 export async function triggerApprovalStaleReminder(opts: {
@@ -188,25 +347,17 @@ export async function triggerApprovalStaleReminder(opts: {
   amount?: number;
   hoursStale: number;
 }): Promise<void> {
-  const { phone, firstName, approvalLink, amount, hoursStale } = opts;
+  const { phone, email, firstName, approvalLink, amount, hoursStale } = opts;
   const name = firstName || 'there';
   const amountStr = amount
     ? `$${amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
     : 'your approved funding';
 
-  let smsBody: string;
-  if (hoursStale <= 24) {
-    smsBody = `Hi ${name}! Just a reminder — your funding approval for ${amountStr} is waiting for you! Don't miss out. ${approvalLink ? `Accept here: ${approvalLink}` : 'Log in to your portal to accept.'} — Today Capital Group`;
-  } else if (hoursStale <= 48) {
-    smsBody = `Hi ${name}, your funding approval for ${amountStr} is still available but won't last forever. ${approvalLink ? `Review and accept: ${approvalLink}` : 'Log in to your portal to review.'} Questions? Reply to this text! — Today Capital Group`;
-  } else {
-    smsBody = `Hi ${name}, final reminder! Your ${amountStr} funding approval is expiring soon. ${approvalLink ? `Accept now: ${approvalLink}` : 'Log in to accept.'} Reply to this text if you need help. — Today Capital Group`;
-  }
-
+  // SMS → middleware
   fireSmsStageEvent({
     stage: 'approval_stale_reminder',
     phone,
-    email: opts.email || undefined,
+    email: email || undefined,
     first_name: firstName || undefined,
     business_name: opts.businessName || undefined,
     deal_id: opts.decisionId,
@@ -215,20 +366,48 @@ export async function triggerApprovalStaleReminder(opts: {
     metadata: { hoursStale },
   });
 
-  sendSms(phone, smsBody).catch(err => {
-    console.error('[TRIGGER] approval_stale_reminder SMS error (non-fatal):', err);
-  });
+  // Email → Gmail
+  if (email) {
+    let subject: string;
+    let bodyParagraph: string;
+
+    if (hoursStale <= 24) {
+      subject = `Reminder: Your ${amountStr} funding offer is waiting!`;
+      bodyParagraph = `<p>Just a friendly reminder — your funding approval for <strong>${amountStr}</strong> is waiting for you! Don't miss out on this opportunity.</p>`;
+    } else if (hoursStale <= 48) {
+      subject = `Your ${amountStr} funding offer won't last forever`;
+      bodyParagraph = `<p>Your funding approval for <strong>${amountStr}</strong> is still available, but it won't last forever. We'd hate for you to miss out!</p>`;
+    } else {
+      subject = `Final reminder: Your ${amountStr} funding approval is expiring soon`;
+      bodyParagraph = `<p><strong>Final reminder</strong> — your funding approval for <strong>${amountStr}</strong> is expiring soon. Act now so you don't lose this offer!</p>`;
+    }
+
+    const html = wrapEmailHtml(`
+      <p>Hi ${name},</p>
+      ${bodyParagraph}
+      ${approvalLink
+        ? `<p style="margin: 24px 0;">
+             <a href="${approvalLink}" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+               Review & Accept Your Offer
+             </a>
+           </p>`
+        : `<p>Log in to your portal to review and accept your offer.</p>`
+      }
+      <p style="color: #666;">Have questions? Reply to this email — we're here to help!</p>
+    `);
+
+    sendTriggerEmail(email, subject, html).catch(err => {
+      console.error('[TRIGGER] approval_stale_reminder email error (non-fatal):', err);
+    });
+  }
 
   console.log(`[TRIGGER] approval_stale_reminder (${hoursStale}h) fired for decision ${opts.decisionId}`);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // SCHEDULED CHECKS
-// Run on an interval (e.g. every 30 minutes) to find stale approvals and
-// incomplete applications that need a nudge.
 // ──────────────────────────────────────────────────────────────────────────────
 
-// In-memory set of (decisionId + hourBucket) to avoid duplicate sends per server restart
 const sentReminders = new Set<string>();
 
 export async function runScheduledTriggerChecks(): Promise<void> {
@@ -258,7 +437,6 @@ async function checkStaleApprovals(): Promise<void> {
 
     const hoursElapsed = (now - new Date(approvedAt).getTime()) / (1000 * 60 * 60);
 
-    // Send reminders at ~24h, ~48h, ~72h
     const buckets = [24, 48, 72];
     for (const bucket of buckets) {
       if (hoursElapsed >= bucket && hoursElapsed < bucket + 1) {
@@ -287,7 +465,6 @@ async function checkIncompleteApplications(): Promise<void> {
   const now = Date.now();
 
   for (const app of applications) {
-    // Only target applications that are NOT completed and have a phone number
     if (app.isCompleted || app.isFullApplicationCompleted) continue;
     if (!app.phone) continue;
 
@@ -296,15 +473,13 @@ async function checkIncompleteApplications(): Promise<void> {
 
     const hoursElapsed = (now - createdAt) / (1000 * 60 * 60);
 
-    // Send a reminder ~2 hours after creation if still incomplete
     if (hoursElapsed >= 2 && hoursElapsed < 3) {
       const key = `app-incomplete:${app.id}`;
       if (sentReminders.has(key)) continue;
       sentReminders.add(key);
 
-      // Check if they already uploaded bank statements
       const uploads = await storage.getBankStatementUploadsByEmail(app.email).catch(() => []);
-      if (uploads.length > 0) continue; // they uploaded — no need to nag
+      if (uploads.length > 0) continue;
 
       const nameParts = (app.fullName || '').trim().split(' ');
       triggerBankStatementsReminder({
@@ -329,10 +504,9 @@ const TRIGGER_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 export function startScheduledTriggers(): void {
   if (scheduledInterval) return;
   console.log('[TRIGGERS] Starting scheduled trigger checks (every 30 min)');
-  // Run once at startup after a short delay, then on interval
   setTimeout(() => {
     runScheduledTriggerChecks();
-  }, 60_000); // 1 minute after startup
+  }, 60_000);
   scheduledInterval = setInterval(runScheduledTriggerChecks, TRIGGER_CHECK_INTERVAL_MS);
 }
 
