@@ -14,6 +14,7 @@ import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
+import { notifyMerchantNewMessage } from "./services/twilio";
 import { fireSmsStageEvent } from "./sms-middleware";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
@@ -2995,24 +2996,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`[UNDERWRITING] ${reviewerEmail} set ${status} for business ${businessEmail}`);
 
-      // Provision merchant portal access when deal is funded
-      if (status === 'funded' && businessEmail) {
-        try {
-          const portalToken = randomBytes(32).toString('hex');
-          await storage.updateBusinessUnderwritingDecision(decision.id, {
-            merchantEmail: businessEmail.toLowerCase(),
-            merchantPortalToken: portalToken,
-          });
-          console.log(`[MERCHANT] Portal token generated for ${businessEmail}`);
-
-          // Send invite email (async, non-blocking)
-          sendMerchantInviteEmail(businessEmail, businessName || '', portalToken).catch(err => {
-            console.error(`[MERCHANT] Failed to send invite email to ${businessEmail}:`, err);
-          });
-        } catch (portalError) {
-          console.error(`[MERCHANT] Failed to provision portal for ${businessEmail}:`, portalError);
-        }
-      }
+      // Portal activation is now manual — staff clicks "Activate Portal" on the funded dashboard
 
       // Sync to GHL opportunity (async, non-blocking)
       ghlService.syncUnderwritingDecision(decision).then(async (ghlResult) => {
@@ -3135,23 +3119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[UNDERWRITING] Decision ${id} updated by ${req.session.user.agentEmail || 'admin'}`);
 
-      // Provision merchant portal when status changes to funded
-      if (updates.status === 'funded' && updated.businessEmail && !updated.merchantPasswordHash) {
-        try {
-          const portalToken = randomBytes(32).toString('hex');
-          await storage.updateBusinessUnderwritingDecision(id, {
-            merchantEmail: updated.businessEmail.toLowerCase(),
-            merchantPortalToken: portalToken,
-          });
-          console.log(`[MERCHANT] Portal token generated for ${updated.businessEmail} (via PATCH)`);
-
-          sendMerchantInviteEmail(updated.businessEmail, updated.businessName || '', portalToken).catch(err => {
-            console.error(`[MERCHANT] Failed to send invite email to ${updated.businessEmail}:`, err);
-          });
-        } catch (portalError) {
-          console.error(`[MERCHANT] Failed to provision portal for ${updated.businessEmail}:`, portalError);
-        }
-      }
+      // Portal activation is now manual — staff clicks "Activate Portal" on the funded dashboard
 
       // Sync updated decision to GHL opportunity (async, non-blocking)
       ghlService.syncUnderwritingDecision(updated).then(async (ghlResult) => {
@@ -6705,6 +6673,250 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // MESSAGING CENTER ROUTES
+  // ========================================
+
+  // Get all merchants aggregated from applications, statements, approvals, funded deals
+  app.get("/api/messaging/merchants", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
+      return res.status(403).json({ error: "Admin or underwriting access required" });
+    }
+
+    try {
+      // Gather contacts from all sources
+      const [applications, decisions, bankUploads] = await Promise.all([
+        storage.getAllLoanApplications(),
+        storage.getAllBusinessUnderwritingDecisions(),
+        storage.getAllBankStatementUploads(),
+      ]);
+
+      // Use email as unique key, merge data from all sources
+      const merchantMap = new Map<string, {
+        email: string;
+        businessName: string;
+        phone: string;
+        sources: string[];
+        status: string | null;
+        assignedRep: string | null;
+      }>();
+
+      // Applications
+      for (const app of applications) {
+        if (!app.email) continue;
+        const key = app.email.toLowerCase();
+        const existing = merchantMap.get(key);
+        if (existing) {
+          if (!existing.sources.includes('application')) existing.sources.push('application');
+          if (!existing.businessName && app.businessName) existing.businessName = app.businessName;
+          if (!existing.phone && app.phone) existing.phone = app.phone;
+        } else {
+          merchantMap.set(key, {
+            email: app.email,
+            businessName: app.businessName || app.legalBusinessName || '',
+            phone: app.phone || '',
+            sources: ['application'],
+            status: null,
+            assignedRep: app.agentName || null,
+          });
+        }
+      }
+
+      // Bank statement uploads
+      for (const upload of bankUploads) {
+        if (!upload.email) continue;
+        const key = upload.email.toLowerCase();
+        const existing = merchantMap.get(key);
+        if (existing) {
+          if (!existing.sources.includes('statements')) existing.sources.push('statements');
+          if (!existing.businessName && upload.businessName) existing.businessName = upload.businessName;
+        } else {
+          merchantMap.set(key, {
+            email: upload.email,
+            businessName: upload.businessName || '',
+            phone: '',
+            sources: ['statements'],
+            status: null,
+            assignedRep: null,
+          });
+        }
+      }
+
+      // Underwriting decisions (approvals, funded, declines)
+      for (const dec of decisions) {
+        if (!dec.businessEmail) continue;
+        const key = dec.businessEmail.toLowerCase();
+        const existing = merchantMap.get(key);
+        const sourceLabel = dec.status === 'funded' ? 'funded' : dec.status === 'approved' ? 'approved' : dec.status || 'decision';
+        if (existing) {
+          if (!existing.sources.includes(sourceLabel)) existing.sources.push(sourceLabel);
+          if (!existing.businessName && dec.businessName) existing.businessName = dec.businessName;
+          if (!existing.phone && dec.businessPhone) existing.phone = dec.businessPhone;
+          // Prefer decision status/rep over application data
+          if (dec.status) existing.status = dec.status;
+          if (dec.assignedRep) existing.assignedRep = dec.assignedRep;
+        } else {
+          merchantMap.set(key, {
+            email: dec.businessEmail,
+            businessName: dec.businessName || '',
+            phone: dec.businessPhone || '',
+            sources: [sourceLabel],
+            status: dec.status || null,
+            assignedRep: dec.assignedRep || null,
+          });
+        }
+      }
+
+      const merchants = Array.from(merchantMap.values()).sort((a, b) =>
+        (a.businessName || a.email).localeCompare(b.businessName || b.email)
+      );
+
+      res.json(merchants);
+    } catch (error) {
+      console.error("[MESSAGING] Error fetching merchants:", error);
+      res.status(500).json({ error: "Failed to fetch merchants" });
+    }
+  });
+
+  // Send messages to merchants via email and/or SMS
+  app.post("/api/messaging/send", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
+      return res.status(403).json({ error: "Admin or underwriting access required" });
+    }
+
+    try {
+      const { recipients, subject, message, channel } = req.body as {
+        recipients: { email: string; phone?: string; businessName?: string }[];
+        subject: string;
+        message: string;
+        channel: 'email' | 'sms' | 'both';
+      };
+
+      if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+        return res.status(400).json({ error: "At least one recipient is required" });
+      }
+      if (!message || typeof message !== 'string' || message.trim().length === 0) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+      if (message.length > 5000) {
+        return res.status(400).json({ error: "Message must be under 5000 characters" });
+      }
+
+      const results: { email: string; emailSent?: boolean; smsSent?: boolean; error?: string }[] = [];
+
+      // Set up Gmail client once if needed for emails
+      let gmail: any = null;
+      if (channel === 'email' || channel === 'both') {
+        try {
+          const { google } = await import('googleapis');
+          const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+          const xReplitToken = process.env.REPL_IDENTITY
+            ? 'repl ' + process.env.REPL_IDENTITY
+            : process.env.WEB_REPL_RENEWAL
+            ? 'depl ' + process.env.WEB_REPL_RENEWAL
+            : null;
+
+          if (xReplitToken && hostname) {
+            const connRes = await fetch(
+              'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-mail',
+              { headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken } }
+            ).then(r => r.json());
+            const accessToken = connRes.items?.[0]?.settings?.access_token || connRes.items?.[0]?.settings?.oauth?.credentials?.access_token;
+            if (accessToken) {
+              const oauth2Client = new google.auth.OAuth2();
+              oauth2Client.setCredentials({ access_token: accessToken });
+              gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+            }
+          }
+        } catch (gmailErr) {
+          console.error('[MESSAGING] Gmail setup failed:', gmailErr);
+        }
+      }
+
+      const senderName = req.session.user.agentEmail || 'Today Capital Group';
+
+      for (const recipient of recipients) {
+        const result: typeof results[0] = { email: recipient.email };
+
+        // Send email
+        if ((channel === 'email' || channel === 'both') && gmail) {
+          try {
+            const emailSubject = subject || 'Message from Today Capital Group';
+            const htmlBody = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #14B8A6;">Today Capital Group</h2>
+                <p>Hello${recipient.businessName ? ` ${recipient.businessName}` : ''},</p>
+                <div style="white-space: pre-wrap; line-height: 1.6;">${message.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
+                <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;" />
+                <p style="color: #999; font-size: 12px;">Today Capital Group</p>
+              </div>
+            `;
+            const raw = Buffer.from(
+              `To: ${recipient.email}\r\n` +
+              `Subject: ${emailSubject}\r\n` +
+              `Content-Type: text/html; charset=utf-8\r\n` +
+              `\r\n` +
+              htmlBody
+            ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+            await gmail.users.messages.send({
+              userId: 'me',
+              requestBody: { raw },
+            });
+            result.emailSent = true;
+          } catch (emailErr) {
+            console.error(`[MESSAGING] Email to ${recipient.email} failed:`, emailErr);
+            result.emailSent = false;
+            result.error = 'Email send failed';
+          }
+        }
+
+        // Send SMS
+        if ((channel === 'sms' || channel === 'both') && recipient.phone) {
+          try {
+            const { sendSms } = await import('./services/twilio');
+            const smsResult = await sendSms(recipient.phone, message.trim());
+            result.smsSent = smsResult.success;
+            if (!smsResult.success && !result.error) {
+              result.error = smsResult.error || 'SMS send failed';
+            }
+          } catch (smsErr) {
+            console.error(`[MESSAGING] SMS to ${recipient.phone} failed:`, smsErr);
+            result.smsSent = false;
+          }
+        } else if ((channel === 'sms' || channel === 'both') && !recipient.phone) {
+          result.smsSent = false;
+          result.error = (result.error ? result.error + '; ' : '') + 'No phone number';
+        }
+
+        results.push(result);
+      }
+
+      const emailsSent = results.filter(r => r.emailSent).length;
+      const smsSent = results.filter(r => r.smsSent).length;
+      const failures = results.filter(r => r.error).length;
+
+      console.log(`[MESSAGING] Sent by ${senderName}: ${emailsSent} emails, ${smsSent} SMS, ${failures} failures`);
+
+      res.json({
+        sent: results.length,
+        emailsSent,
+        smsSent,
+        failures,
+        results,
+      });
+    } catch (error) {
+      console.error("[MESSAGING] Error sending messages:", error);
+      res.status(500).json({ error: "Failed to send messages" });
+    }
+  });
+
+  // ========================================
   // MERCHANT PORTAL ROUTES
   // ========================================
 
@@ -6862,6 +7074,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return true;
     } catch (error) {
       console.error('[MERCHANT] Failed to send reset email:', error);
+      return false;
+    }
+  }
+
+  // Helper: send notification email to assigned rep when merchant sends a portal message
+  async function sendRepMessageNotificationEmail(repEmail: string, merchantName: string, messagePreview: string): Promise<boolean> {
+    try {
+      const { google } = await import('googleapis');
+      const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+      const xReplitToken = process.env.REPL_IDENTITY
+        ? 'repl ' + process.env.REPL_IDENTITY
+        : process.env.WEB_REPL_RENEWAL
+        ? 'depl ' + process.env.WEB_REPL_RENEWAL
+        : null;
+
+      if (!xReplitToken || !hostname) {
+        console.log('[MERCHANT] Gmail connector not available, skipping rep notification');
+        return false;
+      }
+
+      const connRes = await fetch(
+        'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-mail',
+        { headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken } }
+      ).then(r => r.json());
+
+      const accessToken = connRes.items?.[0]?.settings?.access_token || connRes.items?.[0]?.settings?.oauth?.credentials?.access_token;
+      if (!accessToken) {
+        console.log('[MERCHANT] No Gmail access token for rep notification');
+        return false;
+      }
+
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials({ access_token: accessToken });
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+        : 'https://todaycapitalgroup.com';
+
+      const truncatedMsg = messagePreview.length > 200 ? messagePreview.slice(0, 200) + '...' : messagePreview;
+
+      const subject = `New portal message from ${merchantName}`;
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #14B8A6;">Today Capital Group</h2>
+          <p>You have a new message from <strong>${merchantName}</strong> on the Merchant Portal:</p>
+          <div style="background: #f4f4f5; border-radius: 8px; padding: 16px; margin: 16px 0; font-style: italic; color: #333;">
+            "${truncatedMsg}"
+          </div>
+          <p style="margin: 24px 0;">
+            <a href="${baseUrl}/dashboard" style="display: inline-block; padding: 14px 28px; background: #14B8A6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold;">
+              View in Dashboard
+            </a>
+          </p>
+          <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;" />
+          <p style="color: #999; font-size: 12px;">Today Capital Group · Merchant Portal Notification</p>
+        </div>
+      `;
+
+      const raw = Buffer.from(
+        `To: ${repEmail}\r\n` +
+        `Subject: ${subject}\r\n` +
+        `Content-Type: text/html; charset=utf-8\r\n` +
+        `\r\n` +
+        htmlBody
+      ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+      await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw },
+      });
+
+      console.log(`[MERCHANT] Rep notification email sent to ${repEmail} for message from ${merchantName}`);
+      return true;
+    } catch (error) {
+      console.error('[MERCHANT] Failed to send rep notification email:', error);
       return false;
     }
   }
@@ -7254,6 +7544,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: message.trim(),
         isRead: false,
       });
+
+      // Notify assigned rep via email (async, non-blocking)
+      const decision = await storage.getBusinessUnderwritingDecisionByEmail(req.session.user.merchantEmail);
+      if (decision?.assignedRep) {
+        const repAgent = AGENTS.find(a => a.name.toLowerCase() === decision.assignedRep!.toLowerCase());
+        if (repAgent) {
+          const merchantLabel = req.session.user.merchantName || decision.businessName || req.session.user.merchantEmail;
+          sendRepMessageNotificationEmail(repAgent.email, merchantLabel, message.trim()).catch(err => {
+            console.error('[MERCHANT] Failed to email rep notification:', err);
+          });
+        }
+      }
+
       res.json(msg);
     } catch (error) {
       console.error("[MERCHANT] Error sending message:", error);
@@ -7298,6 +7601,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: message.trim(),
         isRead: false,
       });
+
+      // Send SMS notification to merchant (async, non-blocking)
+      const decision = await storage.getBusinessUnderwritingDecisionByEmail(merchantEmail.toLowerCase());
+      if (decision?.businessPhone) {
+        notifyMerchantNewMessage(decision.businessPhone, senderName || 'Today Capital Group').catch(err => {
+          console.error('[TWILIO] Failed to notify merchant:', err);
+        });
+      }
+
       res.json(msg);
     } catch (error) {
       console.error("[MERCHANT] Staff message error:", error);

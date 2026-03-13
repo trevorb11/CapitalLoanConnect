@@ -1129,17 +1129,30 @@ export default function Funded() {
                       </div>
                       <div className="flex gap-2 flex-wrap">
                         <StatusToggle decision={decision} currentStatus="funded" />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => resendInviteMutation.mutate(decision.id)}
-                          disabled={resendInviteMutation.isPending}
-                          className="text-xs"
-                          data-testid={`button-resend-invite-${decision.id}`}
-                        >
-                          <Mail className="w-3 h-3 mr-1" />
-                          {resendInviteMutation.isPending ? "Sending..." : "Resend Portal Invite"}
-                        </Button>
+                        {(() => {
+                          const hasPortalAccess = !!(decision as any).merchantPasswordHash || !!(decision as any).merchantPortalToken;
+                          return (
+                            <Button
+                              variant={hasPortalAccess ? "outline" : "default"}
+                              size="sm"
+                              onClick={() => resendInviteMutation.mutate(decision.id)}
+                              disabled={resendInviteMutation.isPending}
+                              className={hasPortalAccess ? "text-xs" : "text-xs bg-emerald-600 hover:bg-emerald-700 text-white"}
+                              data-testid={`button-resend-invite-${decision.id}`}
+                            >
+                              {hasPortalAccess ? (
+                                <Mail className="w-3 h-3 mr-1" />
+                              ) : (
+                                <UserCheck className="w-3 h-3 mr-1" />
+                              )}
+                              {resendInviteMutation.isPending
+                                ? "Sending..."
+                                : hasPortalAccess
+                                  ? "Resend Portal Invite"
+                                  : "Activate Portal"}
+                            </Button>
+                          );
+                        })()}
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
