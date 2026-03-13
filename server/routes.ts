@@ -18,6 +18,7 @@ import { notifyMerchantNewMessage } from "./services/twilio";
 import { fireSmsStageEvent } from "./sms-middleware";
 import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
+import { pool } from "./db";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
@@ -327,6 +328,219 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/health", (_req, res) => {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // CLAUDE ADMIN DATA API — remote Claude instance access
+  // Auth: X-Claude-API-Key header (value from CLAUDE_API_KEY env var)
+  // ═══════════════════════════════════════════════════════════════
+
+  function claudeAuth(req: Request, res: Response, next: NextFunction) {
+    const key = req.headers['x-claude-api-key'] || req.query.apiKey;
+    if (!process.env.CLAUDE_API_KEY || key !== process.env.CLAUDE_API_KEY) {
+      return res.status(401).json({ error: "Invalid or missing X-Claude-API-Key header" });
+    }
+    next();
+  }
+
+  // Allowed tables for read/write (excludes sessions and raw auth tokens)
+  const CLAUDE_READABLE_TABLES = [
+    'loan_applications', 'business_underwriting_decisions', 'bank_statement_uploads',
+    'lender_approvals', 'lenders', 'partners', 'merchant_messages', 'merchant_portal_accounts',
+    'merchant_financial_insights', 'merchant_plaid_connections', 'plaid_items',
+    'plaid_statements', 'funding_analyses', 'congratulations_uploads', 'visit_logs',
+    'bot_attempts', 'system_settings', 'users',
+  ];
+
+  const CLAUDE_WRITABLE_TABLES = [
+    'loan_applications', 'business_underwriting_decisions', 'bank_statement_uploads',
+    'lender_approvals', 'lenders', 'partners', 'merchant_messages',
+    'merchant_financial_insights', 'system_settings',
+  ];
+
+  // GET /api/admin/claude/ping — auth test
+  app.get("/api/admin/claude/ping", claudeAuth, (_req, res) => {
+    res.json({ ok: true, message: "Claude API authenticated", timestamp: new Date().toISOString() });
+  });
+
+  // GET /api/admin/claude/context — full system context for Claude
+  app.get("/api/admin/claude/context", claudeAuth, async (_req, res) => {
+    try {
+      const counts: Record<string, number> = {};
+      for (const t of CLAUDE_READABLE_TABLES) {
+        try {
+          const r = await pool.query(`SELECT COUNT(*)::int AS n FROM ${t}`);
+          counts[t] = r.rows[0]?.n ?? 0;
+        } catch { counts[t] = -1; }
+      }
+
+      res.json({
+        app: {
+          name: "Today Capital Group — MCA Loan Platform",
+          description: "Full-stack MCA (Merchant Cash Advance) loan management platform. Merchants apply for business funding, reps review/underwrite deals, and funded merchants get a portal to track their positions.",
+          stack: "Node.js + Express backend, React + Vite frontend, PostgreSQL via Neon/Drizzle ORM, hosted on Replit",
+          adminLogin: { url: "/", credential: "Tcg1!tcg", note: "Single credential field — not username/password" },
+          merchantPortal: { url: "/merchant/portal", auth: "email + password or one-time token link" },
+        },
+        endpoints: {
+          ping: "GET /api/admin/claude/ping — auth test",
+          context: "GET /api/admin/claude/context — this document",
+          readTable: "GET /api/admin/claude/table/:tableName?limit=50&offset=0&orderBy=created_at&order=DESC — read any table",
+          sql: "POST /api/admin/claude/sql — body: { query: 'SELECT ...' } — read-only SQL",
+          mutate: "POST /api/admin/claude/mutate — body: { sql: 'UPDATE ...', params: [] } — write SQL",
+          upsert: "POST /api/admin/claude/upsert/:tableName — body: { where: {col: val}, set: {col: val} } — update matching rows",
+          auth: "All requests need header: X-Claude-API-Key: <key>",
+        },
+        schema: {
+          loan_applications: "Intake + full application form submissions. Key fields: id, email, businessName, status fields, isCompleted, isFullApplicationCompleted, agentEmail, createdAt",
+          business_underwriting_decisions: "Underwriting outcomes per business. status: 'approved'|'declined'|'funded'. Funded deals have: advanceAmount, factorRate, totalPayback, lender, fundedDate, merchantEmail, merchantPortalToken. additionalFundings JSONB = array of stacked deals",
+          bank_statement_uploads: "PDF bank statements uploaded by merchants or staff. viewToken = public share token",
+          lender_approvals: "Approval offers parsed from lender emails. status: 'pending'|'accepted'|'declined'|'expired'",
+          lenders: "Lender directory. tier A-D. isActive",
+          partners: "Referral partners (CPAs, realtors etc). inviteCode used in referral URLs",
+          merchant_messages: "In-portal messages between merchants and reps. senderRole: 'merchant'|'rep'",
+          merchant_portal_accounts: "Portal login accounts. passwordHash set after first login. portalToken = one-time magic link",
+          merchant_financial_insights: "Cached Plaid analysis results per merchant email",
+          merchant_plaid_connections: "Links merchantEmail to Plaid item IDs",
+          plaid_items: "Plaid access tokens + item IDs for bank connections",
+          plaid_statements: "Plaid statement metadata (month/year/account)",
+          funding_analyses: "AI-generated funding analysis from Plaid data",
+          congratulations_uploads: "Voided check + driver's license uploads from the congratulations page",
+          visit_logs: "Page visit tracking for contacts who click tracked links",
+          bot_attempts: "Honeypot trigger logs (spam/bot detection)",
+          system_settings: "Key-value feature flags. trigger.* keys control automated messaging",
+          users: "Admin user accounts (rarely used — main auth is session-based with single credential)",
+        },
+        tableCounts: counts,
+        keyBusinessLogic: [
+          "Application flow: intake form → bank statements → full application → underwriting decision",
+          "Funded flow: decision status='funded' → 'Setup Portal' button → portal created → 'Send Portal Invite' emails merchant → merchant logs in",
+          "Automated triggers: system_settings keys like trigger.app_abandoned (all default false — must be enabled in /triggers admin page)",
+          "Approval letters: generated at /approval/:slug — shareable public page",
+          "GHL (GoHighLevel CRM) sync: ghlSynced/ghlOpportunityId on decisions and lender_approvals",
+          "Admin roles: 'admin' and 'underwriting' can access all features; session stored in user_sessions table",
+        ],
+      });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // GET /api/admin/claude/table/:name — read any allowed table
+  app.get("/api/admin/claude/table/:name", claudeAuth, async (req, res) => {
+    const tableName = req.params.name;
+    if (!CLAUDE_READABLE_TABLES.includes(tableName)) {
+      return res.status(403).json({ error: `Table '${tableName}' not in allowed list`, allowed: CLAUDE_READABLE_TABLES });
+    }
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 500);
+    const offset = parseInt(req.query.offset as string) || 0;
+    const orderBy = (req.query.orderBy as string) || 'created_at';
+    const order = (req.query.order as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    const search = req.query.search as string | undefined;
+
+    try {
+      // Get column names first
+      const colRes = await pool.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public' ORDER BY ordinal_position`,
+        [tableName]
+      );
+      const columns = colRes.rows.map(r => r.column_name as string);
+
+      // Check if orderBy column exists
+      const safeOrderBy = columns.includes(orderBy) ? orderBy : (columns.includes('created_at') ? 'created_at' : columns[0]);
+
+      let whereClause = '';
+      const params: any[] = [limit, offset];
+
+      if (search) {
+        // Search across text columns
+        const textCols = columns.filter(c => !['id'].includes(c)).slice(0, 6).map(c => `${c}::text ILIKE $3`).join(' OR ');
+        if (textCols) {
+          whereClause = `WHERE ${textCols}`;
+          params.push(`%${search}%`);
+        }
+      }
+
+      const q = `SELECT * FROM ${tableName} ${whereClause} ORDER BY ${safeOrderBy} ${order} LIMIT $1 OFFSET $2`;
+      const result = await pool.query(q, params);
+
+      const countRes = await pool.query(`SELECT COUNT(*)::int AS n FROM ${tableName} ${whereClause}`, search ? [`%${search}%`] : []);
+
+      res.json({
+        table: tableName,
+        total: countRes.rows[0]?.n ?? 0,
+        limit,
+        offset,
+        columns,
+        rows: result.rows,
+      });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // POST /api/admin/claude/sql — read-only SQL (SELECT only)
+  app.post("/api/admin/claude/sql", claudeAuth, async (req, res) => {
+    const { query, params = [] } = req.body;
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ error: "body.query is required" });
+    }
+    const trimmed = query.trim().toUpperCase();
+    if (!trimmed.startsWith('SELECT') && !trimmed.startsWith('WITH') && !trimmed.startsWith('EXPLAIN')) {
+      return res.status(403).json({ error: "Only SELECT/WITH/EXPLAIN queries allowed. Use /mutate for writes." });
+    }
+    try {
+      const result = await pool.query(query, params);
+      res.json({ rows: result.rows, rowCount: result.rowCount });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // POST /api/admin/claude/mutate — write SQL (UPDATE/INSERT/DELETE)
+  app.post("/api/admin/claude/mutate", claudeAuth, async (req, res) => {
+    const { sql: sqlStr, params = [] } = req.body;
+    if (!sqlStr || typeof sqlStr !== 'string') {
+      return res.status(400).json({ error: "body.sql is required" });
+    }
+    const upper = sqlStr.trim().toUpperCase();
+    if (upper.startsWith('DROP') || upper.startsWith('TRUNCATE') || upper.startsWith('ALTER') || upper.startsWith('CREATE')) {
+      return res.status(403).json({ error: "DDL statements (DROP/TRUNCATE/ALTER/CREATE) are not allowed" });
+    }
+    try {
+      const result = await pool.query(sqlStr, params);
+      res.json({ rowCount: result.rowCount, rows: result.rows });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // POST /api/admin/claude/upsert/:table — convenience: update rows matching a where clause
+  app.post("/api/admin/claude/upsert/:name", claudeAuth, async (req, res) => {
+    const tableName = req.params.name;
+    if (!CLAUDE_WRITABLE_TABLES.includes(tableName)) {
+      return res.status(403).json({ error: `Table '${tableName}' not in writable list`, allowed: CLAUDE_WRITABLE_TABLES });
+    }
+    const { where, set } = req.body as { where: Record<string, any>; set: Record<string, any> };
+    if (!set || Object.keys(set).length === 0) {
+      return res.status(400).json({ error: "body.set is required" });
+    }
+    try {
+      const params: any[] = [];
+      const setClauses = Object.entries(set).map(([k, v]) => { params.push(v); return `${k} = $${params.length}`; });
+      let whereClause = '';
+      if (where && Object.keys(where).length > 0) {
+        const whereParts = Object.entries(where).map(([k, v]) => { params.push(v); return `${k} = $${params.length}`; });
+        whereClause = `WHERE ${whereParts.join(' AND ')}`;
+      }
+      const q = `UPDATE ${tableName} SET ${setClauses.join(', ')} ${whereClause} RETURNING *`;
+      const result = await pool.query(q, params);
+      res.json({ rowCount: result.rowCount, rows: result.rows });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════
 
   // ========================================
   // LEAD SOURCE ANALYTICS ENDPOINT
