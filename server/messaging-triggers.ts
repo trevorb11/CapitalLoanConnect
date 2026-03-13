@@ -17,6 +17,48 @@
 import { fireSmsStageEvent } from './sms-middleware';
 import { storage } from './storage';
 
+// ── TRIGGER TOGGLE KEYS ─────────────────────────────────────────────────────
+// Each trigger checks its toggle key in the system_settings table.
+// If the key is missing, the trigger defaults to ENABLED (opt-out model).
+// Set value to "false" to disable a specific trigger.
+
+export const TRIGGER_KEYS = {
+  APP_ABANDONED:          'trigger.app_abandoned',
+  APPROVAL_CONGRATS:      'trigger.approval_congratulations',
+  FUNDED_CONGRATS:        'trigger.funded_congratulations',
+  BANK_STMT_REMINDER:     'trigger.bank_statements_reminder',
+  STALE_APPROVAL_REMINDER:'trigger.approval_stale_reminder',
+  SCHEDULED_CHECKS:       'trigger.scheduled_checks',
+} as const;
+
+// In-memory cache so we don't query DB on every single trigger fire.
+// Refreshed every 60 seconds.
+let toggleCache: Record<string, string> = {};
+let toggleCacheAge = 0;
+const TOGGLE_CACHE_TTL = 60_000; // 1 minute
+
+async function refreshToggleCache(): Promise<void> {
+  try {
+    const all = await storage.getAllSettings();
+    const map: Record<string, string> = {};
+    for (const s of all) map[s.key] = s.value;
+    toggleCache = map;
+    toggleCacheAge = Date.now();
+  } catch (err) {
+    console.error('[TRIGGERS] Failed to refresh toggle cache:', err);
+  }
+}
+
+async function isTriggerEnabled(key: string): Promise<boolean> {
+  if (Date.now() - toggleCacheAge > TOGGLE_CACHE_TTL) {
+    await refreshToggleCache();
+  }
+  const val = toggleCache[key];
+  // Default to enabled if no setting exists
+  if (val === undefined || val === null) return true;
+  return val !== 'false';
+}
+
 // ── LINK CONSTANTS ──────────────────────────────────────────────────────────
 
 // SMS (bit.ly short links — keep SMS under 160 chars)
@@ -116,6 +158,8 @@ export async function triggerAppAbandoned(opts: {
   lastStep?: number;
   abandonedPage?: string;
 }): Promise<void> {
+  if (!await isTriggerEnabled(TRIGGER_KEYS.APP_ABANDONED)) return;
+
   const { applicationId, phone, email, firstName, businessName, abandonedPage } = opts;
   if (!phone && !email) return;
 
@@ -187,6 +231,8 @@ export async function triggerApprovalCongratulations(opts: {
   amount?: number;
   lender?: string;
 }): Promise<void> {
+  if (!await isTriggerEnabled(TRIGGER_KEYS.APPROVAL_CONGRATS)) return;
+
   const { phone, email, firstName, approvalLink, amount, lender } = opts;
   if (!phone && !email) return;
 
@@ -253,6 +299,8 @@ export async function triggerFundedCongratulations(opts: {
   amount?: number;
   lender?: string;
 }): Promise<void> {
+  if (!await isTriggerEnabled(TRIGGER_KEYS.FUNDED_CONGRATS)) return;
+
   const { phone, email, firstName, amount, lender } = opts;
   if (!phone && !email) return;
 
@@ -314,6 +362,8 @@ export async function triggerBankStatementsReminder(opts: {
   firstName?: string;
   businessName?: string;
 }): Promise<void> {
+  if (!await isTriggerEnabled(TRIGGER_KEYS.BANK_STMT_REMINDER)) return;
+
   const { phone, firstName, applicationId, email } = opts;
   const name = firstName || 'there';
 
@@ -367,6 +417,8 @@ export async function triggerApprovalStaleReminder(opts: {
   amount?: number;
   hoursStale: number;
 }): Promise<void> {
+  if (!await isTriggerEnabled(TRIGGER_KEYS.STALE_APPROVAL_REMINDER)) return;
+
   const { phone, email, firstName, approvalLink, amount, hoursStale } = opts;
   const name = firstName || 'there';
   const amountStr = amount
@@ -442,6 +494,11 @@ export async function triggerApprovalStaleReminder(opts: {
 const sentReminders = new Set<string>();
 
 export async function runScheduledTriggerChecks(): Promise<void> {
+  if (!await isTriggerEnabled(TRIGGER_KEYS.SCHEDULED_CHECKS)) {
+    console.log('[TRIGGER CRON] Scheduled checks are disabled, skipping');
+    return;
+  }
+
   try {
     await checkStaleApprovals();
   } catch (err) {

@@ -6984,6 +6984,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // SYSTEM SETTINGS (admin-only)
+  // ========================================
+
+  // GET all settings (for the settings UI)
+  app.get("/api/settings", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    try {
+      const settings = await storage.getAllSettings();
+      // Return as a key-value map for easy consumption
+      const map: Record<string, string> = {};
+      for (const s of settings) {
+        map[s.key] = s.value;
+      }
+      res.json(map);
+    } catch (error) {
+      console.error("[SETTINGS] Error fetching settings:", error);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  // PUT a single setting
+  app.put("/api/settings/:key", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    try {
+      const { key } = req.params;
+      const { value } = req.body;
+      if (value === undefined || value === null) {
+        return res.status(400).json({ error: "value is required" });
+      }
+      await storage.setSetting(key, String(value), req.session.user.agentEmail || 'admin');
+      console.log(`[SETTINGS] ${key} set to "${value}" by ${req.session.user.agentEmail || 'admin'}`);
+      res.json({ success: true, key, value: String(value) });
+    } catch (error) {
+      console.error("[SETTINGS] Error saving setting:", error);
+      res.status(500).json({ error: "Failed to save setting" });
+    }
+  });
+
+  // ========================================
   // MERCHANT PORTAL ROUTES
   // ========================================
 

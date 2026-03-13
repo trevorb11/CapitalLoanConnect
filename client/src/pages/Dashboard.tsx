@@ -3603,6 +3603,14 @@ export default function Dashboard() {
                       </DropdownMenuItem>
                     </Link>
                   )}
+                  {authData.role === 'admin' && (
+                    <Link href="/triggers">
+                      <DropdownMenuItem className="cursor-pointer">
+                        <Bot className="w-4 h-4 mr-2" />
+                        Auto Follow-ups
+                      </DropdownMenuItem>
+                    </Link>
+                  )}
                   {(authData.role === 'admin' || authData.role === 'underwriting') && (
                     <Link href="/lead-sources">
                       <DropdownMenuItem className="cursor-pointer">

@@ -567,3 +567,13 @@ export const insertMerchantMessageSchema = createInsertSchema(merchantMessages).
 
 export type InsertMerchantMessage = z.infer<typeof insertMerchantMessageSchema>;
 export type MerchantMessage = typeof merchantMessages.$inferSelect;
+
+// System settings (key-value store for feature flags, toggles, etc.)
+export const systemSettings = pgTable("system_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: text("updated_by"), // email of admin who last changed it
+});
+
+export type SystemSetting = typeof systemSettings.$inferSelect;

@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -12,6 +12,7 @@ import {
   type PlaidStatement as PlaidStatementRecord, type InsertPlaidStatement,
   type CongratulationsUpload, type InsertCongratulationsUpload,
   type MerchantMessage, type InsertMerchantMessage,
+  type SystemSetting,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql } from "drizzle-orm";
@@ -148,6 +149,11 @@ export interface IStorage {
   getMerchantMessagesByEmail(merchantEmail: string): Promise<MerchantMessage[]>;
   markMerchantMessagesRead(merchantEmail: string, role: string): Promise<void>;
   getUnreadMerchantMessageCount(merchantEmail: string, role: string): Promise<number>;
+
+  // System Settings
+  getSetting(key: string): Promise<string | null>;
+  setSetting(key: string, value: string, updatedBy?: string): Promise<void>;
+  getAllSettings(): Promise<SystemSetting[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -945,6 +951,29 @@ export class DatabaseStorage implements IStorage {
         )
       );
     return result[0]?.count || 0;
+  }
+
+  // System Settings
+  async getSetting(key: string): Promise<string | null> {
+    const [row] = await db
+      .select()
+      .from(systemSettings)
+      .where(eq(systemSettings.key, key));
+    return row?.value ?? null;
+  }
+
+  async setSetting(key: string, value: string, updatedBy?: string): Promise<void> {
+    await db
+      .insert(systemSettings)
+      .values({ key, value, updatedAt: new Date(), updatedBy: updatedBy || null })
+      .onConflictDoUpdate({
+        target: systemSettings.key,
+        set: { value, updatedAt: new Date(), updatedBy: updatedBy || null },
+      });
+  }
+
+  async getAllSettings(): Promise<SystemSetting[]> {
+    return await db.select().from(systemSettings).orderBy(systemSettings.key);
   }
 }
 
