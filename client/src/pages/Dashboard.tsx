@@ -11,10 +11,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -3546,25 +3547,87 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {/* Rep Console and Approvals only visible to admin and agents, not users */}
-              {(authData.role === "admin" || authData.role === "agent") && (
-                <Link href="/rep-console">
-                  <Button variant="outline" data-testid="button-rep-console">
-                    <User className="w-4 h-4 mr-2" />
-                    Rep Console
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" data-testid="button-nav-menu">
+                    <Menu className="w-5 h-5" />
                   </Button>
-                </Link>
-              )}
-              
-              <Button
-                variant="outline"
-                onClick={handleLogout}
-                disabled={logoutMutation.isPending}
-                data-testid="button-logout"
-              >
-                <LogOut className="w-4 h-4 mr-2" />
-                {logoutMutation.isPending ? "Logging out..." : "Logout"}
-              </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Navigation</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <Link href="/dashboard">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <FileText className="w-4 h-4 mr-2" />
+                      Applications
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/approvals">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <ThumbsUp className="w-4 h-4 mr-2" />
+                      Approved
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/declines">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <ThumbsDown className="w-4 h-4 mr-2" />
+                      Declined
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/unqualified">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <AlertCircle className="w-4 h-4 mr-2" />
+                      Unqualified
+                    </DropdownMenuItem>
+                  </Link>
+                  <Link href="/funded">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <Banknote className="w-4 h-4 mr-2" />
+                      Funded
+                    </DropdownMenuItem>
+                  </Link>
+                  <DropdownMenuSeparator />
+                  {(authData.role === "admin" || authData.role === "agent") && (
+                    <Link href="/rep-console">
+                      <DropdownMenuItem className="cursor-pointer">
+                        <User className="w-4 h-4 mr-2" />
+                        Rep Console
+                      </DropdownMenuItem>
+                    </Link>
+                  )}
+                  {(authData.role === 'admin' || authData.role === 'underwriting') && (
+                    <Link href="/messaging">
+                      <DropdownMenuItem className="cursor-pointer">
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Messaging
+                      </DropdownMenuItem>
+                    </Link>
+                  )}
+                  {(authData.role === 'admin' || authData.role === 'underwriting') && (
+                    <Link href="/lead-sources">
+                      <DropdownMenuItem className="cursor-pointer">
+                        <BarChart3 className="w-4 h-4 mr-2" />
+                        Lead Sources
+                      </DropdownMenuItem>
+                    </Link>
+                  )}
+                  <Link href="/leaderboard">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <Trophy className="w-4 h-4 mr-2" />
+                      Leaderboard
+                    </DropdownMenuItem>
+                  </Link>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer text-red-600 dark:text-red-400"
+                    onClick={handleLogout}
+                    disabled={logoutMutation.isPending}
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    {logoutMutation.isPending ? "Logging out..." : "Logout"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
