@@ -1,4 +1,5 @@
 import { Configuration, PlaidApi, PlaidEnvironments, CountryCode, Products } from 'plaid';
+import { createHash } from 'crypto';
 
 const configuration = new Configuration({
   basePath: PlaidEnvironments[process.env.PLAID_ENV || 'sandbox'],
@@ -98,10 +99,13 @@ export class PlaidService {
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - 6);
 
+    // Hash the email so we don't pass PII as client_user_id (Plaid policy)
+    const safeUserId = createHash('sha256').update(`merchant-${merchantEmail}`).digest('hex').substring(0, 32);
+
     const response = await plaidClient.linkTokenCreate({
-      user: { client_user_id: `merchant-${merchantEmail}` },
+      user: { client_user_id: safeUserId },
       client_name: 'Today Capital Group',
-      products: [Products.Statements, Products.Assets, Products.Transactions],
+      products: [Products.Statements, Products.Assets],
       country_codes: [CountryCode.Us],
       language: 'en',
       statements: {
