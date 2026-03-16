@@ -2892,6 +2892,14 @@ function PlaidLinkButton({ onSuccess, label = "Connect Your Bank" }: { onSuccess
 }
 
 // ── FINANCIALS TAB ────────────────────────────────────────────────────────
+interface StatementFile {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  uploadedAt: string | null;
+  viewToken: string | null;
+}
+
 interface FinancialInsights {
   hasStatements: boolean;
   hasPlaidConnection: boolean;
@@ -2913,6 +2921,7 @@ interface FinancialInsights {
     lastUpdated: string;
   } | null;
   renewalNudge: { eligible: boolean; message: string };
+  statements: StatementFile[];
 }
 
 interface PlaidConnection {
@@ -3048,8 +3057,42 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
             Uploaded Statements
           </h3>
+
+          {/* File list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            {(insights.statements || []).map(stmt => (
+              <div key={stmt.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>
+                      {stmt.fileName}
+                    </p>
+                    <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                      {stmt.uploadedAt ? new Date(stmt.uploadedAt).toLocaleDateString() : "Uploaded"}
+                      {stmt.fileSize ? ` · ${(stmt.fileSize / 1024).toFixed(0)} KB` : ""}
+                    </p>
+                  </div>
+                </div>
+                {stmt.viewToken && (
+                  <a
+                    href={`/api/bank-statements/public/view/${stmt.viewToken}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 12, color: "#2dd4bf", textDecoration: "none", flexShrink: 0, marginLeft: 8 }}
+                  >
+                    View
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Analyze / re-analyze */}
           {pdf ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
               <span style={{ color: "#94a3b8", fontSize: 13 }}>
                 Last analyzed: {new Date(pdf.analyzedAt).toLocaleDateString()}
               </span>
@@ -3058,7 +3101,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
               </button>
             </div>
           ) : (
-            <div style={{ textAlign: "center", padding: "12px 0" }}>
+            <div style={{ textAlign: "center", paddingTop: 4 }}>
               <p style={{ color: "#94a3b8", marginBottom: 12, fontSize: 14 }}>
                 Click below to generate insights from your bank statements.
               </p>

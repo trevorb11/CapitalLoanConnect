@@ -8536,6 +8536,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pdfInsights,
         plaidInsights,
         renewalNudge,
+        statements: statements.map(s => ({
+          id: s.id,
+          fileName: s.originalFileName,
+          fileSize: s.fileSize,
+          uploadedAt: (s.receivedAt || s.createdAt)?.toISOString() || null,
+          viewToken: s.viewToken || null,
+        })),
       });
     } catch (error) {
       console.error("[MERCHANT] Financial insights error:", error);
