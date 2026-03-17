@@ -1047,9 +1047,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Check if user already has an incomplete application
-      const existingApp = await storage.getLoanApplicationByEmail(applicationData.email);
-      if (existingApp && !existingApp.isCompleted) {
+      // Check if user already has any application (incomplete first, then any completed)
+      const existingIncomplete = await storage.getLoanApplicationByEmail(applicationData.email);
+      const existingApp = existingIncomplete || await storage.getAnyLoanApplicationByEmail(applicationData.email);
+      if (existingApp) {
         // Always ensure agent view URL exists for all applications (use full URL for GHL)
         if (!existingApp.agentViewUrl || existingApp.agentViewUrl.startsWith('/')) {
           applicationData.agentViewUrl = generateApplicationUrl(req, existingApp.id);
@@ -3502,6 +3503,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating underwriting decision:", error);
       res.status(500).json({ error: "Failed to update decision" });
+    }
+  });
+
+  // Update followers for a funded decision
+  app.put("/api/underwriting-decisions/:id/followers", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Authentication required" });
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    const { id } = req.params;
+    const { followers } = req.body;
+    if (!Array.isArray(followers)) return res.status(400).json({ error: "followers must be an array" });
+    try {
+      const updated = await storage.updateBusinessUnderwritingDecision(id, { repFollowers: followers });
+      if (!updated) return res.status(404).json({ error: "Decision not found" });
+      res.json({ success: true, repFollowers: updated.repFollowers });
+    } catch (error) {
+      console.error("Error updating followers:", error);
+      res.status(500).json({ error: "Failed to update followers" });
     }
   });
 

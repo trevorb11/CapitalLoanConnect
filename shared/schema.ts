@@ -435,6 +435,7 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   approvalDeadline: timestamp("approval_deadline"), // Deadline for the approval offer
   fundedDate: timestamp("funded_date"), // Date the deal was actually funded
   assignedRep: text("assigned_rep"), // Name of the assigned sales rep
+  repFollowers: text("rep_followers").array(), // Array of rep names who follow this file
   showOnLetter: boolean("show_on_letter").default(true), // Whether to show primary approval on public letter
 
   // Additional approvals (secondary lender offers)

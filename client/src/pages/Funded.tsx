@@ -39,6 +39,7 @@ import {
   UserCheck,
   Upload,
   ExternalLink,
+  Users,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -161,6 +162,7 @@ export default function Funded() {
     approvalDate: '',
     fundedDate: '',
     assignedRep: '',
+    repFollowers: [] as string[],
   });
   const [saving, setSaving] = useState(false);
 
@@ -407,6 +409,7 @@ export default function Funded() {
         approvalDate: fd,
         fundedDate: fd,
         assignedRep: entry.assignedRep || decision.assignedRep || '',
+        repFollowers: (decision.repFollowers as string[]) || [],
       });
       setEditingFunded({ decision, approvalId: entry.id });
     } else {
@@ -423,6 +426,7 @@ export default function Funded() {
         approvalDate: new Date().toISOString().split('T')[0],
         fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         assignedRep: decision.assignedRep || '',
+        repFollowers: (decision.repFollowers as string[]) || [],
       });
       setEditingFunded({ decision });
     }
@@ -474,6 +478,7 @@ export default function Funded() {
           additionalFundings: fundings,
           fundedDate: editForm.fundedDate,
           assignedRep: editForm.assignedRep || null,
+          repFollowers: editForm.repFollowers,
         },
       });
       setEditingFunded(null);
@@ -1442,6 +1447,35 @@ export default function Funded() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="flex items-center gap-1.5 mb-2"><Users className="w-3.5 h-3.5" />Followers</Label>
+              <p className="text-xs text-muted-foreground mb-2">Reps who can see this file in addition to the assigned rep.</p>
+              <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto border rounded-md p-2">
+                {(agents || []).filter(a => a.name !== editForm.assignedRep).map(agent => {
+                  const isFollower = editForm.repFollowers.includes(agent.name);
+                  return (
+                    <label key={agent.email} className="flex items-center gap-2 cursor-pointer text-sm py-0.5">
+                      <input
+                        type="checkbox"
+                        checked={isFollower}
+                        onChange={(e) => {
+                          const followers = e.target.checked
+                            ? [...editForm.repFollowers, agent.name]
+                            : editForm.repFollowers.filter(f => f !== agent.name);
+                          setEditForm(prev => ({ ...prev, repFollowers: followers }));
+                        }}
+                        className="w-3.5 h-3.5"
+                        data-testid={`checkbox-follower-${agent.name.replace(/\s+/g, '-').toLowerCase()}`}
+                      />
+                      {agent.name}
+                    </label>
+                  );
+                })}
+                {(agents || []).filter(a => a.name !== editForm.assignedRep).length === 0 && (
+                  <p className="text-xs text-muted-foreground py-1">No other reps available.</p>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

@@ -63,6 +63,7 @@ export interface IStorage {
   
   getLoanApplication(id: string): Promise<LoanApplication | undefined>;
   getLoanApplicationByEmail(email: string): Promise<LoanApplication | undefined>;
+  getAnyLoanApplicationByEmail(email: string): Promise<LoanApplication | undefined>;
   getLoanApplicationByEmailOrPhone(emailOrPhone: string): Promise<LoanApplication | undefined>;
   createLoanApplication(application: Partial<InsertLoanApplication>): Promise<LoanApplication>;
   updateLoanApplication(id: string, application: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined>;
@@ -212,6 +213,17 @@ export class DatabaseStorage implements IStorage {
           eq(loanApplications.isCompleted, false)
         )
       )
+      .orderBy(desc(loanApplications.createdAt))
+      .limit(1);
+    return application || undefined;
+  }
+
+  async getAnyLoanApplicationByEmail(email: string): Promise<LoanApplication | undefined> {
+    if (!email) return undefined;
+    const [application] = await db
+      .select()
+      .from(loanApplications)
+      .where(eq(loanApplications.email, email))
       .orderBy(desc(loanApplications.createdAt))
       .limit(1);
     return application || undefined;

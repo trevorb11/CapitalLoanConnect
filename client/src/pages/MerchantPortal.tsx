@@ -2943,6 +2943,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [showBanks, setShowBanks] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -3015,38 +3016,61 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   return (
     <div className="financials-section">
       {/* ── Connected Banks ── */}
-      <div className="insight-card">
-        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
-          Connected Banks
-        </h3>
-        {connections.length > 0 ? (
-          <>
-            {connections.map(conn => (
-              <div key={conn.id} className="plaid-connection-row">
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span className="health-indicator health-strong" style={{ width: 8, height: 8 }} />
-                  <span style={{ fontWeight: 500 }}>{conn.institutionName || "Connected Bank"}</span>
+      <div className="insight-card" style={{ padding: 0 }}>
+        <button
+          onClick={() => setShowBanks(prev => !prev)}
+          data-testid="button-toggle-connected-banks"
+          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "16px 20px", textAlign: "left" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
+              Connected Banks
+            </h3>
+            {connections.length > 0 && (
+              <span style={{ background: "rgba(45,212,191,0.15)", color: "#2dd4bf", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 600 }}>
+                {connections.length}
+              </span>
+            )}
+          </div>
+          <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: showBanks ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease", flexShrink: 0 }}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+        {showBanks && (
+          <div style={{ padding: "0 20px 20px" }}>
+            {connections.length > 0 ? (
+              <>
+                {connections.map(conn => (
+                  <div key={conn.id} className="plaid-connection-row">
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span className="health-indicator health-strong" style={{ width: 8, height: 8 }} />
+                      <span style={{ fontWeight: 500 }}>{conn.institutionName || "Connected Bank"}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: "#94a3b8" }}>
+                      {conn.connectedAt && <span>Connected {new Date(conn.connectedAt).toLocaleDateString()}</span>}
+                      {conn.source === 'portal' && (
+                        <button onClick={() => handleDisconnect(conn.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12 }}>
+                          Disconnect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ marginTop: 12 }}>
+                  <PlaidLinkButton onSuccess={fetchData} label="Connect Another Bank" />
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: "#94a3b8" }}>
-                  {conn.connectedAt && <span>Connected {new Date(conn.connectedAt).toLocaleDateString()}</span>}
-                  {conn.source === 'portal' && (
-                    <button onClick={() => handleDisconnect(conn.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12 }}>
-                      Disconnect
-                    </button>
-                  )}
-                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                <p style={{ color: "#94a3b8", marginBottom: 16, fontSize: 14, lineHeight: 1.6 }}>
+                  Connect your bank to get live financial insights and make future funding faster.
+                </p>
+                <PlaidLinkButton onSuccess={fetchData} />
               </div>
-            ))}
-            <div style={{ marginTop: 12 }}>
-              <PlaidLinkButton onSuccess={fetchData} label="Connect Another Bank" />
-            </div>
-          </>
-        ) : (
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
-            <p style={{ color: "#94a3b8", marginBottom: 16, fontSize: 14, lineHeight: 1.6 }}>
-              Connect your bank to get live financial insights and make future funding faster.
-            </p>
-            <PlaidLinkButton onSuccess={fetchData} />
+            )}
           </div>
         )}
       </div>

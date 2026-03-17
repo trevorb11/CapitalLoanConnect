@@ -683,7 +683,7 @@ export default function SourcedIntakeForm({ source }: SourcedIntakeFormProps) {
                     data-testid="checkbox-consent"
                   />
                   <label htmlFor="consent" className="text-white/60 text-[11px] leading-relaxed cursor-pointer">
-                    I Consent to Receive SMS Notifications, Alerts & Occasional Marketing Communication from Today Capital Group LLC. Message frequency varies. Message & data rates may apply. Text HELP to 818-351-0225 for help. You can reply STOP to unsubscribe at any time. I agree to the{" "}
+                    I Consent to Receive SMS and Email Notifications, Alerts & Occasional Marketing Communication from Today Capital Group LLC. Message frequency varies. Message & data rates may apply. Text HELP to 818-351-0225 for help. You can reply STOP to unsubscribe at any time. I agree to the{" "}
                     <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline text-white/80 hover:text-white">
                       Terms of Service
                     </a>{" "}
