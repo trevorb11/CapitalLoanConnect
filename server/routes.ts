@@ -5099,25 +5099,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       CREATE TABLE IF NOT EXISTS partners (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
         email TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        company_name TEXT NOT NULL,
-        contact_name TEXT NOT NULL,
+        password_hash TEXT,
+        company_name TEXT,
+        contact_name TEXT,
         phone TEXT,
         profession TEXT,
         client_base_size TEXT,
         logo_url TEXT,
         slug TEXT UNIQUE,
-        invite_code TEXT NOT NULL UNIQUE,
+        invite_code TEXT UNIQUE,
         commission_rate NUMERIC(5,2) DEFAULT 3.00,
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    // Add slug column if it doesn't exist (for existing tables)
-    await pool.query(`
-      ALTER TABLE partners ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE;
-    `);
+    // Add any missing columns for existing tables
+    await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS slug TEXT;`);
+    await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS invite_code TEXT;`);
+    await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS password_hash TEXT;`);
+    await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS contact_name TEXT;`);
+    await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS profession TEXT;`);
+    await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS client_base_size TEXT;`);
+    await pool.query(`ALTER TABLE partners ADD COLUMN IF NOT EXISTS logo_url TEXT;`);
+    // Add unique constraints if missing
+    await pool.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'partners_slug_key') THEN ALTER TABLE partners ADD CONSTRAINT partners_slug_key UNIQUE (slug); END IF; END $$`);
+    await pool.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'partners_invite_code_key') THEN ALTER TABLE partners ADD CONSTRAINT partners_invite_code_key UNIQUE (invite_code); END IF; END $$`);
+    // Drop NOT NULL on legacy 'name' column if it exists (old schema had name NOT NULL, new schema uses contact_name)
+    await pool.query(`ALTER TABLE partners ALTER COLUMN name DROP NOT NULL;`).catch(() => {/* column may not exist */});
     console.log("[PARTNER] Partners table ensured");
   } catch (err) {
     console.error("[PARTNER] Failed to ensure partners table:", err);
