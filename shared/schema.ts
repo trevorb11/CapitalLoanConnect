@@ -14,6 +14,7 @@ export const partners = pgTable("partners", {
   profession: text("profession"), // 'cpa', 'realtor', 'vendor', 'consultant', 'other'
   clientBaseSize: text("client_base_size"), // '1-10', '10-50', '50+'
   logoUrl: text("logo_url"),
+  slug: text("slug").unique(), // URL-friendly company name for application links (e.g. /apply/acme-consulting)
   inviteCode: text("invite_code").notNull().unique(), // Unique code for referral links
   commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).default("3.00"), // Default 3%
   isActive: boolean("is_active").default(true),

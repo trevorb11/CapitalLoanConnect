@@ -44,6 +44,7 @@ interface PartnerProfile {
   profession: string | null;
   clientBaseSize: string | null;
   logoUrl: string | null;
+  slug: string | null;
   inviteCode: string;
   commissionRate: string;
   createdAt: string;
@@ -425,12 +426,14 @@ export default function PartnerDashboard() {
     queryClient.invalidateQueries({ queryKey: ["/api/partner/applications"] });
   };
 
-  const referralLink = profile
+  const applicationLink = profile?.slug
+    ? `${window.location.origin}/apply/${profile.slug}`
+    : profile
     ? `${window.location.origin}/r/${profile.inviteCode}`
     : "";
 
-  const copyReferralLink = () => {
-    navigator.clipboard.writeText(referralLink);
+  const copyApplicationLink = () => {
+    navigator.clipboard.writeText(applicationLink);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -496,21 +499,21 @@ export default function PartnerDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto p-6">
-        {/* Referral Link Card */}
+        {/* Application Link Card */}
         <Card className="p-6 mb-6 bg-gradient-to-r from-[#051D49] to-[#0D1B4A] text-white">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <h2 className="text-lg font-semibold mb-1">Your Referral Link</h2>
+              <h2 className="text-lg font-semibold mb-1">Your Application Link</h2>
               <p className="text-sm text-gray-300">
-                Share this link with clients to track referrals automatically
+                Share this link with clients — completed applications will appear in your dashboard
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <code className="bg-white/10 px-4 py-2 rounded-lg text-sm font-mono">
-                {referralLink || "Loading..."}
+              <code className="bg-white/10 px-4 py-2 rounded-lg text-sm font-mono break-all">
+                {applicationLink || "Loading..."}
               </code>
               <Button
-                onClick={copyReferralLink}
+                onClick={copyApplicationLink}
                 className="bg-[#46B9B3] hover:bg-[#3da8a2] text-[#051D49]"
               >
                 {copiedLink ? (
@@ -630,14 +633,14 @@ export default function PartnerDashboard() {
                   <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-900 mb-2">No referrals yet</h4>
                   <p className="text-gray-500 mb-4">
-                    Share your referral link to start tracking leads
+                    Share your application link to start tracking leads
                   </p>
                   <Button
-                    onClick={copyReferralLink}
+                    onClick={copyApplicationLink}
                     className="bg-[#46B9B3] hover:bg-[#3da8a2] text-[#051D49]"
                   >
                     <LinkIcon className="w-4 h-4 mr-2" />
-                    Copy Referral Link
+                    Copy Application Link
                   </Button>
                 </div>
               )}
