@@ -33,6 +33,7 @@ import FundingCheck from "@/pages/FundingCheck";
 import RetargetingLanding from "@/pages/RetargetingLanding";
 import ProgressTracker from "@/pages/ProgressTracker";
 import PartnerDashboard from "@/pages/PartnerDashboard";
+import PartnerApplication from "@/pages/PartnerApplication";
 import ReferralLanding from "@/pages/ReferralLanding";
 import Approvals from "@/pages/Approvals";
 import Declines from "@/pages/Declines";
@@ -133,6 +134,7 @@ function Router() {
       {/* Partner Portal Routes */}
       <Route path="/partner" component={PartnerDashboard} />
       <Route path="/partner/dashboard" component={PartnerDashboard} />
+      <Route path="/apply/:slug" component={PartnerApplication} />
       <Route path="/r/:code" component={ReferralLanding} />
 
       {/* Agent-specific application pages - use two-page format */}

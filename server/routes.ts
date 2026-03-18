@@ -5093,6 +5093,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PARTNER PORTAL ROUTES
   // ========================================
 
+  // Ensure partners table exists (auto-create if missing)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS partners (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        company_name TEXT NOT NULL,
+        contact_name TEXT NOT NULL,
+        phone TEXT,
+        profession TEXT,
+        client_base_size TEXT,
+        logo_url TEXT,
+        slug TEXT UNIQUE,
+        invite_code TEXT NOT NULL UNIQUE,
+        commission_rate NUMERIC(5,2) DEFAULT 3.00,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    // Add slug column if it doesn't exist (for existing tables)
+    await pool.query(`
+      ALTER TABLE partners ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE;
+    `);
+    console.log("[PARTNER] Partners table ensured");
+  } catch (err) {
+    console.error("[PARTNER] Failed to ensure partners table:", err);
+  }
+
   // Helper functions for password hashing
   const hashPassword = (password: string): string => {
     const salt = randomBytes(16).toString("hex");
@@ -5115,6 +5145,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return code;
+  };
+
+  // Generate URL-friendly slug from company name
+  const generateSlug = (companyName: string): string => {
+    return companyName
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
   };
 
   // Partner Registration
@@ -5141,6 +5182,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         existingCode = await storage.getPartnerByInviteCode(inviteCode);
       }
 
+      // Generate unique slug from company name
+      let baseSlug = generateSlug(companyName);
+      let slug = baseSlug;
+      let slugSuffix = 1;
+      let existingSlug = await storage.getPartnerBySlug(slug);
+      while (existingSlug) {
+        slug = `${baseSlug}-${slugSuffix}`;
+        slugSuffix++;
+        existingSlug = await storage.getPartnerBySlug(slug);
+      }
+
       // Hash password and create partner
       const passwordHash = hashPassword(password);
       const partner = await storage.createPartner({
@@ -5151,6 +5203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone: phone || null,
         profession: profession || null,
         clientBaseSize: clientBaseSize || null,
+        slug,
         inviteCode,
         isActive: true,
       });
@@ -5173,6 +5226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           companyName: partner.companyName,
           contactName: partner.contactName,
           inviteCode: partner.inviteCode,
+          slug: partner.slug,
         },
       });
     } catch (error) {
@@ -5204,6 +5258,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
+      // Generate slug for existing partners who don't have one
+      let partnerSlug = partner.slug;
+      if (!partnerSlug) {
+        let baseSlug = generateSlug(partner.companyName);
+        let slug = baseSlug;
+        let slugSuffix = 1;
+        let existingSlug = await storage.getPartnerBySlug(slug);
+        while (existingSlug) {
+          slug = `${baseSlug}-${slugSuffix}`;
+          slugSuffix++;
+          existingSlug = await storage.getPartnerBySlug(slug);
+        }
+        await storage.updatePartner(partner.id, { slug });
+        partnerSlug = slug;
+      }
+
       // Set session
       req.session.user = {
         isAuthenticated: true,
@@ -5222,6 +5292,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: partner.email,
           companyName: partner.companyName,
           contactName: partner.contactName,
+          slug: partnerSlug,
           inviteCode: partner.inviteCode,
           commissionRate: partner.commissionRate,
         },
@@ -5254,6 +5325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         profession: partner.profession,
         clientBaseSize: partner.clientBaseSize,
         logoUrl: partner.logoUrl,
+        slug: partner.slug,
         inviteCode: partner.inviteCode,
         commissionRate: partner.commissionRate,
         createdAt: partner.createdAt,
@@ -5369,6 +5441,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error validating referral code:", error);
       res.status(500).json({ valid: false, error: "Failed to validate code" });
+    }
+  });
+
+  // Validate partner slug (for /apply/:slug application pages)
+  app.get("/api/partner/validate-slug/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const partner = await storage.getPartnerBySlug(slug.toLowerCase());
+
+      if (!partner || !partner.isActive) {
+        return res.status(404).json({ valid: false, error: "Invalid partner link" });
+      }
+
+      res.json({
+        valid: true,
+        partnerId: partner.id,
+        companyName: partner.companyName,
+        contactName: partner.contactName,
+      });
+    } catch (error) {
+      console.error("Error validating partner slug:", error);
+      res.status(500).json({ valid: false, error: "Failed to validate partner" });
     }
   });
 
