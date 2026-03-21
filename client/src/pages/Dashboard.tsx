@@ -2311,7 +2311,14 @@ function BankStatementsTab() {
                     const approvals = getApprovalsForBusiness(businessEmail);
                     if (approvals.length === 0) return null;
 
-                    const sortedApprovals = [...approvals].sort((a, b) => (a.isPrimary ? -1 : b.isPrimary ? 1 : 0));
+                    const sortedApprovals = [...approvals].sort((a, b) => {
+                      if (a.isPrimary) return -1;
+                      if (b.isPrimary) return 1;
+                      // Sort remaining by approvalDate descending (newest first)
+                      const dateA = a.approvalDate || '';
+                      const dateB = b.approvalDate || '';
+                      return dateB.localeCompare(dateA);
+                    });
                     const bestApproval = sortedApprovals[0];
                     const additionalApprovals = sortedApprovals.slice(1);
                     const isAdditionalExpanded = expandedAdditionalApprovals.has(businessEmail);
