@@ -8862,5 +8862,180 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── SMS INBOX ROUTES ─────────────────────────────────────────────────────
+
+  // GET /api/admin/sms/inbound — list all inbound messages from Twilio
+  app.get("/api/admin/sms/inbound", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+    const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+      return res.status(503).json({ error: "Twilio credentials not configured" });
+    }
+
+    try {
+      const pageSize = Math.min(Number(req.query.pageSize) || 100, 200);
+      const page = Number(req.query.page) || 0;
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json?Direction=inbound&PageSize=${pageSize}&Page=${page}`;
+
+      const twilioRes = await fetch(url, {
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64'),
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!twilioRes.ok) {
+        const errBody = await twilioRes.text();
+        console.error('[TWILIO] Inbound messages fetch failed:', twilioRes.status, errBody);
+        return res.status(500).json({ error: `Twilio API error: ${twilioRes.status}` });
+      }
+
+      const data = await twilioRes.json();
+      const messages: any[] = data.messages || [];
+
+      // Collect unique phone numbers to batch-lookup contacts
+      const uniquePhones = [...new Set(messages.map((m: any) => m.from as string))];
+      const contactMap: Record<string, any> = {};
+
+      for (const phone of uniquePhones) {
+        try {
+          const digits = phone.replace(/\D/g, '');
+          const result = await pool.query(
+            `SELECT id, full_name, email, phone, business_name, legal_business_name
+             FROM loan_applications
+             WHERE regexp_replace(phone, '[^0-9]', '', 'g') = $1
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [digits]
+          );
+          if (result.rows.length > 0) {
+            const row = result.rows[0];
+            contactMap[phone] = {
+              id: row.id,
+              fullName: row.full_name,
+              email: row.email,
+              phone: row.phone,
+              businessName: row.business_name,
+              legalBusinessName: row.legal_business_name,
+            };
+          }
+        } catch { /* ignore per-phone lookup errors */ }
+      }
+
+      const enriched = messages.map((msg: any) => ({
+        sid: msg.sid,
+        from: msg.from,
+        to: msg.to,
+        body: msg.body,
+        dateSent: msg.date_sent,
+        status: msg.status,
+        direction: msg.direction,
+        contact: contactMap[msg.from] || null,
+      }));
+
+      res.json({
+        messages: enriched,
+        hasMore: !!data.next_page_uri,
+        total: data.total,
+      });
+    } catch (error) {
+      console.error("[SMS] Inbound fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch SMS messages" });
+    }
+  });
+
+  // GET /api/admin/sms/conversation/:phone — fetch full thread (inbound + outbound) for a number
+  app.get("/api/admin/sms/conversation/:phone", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+    const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+    const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
+
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+      return res.status(503).json({ error: "Twilio credentials not configured" });
+    }
+
+    try {
+      const contactPhone = decodeURIComponent(req.params.phone);
+      const authHeader = 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+
+      const [inboundRes, outboundRes] = await Promise.all([
+        fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json?From=${encodeURIComponent(contactPhone)}&PageSize=50`, {
+          headers: { 'Authorization': authHeader },
+          signal: AbortSignal.timeout(15000),
+        }),
+        fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json?To=${encodeURIComponent(contactPhone)}&PageSize=50`, {
+          headers: { 'Authorization': authHeader },
+          signal: AbortSignal.timeout(15000),
+        }),
+      ]);
+
+      const inboundData = inboundRes.ok ? await inboundRes.json() : { messages: [] };
+      const outboundData = outboundRes.ok ? await outboundRes.json() : { messages: [] };
+
+      const allMessages = [
+        ...(inboundData.messages || []),
+        ...(outboundData.messages || []),
+      ]
+        .map((m: any) => ({
+          sid: m.sid,
+          from: m.from,
+          to: m.to,
+          body: m.body,
+          dateSent: m.date_sent,
+          status: m.status,
+          direction: m.direction,
+        }))
+        .sort((a, b) => new Date(a.dateSent).getTime() - new Date(b.dateSent).getTime());
+
+      res.json({ messages: allMessages, ourNumber: TWILIO_PHONE_NUMBER || null });
+    } catch (error) {
+      console.error("[SMS] Conversation fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch conversation" });
+    }
+  });
+
+  // POST /api/admin/sms/reply — send an outbound SMS reply
+  app.post("/api/admin/sms/reply", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const { to, body } = req.body;
+    if (!to || !body?.trim()) {
+      return res.status(400).json({ error: "Missing 'to' or 'body'" });
+    }
+
+    try {
+      const { sendSms } = await import('./services/twilio');
+      const result = await sendSms(to, body.trim());
+      if (result.success) {
+        res.json({ success: true, sid: result.sid });
+      } else {
+        res.status(500).json({ error: result.error || "Failed to send SMS" });
+      }
+    } catch (error) {
+      console.error("[SMS] Reply error:", error);
+      res.status(500).json({ error: "Failed to send SMS reply" });
+    }
+  });
+
   return httpServer;
 }

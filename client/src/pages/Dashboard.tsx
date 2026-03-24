@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy, Phone } from "lucide-react";
 import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -3636,6 +3636,14 @@ export default function Dashboard() {
                       <DropdownMenuItem className="cursor-pointer">
                         <MessageSquare className="w-4 h-4 mr-2" />
                         Messaging
+                      </DropdownMenuItem>
+                    </Link>
+                  )}
+                  {authData.role === 'admin' && (
+                    <Link href="/sms-inbox">
+                      <DropdownMenuItem className="cursor-pointer">
+                        <Phone className="w-4 h-4 mr-2" />
+                        SMS Inbox
                       </DropdownMenuItem>
                     </Link>
                   )}
