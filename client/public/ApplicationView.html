@@ -399,11 +399,15 @@
                     `;
                     signaturePlaceholder.style.display = 'block';
                 } else {
-                    // It's a checkbox signature (ISO timestamp) - display stamp
+                    // It's a checkbox/text signature - display stamp with proper date
+                    const rawDate = data.signatureDate || data.updatedAt || data.createdAt;
+                    const signedDate = rawDate
+                        ? new Date(rawDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
                     signaturePlaceholder.innerHTML = `
                         <div style="padding: 20px; text-align: left;">
                             <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px;">Digitally Signed by: ${data.fullName || 'Unknown'}</div>
-                            <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">Date: ${data.applicantSignature}</div>
+                            <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">Date: ${signedDate}</div>
                             <div style="font-size: 13px; font-style: italic; color: #6b7280;">Electronic Consent Accepted</div>
                         </div>
                     `;

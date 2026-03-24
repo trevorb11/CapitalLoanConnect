@@ -414,6 +414,7 @@ export default function FullApplication(props?: FullApplicationProps) {
     if (isFinal) {
         payload.isFullApplicationCompleted = true;
         payload.applicantSignature = "SIGNED_VIA_CHECKBOX_CONSENT";
+        payload.signatureDate = new Date().toISOString();
         if (recaptchaToken) {
           payload.recaptchaToken = recaptchaToken;
         }
