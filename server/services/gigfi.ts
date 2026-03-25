@@ -122,7 +122,6 @@ function buildGigFiPayload(data: GigFiLeadData, refId: string) {
       ...(data.clientIpAddress && { ClientIPAddress: data.clientIpAddress }),
     },
     metadata: {
-      version: "GigFi_Leads v1.0",
       entity_id: refId,
     },
     control: {
