@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import { Loader2, CheckCircle, ArrowLeft } from "lucide-react";
 import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
+import GigFiPartnerFlow from "./GigFiPartnerFlow";
 
 const BUSINESS_AGE_OPTIONS = [
   "Less than 3 months",
@@ -105,12 +106,16 @@ export default function QuizIntake() {
   const [formError, setFormError] = useState("");
   const [showNotBusinessOwnerMessage, setShowNotBusinessOwnerMessage] = useState(false);
   const [showLowRevenueOutcome, setShowLowRevenueOutcome] = useState(false);
+  const [showGigFiFlow, setShowGigFiFlow] = useState(false);
+  const [applicationId, setApplicationId] = useState<string>("");
   const [ghlFormLoaded, setGhlFormLoaded] = useState(false);
   const [ghlFormSubmitted, setGhlFormSubmitted] = useState(false);
 
   // Revenue threshold for the main application flow
   const LOW_REVENUE_THRESHOLD = 10000;
   const MINIMUM_REVENUE_REQUIREMENT = 10000;
+  // GigFi partner eligibility: $2K-$10K/month
+  const GIGFI_MIN_REVENUE = 2000;
 
   const [quizData, setQuizData] = useState<QuizData>({
     financingAmount: 25000,
@@ -196,8 +201,15 @@ export default function QuizIntake() {
         useOfFunds: quizData.fundingPurpose,
       });
 
+      // Save the application ID for GigFi flow
+      if (data.id) setApplicationId(data.id);
+
       // Check if user is on the low revenue path
-      if (quizData.monthlyRevenue < LOW_REVENUE_THRESHOLD) {
+      if (quizData.monthlyRevenue >= GIGFI_MIN_REVENUE && quizData.monthlyRevenue < LOW_REVENUE_THRESHOLD) {
+        // Eligible for GigFi partner financing ($2K-$10K/mo)
+        setShowGigFiFlow(true);
+      } else if (quizData.monthlyRevenue < GIGFI_MIN_REVENUE) {
+        // Below GigFi minimum — show original low revenue outcome
         setShowLowRevenueOutcome(true);
       } else if (data.id) {
         navigate(`/?applicationId=${data.id}`);
@@ -339,6 +351,25 @@ export default function QuizIntake() {
       setTimeout(() => nextQuestion(), 400);
     }
   };
+
+  // If the GigFi partner flow is active, render it instead of the quiz
+  if (showGigFiFlow) {
+    return (
+      <GigFiPartnerFlow
+        quizData={{
+          fullName: quizData.fullName,
+          email: quizData.email,
+          phone: quizData.phone,
+          businessName: quizData.businessName,
+          monthlyRevenue: quizData.monthlyRevenue,
+          financingAmount: quizData.financingAmount,
+          businessAge: quizData.businessAge,
+          applicationId,
+        }}
+        onBack={() => setShowGigFiFlow(false)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)" }}>
