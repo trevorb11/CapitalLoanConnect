@@ -23,6 +23,7 @@ const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
+import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
 
@@ -9034,6 +9035,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[SMS] Reply error:", error);
       res.status(500).json({ error: "Failed to send SMS reply" });
+    }
+  });
+
+  // ==========================================
+  // GigFi Partner Lead Submission
+  // ==========================================
+  app.post("/api/gigfi/submit", async (req: Request, res: Response) => {
+    try {
+      if (!isGigFiConfigured()) {
+        return res.status(503).json({ error: "GigFi integration is not currently available." });
+      }
+
+      const {
+        applicationId,
+        firstName,
+        lastName,
+        email,
+        phone,
+        businessName,
+        monthlyRevenue,
+        financingAmount,
+        businessAge,
+        ssn,
+        dob,
+        homeAddress,
+        homeCity,
+        homeState,
+        homeZip,
+        bankName,
+        abaNumber,
+        accountNumber,
+        accountType,
+        payFrequency,
+        nextPayDay,
+      } = req.body;
+
+      // Validate required fields
+      const missing: string[] = [];
+      if (!firstName) missing.push("firstName");
+      if (!lastName) missing.push("lastName");
+      if (!email) missing.push("email");
+      if (!phone) missing.push("phone");
+      if (!ssn || ssn.replace(/\D/g, "").length !== 9) missing.push("ssn (9 digits)");
+      if (!dob) missing.push("dob");
+      if (!homeAddress) missing.push("homeAddress");
+      if (!homeCity) missing.push("homeCity");
+      if (!homeState || homeState.length !== 2) missing.push("homeState (2 chars)");
+      if (!homeZip || homeZip.replace(/\D/g, "").length !== 5) missing.push("homeZip (5 digits)");
+      if (!bankName) missing.push("bankName");
+      if (!abaNumber || abaNumber.replace(/\D/g, "").length !== 9) missing.push("abaNumber (9 digits)");
+      if (!accountNumber) missing.push("accountNumber");
+      if (!accountType || !["C", "S"].includes(accountType)) missing.push("accountType (C or S)");
+      if (!payFrequency) missing.push("payFrequency");
+      if (!nextPayDay) missing.push("nextPayDay");
+
+      if (missing.length > 0) {
+        return res.status(400).json({ error: `Missing or invalid fields: ${missing.join(", ")}` });
+      }
+
+      const leadData: GigFiLeadData = {
+        firstName,
+        lastName,
+        email,
+        phone,
+        businessName: businessName || "",
+        monthlyRevenue: parseFloat(monthlyRevenue) || 0,
+        financingAmount: parseFloat(financingAmount) || 500,
+        businessAge,
+        ssn: ssn.replace(/\D/g, ""),
+        dob,
+        homeAddress,
+        homeCity,
+        homeState: homeState.toUpperCase(),
+        homeZip: homeZip.replace(/\D/g, "").slice(0, 5),
+        bankName,
+        abaNumber: abaNumber.replace(/\D/g, ""),
+        accountNumber,
+        accountType,
+        payFrequency,
+        nextPayDay,
+        cellPhone: phone,
+        clientIpAddress: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || undefined,
+      };
+
+      const result = await submitToGigFi(leadData, applicationId || `anon-${Date.now()}`);
+
+      // Log GigFi result against the application for tracking
+      if (applicationId) {
+        try {
+          const app = await storage.getLoanApplication(applicationId);
+          if (app) {
+            console.log(`[GIGFI] Application ${applicationId} submitted to GigFi: ${result.status}`);
+          }
+        } catch (lookupErr) {
+          console.error("[GIGFI] Failed to look up application:", lookupErr);
+        }
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("[GIGFI] Endpoint error:", error);
+      res.status(500).json({
+        success: false,
+        status: "ERROR",
+        errorMessage: "An unexpected error occurred. Please try again.",
+      });
     }
   });
 
