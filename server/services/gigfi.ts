@@ -7,7 +7,7 @@
  */
 
 const GIGFI_SANDBOX_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/sandbox/decide";
-const GIGFI_LIVE_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/decide";
+const GIGFI_LIVE_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/production/decide";
 
 // Environment-driven config
 const GIGFI_API_KEY = process.env.GIGFI_API_KEY || "";
@@ -145,7 +145,7 @@ export async function submitToGigFi(data: GigFiLeadData, applicationId: string):
   const refId = `TCG-${applicationId}`;
   const payload = buildGigFiPayload(data, refId);
 
-  console.log(`[GIGFI] Submitting lead ${refId} to ${GIGFI_ENVIRONMENT} environment`);
+  console.log(`[GIGFI] Submitting lead ${refId} to ${GIGFI_ENVIRONMENT} environment → ${endpoint}`);
 
   try {
     const response = await fetch(endpoint, {
@@ -160,6 +160,7 @@ export async function submitToGigFi(data: GigFiLeadData, applicationId: string):
     const result = await response.json();
 
     console.log(`[GIGFI] Response for ${refId}: HTTP ${response.status}, status=${result?.data?.status || result?.status}`);
+    console.log(`[GIGFI] Full response body for ${refId}:`, JSON.stringify(result).slice(0, 1000));
 
     // Log the decision ID for debugging
     const decisionId = result?.metadata?.decision_id;
@@ -168,7 +169,7 @@ export async function submitToGigFi(data: GigFiLeadData, applicationId: string):
     }
 
     if (!response.ok) {
-      const errorMsg = result?.detail?.msg || result?.detail || `HTTP ${response.status}`;
+      const errorMsg = result?.detail?.msg || result?.detail || result?.message || result?.error || `HTTP ${response.status}`;
       console.error(`[GIGFI] Error response for ${refId}:`, errorMsg);
       return {
         success: false,
