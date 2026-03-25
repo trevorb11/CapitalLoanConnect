@@ -33,10 +33,10 @@ export interface GigFiLeadData {
   homeCity: string;
   homeState: string;      // 2-char state code
   homeZip: string;        // 5 digits
-  bankName: string;
-  abaNumber: string;      // 9-digit routing number
-  accountNumber: string;
-  accountType: string;    // "C" for Checking, "S" for Savings
+  bankName?: string;
+  abaNumber?: string;      // 9-digit routing number
+  accountNumber?: string;
+  accountType?: string;    // "C" for Checking, "S" for Savings
   payFrequency: string;   // "1"=Weekly, "2"=Bi-weekly, "3"=Semi-monthly, "4"=Monthly
   nextPayDay: string;     // mm/dd/yyyy
 
@@ -96,15 +96,17 @@ function buildGigFiPayload(data: GigFiLeadData, refId: string) {
       HomeZip: data.homeZip,
       ...(data.homePhone && { HomePhone: formatPhoneForGigFi(data.homePhone) }),
       CellPhone: cellPhone,
-      BankInfo: {
-        BankName: data.bankName,
-        AbaNumber: data.abaNumber.replace(/\D/g, ""),
-        ...(data.accountType === "C"
-          ? { CheckingAccount: data.accountNumber }
-          : { SavingsAccount: data.accountNumber }),
-        AccountToUse: data.accountType,
-        AccountLength: data.accountNumber.length,
-      },
+      ...(data.abaNumber && data.accountNumber ? {
+        BankInfo: {
+          ...(data.bankName && { BankName: data.bankName }),
+          AbaNumber: data.abaNumber.replace(/\D/g, ""),
+          ...((data.accountType ?? "C") === "C"
+            ? { CheckingAccount: data.accountNumber }
+            : { SavingsAccount: data.accountNumber }),
+          AccountToUse: data.accountType ?? "C",
+          AccountLength: data.accountNumber.length,
+        },
+      } : {}),
       EmploymentInfo: {
         MonthlyIncome: data.monthlyRevenue,
         PayFrequency: data.payFrequency,

@@ -9083,10 +9083,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!homeCity) missing.push("homeCity");
       if (!homeState || homeState.length !== 2) missing.push("homeState (2 chars)");
       if (!homeZip || homeZip.replace(/\D/g, "").length !== 5) missing.push("homeZip (5 digits)");
-      if (!bankName) missing.push("bankName");
-      if (!abaNumber || abaNumber.replace(/\D/g, "").length !== 9) missing.push("abaNumber (9 digits)");
-      if (!accountNumber) missing.push("accountNumber");
-      if (!accountType || !["C", "S"].includes(accountType)) missing.push("accountType (C or S)");
       if (!payFrequency) missing.push("payFrequency");
       if (!nextPayDay) missing.push("nextPayDay");
 
@@ -9109,10 +9105,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         homeCity,
         homeState: homeState.toUpperCase(),
         homeZip: homeZip.replace(/\D/g, "").slice(0, 5),
-        bankName,
-        abaNumber: abaNumber.replace(/\D/g, ""),
-        accountNumber,
-        accountType,
+        ...(bankName && { bankName }),
+        ...(abaNumber && { abaNumber: abaNumber.replace(/\D/g, "") }),
+        ...(accountNumber && { accountNumber }),
+        ...(accountType && { accountType }),
         payFrequency,
         nextPayDay,
         cellPhone: phone,

@@ -67,10 +67,6 @@ export default function GigFiStandalone() {
     homeCity: "",
     homeState: "",
     homeZip: "",
-    bankName: "",
-    abaNumber: "",
-    accountNumber: "",
-    accountType: "C" as "C" | "S",
     payFrequency: "4",
     nextPayDay: "",
   });
@@ -107,9 +103,6 @@ export default function GigFiStandalone() {
     if (!details.homeCity.trim()) errors.homeCity = "City is required";
     if (!details.homeState) errors.homeState = "State is required";
     if (details.homeZip.replace(/\D/g, "").length !== 5) errors.homeZip = "ZIP must be 5 digits";
-    if (!details.bankName.trim()) errors.bankName = "Bank name is required";
-    if (details.abaNumber.replace(/\D/g, "").length !== 9) errors.abaNumber = "Routing number must be 9 digits";
-    if (!details.accountNumber.trim()) errors.accountNumber = "Account number is required";
     if (!details.nextPayDay) errors.nextPayDay = "Next pay date is required";
     setDetailErrors(errors);
     return Object.keys(errors).length === 0;
@@ -139,10 +132,6 @@ export default function GigFiStandalone() {
         homeCity: details.homeCity,
         homeState: details.homeState,
         homeZip: details.homeZip.replace(/\D/g, ""),
-        bankName: details.bankName,
-        abaNumber: details.abaNumber.replace(/\D/g, ""),
-        accountNumber: details.accountNumber,
-        accountType: details.accountType,
         payFrequency: details.payFrequency,
         nextPayDay: formattedNextPayDay,
       };
@@ -564,76 +553,6 @@ export default function GigFiStandalone() {
                       data-testid="input-gigfi-zip"
                     />
                     {detailErrors.homeZip && <p className="text-red-400 text-xs mt-1">{detailErrors.homeZip}</p>}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Banking Info */}
-            <div>
-              <h4 className="text-white/80 text-sm font-semibold uppercase tracking-wider mb-3">Banking Information</h4>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-white/70 text-sm mb-1 block">Bank Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Chase Bank"
-                    value={details.bankName}
-                    onChange={(e) => updateDetail("bankName", e.target.value)}
-                    className={inputClass("bankName", detailErrors)}
-                    data-testid="input-gigfi-bank-name"
-                  />
-                  {detailErrors.bankName && <p className="text-red-400 text-xs mt-1">{detailErrors.bankName}</p>}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-white/70 text-sm mb-1 block">Routing Number</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="9 digits"
-                      maxLength={9}
-                      value={details.abaNumber}
-                      onChange={(e) => updateDetail("abaNumber", e.target.value.replace(/\D/g, "").slice(0, 9))}
-                      className={inputClass("abaNumber", detailErrors)}
-                      data-testid="input-gigfi-routing"
-                    />
-                    {detailErrors.abaNumber && <p className="text-red-400 text-xs mt-1">{detailErrors.abaNumber}</p>}
-                  </div>
-                  <div>
-                    <label className="text-white/70 text-sm mb-1 block">Account Number</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="Account #"
-                      value={details.accountNumber}
-                      onChange={(e) => updateDetail("accountNumber", e.target.value.replace(/\D/g, ""))}
-                      className={inputClass("accountNumber", detailErrors)}
-                      data-testid="input-gigfi-account"
-                    />
-                    {detailErrors.accountNumber && <p className="text-red-400 text-xs mt-1">{detailErrors.accountNumber}</p>}
-                  </div>
-                </div>
-
-                {/* Account Type */}
-                <div>
-                  <label className="text-white/70 text-sm mb-2 block">Account Type</label>
-                  <div className="flex gap-3">
-                    {[{ value: "C", label: "Checking" }, { value: "S", label: "Savings" }].map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => updateDetail("accountType", opt.value)}
-                        className={`flex-1 py-3 rounded-lg border text-sm font-medium transition-all ${
-                          details.accountType === opt.value
-                            ? "bg-white text-[#192F56] border-white"
-                            : "bg-white/10 text-white border-white/20 hover:border-white/40"
-                        }`}
-                        data-testid={`button-gigfi-account-${opt.value.toLowerCase()}`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
                   </div>
                 </div>
               </div>
