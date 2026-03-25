@@ -6,8 +6,8 @@
  * here instead of the standard "you don't qualify" dead-end.
  */
 
-const GIGFI_SANDBOX_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/sandbox/decide";
-const GIGFI_LIVE_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/decide";
+const GIGFI_SANDBOX_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v2/flows/gigfileads/sandbox/decide";
+const GIGFI_LIVE_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v2/flows/gigfileads/decide";
 
 // Environment-driven config
 const GIGFI_API_KEY = process.env.GIGFI_API_KEY || "";
