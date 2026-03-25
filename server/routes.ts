@@ -9041,6 +9041,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ==========================================
   // GigFi Partner Lead Submission
   // ==========================================
+  // Lead prefill endpoint — used by /gig to auto-populate contact fields
+  app.get("/api/lead/prefill", async (req: Request, res: Response) => {
+    try {
+      const { email, phone } = req.query as { email?: string; phone?: string };
+      if (!email && !phone) {
+        return res.status(400).json({ error: "email or phone query param required" });
+      }
+      let app: any;
+      if (email) {
+        app = await storage.getAnyLoanApplicationByEmail(email.toLowerCase().trim());
+      }
+      if (!app && phone) {
+        app = await storage.getLoanApplicationByEmailOrPhone(phone.trim());
+      }
+      if (!app) {
+        return res.status(404).json({ error: "No matching lead found" });
+      }
+      return res.json({
+        fullName: app.fullName || "",
+        email: app.email || "",
+        phone: app.phone || "",
+        businessName: app.businessName || "",
+      });
+    } catch (err) {
+      console.error("[prefill]", err);
+      return res.status(500).json({ error: "Server error" });
+    }
+  });
+
   app.post("/api/gigfi/submit", async (req: Request, res: Response) => {
     try {
       if (!isGigFiConfigured()) {

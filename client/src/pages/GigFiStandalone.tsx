@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -71,6 +71,37 @@ export default function GigFiStandalone() {
     nextPayDay: "",
   });
   const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
+  const [prefillLoading, setPrefillLoading] = useState(false);
+  const [prefillApplied, setPrefillApplied] = useState(false);
+
+  // Auto-fill Step 1 from URL query params (e.g. /gig?email=jane@example.com)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get("email") || params.get("e");
+    const phoneParam = params.get("phone") || params.get("p");
+    if (!emailParam && !phoneParam) return;
+
+    setPrefillLoading(true);
+    const qs = emailParam
+      ? `email=${encodeURIComponent(emailParam)}`
+      : `phone=${encodeURIComponent(phoneParam!)}`;
+
+    fetch(`/api/lead/prefill?${qs}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setInfo((prev) => ({
+          ...prev,
+          fullName: data.fullName || prev.fullName,
+          email: data.email || prev.email,
+          phone: data.phone || prev.phone,
+          businessName: data.businessName || prev.businessName,
+        }));
+        setPrefillApplied(true);
+      })
+      .catch(() => {})
+      .finally(() => setPrefillLoading(false));
+  }, []);
 
   const updateInfo = (field: string, value: string) => {
     setInfo((prev) => ({ ...prev, [field]: value }));
@@ -309,6 +340,22 @@ export default function GigFiStandalone() {
               You may qualify for funding with one of our partners. Fill out your info and get a decision in under 15 minutes.
             </p>
           </div>
+
+          {/* Prefill loading state */}
+          {prefillLoading && (
+            <div className="flex items-center justify-center gap-2 bg-white/10 rounded-lg py-3 px-4 mb-2">
+              <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+              <span className="text-white/70 text-sm">Loading your info...</span>
+            </div>
+          )}
+
+          {/* Prefill success notice */}
+          {prefillApplied && !prefillLoading && (
+            <div className="flex items-center gap-2 bg-cyan-400/10 border border-cyan-400/30 rounded-lg py-3 px-4 mb-2">
+              <CheckCircle className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+              <span className="text-cyan-300 text-sm">We've pre-filled your info. Please review and update if needed.</span>
+            </div>
+          )}
 
           <div className="space-y-5">
             {/* Name */}
