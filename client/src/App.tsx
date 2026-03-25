@@ -50,6 +50,7 @@ import Leaderboard from "@/pages/Leaderboard";
 import Messaging from "@/pages/Messaging";
 import AutomatedTriggers from "@/pages/AutomatedTriggers";
 import SmsInbox from "@/pages/SmsInbox";
+import GigFiStandalone from "@/pages/GigFiStandalone";
 import MerchantPortal from "@/pages/MerchantPortal";
 import MerchantActivate from "@/pages/MerchantActivate";
 import MerchantResetPassword from "@/pages/MerchantResetPassword";
@@ -116,6 +117,7 @@ function Router() {
       <Route path="/messaging" component={Messaging} />
       <Route path="/triggers" component={AutomatedTriggers} />
       <Route path="/sms-inbox" component={SmsInbox} />
+      <Route path="/gigfi" component={GigFiStandalone} />
       <Route path="/agents" component={AgentSelector} />
 
       {/* Rep Console - Contact 360 View */}
