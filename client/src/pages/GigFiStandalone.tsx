@@ -205,7 +205,7 @@ export default function GigFiStandalone() {
             </div>
             <h3 className="text-white text-2xl md:text-3xl font-bold mb-4">You've Been Approved!</h3>
             <p className="text-white/80 mb-8 text-base md:text-lg max-w-md mx-auto leading-relaxed">
-              GigFi has accepted your application. Click below to complete the final steps on their secure portal and access your funds.
+              Your application has been accepted! Click below to complete the final steps on our partner's secure portal and access your funds.
             </p>
             <div className="max-w-md mx-auto">
               <a
@@ -214,10 +214,10 @@ export default function GigFiStandalone() {
                 rel="noopener noreferrer"
                 className="block w-full bg-green-500 hover:bg-green-400 text-white py-4 px-8 rounded-lg font-semibold text-lg transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg text-center"
               >
-                Complete Your Application with GigFi
+                Complete Your Application
               </a>
               <p className="text-white/50 text-sm mt-4">
-                You'll be redirected to GigFi's secure portal to finalize your funding.
+                You'll be redirected to our partner's secure portal to finalize your funding.
               </p>
             </div>
           </div>
@@ -239,7 +239,7 @@ export default function GigFiStandalone() {
               We Weren't Able to Match You This Time
             </h3>
             <p className="text-white/80 mb-6 text-base md:text-lg max-w-md mx-auto leading-relaxed">
-              Unfortunately, GigFi wasn't able to offer financing at this time. Our team has your information and will reach out if new options become available.
+              Unfortunately, we weren't able to match you with a financing option at this time. Our team has your information and will reach out if new options become available.
             </p>
             <div className="bg-white/10 rounded-xl p-6 max-w-md mx-auto mb-6 text-left">
               <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
@@ -317,7 +317,7 @@ export default function GigFiStandalone() {
               Check Your Financing Options
             </h2>
             <p className="text-white/70 text-base max-w-md mx-auto">
-              You may qualify for funding through <span className="text-cyan-400 font-semibold">GigFi</span>. Fill out your info and get a decision in under 15 minutes.
+              You may qualify for funding with one of our partners. Fill out your info and get a decision in under 15 minutes.
             </p>
           </div>
 
@@ -473,7 +473,7 @@ export default function GigFiStandalone() {
             A Few More Details
           </h3>
           <p className="text-white/60 text-sm mb-6 text-center">
-            This information is required to check your financing options with GigFi.
+            This information is required to check your financing options with our partners.
           </p>
 
           <div className="space-y-6">

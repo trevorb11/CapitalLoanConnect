@@ -117,7 +117,7 @@ function Router() {
       <Route path="/messaging" component={Messaging} />
       <Route path="/triggers" component={AutomatedTriggers} />
       <Route path="/sms-inbox" component={SmsInbox} />
-      <Route path="/gigfi" component={GigFiStandalone} />
+      <Route path="/gig" component={GigFiStandalone} />
       <Route path="/agents" component={AgentSelector} />
 
       {/* Rep Console - Contact 360 View */}
