@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Loader2, CheckCircle, AlertCircle, Shield, ArrowLeft, ChevronRight } from "lucide-react";
+import tcgLogo from "@assets/tcg_white_logo_1774465809567.png";
 
 type FlowStep = "info" | "details" | "submitting" | "accepted" | "rejected" | "error";
 
@@ -305,11 +306,7 @@ export default function GigFiStandalone() {
         <div className={card} style={cardStyle}>
           {/* Logo */}
           <div className="flex justify-center mb-8">
-            <img
-              src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c1b87657a831f612b5390_Group%2017%20(1).svg"
-              alt="Today Capital Group"
-              style={{ height: "44px" }}
-            />
+            <img src={tcgLogo} alt="Today Capital Group" style={{ height: "44px" }} />
           </div>
 
           <div className="text-center mb-8">
@@ -469,11 +466,7 @@ export default function GigFiStandalone() {
         <div className="pt-6">
           {/* Logo */}
           <div className="flex justify-center mb-6">
-            <img
-              src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c1b87657a831f612b5390_Group%2017%20(1).svg"
-              alt="Today Capital Group"
-              style={{ height: "36px" }}
-            />
+            <img src={tcgLogo} alt="Today Capital Group" style={{ height: "36px" }} />
           </div>
 
           <h3 className="text-white text-xl md:text-2xl font-bold mb-2 text-center">
