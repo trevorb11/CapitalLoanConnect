@@ -7,7 +7,7 @@
  */
 
 const GIGFI_SANDBOX_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/sandbox/decide";
-const GIGFI_LIVE_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/production/decide";
+const GIGFI_LIVE_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/decide";
 
 // Environment-driven config
 const GIGFI_API_KEY = process.env.GIGFI_API_KEY || "";
