@@ -96,17 +96,9 @@ function buildGigFiPayload(data: GigFiLeadData, refId: string) {
       HomeZip: data.homeZip,
       ...(data.homePhone && { HomePhone: formatPhoneForGigFi(data.homePhone) }),
       CellPhone: cellPhone,
-      ...(data.abaNumber && data.accountNumber ? {
-        BankInfo: {
-          ...(data.bankName && { BankName: data.bankName }),
-          AbaNumber: data.abaNumber.replace(/\D/g, ""),
-          ...((data.accountType ?? "C") === "C"
-            ? { CheckingAccount: data.accountNumber }
-            : { SavingsAccount: data.accountNumber }),
-          AccountToUse: data.accountType ?? "C",
-          AccountLength: data.accountNumber.length,
-        },
-      } : {}),
+      BankInfo: {
+        AccountToUse: "C",
+      },
       EmploymentInfo: {
         MonthlyIncome: data.monthlyRevenue,
         PayFrequency: data.payFrequency,
