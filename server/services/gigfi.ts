@@ -138,6 +138,7 @@ export async function submitToGigFi(data: GigFiLeadData, applicationId: string):
   const payload = buildGigFiPayload(data, refId);
 
   console.log(`[GIGFI] Submitting lead ${refId} to ${GIGFI_ENVIRONMENT} environment → ${endpoint}`);
+  console.log(`[GIGFI] Outbound payload for ${refId}:`, JSON.stringify(payload, null, 2));
 
   try {
     const response = await fetch(endpoint, {
@@ -152,7 +153,7 @@ export async function submitToGigFi(data: GigFiLeadData, applicationId: string):
     const result = await response.json();
 
     console.log(`[GIGFI] Response for ${refId}: HTTP ${response.status}, status=${result?.data?.status || result?.status}`);
-    console.log(`[GIGFI] Full response body for ${refId}:`, JSON.stringify(result).slice(0, 1000));
+    console.log(`[GIGFI] Full response body for ${refId}:`, JSON.stringify(result, null, 2));
 
     // Log the decision ID for debugging
     const decisionId = result?.metadata?.decision_id;
