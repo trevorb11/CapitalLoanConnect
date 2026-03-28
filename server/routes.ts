@@ -18,7 +18,7 @@ import { notifyMerchantNewMessage } from "./services/twilio";
 import { fireSmsStageEvent } from "./sms-middleware";
 import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
-import { pool } from "./db";
+import { pool, neonPool } from "./db";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
@@ -497,6 +497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+// POST /api/admin/claude/dialer-sql — query the Neon dialer database (dialer_contacts, dialer_sessions)  app.post("/api/admin/claude/dialer-sql", claudeAuth, async (req: Request, res: Response) => {    if (!neonPool) {      return res.status(500).json({ error: "Neon database not configured" });    }    const { query, params = [] } = req.body;    if (!query || typeof query !== "string") {      return res.status(400).json({ error: "body.query is required" });    }    const trimmed = query.trim().toUpperCase();    if (!trimmed.startsWith("SELECT") && !trimmed.startsWith("WITH") && !trimmed.startsWith("EXPLAIN")) {      return res.status(403).json({ error: "Only SELECT/WITH/EXPLAIN queries allowed" });    }    try {      const result = await neonPool.query(query, params);      res.json({ rows: result.rows, rowCount: result.rowCount });    } catch (error) {      res.status(500).json({ error: String(error) });    }  });
   // POST /api/admin/claude/mutate — write SQL (UPDATE/INSERT/DELETE)
   app.post("/api/admin/claude/mutate", claudeAuth, async (req, res) => {
     const { sql: sqlStr, params = [] } = req.body;

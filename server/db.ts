@@ -19,3 +19,17 @@ pool.on('error', (err) => {
 });
 
 export const db = drizzle({ client: pool, schema });
+
+// Neon pool for dialer tables (dialer_contacts, dialer_sessions)
+// The main pool connects to the local Replit Postgres (merchant portal).
+// Dialer data lives in the Neon database.
+const neonDbUrl = process.env.NEON_DATABASE_URL;
+export const neonPool = neonDbUrl ? new Pool({ connectionString: neonDbUrl }) : null;
+if (neonPool) {
+  neonPool.on("error", (err) => {
+    console.error("[NEON DB] Pool connection error (non-fatal):", err.message);
+  });
+  console.log("[NEON DB] Dialer database pool initialized");
+} else {
+  console.warn("[NEON DB] NEON_DATABASE_URL not set — dialer queries will fail");
+}
