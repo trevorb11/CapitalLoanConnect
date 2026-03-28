@@ -492,12 +492,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const result = await pool.query(query, params);
       res.json({ rows: result.rows, rowCount: result.rowCount });
+    } catch (error: any) {
+      // If table not found in main DB, try Neon dialer database
+      if (neonPool && error?.message?.includes("does not exist")) {
+        try {
+          const neonResult = await neonPool.query(query, params);
+          return res.json({ rows: neonResult.rows, rowCount: neonResult.rowCount, source: "neon" });
+        } catch (neonError) {
+          return res.status(500).json({ error: String(neonError) });
+        }
+      }
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // POST /api/admin/claude/dialer-sql
+  app.post("/api/admin/claude/dialer-sql", claudeAuth, async (req: Request, res: Response) => {
+    if (!neonPool) {
+      return res.status(500).json({ error: "Neon database not configured" });
+    }
+    const { query: q, params: p = [] } = req.body;
+    if (!q || typeof q !== "string") {
+      return res.status(400).json({ error: "body.query is required" });
+    }
+    const trimmed = q.trim().toUpperCase();
+    if (!trimmed.startsWith("SELECT") && !trimmed.startsWith("WITH") && !trimmed.startsWith("EXPLAIN")) {
+      return res.status(403).json({ error: "Only SELECT/WITH/EXPLAIN queries allowed" });
+    }
+    try {
+      const result = await neonPool.query(q, p);
+      res.json({ rows: result.rows, rowCount: result.rowCount });
     } catch (error) {
       res.status(500).json({ error: String(error) });
     }
   });
 
-// POST /api/admin/claude/dialer-sql — query the Neon dialer database (dialer_contacts, dialer_sessions)  app.post("/api/admin/claude/dialer-sql", claudeAuth, async (req: Request, res: Response) => {    if (!neonPool) {      return res.status(500).json({ error: "Neon database not configured" });    }    const { query, params = [] } = req.body;    if (!query || typeof query !== "string") {      return res.status(400).json({ error: "body.query is required" });    }    const trimmed = query.trim().toUpperCase();    if (!trimmed.startsWith("SELECT") && !trimmed.startsWith("WITH") && !trimmed.startsWith("EXPLAIN")) {      return res.status(403).json({ error: "Only SELECT/WITH/EXPLAIN queries allowed" });    }    try {      const result = await neonPool.query(query, params);      res.json({ rows: result.rows, rowCount: result.rowCount });    } catch (error) {      res.status(500).json({ error: String(error) });    }  });
   // POST /api/admin/claude/mutate — write SQL (UPDATE/INSERT/DELETE)
   app.post("/api/admin/claude/mutate", claudeAuth, async (req, res) => {
     const { sql: sqlStr, params = [] } = req.body;
