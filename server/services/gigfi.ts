@@ -11,7 +11,7 @@ const GIGFI_LIVE_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flow
 
 // Environment-driven config
 const GIGFI_API_KEY = process.env.GIGFI_API_KEY || "";
-const GIGFI_LEAD_PROVIDER = process.env.GIGFI_LEAD_PROVIDER || "TodayCapitalGroup";
+const GIGFI_LEAD_PROVIDER = process.env.GIGFI_LEAD_PROVIDER || "TodayCapital";
 const GIGFI_LEAD_AFFILIATE = process.env.GIGFI_LEAD_AFFILIATE || "TodayCapitalGroup";
 const GIGFI_ENVIRONMENT = process.env.GIGFI_ENVIRONMENT || "sandbox"; // "sandbox" or "live"
 
