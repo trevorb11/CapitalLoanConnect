@@ -6236,9 +6236,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
   
-  // Start the scheduled sync (runs every hour)
-  setInterval(runScheduledSync, SCAN_INTERVAL_MS);
-  console.log("[STARTUP] Hourly Google Sheets approval sync scheduled");
+  // Google Sheets approval sync disabled — approval tracking handled via underwriting decisions
+  // setInterval(runScheduledSync, SCAN_INTERVAL_MS);
+  console.log("[STARTUP] Google Sheets approval sync disabled");
 
   // ========================================
   // REP CONSOLE ROUTES
