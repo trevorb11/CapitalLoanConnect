@@ -54,6 +54,7 @@ import GigFiStandalone from "@/pages/GigFiStandalone";
 import MerchantPortal from "@/pages/MerchantPortal";
 import MerchantActivate from "@/pages/MerchantActivate";
 import MerchantResetPassword from "@/pages/MerchantResetPassword";
+import MerchantProfile from "@/pages/MerchantProfile";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -134,6 +135,10 @@ function Router() {
       <Route path="/merchant" component={MerchantPortal} />
       <Route path="/merchant/activate" component={MerchantActivate} />
       <Route path="/merchant/reset-password" component={MerchantResetPassword} />
+
+      {/* Admin/Rep Merchant Profile (360° view) */}
+      <Route path="/merchant-profile" component={MerchantProfile} />
+      <Route path="/merchant-profile/:email" component={MerchantProfile} />
 
       {/* Partner Portal Routes */}
       <Route path="/partner" component={PartnerDashboard} />
