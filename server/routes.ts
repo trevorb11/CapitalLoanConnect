@@ -24,6 +24,7 @@ const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
+import { syncApplicationToSalesforce } from "./services/salesforce";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
 
@@ -1137,6 +1138,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         agentViewUrl,
         ...(fundingReportUrl && { fundingReportUrl }),
       });
+
+      // Sync to Salesforce (fire-and-forget — never blocks the merchant experience)
+      syncApplicationToSalesforce(updatedApp || application).catch(err =>
+        console.error('[SF Sync] Background error:', err.message)
+      );
       
       // Only send intake webhook when explicitly completed
       if (applicationData.isCompleted) {
