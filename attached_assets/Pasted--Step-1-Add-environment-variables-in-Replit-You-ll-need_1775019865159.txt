@@ -1,0 +1,329 @@
+ Step 1: Add environment variables in Replit
+
+  You'll need SF OAuth credentials. For now, use the CLI access token (we'll switch to a Connected App later):
+
+  SF_INSTANCE_URL=https://customization-data-47--dev.sandbox.my.salesforce.com
+  SF_ACCESS_TOKEN=(we'll get this in a sec)
+
+● Bash(sf org display --target-org my-sandbox --json 2>/dev/null | python -c "
+      import sys, json, io…)
+  ⎿  SF_INSTANCE_URL=https://customization-data-47--dev.sandbox.my.salesforce.com
+     SF_ACCESS_TOKEN=00DWJ000007Wjh7!AQEAQE.6hmf2RQIcQPaHa5v3...(full token below)
+     … +3 lines (ctrl+o to expand)
+  ⎿  (timeout 15s)
+
+● Add these two secrets in Replit:
+  - SF_INSTANCE_URL = https://customization-data-47--dev.sandbox.my.salesforce.com
+  - SF_ACCESS_TOKEN = the full token above
+
+  Note: This token expires periodically. Once you set up the Connected App, you'll replace it with a
+  client_credentials flow that auto-refreshes.
+
+  ---
+  Step 2: Create a new file salesforce-sync.js
+
+  Create this file in your Replit project root (or wherever your route files live):
+
+  /**
+   * Salesforce Sync — creates/updates SF records when a new application is saved.
+   * Called internally after loan_application insert.
+   */
+
+  const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
+  const SF_ACCESS_TOKEN = process.env.SF_ACCESS_TOKEN;
+
+  const US_STATES = new Set(["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","
+  KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA"
+  ,"RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"]);
+
+  function sfHeaders() {
+    return {
+      'Authorization': `Bearer ${SF_ACCESS_TOKEN}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  async function sfApi(method, path, body) {
+    try {
+      const res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
+        method,
+        headers: sfHeaders(),
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (res.status === 204) return { success: true, id: null };
+      const data = await res.json();
+      if (res.ok) return { success: true, id: data.id, data };
+      const msg = Array.isArray(data) ? data.map(e => e.message).join('; ') : data.message ||
+  JSON.stringify(data);
+      return { success: false, error: msg };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  async function sfQuery(soql) {
+    try {
+      const res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`, {
+        headers: sfHeaders(),
+      });
+      const data = await res.json();
+      return data.records || [];
+    } catch { return []; }
+  }
+
+  function parseNum(v) {
+    if (v === null || v === undefined) return null;
+    const n = Number(String(v).replace(/[$,]/g, ''));
+    return isNaN(n) ? null : n;
+  }
+
+  function mapCreditScore(v) {
+    if (!v) return null;
+    const n = parseInt(v);
+    if (isNaN(n)) return v;
+    if (n >= 800) return '800+';
+    if (n >= 750) return '750-799';
+    if (n >= 700) return '700-749';
+    if (n >= 650) return '650-699';
+    if (n >= 600) return '600-649';
+    if (n >= 550) return '550-599';
+    if (n >= 500) return '500-549';
+    return 'Below 500';
+  }
+
+  function mapIndustry(v) {
+    if (!v) return null;
+    const map = {
+      'Construction': 'Construction', 'Transportation': 'Transportation',
+      'Health Services': 'Healthcare', 'Retail': 'Retail',
+      'Professional Services': 'Professional Services',
+      'Utilities and Home Services': 'Construction',
+      'Hospitality': 'Hospitality', 'Restaurant': 'Restaurant',
+    };
+    return map[v] || v;
+  }
+
+  function clean(obj) {
+    const result = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v !== null && v !== undefined && v !== '') result[k] = v;
+    }
+    return result;
+  }
+
+  /**
+   * Main sync function — call this after saving a loan_application.
+   * Pass the full application object (camelCase or snake_case fields).
+   */
+  async function syncApplicationToSalesforce(app) {
+    if (!SF_INSTANCE_URL || !SF_ACCESS_TOKEN) {
+      console.log('[SF Sync] Skipped — no SF credentials configured');
+      return { synced: false, reason: 'no credentials' };
+    }
+
+    try {
+      // Normalize field names (handle both camelCase and snake_case)
+      const email = app.email || app.business_email || '';
+      const phone = app.phone || '';
+      const fullName = app.full_name || app.fullName || '';
+      const businessName = app.business_name || app.businessName || '';
+      const state = (app.state || '').toUpperCase().trim();
+
+      console.log(`[SF Sync] Processing: ${businessName || fullName || email}`);
+
+      // 1. Check for existing Opportunity by email or phone
+      let existingOpp = null;
+
+      if (email) {
+        const byEmail = await sfQuery(
+          `SELECT Id, Name FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}' LIMIT 1`
+        );
+        if (byEmail.length) existingOpp = byEmail[0];
+      }
+
+      if (!existingOpp && phone) {
+        const digits = phone.replace(/\D/g, '').slice(-10);
+        if (digits.length === 10) {
+          const byPhone = await sfQuery(
+            `SELECT Id, Name FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' LIMIT 1`
+          );
+          if (byPhone.length) existingOpp = byPhone[0];
+        }
+      }
+
+      if (existingOpp) {
+        // UPDATE existing opportunity with new app data
+        const updateFields = clean({
+          Amount_Requested__c: parseNum(app.requested_amount || app.requestedAmount),
+          Monthly_Revenue__c: parseNum(app.monthly_revenue || app.monthlyRevenue),
+          Industry__c: mapIndustry(app.industry),
+          Personal_Credit_Score_Range__c: mapCreditScore(app.credit_score || app.creditScore),
+          Primary_Business_Bank__c: app.bank_name || app.bankName || null,
+          Purpose_Of_Funds__c: app.use_of_funds || app.useOfFunds || null,
+          Funding_Time_Frame__c: app.funding_urgency || app.fundingUrgency || null,
+        });
+
+        if (Object.keys(updateFields).length > 0) {
+          const res = await sfApi('PATCH', `/sobjects/Opportunity/${existingOpp.Id}`, updateFields);
+          console.log(`[SF Sync] Updated existing Opp: ${existingOpp.Name} (${existingOpp.Id}) — ${res.success
+   ? 'OK' : res.error}`);
+          return { synced: true, action: 'updated', oppId: existingOpp.Id };
+        }
+        return { synced: true, action: 'no-update-needed', oppId: existingOpp.Id };
+      }
+
+      // 2. No match — create new Account + Contact + Opportunity
+
+      // Get Merchant RecordTypeId (cache this in production)
+      const rts = await sfQuery("SELECT Id FROM RecordType WHERE SObjectType='Account' AND Name='Merchant' AND
+   IsActive=true");
+      const merchantRtId = rts[0]?.Id;
+
+      const accountName = (businessName || fullName || email || 'Unknown').slice(0, 255);
+      const nameParts = fullName.split(/\s+/);
+      const today = new Date();
+      const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
+
+      // Create Account
+      const account = clean({
+        Name: accountName,
+        RecordTypeId: merchantRtId,
+        Company_Name__c: businessName || null,
+        Doing_Business_As__c: app.doing_business_as || app.doingBusinessAs || null,
+        EIN__c: app.ein || null,
+        Industry: mapIndustry(app.industry),
+        Monthly_Revenue__c: parseNum(app.monthly_revenue || app.monthlyRevenue),
+        Primary_Business_Bank__c: app.bank_name || app.bankName || null,
+        Phone: phone || null,
+        Website: app.company_website || app.companyWebsite || null,
+        BillingCity: app.city || null,
+        ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
+        BillingPostalCode: app.zip_code || app.zipCode || null,
+        ...(state || app.city ? { BillingCountryCode: 'US' } : {}),
+        Account_Status__c: 'Pending',
+      });
+
+      const acctRes = await sfApi('POST', '/sobjects/Account', account);
+      if (!acctRes.success) {
+        console.log(`[SF Sync] Account creation failed: ${acctRes.error}`);
+        return { synced: false, error: `Account: ${acctRes.error}` };
+      }
+
+      // Create Contact
+      const contact = clean({
+        AccountId: acctRes.id,
+        FirstName: nameParts[0] || null,
+        LastName: nameParts.slice(1).join(' ') || email || 'Unknown',
+        Email: email || null,
+        Phone: phone || null,
+        Personal_Credit_Score_Range__c: mapCreditScore(app.credit_score || app.creditScore),
+        Scrubbed__c: false,
+        Scrubbed1__c: false,
+        Opted_In_for_AI_Calls__c: false,
+        Opted_In_for_AI_Calls1__c: false,
+        Do_Not_Contact__c: false,
+        Consent_to_Text__c: false,
+        MailingCity: app.city || null,
+        ...(US_STATES.has(state) ? { MailingStateCode: state } : {}),
+        ...(state || app.city ? { MailingCountryCode: 'US' } : {}),
+      });
+
+      const ctRes = await sfApi('POST', '/sobjects/Contact', contact);
+
+      // Create Opportunity
+      const closeDate = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+      const opportunity = clean({
+        AccountId: acctRes.id,
+        Primary_Contact__c: ctRes.success ? ctRes.id : null,
+        Name: `${accountName} - ${dateStr}`.slice(0, 120),
+        StageName: 'Application & Docs',
+        CloseDate: closeDate,
+        Amount_Requested__c: parseNum(app.requested_amount || app.requestedAmount),
+        Monthly_Revenue__c: parseNum(app.monthly_revenue || app.monthlyRevenue),
+        Industry__c: mapIndustry(app.industry),
+        Personal_Credit_Score_Range__c: mapCreditScore(app.credit_score || app.creditScore),
+        Primary_Business_Bank__c: app.bank_name || app.bankName || null,
+        Purpose_Of_Funds__c: app.use_of_funds || app.useOfFunds || null,
+        Funding_Time_Frame__c: app.funding_urgency || app.fundingUrgency || null,
+        MCA_Balance_Amount__c: parseNum(app.mca_balance_amount || app.mcaBalanceAmount),
+        Phone_Number__c: phone || null,
+        Email__c: email || null,
+        LeadSource: app.referral_source || app.referralSource || 'Website',
+        Revenue_Verified__c: false,
+        Bank_Statement_Tampering_Flag__c: false,
+      });
+
+      const oppRes = await sfApi('POST', '/sobjects/Opportunity', opportunity);
+
+      console.log(`[SF Sync] Created: Account=${acctRes.id}, Contact=${ctRes.id || 'failed'}, Opp=${oppRes.id
+  || 'failed'}`);
+      return {
+        synced: true,
+        action: 'created',
+        accountId: acctRes.id,
+        contactId: ctRes.id,
+        oppId: oppRes.id,
+      };
+
+    } catch (err) {
+      console.error(`[SF Sync] Error: ${err.message}`);
+      return { synced: false, error: err.message };
+    }
+  }
+
+  module.exports = { syncApplicationToSalesforce };
+
+  ---
+  Step 3: Add one line to the application save route
+
+  Find the route in your server code where loan_applications are inserted (probably something like POST
+  /api/applications or similar). After the database insert succeeds, add:
+
+  const { syncApplicationToSalesforce } = require('./salesforce-sync');
+
+  // ... existing code that saves to DB ...
+
+  // After successful DB save, sync to Salesforce (fire-and-forget)
+  syncApplicationToSalesforce(applicationData).catch(err =>
+    console.error('[SF Sync] Background error:', err.message)
+  );
+
+  The .catch() ensures that if SF is down or the token expires, the application still saves normally — SF sync
+   never blocks the merchant experience.
+
+  ---
+  Summary
+
+  ┌────────────────────────┬────────────────────┬───────────────┐
+  │          What          │       Where        │ Lines of code │
+  ├────────────────────────┼────────────────────┼───────────────┤
+  │ New file               │ salesforce-sync.js │ ~180 lines    │
+  ├────────────────────────┼────────────────────┼───────────────┤
+  │ Edit to existing route │ After DB insert    │ 3 lines       │
+  ├────────────────────────┼────────────────────┼───────────────┤
+  │ Environment variables  │ Replit Secrets     │ 2 variables   │
+  └────────────────────────┴────────────────────┴───────────────┘
+
+  What it does on every new application:
+  1. Checks SF for existing Opportunity by email → phone
+  2. If found → updates with new application data
+  3. If not found → creates Account + Contact + Opportunity
+  4. Logs the result, never blocks the application flow
+
+  One caveat: The access token will expire. Once you create the Connected App in Setup, replace the token
+  logic with:
+
+  // Replace static token with auto-refreshing OAuth
+  async function getAccessToken() {
+    const res = await fetch(`${SF_INSTANCE_URL}/services/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: process.env.SF_CLIENT_ID,
+        client_secret: process.env.SF_CLIENT_SECRET,
+      }),
+    });
+    const data = await res.json();
+    return data.access_token;
+  }
