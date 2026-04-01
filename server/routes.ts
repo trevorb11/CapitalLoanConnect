@@ -9223,22 +9223,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Valid email is required" });
       }
 
-      // Fetch everything in parallel
+      // ── PHASE 1: Fetch everything by email ──
       const [
-        applications,
-        decisions,
-        bankStatements,
-        congratsUploads,
-        messages,
+        emailApplications,
+        emailDecisions,
+        emailBankStatements,
+        emailCongratsUploads,
+        emailMessages,
         portalAccount,
-        lenderApprovalsRaw,
+        emailLenderApprovals,
       ] = await Promise.all([
         storage.getAllLoanApplications().then(apps => apps.filter(a => a.email?.toLowerCase() === email)),
-        storage.getBusinessUnderwritingDecisionsByEmail(email).then(async (emailDecisions) => {
-          const merchantDecisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(email);
-          // Merge & deduplicate
-          const map = new Map<string, typeof emailDecisions[0]>();
-          for (const d of [...emailDecisions, ...merchantDecisions]) map.set(d.id, d);
+        storage.getBusinessUnderwritingDecisionsByEmail(email).then(async (byEmail) => {
+          const byMerchant = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(email);
+          const map = new Map<string, typeof byEmail[0]>();
+          for (const d of [...byEmail, ...byMerchant]) map.set(d.id, d);
           return Array.from(map.values());
         }),
         storage.getBankStatementUploadsByEmail(email),
@@ -9247,6 +9246,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storage.getMerchantPortalAccountByEmail(email),
         storage.getAllLenderApprovals().then(all => all.filter(a => a.businessEmail?.toLowerCase() === email)),
       ]);
+
+      // ── PHASE 2: Collect known business names for fallback matching ──
+      const knownNames = new Set<string>();
+      for (const a of emailApplications) {
+        if (a.businessName) knownNames.add(a.businessName.toLowerCase().trim());
+        if (a.legalBusinessName) knownNames.add(a.legalBusinessName.toLowerCase().trim());
+      }
+      for (const d of emailDecisions) {
+        if (d.businessName) knownNames.add(d.businessName.toLowerCase().trim());
+      }
+      if (portalAccount?.businessName) knownNames.add(portalAccount.businessName.toLowerCase().trim());
+      // Also add names from lender approvals
+      for (const la of emailLenderApprovals) {
+        if (la.businessName) knownNames.add(la.businessName.toLowerCase().trim());
+      }
+
+      // Helper: check if a name matches any of our known business names
+      const nameMatches = (name: string | null | undefined): boolean => {
+        if (!name) return false;
+        const normalized = name.toLowerCase().trim();
+        if (!normalized) return false;
+        for (const known of knownNames) {
+          // Exact match or one contains the other (handles "ABC Corp" vs "ABC Corporation")
+          if (normalized === known || normalized.includes(known) || known.includes(normalized)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // ── PHASE 3: Business-name fallback for categories that came up empty ──
+      let applications = emailApplications;
+      let decisions = emailDecisions;
+      let bankStatements = emailBankStatements;
+      let congratsUploads = emailCongratsUploads;
+      let messages = emailMessages;
+      let lenderApprovalsRaw = emailLenderApprovals;
+
+      if (knownNames.size > 0) {
+        // For each data category, if email match was empty, try business name match
+        // Also merge in any business-name matches that email didn't catch (different email, same business)
+
+        if (applications.length === 0 || true) {
+          // Always try to find additional apps by business name to catch different-email submissions
+          const allApps = await storage.getAllLoanApplications();
+          const emailAppIds = new Set(applications.map(a => a.id));
+          const nameMatchedApps = allApps.filter(a =>
+            !emailAppIds.has(a.id) && (nameMatches(a.businessName) || nameMatches(a.legalBusinessName))
+          );
+          if (nameMatchedApps.length > 0) {
+            applications = [...applications, ...nameMatchedApps];
+            // Add any new business names we discovered
+            for (const a of nameMatchedApps) {
+              if (a.businessName) knownNames.add(a.businessName.toLowerCase().trim());
+              if (a.legalBusinessName) knownNames.add(a.legalBusinessName.toLowerCase().trim());
+            }
+          }
+        }
+
+        if (decisions.length === 0 || true) {
+          const allDecisions = await storage.getAllBusinessUnderwritingDecisions();
+          const emailDecisionIds = new Set(decisions.map(d => d.id));
+          const nameMatchedDecisions = allDecisions.filter(d =>
+            !emailDecisionIds.has(d.id) && nameMatches(d.businessName)
+          );
+          if (nameMatchedDecisions.length > 0) {
+            decisions = [...decisions, ...nameMatchedDecisions];
+          }
+        }
+
+        if (bankStatements.length === 0 || true) {
+          const allStatements = await storage.getAllBankStatementUploads();
+          const emailStatementIds = new Set(bankStatements.map(s => s.id));
+          const nameMatchedStatements = allStatements.filter(s =>
+            !emailStatementIds.has(s.id) && nameMatches(s.businessName)
+          );
+          if (nameMatchedStatements.length > 0) {
+            bankStatements = [...bankStatements, ...nameMatchedStatements];
+          }
+        }
+
+        if (congratsUploads.length === 0 || true) {
+          const allCongrats = await storage.getAllCongratulationsUploads();
+          const emailCongratsIds = new Set(congratsUploads.map(c => c.id));
+          const nameMatchedCongrats = allCongrats.filter(c =>
+            !emailCongratsIds.has(c.id) && nameMatches(c.businessName)
+          );
+          if (nameMatchedCongrats.length > 0) {
+            congratsUploads = [...congratsUploads, ...nameMatchedCongrats];
+          }
+        }
+
+        if (lenderApprovalsRaw.length === 0 || true) {
+          const allLenderApprovals = await storage.getAllLenderApprovals();
+          const emailLaIds = new Set(lenderApprovalsRaw.map(la => la.id));
+          const nameMatchedLa = allLenderApprovals.filter(la =>
+            !emailLaIds.has(la.id) && nameMatches(la.businessName)
+          );
+          if (nameMatchedLa.length > 0) {
+            lenderApprovalsRaw = [...lenderApprovalsRaw, ...nameMatchedLa];
+          }
+        }
+
+        // Messages stay email-only (they are tied to portal sessions, name matching would be unreliable)
+      }
 
       // Separate decisions by status
       const approvals = decisions.filter(d => d.status === 'approved');
@@ -9364,6 +9468,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+      // Track which records matched by email vs business name
+      const emailAppIds = new Set(emailApplications.map(a => a.id));
+      const emailDecisionIds = new Set(emailDecisions.map(d => d.id));
+      const emailStatementIds = new Set(emailBankStatements.map(s => s.id));
+      const emailCongratsIds = new Set(emailCongratsUploads.map(c => c.id));
+      const emailLaIds = new Set(emailLenderApprovals.map(la => la.id));
+
       res.json({
         businessInfo,
         applications: applications.map(a => ({
@@ -9382,6 +9493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           creditScore: a.creditScore || a.personalCreditScoreRange,
           createdAt: a.createdAt,
           updatedAt: a.updatedAt,
+          matchedVia: emailAppIds.has(a.id) ? 'email' as const : 'business_name' as const,
         })),
         approvals: approvals.map(d => ({
           id: d.id,
@@ -9399,6 +9511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           showOnLetter: d.showOnLetter,
           approvalSlug: d.approvalSlug,
           createdAt: d.createdAt,
+          matchedVia: emailDecisionIds.has(d.id) ? 'email' as const : 'business_name' as const,
         })),
         declines: declines.map(d => ({
           id: d.id,
@@ -9408,6 +9521,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           notes: d.notes,
           reviewedBy: d.reviewedBy,
           createdAt: d.createdAt,
+          matchedVia: emailDecisionIds.has(d.id) ? 'email' as const : 'business_name' as const,
         })),
         fundedDeals,
         lenderApprovals: lenderApprovalsRaw.map(la => ({
@@ -9420,6 +9534,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           productType: la.productType,
           status: la.status,
           createdAt: la.createdAt,
+          matchedVia: emailLaIds.has(la.id) ? 'email' as const : 'business_name' as const,
         })),
         documents,
         messages,

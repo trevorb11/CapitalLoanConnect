@@ -83,6 +83,7 @@ interface MerchantProfileData {
     creditScore: string;
     createdAt: string;
     updatedAt: string;
+    matchedVia?: "email" | "business_name";
   }>;
   approvals: Array<{
     id: string;
@@ -100,6 +101,7 @@ interface MerchantProfileData {
     showOnLetter: boolean;
     approvalSlug: string;
     createdAt: string;
+    matchedVia?: "email" | "business_name";
   }>;
   declines: Array<{
     id: string;
@@ -109,6 +111,7 @@ interface MerchantProfileData {
     notes: string;
     reviewedBy: string;
     createdAt: string;
+    matchedVia?: "email" | "business_name";
   }>;
   fundedDeals: Array<{
     id: string;
@@ -133,6 +136,7 @@ interface MerchantProfileData {
     productType: string;
     status: string;
     createdAt: string;
+    matchedVia?: "email" | "business_name";
   }>;
   documents: Array<{
     id: string;
@@ -201,6 +205,15 @@ function StatusBadge({ status }: { status: string }) {
   };
   const info = map[status] || map.unknown;
   return <Badge variant={info.variant}>{info.label}</Badge>;
+}
+
+function NameMatchBadge({ matchedVia }: { matchedVia?: "email" | "business_name" }) {
+  if (matchedVia !== "business_name") return null;
+  return (
+    <Badge variant="outline" className="text-[10px] border-amber-400/50 text-amber-500 px-1.5 py-0">
+      name match
+    </Badge>
+  );
 }
 
 function MerchantSearch({ onSelect }: { onSelect: (email: string) => void }) {
@@ -576,10 +589,12 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
                           ) : (
                             <Badge variant="outline">Step {app.currentStep || 1}</Badge>
                           )}
+                          <NameMatchBadge matchedVia={app.matchedVia} />
                         </h4>
                         <p className="text-sm text-muted-foreground mt-1">
                           ID: {app.id} · Submitted {fmtDate(app.createdAt)}
                           {app.agentName && ` · Agent: ${app.agentName}`}
+                          {app.matchedVia === "business_name" && app.email && ` · Email: ${app.email}`}
                         </p>
                       </div>
                       <Link href={`/dashboard`}>
@@ -688,6 +703,7 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="default">Approved</Badge>
+                            <NameMatchBadge matchedVia={a.matchedVia} />
                             {a.approvalSlug && (
                               <Link href={`/approved/${a.approvalSlug}`}>
                                 <Button variant="ghost" size="sm">
@@ -753,6 +769,7 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
                           <p className="text-sm text-muted-foreground">{fmtDate(d.createdAt)}</p>
                           <div className="flex items-center gap-2">
                             <Badge variant="destructive">Declined</Badge>
+                            <NameMatchBadge matchedVia={d.matchedVia} />
                             {d.followUpWorthy && <Badge variant="outline" className="border-yellow-500 text-yellow-500">Follow Up</Badge>}
                           </div>
                         </div>
