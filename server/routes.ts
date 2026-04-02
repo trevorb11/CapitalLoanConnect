@@ -9205,5 +9205,415 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // ADMIN MERCHANT PROFILE — 360° view of a merchant by email
+  // ═══════════════════════════════════════════════════════════════
+
+  app.get("/api/admin/merchant-profile/:email", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting' && req.session.user.role !== 'agent') {
+      return res.status(403).json({ error: "Staff access required" });
+    }
+
+    try {
+      const email = decodeURIComponent(req.params.email).toLowerCase();
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ error: "Valid email is required" });
+      }
+
+      // ── PHASE 1: Fetch everything by email ──
+      const [
+        emailApplications,
+        emailDecisions,
+        emailBankStatements,
+        emailCongratsUploads,
+        emailMessages,
+        portalAccount,
+        emailLenderApprovals,
+      ] = await Promise.all([
+        storage.getAllLoanApplications().then(apps => apps.filter(a => a.email?.toLowerCase() === email)),
+        storage.getBusinessUnderwritingDecisionsByEmail(email).then(async (byEmail) => {
+          const byMerchant = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(email);
+          const map = new Map<string, typeof byEmail[0]>();
+          for (const d of [...byEmail, ...byMerchant]) map.set(d.id, d);
+          return Array.from(map.values());
+        }),
+        storage.getBankStatementUploadsByEmail(email),
+        storage.getCongratulationsUploadsByEmail(email),
+        storage.getMerchantMessagesByEmail(email),
+        storage.getMerchantPortalAccountByEmail(email),
+        storage.getAllLenderApprovals().then(all => all.filter(a => a.businessEmail?.toLowerCase() === email)),
+      ]);
+
+      // ── PHASE 2: Collect known business names for fallback matching ──
+      const knownNames = new Set<string>();
+      for (const a of emailApplications) {
+        if (a.businessName) knownNames.add(a.businessName.toLowerCase().trim());
+        if (a.legalBusinessName) knownNames.add(a.legalBusinessName.toLowerCase().trim());
+      }
+      for (const d of emailDecisions) {
+        if (d.businessName) knownNames.add(d.businessName.toLowerCase().trim());
+      }
+      if (portalAccount?.businessName) knownNames.add(portalAccount.businessName.toLowerCase().trim());
+      // Also add names from lender approvals
+      for (const la of emailLenderApprovals) {
+        if (la.businessName) knownNames.add(la.businessName.toLowerCase().trim());
+      }
+
+      // Helper: check if a name matches any of our known business names
+      const nameMatches = (name: string | null | undefined): boolean => {
+        if (!name) return false;
+        const normalized = name.toLowerCase().trim();
+        if (!normalized) return false;
+        for (const known of knownNames) {
+          // Exact match or one contains the other (handles "ABC Corp" vs "ABC Corporation")
+          if (normalized === known || normalized.includes(known) || known.includes(normalized)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // ── PHASE 3: Business-name fallback for categories that came up empty ──
+      let applications = emailApplications;
+      let decisions = emailDecisions;
+      let bankStatements = emailBankStatements;
+      let congratsUploads = emailCongratsUploads;
+      let messages = emailMessages;
+      let lenderApprovalsRaw = emailLenderApprovals;
+
+      if (knownNames.size > 0) {
+        // For each data category, if email match was empty, try business name match
+        // Also merge in any business-name matches that email didn't catch (different email, same business)
+
+        if (applications.length === 0 || true) {
+          // Always try to find additional apps by business name to catch different-email submissions
+          const allApps = await storage.getAllLoanApplications();
+          const emailAppIds = new Set(applications.map(a => a.id));
+          const nameMatchedApps = allApps.filter(a =>
+            !emailAppIds.has(a.id) && (nameMatches(a.businessName) || nameMatches(a.legalBusinessName))
+          );
+          if (nameMatchedApps.length > 0) {
+            applications = [...applications, ...nameMatchedApps];
+            // Add any new business names we discovered
+            for (const a of nameMatchedApps) {
+              if (a.businessName) knownNames.add(a.businessName.toLowerCase().trim());
+              if (a.legalBusinessName) knownNames.add(a.legalBusinessName.toLowerCase().trim());
+            }
+          }
+        }
+
+        if (decisions.length === 0 || true) {
+          const allDecisions = await storage.getAllBusinessUnderwritingDecisions();
+          const emailDecisionIds = new Set(decisions.map(d => d.id));
+          const nameMatchedDecisions = allDecisions.filter(d =>
+            !emailDecisionIds.has(d.id) && nameMatches(d.businessName)
+          );
+          if (nameMatchedDecisions.length > 0) {
+            decisions = [...decisions, ...nameMatchedDecisions];
+          }
+        }
+
+        if (bankStatements.length === 0 || true) {
+          const allStatements = await storage.getAllBankStatementUploads();
+          const emailStatementIds = new Set(bankStatements.map(s => s.id));
+          const nameMatchedStatements = allStatements.filter(s =>
+            !emailStatementIds.has(s.id) && nameMatches(s.businessName)
+          );
+          if (nameMatchedStatements.length > 0) {
+            bankStatements = [...bankStatements, ...nameMatchedStatements];
+          }
+        }
+
+        if (congratsUploads.length === 0 || true) {
+          const allCongrats = await storage.getAllCongratulationsUploads();
+          const emailCongratsIds = new Set(congratsUploads.map(c => c.id));
+          const nameMatchedCongrats = allCongrats.filter(c =>
+            !emailCongratsIds.has(c.id) && nameMatches(c.businessName)
+          );
+          if (nameMatchedCongrats.length > 0) {
+            congratsUploads = [...congratsUploads, ...nameMatchedCongrats];
+          }
+        }
+
+        if (lenderApprovalsRaw.length === 0 || true) {
+          const allLenderApprovals = await storage.getAllLenderApprovals();
+          const emailLaIds = new Set(lenderApprovalsRaw.map(la => la.id));
+          const nameMatchedLa = allLenderApprovals.filter(la =>
+            !emailLaIds.has(la.id) && nameMatches(la.businessName)
+          );
+          if (nameMatchedLa.length > 0) {
+            lenderApprovalsRaw = [...lenderApprovalsRaw, ...nameMatchedLa];
+          }
+        }
+
+        // Messages stay email-only (they are tied to portal sessions, name matching would be unreliable)
+      }
+
+      // Separate decisions by status
+      const approvals = decisions.filter(d => d.status === 'approved');
+      const declines = decisions.filter(d => d.status === 'declined');
+      const fundedDecisions = decisions.filter(d => d.status === 'funded' || d.fundedDate);
+
+      // Build funded deals list (same logic as merchant portal)
+      const fundedDeals: any[] = [];
+      for (const decision of fundedDecisions) {
+        const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
+        if (fundings.length > 0) {
+          for (const funding of fundings) {
+            fundedDeals.push({
+              id: funding.id || decision.id,
+              lender: funding.lender || decision.lender || 'N/A',
+              advanceAmount: funding.advanceAmount || decision.advanceAmount || '0',
+              factorRate: funding.factorRate || decision.factorRate || '0',
+              totalPayback: funding.totalPayback || decision.totalPayback || '0',
+              paymentFrequency: funding.paymentFrequency || decision.paymentFrequency || 'daily',
+              fundedDate: funding.fundedDate || (decision.fundedDate ? new Date(decision.fundedDate).toISOString() : null),
+              term: funding.term || decision.term || '',
+              assignedRep: funding.assignedRep || decision.assignedRep || null,
+              notes: funding.notes || decision.notes || null,
+              decisionId: decision.id,
+            });
+          }
+        } else {
+          fundedDeals.push({
+            id: decision.id,
+            lender: decision.lender || 'N/A',
+            advanceAmount: decision.advanceAmount || '0',
+            factorRate: decision.factorRate || '0',
+            totalPayback: decision.totalPayback || '0',
+            paymentFrequency: decision.paymentFrequency || 'daily',
+            fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString() : null,
+            term: decision.term || '',
+            assignedRep: decision.assignedRep || null,
+            notes: decision.notes || null,
+            decisionId: decision.id,
+          });
+        }
+      }
+
+      // Documents = congrats uploads (voided check, drivers license) + bank statements
+      const documents = [
+        ...congratsUploads.map(c => ({
+          id: c.id,
+          type: c.docType,
+          name: c.originalFileName,
+          fileSize: c.fileSize,
+          category: 'closing' as const,
+          createdAt: c.createdAt,
+          objectName: c.objectName,
+        })),
+        ...bankStatements.map(s => ({
+          id: s.id,
+          type: 'bank_statement',
+          name: s.originalFileName,
+          fileSize: s.fileSize,
+          category: 'statements' as const,
+          createdAt: s.createdAt,
+          viewToken: s.viewToken,
+          approvalStatus: s.approvalStatus,
+          lenderName: s.lenderName,
+        })),
+      ];
+
+      // Derive business info from first available source
+      const firstApp = applications[0];
+      const firstDecision = decisions[0];
+      const businessInfo = {
+        businessName: firstApp?.businessName || firstApp?.legalBusinessName || firstDecision?.businessName || portalAccount?.businessName || '',
+        contactName: firstApp?.fullName || portalAccount?.name || '',
+        phone: firstApp?.phone || firstDecision?.businessPhone || portalAccount?.phone || '',
+        email,
+        industry: firstApp?.industry || '',
+        ein: firstApp?.ein || '',
+        timeInBusiness: firstApp?.timeInBusiness || '',
+        monthlyRevenue: firstApp?.monthlyRevenue || firstApp?.averageMonthlyRevenue || '',
+        creditScore: firstApp?.creditScore || firstApp?.personalCreditScoreRange || '',
+        businessAddress: firstApp?.businessAddress || '',
+        city: firstApp?.city || '',
+        state: firstApp?.state || '',
+        zipCode: firstApp?.zipCode || '',
+        requestedAmount: firstApp?.requestedAmount || '',
+      };
+
+      // Portal status
+      const portalStatus = {
+        hasAccount: !!portalAccount,
+        hasPassword: !!(portalAccount?.passwordHash || fundedDecisions.some(d => d.merchantPasswordHash)),
+        portalLinkSentAt: portalAccount?.portalLinkSentAt || null,
+        createdAt: portalAccount?.createdAt || null,
+      };
+
+      // Activity timeline (most recent first)
+      const timeline: Array<{ type: string; date: string; summary: string; id?: string }> = [];
+      for (const app of applications) {
+        timeline.push({ type: 'application', date: (app.createdAt || new Date()).toISOString(), summary: `Application submitted${app.isFullApplicationCompleted ? ' (full)' : app.isCompleted ? ' (intake)' : ' (partial)'}`, id: app.id });
+      }
+      for (const d of approvals) {
+        timeline.push({ type: 'approval', date: (d.createdAt || new Date()).toISOString(), summary: `Approved by ${d.lender || 'lender'} for ${d.advanceAmount ? `$${parseFloat(d.advanceAmount).toLocaleString()}` : 'N/A'}`, id: d.id });
+      }
+      for (const d of declines) {
+        timeline.push({ type: 'decline', date: (d.createdAt || new Date()).toISOString(), summary: `Declined${d.declineReason ? `: ${d.declineReason}` : ''}`, id: d.id });
+      }
+      for (const deal of fundedDeals) {
+        timeline.push({ type: 'funded', date: deal.fundedDate || (new Date()).toISOString(), summary: `Funded by ${deal.lender} — $${parseFloat(deal.advanceAmount).toLocaleString()}`, id: deal.id });
+      }
+      for (const s of bankStatements) {
+        timeline.push({ type: 'statement', date: (s.receivedAt || s.createdAt || new Date()).toISOString(), summary: `Bank statement uploaded: ${s.originalFileName}`, id: s.id });
+      }
+      for (const c of congratsUploads) {
+        timeline.push({ type: 'document', date: (c.createdAt || new Date()).toISOString(), summary: `${c.docType === 'voided_check' ? 'Voided check' : 'Driver\'s license'} uploaded`, id: c.id });
+      }
+      timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Track which records matched by email vs business name
+      const emailAppIds = new Set(emailApplications.map(a => a.id));
+      const emailDecisionIds = new Set(emailDecisions.map(d => d.id));
+      const emailStatementIds = new Set(emailBankStatements.map(s => s.id));
+      const emailCongratsIds = new Set(emailCongratsUploads.map(c => c.id));
+      const emailLaIds = new Set(emailLenderApprovals.map(la => la.id));
+
+      res.json({
+        businessInfo,
+        applications: applications.map(a => ({
+          id: a.id,
+          fullName: a.fullName,
+          businessName: a.businessName || a.legalBusinessName,
+          email: a.email,
+          phone: a.phone,
+          isCompleted: a.isCompleted,
+          isFullApplicationCompleted: a.isFullApplicationCompleted,
+          currentStep: a.currentStep,
+          agentName: a.agentName,
+          agentEmail: a.agentEmail,
+          requestedAmount: a.requestedAmount,
+          monthlyRevenue: a.monthlyRevenue,
+          creditScore: a.creditScore || a.personalCreditScoreRange,
+          createdAt: a.createdAt,
+          updatedAt: a.updatedAt,
+          matchedVia: emailAppIds.has(a.id) ? 'email' as const : 'business_name' as const,
+        })),
+        approvals: approvals.map(d => ({
+          id: d.id,
+          lender: d.lender,
+          advanceAmount: d.advanceAmount,
+          term: d.term,
+          factorRate: d.factorRate,
+          paymentFrequency: d.paymentFrequency,
+          totalPayback: d.totalPayback,
+          approvalDate: d.approvalDate,
+          approvalDeadline: d.approvalDeadline,
+          assignedRep: d.assignedRep,
+          notes: d.notes,
+          additionalApprovals: d.additionalApprovals,
+          showOnLetter: d.showOnLetter,
+          approvalSlug: d.approvalSlug,
+          createdAt: d.createdAt,
+          matchedVia: emailDecisionIds.has(d.id) ? 'email' as const : 'business_name' as const,
+        })),
+        declines: declines.map(d => ({
+          id: d.id,
+          declineReason: d.declineReason,
+          followUpWorthy: d.followUpWorthy,
+          followUpDate: d.followUpDate,
+          notes: d.notes,
+          reviewedBy: d.reviewedBy,
+          createdAt: d.createdAt,
+          matchedVia: emailDecisionIds.has(d.id) ? 'email' as const : 'business_name' as const,
+        })),
+        fundedDeals,
+        lenderApprovals: lenderApprovalsRaw.map(la => ({
+          id: la.id,
+          lenderName: la.lenderName,
+          approvedAmount: la.approvedAmount,
+          termLength: la.termLength,
+          factorRate: la.factorRate,
+          paybackAmount: la.paybackAmount,
+          productType: la.productType,
+          status: la.status,
+          createdAt: la.createdAt,
+          matchedVia: emailLaIds.has(la.id) ? 'email' as const : 'business_name' as const,
+        })),
+        documents,
+        messages,
+        portalStatus,
+        timeline,
+      });
+    } catch (error) {
+      console.error("[ADMIN] Merchant profile error:", error);
+      res.status(500).json({ error: "Failed to load merchant profile" });
+    }
+  });
+
+  // Search merchants by name or email for the merchant profile lookup
+  app.get("/api/admin/merchant-search", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting' && req.session.user.role !== 'agent') {
+      return res.status(403).json({ error: "Staff access required" });
+    }
+
+    try {
+      const q = (req.query.q as string || '').toLowerCase().trim();
+      if (!q || q.length < 2) {
+        return res.json([]);
+      }
+
+      // Search across applications and decisions for matching email or business name
+      const [allApps, allDecisions] = await Promise.all([
+        storage.getAllLoanApplications(),
+        storage.getAllBusinessUnderwritingDecisions(),
+      ]);
+
+      const merchantMap = new Map<string, { email: string; businessName: string; contactName: string; hasDecision: boolean; status: string }>();
+
+      for (const app of allApps) {
+        const email = app.email?.toLowerCase();
+        if (!email) continue;
+        if (email.includes(q) || (app.businessName || '').toLowerCase().includes(q) || (app.fullName || '').toLowerCase().includes(q)) {
+          if (!merchantMap.has(email)) {
+            merchantMap.set(email, {
+              email,
+              businessName: app.businessName || app.legalBusinessName || '',
+              contactName: app.fullName || '',
+              hasDecision: false,
+              status: app.isFullApplicationCompleted ? 'full_app' : app.isCompleted ? 'intake' : 'partial',
+            });
+          }
+        }
+      }
+
+      for (const d of allDecisions) {
+        const email = (d.businessEmail || d.merchantEmail || '').toLowerCase();
+        if (!email) continue;
+        if (email.includes(q) || (d.businessName || '').toLowerCase().includes(q)) {
+          const existing = merchantMap.get(email);
+          if (existing) {
+            existing.hasDecision = true;
+            existing.status = d.fundedDate ? 'funded' : d.status || existing.status;
+            if (!existing.businessName && d.businessName) existing.businessName = d.businessName;
+          } else {
+            merchantMap.set(email, {
+              email,
+              businessName: d.businessName || '',
+              contactName: '',
+              hasDecision: true,
+              status: d.fundedDate ? 'funded' : d.status || 'unknown',
+            });
+          }
+        }
+      }
+
+      const results = Array.from(merchantMap.values()).slice(0, 20);
+      res.json(results);
+    } catch (error) {
+      console.error("[ADMIN] Merchant search error:", error);
+      res.status(500).json({ error: "Search failed" });
+    }
+  });
+
   return httpServer;
 }

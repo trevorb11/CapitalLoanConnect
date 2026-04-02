@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { LenderAutocomplete } from "@/components/LenderAutocomplete";
 import {
   Select,
@@ -1000,6 +1000,14 @@ export default function Approvals() {
                         )}
                       </div>
                       <div className="flex gap-2">
+                        {decision.businessEmail && (
+                          <Link href={`/merchant-profile/${encodeURIComponent(decision.businessEmail)}`}>
+                            <Button variant="outline" size="sm" data-testid={`button-profile-${decision.id}`}>
+                              <Building2 className="w-4 h-4 mr-1" />
+                              Profile
+                            </Button>
+                          </Link>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"

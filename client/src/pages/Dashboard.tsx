@@ -3624,6 +3624,14 @@ export default function Dashboard() {
                   </Link>
                   <DropdownMenuSeparator />
                   {(authData.role === "admin" || authData.role === "agent") && (
+                    <Link href="/merchant-profile">
+                      <DropdownMenuItem className="cursor-pointer">
+                        <Building2 className="w-4 h-4 mr-2" />
+                        Merchant Profiles
+                      </DropdownMenuItem>
+                    </Link>
+                  )}
+                  {(authData.role === "admin" || authData.role === "agent") && (
                     <Link href="/rep-console">
                       <DropdownMenuItem className="cursor-pointer">
                         <User className="w-4 h-4 mr-2" />
@@ -4009,16 +4017,29 @@ export default function Dashboard() {
                       View Application
                     </Button>
                     {app.email && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => sendPortalLinkMutation.mutate({ applicationId: app.id, email: app.email || undefined })}
-                        disabled={sendPortalLinkMutation.isPending}
-                        data-testid={`button-send-portal-link-${app.id}`}
-                      >
-                        <Mail className="w-4 h-4 mr-2" />
-                        {sendPortalLinkMutation.isPending ? "Sending..." : "Send Portal Link"}
-                      </Button>
+                      <>
+                        <Link href={`/merchant-profile/${encodeURIComponent(app.email)}`}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            data-testid={`button-view-profile-${app.id}`}
+                          >
+                            <Building2 className="w-4 h-4 mr-2" />
+                            Merchant Profile
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => sendPortalLinkMutation.mutate({ applicationId: app.id, email: app.email || undefined })}
+                          disabled={sendPortalLinkMutation.isPending}
+                          data-testid={`button-send-portal-link-${app.id}`}
+                        >
+                          <Mail className="w-4 h-4 mr-2" />
+                          {sendPortalLinkMutation.isPending ? "Sending..." : "Send Portal Link"}
+                        </Button>
+                      </>
                     )}
                     <p className="text-xs text-muted-foreground text-center" data-testid={`text-app-id-${app.id}`}>ID: {app.id?.slice(0, 8)}...</p>
                   </div>

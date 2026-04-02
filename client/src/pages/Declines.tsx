@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import {
   Building2,
   XCircle,
@@ -556,8 +556,15 @@ export default function Declines() {
                     })()}
                   </div>
 
-                  {/* Edit, Delete, and Status buttons */}
+                  {/* Profile, Edit, Delete, and Status buttons */}
                   <div className="flex items-start gap-1">
+                    {decision.businessEmail && (
+                      <Link href={`/merchant-profile/${encodeURIComponent(decision.businessEmail)}`}>
+                        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary" title="Merchant Profile" data-testid={`button-profile-${decision.id}`}>
+                          <Building2 className="w-4 h-4" />
+                        </Button>
+                      </Link>
+                    )}
                     <StatusToggle decision={decision} currentStatus="declined" />
                     <Button
                       variant="ghost"

@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { LenderAutocomplete } from "@/components/LenderAutocomplete";
@@ -1186,6 +1186,14 @@ export default function Funded() {
                         )}
                       </div>
                       <div className="flex gap-2 flex-wrap">
+                        {(decision.businessEmail || (decision as any).merchantEmail) && (
+                          <Link href={`/merchant-profile/${encodeURIComponent(decision.businessEmail || (decision as any).merchantEmail)}`}>
+                            <Button variant="outline" size="sm" className="text-xs" data-testid={`button-profile-${decision.id}`}>
+                              <Building2 className="w-3 h-3 mr-1" />
+                              Profile
+                            </Button>
+                          </Link>
+                        )}
                         <StatusToggle decision={decision} currentStatus="funded" />
                         {(() => {
                           const hasPortalAccess = !!(decision as any).merchantPasswordHash || !!(decision as any).merchantPortalToken;
