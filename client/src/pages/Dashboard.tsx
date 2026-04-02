@@ -3823,13 +3823,13 @@ export default function Dashboard() {
                   <FileText className="w-4 h-4 mr-2" />
                   Export CSV
                 </Button>
-                {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
-                  <TabsList>
-                    <TabsTrigger value="bot-attempts" data-testid="tab-bot-attempts">
-                      <Bot className="w-4 h-4 mr-2" />
-                      Bot Attempts
-                    </TabsTrigger>
-                  </TabsList>
+                {(authData?.role === 'admin' || authData?.role === 'underwriting' || authData?.role === 'agent') && (
+                  <Link href="/merchant-profile">
+                    <Button variant="outline" data-testid="tab-merchant-profiles">
+                      <Building2 className="w-4 h-4 mr-2" />
+                      Merchant Profiles
+                    </Button>
+                  </Link>
                 )}
               </div>
             </div>
@@ -4064,10 +4064,6 @@ export default function Dashboard() {
             <BankStatementsTab />
           </TabsContent>
 
-          {/* Bot Attempts Tab - Admin only */}
-          <TabsContent value="bot-attempts">
-            <BotAttemptsTab />
-          </TabsContent>
         </Tabs>
       </div>
 
