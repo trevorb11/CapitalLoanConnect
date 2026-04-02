@@ -9262,21 +9262,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (la.businessName) knownNames.add(la.businessName.toLowerCase().trim());
       }
 
-      // Helper: check if a name matches any of our known business names
+      // Helper: check if a name matches any of our known business names (exact match only)
       const nameMatches = (name: string | null | undefined): boolean => {
         if (!name) return false;
         const normalized = name.toLowerCase().trim();
-        if (!normalized) return false;
-        for (const known of knownNames) {
-          // Exact match or one contains the other (handles "ABC Corp" vs "ABC Corporation")
-          if (normalized === known || normalized.includes(known) || known.includes(normalized)) {
-            return true;
-          }
-        }
-        return false;
+        if (!normalized || normalized.length < 3) return false;
+        return knownNames.has(normalized);
       };
 
-      // ── PHASE 3: Business-name fallback for categories that came up empty ──
+      // ── PHASE 3: Business-name fallback — ONLY when email match found nothing ──
       let applications = emailApplications;
       let decisions = emailDecisions;
       let bankStatements = emailBankStatements;
@@ -9285,68 +9279,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let lenderApprovalsRaw = emailLenderApprovals;
 
       if (knownNames.size > 0) {
-        // For each data category, if email match was empty, try business name match
-        // Also merge in any business-name matches that email didn't catch (different email, same business)
-
-        if (applications.length === 0 || true) {
-          // Always try to find additional apps by business name to catch different-email submissions
+        // Only fall back to name matching for categories where email returned zero results
+        if (applications.length === 0) {
           const allApps = await storage.getAllLoanApplications();
-          const emailAppIds = new Set(applications.map(a => a.id));
-          const nameMatchedApps = allApps.filter(a =>
-            !emailAppIds.has(a.id) && (nameMatches(a.businessName) || nameMatches(a.legalBusinessName))
+          applications = allApps.filter(a =>
+            nameMatches(a.businessName) || nameMatches(a.legalBusinessName)
           );
-          if (nameMatchedApps.length > 0) {
-            applications = [...applications, ...nameMatchedApps];
-            // Add any new business names we discovered
-            for (const a of nameMatchedApps) {
-              if (a.businessName) knownNames.add(a.businessName.toLowerCase().trim());
-              if (a.legalBusinessName) knownNames.add(a.legalBusinessName.toLowerCase().trim());
-            }
-          }
         }
 
-        if (decisions.length === 0 || true) {
+        if (decisions.length === 0) {
           const allDecisions = await storage.getAllBusinessUnderwritingDecisions();
-          const emailDecisionIds = new Set(decisions.map(d => d.id));
-          const nameMatchedDecisions = allDecisions.filter(d =>
-            !emailDecisionIds.has(d.id) && nameMatches(d.businessName)
-          );
-          if (nameMatchedDecisions.length > 0) {
-            decisions = [...decisions, ...nameMatchedDecisions];
-          }
+          decisions = allDecisions.filter(d => nameMatches(d.businessName));
         }
 
-        if (bankStatements.length === 0 || true) {
+        if (bankStatements.length === 0) {
           const allStatements = await storage.getAllBankStatementUploads();
-          const emailStatementIds = new Set(bankStatements.map(s => s.id));
-          const nameMatchedStatements = allStatements.filter(s =>
-            !emailStatementIds.has(s.id) && nameMatches(s.businessName)
-          );
-          if (nameMatchedStatements.length > 0) {
-            bankStatements = [...bankStatements, ...nameMatchedStatements];
-          }
+          bankStatements = allStatements.filter(s => nameMatches(s.businessName));
         }
 
-        if (congratsUploads.length === 0 || true) {
+        if (congratsUploads.length === 0) {
           const allCongrats = await storage.getAllCongratulationsUploads();
-          const emailCongratsIds = new Set(congratsUploads.map(c => c.id));
-          const nameMatchedCongrats = allCongrats.filter(c =>
-            !emailCongratsIds.has(c.id) && nameMatches(c.businessName)
-          );
-          if (nameMatchedCongrats.length > 0) {
-            congratsUploads = [...congratsUploads, ...nameMatchedCongrats];
-          }
+          congratsUploads = allCongrats.filter(c => nameMatches(c.businessName));
         }
 
-        if (lenderApprovalsRaw.length === 0 || true) {
+        if (lenderApprovalsRaw.length === 0) {
           const allLenderApprovals = await storage.getAllLenderApprovals();
-          const emailLaIds = new Set(lenderApprovalsRaw.map(la => la.id));
-          const nameMatchedLa = allLenderApprovals.filter(la =>
-            !emailLaIds.has(la.id) && nameMatches(la.businessName)
-          );
-          if (nameMatchedLa.length > 0) {
-            lenderApprovalsRaw = [...lenderApprovalsRaw, ...nameMatchedLa];
-          }
+          lenderApprovalsRaw = allLenderApprovals.filter(la => nameMatches(la.businessName));
+        }
         }
 
         // Messages stay email-only (they are tied to portal sessions, name matching would be unreliable)
