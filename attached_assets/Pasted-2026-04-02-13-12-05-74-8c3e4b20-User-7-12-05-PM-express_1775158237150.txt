@@ -1,0 +1,100 @@
+2026-04-02 13:12:05.74
+8c3e4b20
+User
+7:12:05 PM [express] GET /api/applications 304 in 365ms :: [{"id":"790d037d-6a55-4230-92f2-04d8a12ef…
+2026-04-02 13:12:05.76
+8c3e4b20
+User
+7:12:05 PM [express] GET /api/bank-statements/uploads 304 in 446ms :: [{"id":"a0bf7005-aadf-4e92-8d6…
+2026-04-02 13:12:09.68
+8c3e4b20
+User
+7:12:09 PM [express] GET /api/applications/790d037d-6a55-4230-92f2-04d8a12efde4/view 304 in 37ms :: …
+2026-04-02 13:12:35.01
+8c3e4b20
+User
+[GIGFI] Outbound payload for TCG-anon-1775157155017: {"data":{"RefID":"TCG-anon-1775157155017","LeadProvider":"TodayCapital","LeadAffiliate":"TodayCapital","LeadCost":0,"Firstname":"Charles","Lastname":"Mays","SSN":"488664576","Email":"maysbnd@gmail.com","DOB":"1956-02-01","Language":"e","Military":"n","HomeAddress":"125 Lacey Oak Lane","HomeCity":"Loganville","HomeState":"GA","HomeZip":"30052","CellPhone":"770-912-5024","BankInfo":{"AccountToUse":"C"},"EmploymentInfo":{"MonthlyIncome":8000,"PayFrequency":"4","IncomeType":"5","PayrollType":"3","NextPayDay":"04/08/2026","Employer":"Mays Building and Development LLC","EmploymentLength":12},"LoanInfo":{"Amount":50000},"ClientIPAddress":"174.209.197.96"},"metadata":{"entity_id":"TCG-anon-1775157155017"},"control":{"execution_mode":"sync"}}
+2026-04-02 13:12:35.01
+8c3e4b20
+User
+[GIGFI] Submitting lead TCG-anon-1775157155017 to live environment → https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/decide
+2026-04-02 13:12:35.23
+8c3e4b20
+User
+[GIGFI] Lead TCG-anon-1775157155017 REJECTED
+2026-04-02 13:12:35.23
+8c3e4b20
+User
+[GIGFI] Full response body for TCG-anon-1775157155017: {"data":{"status":"REJECTED"},"status":"success","metadata":{"environment":"production","version":"GigFi_Leads v1.2","entity_id":"TCG-anon-1775157155017","timestamp":"2026-04-02T19:12:35.136536+00:00","decision_id":"019d4f9c-9540-75e2-8984-356b2f7cbdd5","decision_url":"https://app.taktile.com/decide/display/decision?workspace_id=1ace90b2-f4df-41f5-96ac-5238076483cd&flow_slug=gigfileads&version_id=ad6b77a4-761a-4f65-b8bf-1f17169d9e11&decision_id=019d4f9c-9540-75e2-8984-356b2f7cbdd5","flow_slug":"gigfileads","traffic_policy":"Policy 3"},"raw_provider_responses":[],"raw_provider_requests":[]}
+2026-04-02 13:12:35.23
+8c3e4b20
+User
+[GIGFI] Response for TCG-anon-1775157155017: HTTP 200, status=REJECTED
+2026-04-02 13:12:35.23
+8c3e4b20
+User
+[GIGFI] Decision ID: 019d4f9c-9540-75e2-8984-356b2f7cbdd5
+2026-04-02 13:12:35.23
+8c3e4b20
+User
+7:12:35 PM [express] POST /api/gigfi/submit 200 in 222ms :: {"success":true,"status":"REJECTED","dec…
+2026-04-02 13:15:02.80
+8c3e4b20
+User
+[GIGFI] Submitting lead TCG-anon-1775157302802 to live environment → https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/decide
+2026-04-02 13:15:02.80
+8c3e4b20
+User
+[GIGFI] Outbound payload for TCG-anon-1775157302802: {"data":{"RefID":"TCG-anon-1775157302802","LeadProvider":"TodayCapital","LeadAffiliate":"TodayCapital","LeadCost":0,"Firstname":"Nathaniel","Lastname":"white","SSN":"608223751","Email":"nate@agautotrans.com","DOB":"1983-08-20","Language":"e","Military":"n","HomeAddress":"16519 Otsego st","HomeCity":"Encino ","HomeState":"CA","HomeZip":"91436","CellPhone":"310-809-2029","BankInfo":{"AccountToUse":"C"},"EmploymentInfo":{"MonthlyIncome":15000,"PayFrequency":"1","IncomeType":"5","PayrollType":"3","NextPayDay":"04/09/2026","Employer":"Ag auto trans LLC","EmploymentLength":12},"LoanInfo":{"Amount":15000},"ClientIPAddress":"149.102.228.84"},"metadata":{"entity_id":"TCG-anon-1775157302802"},"control":{"execution_mode":"sync"}}
+2026-04-02 13:15:02.98
+8c3e4b20
+User
+[GIGFI] Decision ID: 019d4f9e-d67a-7638-8d4e-bc940b12eb1f
+2026-04-02 13:15:02.98
+8c3e4b20
+User
+[GIGFI] Response for TCG-anon-1775157302802: HTTP 200, status=REJECTED
+2026-04-02 13:15:02.98
+8c3e4b20
+User
+[GIGFI] Lead TCG-anon-1775157302802 REJECTED
+2026-04-02 13:15:02.98
+8c3e4b20
+User
+[GIGFI] Full response body for TCG-anon-1775157302802: {"data":{"status":"REJECTED"},"status":"success","metadata":{"environment":"production","version":"GigFi_Leads v1.2","entity_id":"TCG-anon-1775157302802","timestamp":"2026-04-02T19:15:02.906731+00:00","decision_id":"019d4f9e-d67a-7638-8d4e-bc940b12eb1f","decision_url":"https://app.taktile.com/decide/display/decision?workspace_id=1ace90b2-f4df-41f5-96ac-5238076483cd&flow_slug=gigfileads&version_id=ad6b77a4-761a-4f65-b8bf-1f17169d9e11&decision_id=019d4f9e-d67a-7638-8d4e-bc940b12eb1f","flow_slug":"gigfileads","traffic_policy":"Policy 3"},"raw_provider_responses":[],"raw_provider_requests":[]}
+2026-04-02 13:15:03.01
+8c3e4b20
+User
+7:15:03 PM [express] POST /api/gigfi/submit 200 in 214ms :: {"success":true,"status":"REJECTED","dec…
+2026-04-02 13:18:11.14
+8c3e4b20
+User
+[GIGFI] Submitting lead TCG-anon-1775157491147 to live environment → https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/decide
+2026-04-02 13:18:11.14
+8c3e4b20
+User
+[GIGFI] Outbound payload for TCG-anon-1775157491147: {"data":{"RefID":"TCG-anon-1775157491147","LeadProvider":"TodayCapital","LeadAffiliate":"TodayCapital","LeadCost":0,"Firstname":"Taro","Lastname":"Mcfarlin","SSN":"253674407","Email":"certifiedwhips@att.net","DOB":"1976-12-11","Language":"e","Military":"n","HomeAddress":"253-67-4407","HomeCity":"East Point","HomeState":"GA","HomeZip":"30344","CellPhone":"678-516-5429","BankInfo":{"AccountToUse":"C"},"EmploymentInfo":{"MonthlyIncome":10000,"PayFrequency":"1","IncomeType":"5","PayrollType":"3","NextPayDay":"04/03/2026","Employer":"Certified Whips","EmploymentLength":12},"LoanInfo":{"Amount":5000},"ClientIPAddress":"149.102.228.84"},"metadata":{"entity_id":"TCG-anon-1775157491147"},"control":{"execution_mode":"sync"}}
+2026-04-02 13:18:12.74
+8c3e4b20
+User
+[GIGFI] Decision ID: 019d4fa1-b65f-78e7-82e3-f4bfda6adc58
+2026-04-02 13:18:12.74
+8c3e4b20
+User
+[GIGFI] Lead TCG-anon-1775157491147 REJECTED
+2026-04-02 13:18:12.74
+8c3e4b20
+User
+[GIGFI] Response for TCG-anon-1775157491147: HTTP 200, status=REJECTED
+2026-04-02 13:18:12.74
+8c3e4b20
+User
+[GIGFI] Full response body for TCG-anon-1775157491147: {"data":{"status":"REJECTED"},"status":"success","metadata":{"environment":"production","version":"GigFi_Leads v1.2","entity_id":"TCG-anon-1775157491147","timestamp":"2026-04-02T19:18:11.295035+00:00","decision_id":"019d4fa1-b65f-78e7-82e3-f4bfda6adc58","decision_url":"https://app.taktile.com/decide/display/decision?workspace_id=1ace90b2-f4df-41f5-96ac-5238076483cd&flow_slug=gigfileads&version_id=ad6b77a4-761a-4f65-b8bf-1f17169d9e11&decision_id=019d4fa1-b65f-78e7-82e3-f4bfda6adc58","flow_slug":"gigfileads","traffic_policy":"Policy 3"},"raw_provider_responses":[],"raw_provider_requests":[]}
+2026-04-02 13:18:12.74
+8c3e4b20
+User
+7:18:12 PM [express] POST /api/gigfi/submit 200 in 1601ms :: {"success":true,"status":"REJECTED","de…
+2026-04-02 13:25:14.40
+8c3e4b20
+User
+[TRIGGER CRON] Scheduled checks are disabled, skipping
