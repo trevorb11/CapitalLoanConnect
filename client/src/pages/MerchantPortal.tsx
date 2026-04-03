@@ -1012,112 +1012,6 @@ const CSS = `
     padding: 16px 0;
   }
 
-  /* ── EARLY PAYOFF CALCULATOR ── */
-  .payoff-calc {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(45,212,191,0.15);
-    border-radius: 16px;
-    padding: 28px;
-    margin-top: 20px;
-  }
-
-  .payoff-calc-title {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 16px;
-    color: #e8eaf0;
-    margin-bottom: 6px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .payoff-calc-sub {
-    font-size: 13px;
-    color: #7b8499;
-    margin-bottom: 20px;
-  }
-
-  .payoff-slider-wrap {
-    margin-bottom: 20px;
-  }
-
-  .payoff-slider-label {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    color: #7b8499;
-    margin-bottom: 8px;
-  }
-
-  .payoff-slider-val {
-    font-weight: 600;
-    color: #2dd4bf;
-  }
-
-  .payoff-slider {
-    width: 100%;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 8px;
-    background: rgba(255,255,255,0.07);
-    border-radius: 99px;
-    outline: none;
-    cursor: pointer;
-  }
-
-  .payoff-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
-    cursor: pointer;
-    box-shadow: 0 0 12px rgba(45,212,191,0.5);
-  }
-
-  .payoff-slider::-moz-range-thumb {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
-    cursor: pointer;
-    border: none;
-    box-shadow: 0 0 12px rgba(45,212,191,0.5);
-  }
-
-  .payoff-results {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    padding-top: 20px;
-    border-top: 1px solid rgba(255,255,255,0.06);
-  }
-
-  .payoff-result-card {
-    text-align: center;
-  }
-
-  .payoff-result-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: #7b8499;
-    margin-bottom: 4px;
-    font-weight: 600;
-  }
-
-  .payoff-result-val {
-    font-family: 'DM Sans', sans-serif;
-    font-weight: 700;
-    font-size: 20px;
-    color: #e8eaf0;
-  }
-
-  .payoff-result-val.savings { color: #34d399; }
-  .payoff-result-val.teal { color: #2dd4bf; }
-
   /* ── RENEWAL ELIGIBILITY ── */
   .renewal-tracker {
     background: rgba(15,23,41,0.7);
@@ -2306,9 +2200,6 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
       {/* Payoff Countdown */}
       <PayoffCountdownWidget deal={deal} />
 
-      {/* Early Payoff Calculator */}
-      <EarlyPayoffCalculator deal={deal} />
-
       {/* Renewal Eligibility Tracker */}
       <RenewalEligibilityTracker deal={deal} />
 
@@ -2333,77 +2224,6 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
         >
           Contact My Rep
         </button>
-      </div>
-    </div>
-  );
-}
-
-// ── EARLY PAYOFF CALCULATOR ──────────────────────────────────────────────
-function EarlyPayoffCalculator({ deal }: { deal: Deal }) {
-  const calc = calcDeal(deal);
-  if (calc.isComplete) return null;
-
-  const minDays = 1;
-  const maxDays = calc.paymentsRemaining;
-  const [earlyDays, setEarlyDays] = useState(Math.floor(maxDays * 0.5));
-
-  // Calculate savings if paying off early
-  const earlyPaymentsRemaining = Math.max(0, calc.paymentsRemaining - earlyDays);
-  const earlyAmountPaid = calc.amountPaid + (earlyDays * calc.paymentAmount);
-  const earlyBuyoutAmount = Math.max(0, calc.remaining - (earlyDays * calc.paymentAmount));
-  const savings = calc.remaining - earlyBuyoutAmount;
-  const isDaily = deal.paymentFrequency === "daily";
-
-  let earlyPayoffDate: Date;
-  if (isDaily) {
-    earlyPayoffDate = addBusinessDays(new Date(), earlyDays);
-  } else {
-    const isBiWeekly = deal.paymentFrequency === "bi-weekly" || deal.paymentFrequency === "biweekly";
-    const isMonthly = deal.paymentFrequency === "monthly";
-    const msPerPeriod = isMonthly ? 30 * 24 * 60 * 60 * 1000 : isBiWeekly ? 14 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-    earlyPayoffDate = new Date(Date.now() + earlyDays * msPerPeriod);
-  }
-
-  const freqLabel = isDaily ? "business days" : deal.paymentFrequency === "monthly" ? "months" : "payments";
-
-  return (
-    <div className="payoff-calc">
-      <div className="payoff-calc-title">
-        <span style={{ fontSize: "18px" }}>&#9889;</span>
-        Early Payoff Calculator
-      </div>
-      <div className="payoff-calc-sub">
-        Slide to see how much you save by paying off early. Contact your rep for an exact buyout quote.
-      </div>
-
-      <div className="payoff-slider-wrap">
-        <div className="payoff-slider-label">
-          <span>Pay off in <span className="payoff-slider-val">{earlyDays} {freqLabel}</span></span>
-          <span>Instead of {calc.paymentsRemaining} remaining</span>
-        </div>
-        <input
-          className="payoff-slider"
-          type="range"
-          min={minDays}
-          max={maxDays}
-          value={earlyDays}
-          onChange={e => setEarlyDays(parseInt(e.target.value))}
-        />
-      </div>
-
-      <div className="payoff-results">
-        <div className="payoff-result-card">
-          <div className="payoff-result-label">Buyout Amount</div>
-          <div className="payoff-result-val teal">{fmt$(earlyBuyoutAmount)}</div>
-        </div>
-        <div className="payoff-result-card">
-          <div className="payoff-result-label">You Save</div>
-          <div className="payoff-result-val savings">{fmt$(savings)}</div>
-        </div>
-        <div className="payoff-result-card">
-          <div className="payoff-result-label">Payoff Date</div>
-          <div className="payoff-result-val" style={{ fontSize: "15px" }}>{fmtDate(earlyPayoffDate)}</div>
-        </div>
       </div>
     </div>
   );

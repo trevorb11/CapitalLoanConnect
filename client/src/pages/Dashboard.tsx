@@ -3341,6 +3341,37 @@ export default function Dashboard() {
     },
   });
 
+  // Fetch underwriting decisions for pipeline status badges on application cards
+  const { data: decisions } = useQuery<BusinessUnderwritingDecision[]>({
+    queryKey: ["/api/underwriting-decisions"],
+    enabled: authData?.isAuthenticated === true && (authData?.role === 'admin' || authData?.role === 'underwriting' || authData?.role === 'agent'),
+    queryFn: async () => {
+      const res = await fetch("/api/underwriting-decisions", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    retry: false,
+  });
+
+  // Build a lookup: email → highest-priority status (funded > approved > declined > unqualified)
+  const pipelineStatusByEmail = new Map<string, { status: string; lender?: string; amount?: string }>();
+  if (decisions) {
+    for (const d of decisions) {
+      const email = (d.businessEmail || d.merchantEmail || '').toLowerCase();
+      if (!email) continue;
+      const existing = pipelineStatusByEmail.get(email);
+      const priority: Record<string, number> = { funded: 4, approved: 3, declined: 2, unqualified: 1 };
+      const dStatus = d.fundedDate ? 'funded' : (d.status || 'unknown');
+      if (!existing || (priority[dStatus] || 0) > (priority[existing.status] || 0)) {
+        pipelineStatusByEmail.set(email, {
+          status: dStatus,
+          lender: d.lender || undefined,
+          amount: d.advanceAmount || undefined,
+        });
+      }
+    }
+  }
+
   const logoutMutation = useMutation({
     mutationFn: async () => {
       await fetch("/api/auth/logout", {
@@ -3749,7 +3780,7 @@ export default function Dashboard() {
                     Bank Statements
                   </TabsTrigger>
                 </TabsList>
-                {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
+                {(authData?.role === 'admin' || authData?.role === 'underwriting' || authData?.role === 'agent') && (
                   <>
                     <Link href="/approvals">
                       <Button
@@ -3823,13 +3854,13 @@ export default function Dashboard() {
                   <FileText className="w-4 h-4 mr-2" />
                   Export CSV
                 </Button>
-                {(authData?.role === 'admin' || authData?.role === 'underwriting') && (
-                  <TabsList>
-                    <TabsTrigger value="bot-attempts" data-testid="tab-bot-attempts">
-                      <Bot className="w-4 h-4 mr-2" />
-                      Bot Attempts
-                    </TabsTrigger>
-                  </TabsList>
+                {(authData?.role === 'admin' || authData?.role === 'underwriting' || authData?.role === 'agent') && (
+                  <Link href="/merchant-profile">
+                    <Button variant="outline" data-testid="tab-merchant-profiles">
+                      <Building2 className="w-4 h-4 mr-2" />
+                      Merchant Profiles
+                    </Button>
+                  </Link>
                 )}
               </div>
             </div>
@@ -3938,6 +3969,35 @@ export default function Dashboard() {
                       ) : (
                         <Badge variant="outline" data-testid={`badge-status-incomplete-${app.id}`}>Incomplete</Badge>
                       )}
+                      {/* Pipeline status from underwriting decisions */}
+                      {app.email && pipelineStatusByEmail.get(app.email.toLowerCase()) && (() => {
+                        const ps = pipelineStatusByEmail.get(app.email.toLowerCase())!;
+                        if (ps.status === 'funded') return (
+                          <Badge className="bg-green-600 text-[10px]" data-testid={`badge-pipeline-${app.id}`}>
+                            <Banknote className="w-3 h-3 mr-1" />
+                            Funded{ps.amount ? ` · $${Number(ps.amount).toLocaleString()}` : ''}
+                          </Badge>
+                        );
+                        if (ps.status === 'approved') return (
+                          <Badge className="bg-blue-600 text-[10px]" data-testid={`badge-pipeline-${app.id}`}>
+                            <ThumbsUp className="w-3 h-3 mr-1" />
+                            Approved{ps.lender ? ` · ${ps.lender}` : ''}
+                          </Badge>
+                        );
+                        if (ps.status === 'declined') return (
+                          <Badge variant="destructive" className="text-[10px]" data-testid={`badge-pipeline-${app.id}`}>
+                            <ThumbsDown className="w-3 h-3 mr-1" />
+                            Declined
+                          </Badge>
+                        );
+                        if (ps.status === 'unqualified') return (
+                          <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-500" data-testid={`badge-pipeline-${app.id}`}>
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            Unqualified
+                          </Badge>
+                        );
+                        return null;
+                      })()}
                       {authData.role === "admin" && app.agentName && (
                         <Badge variant="outline" className="text-xs" data-testid={`badge-agent-${app.id}`}>
                           <User className="w-3 h-3 mr-1" />
@@ -3947,17 +4007,35 @@ export default function Dashboard() {
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
-                      <div>
+                      <div className="flex items-center gap-1">
                         <span className="font-medium">Email:</span>{" "}
                         <span data-testid={`value-email-${app.id}`}>{app.email || "N/A"}</span>
+                        {app.email && (
+                          <button
+                            className="ml-1 text-muted-foreground hover:text-primary transition-colors"
+                            title="Copy email"
+                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(app.email); toast({ title: "Copied", description: app.email }); }}
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                       <div>
                         <span className="font-medium">Contact:</span>{" "}
                         <span data-testid={`value-contact-${app.id}`}>{app.fullName || "N/A"}</span>
                       </div>
-                      <div>
+                      <div className="flex items-center gap-1">
                         <span className="font-medium">Phone:</span>{" "}
                         <span data-testid={`value-phone-${app.id}`}>{app.phone || "N/A"}</span>
+                        {app.phone && (
+                          <button
+                            className="ml-1 text-muted-foreground hover:text-primary transition-colors"
+                            title="Copy phone"
+                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(app.phone!); toast({ title: "Copied", description: app.phone }); }}
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                       <div>
                         <span className="font-medium">Submitted:</span>{" "}
@@ -4064,10 +4142,6 @@ export default function Dashboard() {
             <BankStatementsTab />
           </TabsContent>
 
-          {/* Bot Attempts Tab - Admin only */}
-          <TabsContent value="bot-attempts">
-            <BotAttemptsTab />
-          </TabsContent>
         </Tabs>
       </div>
 
