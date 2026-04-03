@@ -44,11 +44,15 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { BusinessUnderwritingDecision } from "@shared/schema";
+import { AGENTS } from "@shared/agents";
 
 interface AuthState {
   isAuthenticated: boolean;
   role?: 'admin' | 'agent' | 'underwriting';
+  agentName?: string;
+  agentEmail?: string;
 }
 
 interface BankStatementUpload {
@@ -76,6 +80,9 @@ export default function Declines() {
   const [accessDenied, setAccessDenied] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authRole, setAuthRole] = useState<string>("");
+  const [authAgentName, setAuthAgentName] = useState<string>("");
+  const [repFilter, setRepFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
 
@@ -169,8 +176,11 @@ export default function Declines() {
       try {
         const res = await fetch("/api/auth/check", { credentials: "include" });
         const data: AuthState = await res.json();
-        if (data.isAuthenticated && (data.role === "admin" || data.role === "underwriting")) {
+        if (data.isAuthenticated && (data.role === "admin" || data.role === "underwriting" || data.role === "agent")) {
           setIsAuthenticated(true);
+          setAuthRole(data.role || "");
+          if (data.agentName) setAuthAgentName(data.agentName);
+          if (data.role === "agent") setRepFilter("mine");
         } else if (data.isAuthenticated) {
           setAccessDenied(true);
         } else {
@@ -209,8 +219,18 @@ export default function Declines() {
       return getDecisionDate(b) - getDecisionDate(a);
     });
 
+  // Filter by rep
+  const repFilteredDecisions = repFilter === "all" ? declinedDecisions : declinedDecisions.filter(d => {
+    const filterName = repFilter === "mine" ? authAgentName : repFilter;
+    if (!filterName) return true;
+    const nameLC = filterName.toLowerCase();
+    if ((d.assignedRep || "").toLowerCase() === nameLC) return true;
+    if (Array.isArray(d.repFollowers) && d.repFollowers.some((f: string) => f.toLowerCase() === nameLC)) return true;
+    return false;
+  });
+
   // Filter by search
-  const filteredDecisions = declinedDecisions.filter(d => {
+  const filteredDecisions = repFilteredDecisions.filter(d => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     return (
@@ -411,17 +431,41 @@ export default function Declines() {
           </Card>
         </div>
 
-        {/* Search */}
-        <div className="relative w-full sm:w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search by business name, email, or reason..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-            data-testid="input-search"
-          />
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          <div className="flex gap-2">
+            <Button variant={repFilter === "all" ? "default" : "outline"} size="sm" onClick={() => setRepFilter("all")}>
+              All ({declinedDecisions.length})
+            </Button>
+            {authAgentName && (
+              <Button variant={repFilter === "mine" ? "default" : "outline"} size="sm" onClick={() => setRepFilter("mine")}>
+                My Files
+              </Button>
+            )}
+            {(authRole === "admin" || authRole === "underwriting") && (
+              <Select value={repFilter === "all" || repFilter === "mine" ? "" : repFilter} onValueChange={(v) => setRepFilter(v || "all")}>
+                <SelectTrigger className="w-[180px] h-9">
+                  <SelectValue placeholder="Filter by rep..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {AGENTS.map(agent => (
+                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <div className="relative w-full sm:w-96">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by business name, email, or reason..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              data-testid="input-search"
+            />
+          </div>
         </div>
 
         {/* Declines List */}

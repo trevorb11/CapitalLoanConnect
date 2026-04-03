@@ -3148,14 +3148,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    
-    // Only underwriting and admin can view decisions
-    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+
+    // Underwriting, admin, and agents can view decisions
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin' && req.session.user.role !== 'agent') {
       return res.status(403).json({ error: "Access denied" });
     }
-    
+
     try {
       const decisions = await storage.getAllBusinessUnderwritingDecisions();
+
+      // For agents, filter to only their files:
+      // - assignedRep matches agent name
+      // - OR repFollowers includes agent name
+      // - OR businessEmail matches an application with their agentEmail
+      if (req.session.user.role === 'agent' && req.session.user.agentName) {
+        const agentName = req.session.user.agentName;
+        const agentEmail = (req.session.user.agentEmail || '').toLowerCase();
+
+        // Build set of business emails from apps assigned to this agent
+        const allApps = await storage.getAllLoanApplications();
+        const agentBusinessEmails = new Set<string>();
+        for (const app of allApps) {
+          if (app.agentEmail && app.agentEmail.toLowerCase() === agentEmail && app.email) {
+            agentBusinessEmails.add(app.email.toLowerCase());
+          }
+        }
+
+        const agentDecisions = decisions.filter(d => {
+          // Direct assignment
+          if (d.assignedRep && d.assignedRep.toLowerCase() === agentName.toLowerCase()) return true;
+          // Rep follower
+          if (Array.isArray(d.repFollowers) && d.repFollowers.some((f: string) => f.toLowerCase() === agentName.toLowerCase())) return true;
+          // Business email matches an app assigned to this agent
+          if (d.businessEmail && agentBusinessEmails.has(d.businessEmail.toLowerCase())) return true;
+          if (d.merchantEmail && agentBusinessEmails.has(d.merchantEmail.toLowerCase())) return true;
+          return false;
+        });
+
+        return res.json(agentDecisions);
+      }
+
       res.json(decisions);
     } catch (error) {
       console.error("Error fetching underwriting decisions:", error);
