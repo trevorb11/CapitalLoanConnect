@@ -503,8 +503,11 @@ export default function Declines() {
                       )}
                     </div>
 
-                    <div className="text-sm text-muted-foreground mb-3">
-                      {decision.businessEmail}
+                    <div className="text-sm text-muted-foreground mb-3 flex items-center gap-3">
+                      <span>{decision.businessEmail}</span>
+                      {decision.assignedRep && (
+                        <Badge variant="outline" className="text-[10px]">Rep: {decision.assignedRep}</Badge>
+                      )}
                     </div>
 
                     {decision.declineReason && (
