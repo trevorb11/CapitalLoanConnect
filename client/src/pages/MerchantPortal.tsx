@@ -2756,12 +2756,13 @@ interface PlaidConnection {
   source: 'portal' | 'intake';
 }
 
-function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken }: {
+function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken, uploadedStatements }: {
   merchantEmail: string;
   merchantName: string;
   assignedRep: string | null;
   onSwitchToMessages: () => void;
   previewToken?: string | null;
+  uploadedStatements?: VaultDocument[];
 }) {
   const [insights, setInsights] = useState<FinancialInsights | null>(null);
   const [connections, setConnections] = useState<PlaidConnection[]>([]);
@@ -2835,6 +2836,19 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   const pdf = insights?.pdfInsights;
   const plaid = insights?.plaidInsights;
 
+  // Merge statement sources: prefer vault docs passed from parent (already verified working),
+  // fall back to what financial-insights returned
+  const vaultStatements: StatementFile[] = (uploadedStatements || []).map(d => ({
+    id: d.id,
+    fileName: d.name,
+    fileSize: d.fileSize,
+    uploadedAt: d.createdAt,
+    viewToken: d.downloadUrl ? d.downloadUrl.split('/').pop() || null : null,
+  }));
+  const displayStatements: StatementFile[] =
+    vaultStatements.length > 0 ? vaultStatements : (insights?.statements || []);
+  const showStatementsSection = displayStatements.length > 0 || insights?.hasStatements;
+
   // Use Plaid data when available, fall back to PDF
   const monthlyRevenue = plaid?.monthlyRevenue || pdf?.estimatedMonthlyRevenue || 0;
   const avgBalance = plaid?.avgBalance || pdf?.averageDailyBalance || 0;
@@ -2903,7 +2917,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       </div>
 
       {/* ── Uploaded Statements ── */}
-      {insights?.hasStatements && (
+      {showStatementsSection && (
         <div className="insight-card">
           <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
             Uploaded Statements
@@ -2911,7 +2925,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
 
           {/* File list */}
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-            {(insights.statements || []).map(stmt => (
+            {displayStatements.map(stmt => (
               <div key={stmt.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -3061,7 +3075,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       ) : (
         <div className="insight-card" style={{ textAlign: "center", padding: "32px 20px" }}>
           <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7 }}>
-            {insights?.hasStatements
+            {showStatementsSection
               ? "Click 'Analyze' above to generate insights from your bank statements."
               : "Upload bank statements or connect your bank to see financial insights."}
           </p>
@@ -3772,6 +3786,7 @@ export default function MerchantPortal() {
                       assignedRep={deals.length > 0 ? deals[0].assignedRep : null}
                       onSwitchToMessages={() => setActiveTab('messages')}
                       previewToken={adminPreviewToken}
+                      uploadedStatements={vaultDocs.filter(d => d.category === 'statements')}
                     />
                   )}
                 </>
