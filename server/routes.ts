@@ -324,6 +324,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }, 10 * 60 * 1000);
 
+  function getMerchantEmailFromRequest(req: any): string | null {
+    if (req.session.user?.isAuthenticated && req.session.user.role === 'merchant' && req.session.user.merchantEmail) {
+      return req.session.user.merchantEmail;
+    }
+    const previewToken = req.headers['x-admin-preview-token'] as string | undefined;
+    if (previewToken) {
+      const preview = adminPreviewTokens.get(previewToken);
+      if (preview && preview.expiresAt > Date.now()) return preview.email;
+    }
+    return null;
+  }
+
   // ========================================
   // HEALTH CHECK ENDPOINT (for deployment)
   // ========================================
@@ -7992,11 +8004,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Merchant Activity Feed - aggregates milestones, messages, and offers
   app.get("/api/merchant/activity", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
-      return res.status(401).json({ error: "Merchant authentication required" });
-    }
+    const email = getMerchantEmailFromRequest(req);
+    if (!email) return res.status(401).json({ error: "Merchant authentication required" });
     try {
-      const email = req.session.user.merchantEmail;
       const activities: any[] = [];
 
       // Get decisions for milestone events
@@ -8464,11 +8474,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route 1: Create Plaid Link Token for merchant
   app.post("/api/merchant/plaid/create-link-token", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
-      return res.status(401).json({ error: "Merchant authentication required" });
-    }
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
     try {
-      const tokenData = await plaidService.createMerchantLinkToken(req.session.user.merchantEmail);
+      const tokenData = await plaidService.createMerchantLinkToken(merchantEmail);
       res.json({ link_token: tokenData.link_token });
     } catch (error) {
       console.error("[MERCHANT PLAID] Create link token error:", error);
@@ -8478,14 +8487,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route 2: Exchange Plaid public token for merchant
   app.post("/api/merchant/plaid/exchange-token", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
-      return res.status(401).json({ error: "Merchant authentication required" });
-    }
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
     try {
       const { publicToken, metadata } = req.body;
       if (!publicToken) return res.status(400).json({ error: "publicToken is required" });
-
-      const merchantEmail = req.session.user.merchantEmail;
       const tokenResponse = await plaidService.exchangePublicToken(publicToken);
       const { item_id, access_token } = tokenResponse;
       const institutionName = metadata?.institution?.name || null;
@@ -8531,11 +8537,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route 3: Get merchant's Plaid connections
   app.get("/api/merchant/plaid/connections", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
-      return res.status(401).json({ error: "Merchant authentication required" });
-    }
+    const email = getMerchantEmailFromRequest(req);
+    if (!email) return res.status(401).json({ error: "Merchant authentication required" });
     try {
-      const email = req.session.user.merchantEmail;
       const connections = await storage.getMerchantPlaidConnectionsByEmail(email);
 
       // Also check fundingAnalyses for intake-linked items via access token lookup
@@ -8635,11 +8639,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route 5: Get combined financial insights
   app.get("/api/merchant/financial-insights", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
-      return res.status(401).json({ error: "Merchant authentication required" });
-    }
+    const email = getMerchantEmailFromRequest(req);
+    if (!email) return res.status(401).json({ error: "Merchant authentication required" });
     try {
-      const email = req.session.user.merchantEmail;
 
       // Check cached insights
       const pdfCache = await storage.getMerchantInsight(email, 'pdf');
@@ -8744,13 +8746,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route 6: Deactivate a Plaid connection
   app.delete("/api/merchant/plaid/connections/:id", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
-      return res.status(401).json({ error: "Merchant authentication required" });
-    }
+    const ownerEmail = getMerchantEmailFromRequest(req);
+    if (!ownerEmail) return res.status(401).json({ error: "Merchant authentication required" });
     try {
       const { id } = req.params;
-      // Verify the connection belongs to this merchant
-      const connections = await storage.getMerchantPlaidConnectionsByEmail(req.session.user.merchantEmail);
+      const connections = await storage.getMerchantPlaidConnectionsByEmail(ownerEmail);
       const conn = connections.find(c => c.id === id);
       if (!conn) {
         return res.status(404).json({ error: "Connection not found" });
@@ -8805,13 +8805,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Merchant Messages - List messages for authenticated merchant
   app.get("/api/merchant/messages", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
-      return res.status(401).json({ error: "Merchant authentication required" });
-    }
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
     try {
-      const messages = await storage.getMerchantMessagesByEmail(req.session.user.merchantEmail);
-      // Mark rep messages as read when merchant views them
-      await storage.markMerchantMessagesRead(req.session.user.merchantEmail, 'merchant');
+      const messages = await storage.getMerchantMessagesByEmail(merchantEmail);
+      await storage.markMerchantMessagesRead(merchantEmail, 'merchant');
       res.json(messages);
     } catch (error) {
       console.error("[MERCHANT] Error fetching messages:", error);
@@ -8862,11 +8860,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Merchant Messages - Unread count for merchant
   app.get("/api/merchant/messages/unread", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
-      return res.status(401).json({ error: "Merchant authentication required" });
-    }
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
     try {
-      const count = await storage.getUnreadMerchantMessageCount(req.session.user.merchantEmail, 'merchant');
+      const count = await storage.getUnreadMerchantMessageCount(merchantEmail, 'merchant');
       res.json({ count });
     } catch (error) {
       res.status(500).json({ error: "Failed to get unread count" });
@@ -9337,7 +9334,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (lenderApprovalsRaw.length === 0) {
           const allLenderApprovals = await storage.getAllLenderApprovals();
           lenderApprovalsRaw = allLenderApprovals.filter(la => nameMatches(la.businessName));
-        }
         }
 
         // Messages stay email-only (they are tied to portal sessions, name matching would be unreliable)

@@ -2317,7 +2317,7 @@ interface Message {
   createdAt: string;
 }
 
-function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand = false }: { merchantEmail: string; merchantName: string; assignedRep: string | null; autoExpand?: boolean }) {
+function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand = false, previewToken }: { merchantEmail: string; merchantName: string; assignedRep: string | null; autoExpand?: boolean; previewToken?: string | null }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const [sending, setSending] = useState(false);
@@ -2326,9 +2326,11 @@ function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand =
   const [loading, setLoading] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
+
   const fetchMessages = () => {
     setLoading(true);
-    fetch("/api/merchant/messages")
+    fetch("/api/merchant/messages", { headers: previewHeaders })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -2341,7 +2343,7 @@ function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand =
   };
 
   const fetchUnread = () => {
-    fetch("/api/merchant/messages/unread")
+    fetch("/api/merchant/messages/unread", { headers: previewHeaders })
       .then(r => r.json())
       .then(data => setUnreadCount(data.count || 0))
       .catch(() => {});
@@ -2655,16 +2657,18 @@ function PreQualifiedOfferBanner({ deals }: { deals: Deal[] }) {
 }
 
 // ── PLAID LINK BUTTON ─────────────────────────────────────────────────────
-function PlaidLinkButton({ onSuccess, label = "Connect Your Bank" }: { onSuccess: () => void; label?: string }) {
+function PlaidLinkButton({ onSuccess, label = "Connect Your Bank", previewToken }: { onSuccess: () => void; label?: string; previewToken?: string | null }) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
   const fetchLinkToken = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/merchant/plaid/create-link-token", { method: "POST", credentials: "include" });
+      const res = await fetch("/api/merchant/plaid/create-link-token", { method: "POST", credentials: "include", headers: previewHeaders });
       if (!res.ok) throw new Error("Failed to create link token");
       const data = await res.json();
       setLinkToken(data.link_token);
@@ -2673,14 +2677,14 @@ function PlaidLinkButton({ onSuccess, label = "Connect Your Bank" }: { onSuccess
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [previewToken]);
 
   const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
     try {
       const res = await fetch("/api/merchant/plaid/exchange-token", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...previewHeaders },
         body: JSON.stringify({ publicToken, metadata }),
       });
       if (!res.ok) throw new Error("Failed to exchange token");
@@ -2752,11 +2756,12 @@ interface PlaidConnection {
   source: 'portal' | 'intake';
 }
 
-function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages }: {
+function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken }: {
   merchantEmail: string;
   merchantName: string;
   assignedRep: string | null;
   onSwitchToMessages: () => void;
+  previewToken?: string | null;
 }) {
   const [insights, setInsights] = useState<FinancialInsights | null>(null);
   const [connections, setConnections] = useState<PlaidConnection[]>([]);
@@ -2765,12 +2770,14 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [showBanks, setShowBanks] = useState(false);
 
+  const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [insightsRes, connectionsRes] = await Promise.all([
-        fetch("/api/merchant/financial-insights", { credentials: "include" }),
-        fetch("/api/merchant/plaid/connections", { credentials: "include" }),
+        fetch("/api/merchant/financial-insights", { credentials: "include", headers: previewHeaders }),
+        fetch("/api/merchant/plaid/connections", { credentials: "include", headers: previewHeaders }),
       ]);
       if (insightsRes.ok) setInsights(await insightsRes.json());
       if (connectionsRes.ok) setConnections(await connectionsRes.json());
@@ -2805,7 +2812,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
 
   const handleDisconnect = async (id: string) => {
     try {
-      await fetch(`/api/merchant/plaid/connections/${id}`, { method: "DELETE", credentials: "include" });
+      await fetch(`/api/merchant/plaid/connections/${id}`, { method: "DELETE", credentials: "include", headers: previewHeaders });
       await fetchData();
     } catch (e) {
       console.error("Failed to disconnect:", e);
@@ -2880,7 +2887,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                   </div>
                 ))}
                 <div style={{ marginTop: 12 }}>
-                  <PlaidLinkButton onSuccess={fetchData} label="Connect Another Bank" />
+                  <PlaidLinkButton onSuccess={fetchData} label="Connect Another Bank" previewToken={previewToken} />
                 </div>
               </>
             ) : (
@@ -2888,7 +2895,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                 <p style={{ color: "#94a3b8", marginBottom: 16, fontSize: 14, lineHeight: 1.6 }}>
                   Connect your bank to get live financial insights and make future funding faster.
                 </p>
-                <PlaidLinkButton onSuccess={fetchData} />
+                <PlaidLinkButton onSuccess={fetchData} previewToken={previewToken} />
               </div>
             )}
           </div>
@@ -3073,17 +3080,18 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
 }
 
 // ── ACTIVITY FEED ─────────────────────────────────────────────────────────
-function ActivityFeed({ merchantEmail }: { merchantEmail: string }) {
+function ActivityFeed({ merchantEmail, previewToken }: { merchantEmail: string; previewToken?: string | null }) {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/merchant/activity")
+    const headers = previewToken ? { "x-admin-preview-token": previewToken } : {};
+    fetch("/api/merchant/activity", { headers })
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setActivities(data); })
       .catch(err => console.error("Failed to fetch activity:", err))
       .finally(() => setLoading(false));
-  }, [merchantEmail]);
+  }, [merchantEmail, previewToken]);
 
   const iconContent: Record<string, string> = {
     dollar: '$',
@@ -3461,6 +3469,7 @@ export default function MerchantPortal() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [isAdminPreview, setIsAdminPreview] = useState(false);
+  const [adminPreviewToken, setAdminPreviewToken] = useState<string | null>(null);
   const [merchantEmail, setMerchantEmail] = useState("");
   const [merchantName, setMerchantName] = useState("");
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -3488,6 +3497,7 @@ export default function MerchantPortal() {
     const previewToken = params.get('adminPreview');
     if (previewToken) {
       setIsAdminPreview(true);
+      setAdminPreviewToken(previewToken);
       fetch(`/api/merchant/admin-preview-data?token=${encodeURIComponent(previewToken)}`)
         .then(r => r.json())
         .then(data => {
@@ -3699,7 +3709,7 @@ export default function MerchantPortal() {
 
                       {/* Activity Feed */}
                       {!loadingDeals && deals.length > 0 && (
-                        <ActivityFeed merchantEmail={merchantEmail} />
+                        <ActivityFeed merchantEmail={merchantEmail} previewToken={adminPreviewToken} />
                       )}
 
                       {loadingDeals ? (
@@ -3745,6 +3755,7 @@ export default function MerchantPortal() {
                       merchantName={merchantName}
                       assignedRep={deals.length > 0 ? deals[0].assignedRep : null}
                       autoExpand
+                      previewToken={adminPreviewToken}
                     />
                   )}
 
@@ -3760,6 +3771,7 @@ export default function MerchantPortal() {
                       merchantName={merchantName}
                       assignedRep={deals.length > 0 ? deals[0].assignedRep : null}
                       onSwitchToMessages={() => setActiveTab('messages')}
+                      previewToken={adminPreviewToken}
                     />
                   )}
                 </>
