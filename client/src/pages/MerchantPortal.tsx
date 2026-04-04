@@ -1144,6 +1144,141 @@ const CSS = `
     margin-top: 2px;
   }
 
+  /* ── RESOURCES ── */
+  .resources-section {
+    margin-top: 8px;
+  }
+
+  .resources-intro {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 24px 28px;
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(45,212,191,0.15);
+    border-radius: 16px;
+    margin-bottom: 24px;
+  }
+
+  .resources-intro-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .resources-intro-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: #e8eaf0;
+    margin-bottom: 4px;
+  }
+
+  .resources-intro-sub {
+    font-size: 14px;
+    color: #7b8499;
+    line-height: 1.5;
+  }
+
+  .resources-group {
+    margin-bottom: 28px;
+  }
+
+  .resources-group-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    color: #9ba3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .resources-group-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+  }
+
+  .resources-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .resource-card {
+    display: block;
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 20px 24px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+
+  .resource-card:hover {
+    border-color: rgba(45,212,191,0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  }
+
+  .resource-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .resource-card-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    color: #e8eaf0;
+    line-height: 1.3;
+  }
+
+  .resource-tag {
+    flex-shrink: 0;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+
+  .resource-card-desc {
+    font-size: 13px;
+    color: #7b8499;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+
+  .resource-card-link {
+    font-size: 13px;
+    color: #14B8A6;
+    font-weight: 500;
+    transition: color 0.2s;
+  }
+
+  .resource-card:hover .resource-card-link {
+    color: #2dd4bf;
+  }
+
+  @media (min-width: 640px) {
+    .resources-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
   /* ── MESSAGING ── */
   .messaging-section {
     margin-top: 20px;
@@ -3259,6 +3394,151 @@ function ApplicationStatusBanner({ appStatus }: {
   );
 }
 
+// ── RESOURCES TAB ────────────────────────────────────────────────────────
+function ResourcesTab() {
+  const resources = [
+    {
+      category: "Credit Monitoring",
+      items: [
+        {
+          title: "Nav.com — Free Business Credit Scores",
+          description: "See your Dun & Bradstreet and Experian business credit scores for free. Understand what lenders see when they review your business.",
+          url: "https://www.nav.com/business-credit-scores/",
+          tag: "Free",
+          tagColor: "#34d399",
+        },
+        {
+          title: "Experian Business Credit",
+          description: "Monitor your Experian business credit profile. Get alerts when your score changes and see what factors are impacting it.",
+          url: "https://www.experian.com/business/check-business-credit.html",
+          tag: "Free Report",
+          tagColor: "#60a5fa",
+        },
+        {
+          title: "Dun & Bradstreet — Get Your D-U-N-S Number",
+          description: "A D-U-N-S number is essential for building business credit. Get yours for free if you don't have one yet.",
+          url: "https://www.dnb.com/duns-number/get-a-duns.html",
+          tag: "Free",
+          tagColor: "#34d399",
+        },
+      ],
+    },
+    {
+      category: "SBA & Government Programs",
+      items: [
+        {
+          title: "SBA Loan Programs Overview",
+          description: "Explore SBA 7(a), 504, and Microloan programs. Government-backed loans with lower rates and longer terms for qualifying businesses.",
+          url: "https://www.sba.gov/funding-programs/loans",
+          tag: "Gov",
+          tagColor: "#a78bfa",
+        },
+        {
+          title: "SBA Lender Match",
+          description: "Free SBA tool that connects you with SBA-approved lenders in your area based on your business profile.",
+          url: "https://www.sba.gov/funding-programs/loans/lender-match",
+          tag: "Free Tool",
+          tagColor: "#34d399",
+        },
+        {
+          title: "Grants.gov — Federal Business Grants",
+          description: "Search for federal grant opportunities. Unlike loans, grants don't need to be repaid.",
+          url: "https://www.grants.gov/",
+          tag: "Grants",
+          tagColor: "#fbbf24",
+        },
+      ],
+    },
+    {
+      category: "Financial Tools",
+      items: [
+        {
+          title: "Wave — Free Accounting Software",
+          description: "Free invoicing, accounting, and receipt scanning for small businesses. No credit card required.",
+          url: "https://www.waveapps.com/",
+          tag: "Free",
+          tagColor: "#34d399",
+        },
+        {
+          title: "SCORE — Free Business Mentoring",
+          description: "Get paired with a free business mentor through SCORE, backed by the SBA. Expert guidance on finances, growth, and operations.",
+          url: "https://www.score.org/",
+          tag: "Free",
+          tagColor: "#34d399",
+        },
+        {
+          title: "IRS Tax Calendar for Businesses",
+          description: "Never miss a tax deadline. See all federal tax due dates for your business type at a glance.",
+          url: "https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendars",
+          tag: "IRS",
+          tagColor: "#a78bfa",
+        },
+      ],
+    },
+    {
+      category: "Business Growth",
+      items: [
+        {
+          title: "Google Business Profile",
+          description: "Claim and optimize your free Google Business listing. Show up in local search results and Google Maps.",
+          url: "https://business.google.com/",
+          tag: "Free",
+          tagColor: "#34d399",
+        },
+        {
+          title: "NEXT Insurance — Business Insurance",
+          description: "Get affordable business insurance in minutes. General liability, professional liability, workers' comp, and more.",
+          url: "https://www.nextinsurance.com/",
+          tag: "Quote",
+          tagColor: "#60a5fa",
+        },
+      ],
+    },
+  ];
+
+  return (
+    <div className="resources-section">
+      <div className="resources-intro">
+        <div className="resources-intro-icon">&#128218;</div>
+        <div>
+          <div className="resources-intro-title">Business Resources</div>
+          <div className="resources-intro-sub">
+            Free tools and resources to help you monitor credit, find funding programs, and grow your business.
+          </div>
+        </div>
+      </div>
+
+      {resources.map((group) => (
+        <div key={group.category} className="resources-group">
+          <div className="resources-group-title">{group.category}</div>
+          <div className="resources-grid">
+            {group.items.map((item) => (
+              <a
+                key={item.title}
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="resource-card"
+              >
+                <div className="resource-card-header">
+                  <div className="resource-card-title">{item.title}</div>
+                  <div className="resource-tag" style={{ background: `${item.tagColor}20`, color: item.tagColor, borderColor: `${item.tagColor}40` }}>
+                    {item.tag}
+                  </div>
+                </div>
+                <div className="resource-card-desc">{item.description}</div>
+                <div className="resource-card-link">
+                  Visit &rarr;
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -3470,7 +3750,7 @@ export default function MerchantPortal() {
   const [loadingStatements, setLoadingStatements] = useState(false);
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [loadingVault, setLoadingVault] = useState(false);
-  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials'>('positions');
+  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials' | 'resources'>('positions');
   const [appStatus, setAppStatus] = useState<{
     hasApplication: boolean;
     applicationId?: number;
@@ -3670,6 +3950,12 @@ export default function MerchantPortal() {
                     >
                       Financials
                     </button>
+                    <button
+                      className={`portal-nav-btn ${activeTab === 'resources' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('resources')}
+                    >
+                      Resources
+                    </button>
                   </div>
 
                   {/* ── POSITIONS TAB ── */}
@@ -3761,6 +4047,11 @@ export default function MerchantPortal() {
                       assignedRep={deals.length > 0 ? deals[0].assignedRep : null}
                       onSwitchToMessages={() => setActiveTab('messages')}
                     />
+                  )}
+
+                  {/* ── RESOURCES TAB ── */}
+                  {activeTab === 'resources' && (
+                    <ResourcesTab />
                   )}
                 </>
               )}
