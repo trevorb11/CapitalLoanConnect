@@ -625,7 +625,7 @@ export default function GigFiInternal() {
         {/* Right: Submit Panel */}
         {selectedApp && (
           <div className="flex-1 flex flex-col overflow-hidden sm:max-w-lg">
-            <SubmitPanel app={selectedApp} onClose={() => setSelectedApp(null)} />
+            <SubmitPanel key={selectedApp.id} app={selectedApp} onClose={() => setSelectedApp(null)} />
           </div>
         )}
 
