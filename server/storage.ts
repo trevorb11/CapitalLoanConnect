@@ -18,7 +18,7 @@ import {
   type MerchantFinancialInsight, type InsertMerchantFinancialInsight,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, desc, sql } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike } from "drizzle-orm";
 
 // Retry wrapper for database operations to handle connection drops
 async function withRetry<T>(
@@ -68,6 +68,7 @@ export interface IStorage {
   createLoanApplication(application: Partial<InsertLoanApplication>): Promise<LoanApplication>;
   updateLoanApplication(id: string, application: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined>;
   getAllLoanApplications(): Promise<LoanApplication[]>;
+  searchFullApplicationsForGigFi(query: string): Promise<LoanApplication[]>;
   
   // Plaid methods
   createPlaidItem(item: InsertPlaidItem): Promise<PlaidItem>;
@@ -289,6 +290,27 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(loanApplications)
       .orderBy(desc(loanApplications.createdAt));
+  }
+
+  async searchFullApplicationsForGigFi(query: string): Promise<LoanApplication[]> {
+    const pattern = `%${query}%`;
+    return await db
+      .select()
+      .from(loanApplications)
+      .where(
+        and(
+          sql`${loanApplications.isFullApplicationCompleted} = true`,
+          or(
+            ilike(loanApplications.fullName, pattern),
+            ilike(loanApplications.email, pattern),
+            ilike(loanApplications.phone, pattern),
+            ilike(loanApplications.businessName, pattern),
+            ilike(loanApplications.legalBusinessName, pattern)
+          )
+        )
+      )
+      .orderBy(desc(loanApplications.createdAt))
+      .limit(25);
   }
 
   // Plaid methods

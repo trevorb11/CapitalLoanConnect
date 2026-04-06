@@ -9135,6 +9135,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Internal GigFi applicant search — admin/agent only
+  app.get("/api/gigfi/search", async (req: Request, res: Response) => {
+    if (!req.session.user || !['admin', 'agent', 'user'].includes(req.session.user.role)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const query = (req.query.q as string || "").trim();
+    if (!query || query.length < 2) {
+      return res.status(400).json({ error: "Query must be at least 2 characters" });
+    }
+    try {
+      const apps = await storage.searchFullApplicationsForGigFi(query);
+      return res.json({ results: apps });
+    } catch (err) {
+      console.error("[GIGFI SEARCH]", err);
+      return res.status(500).json({ error: "Search failed" });
+    }
+  });
+
   app.post("/api/gigfi/submit", async (req: Request, res: Response) => {
     try {
       if (!isGigFiConfigured()) {
