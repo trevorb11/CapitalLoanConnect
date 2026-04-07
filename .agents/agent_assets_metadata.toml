@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "SU5J38xUzaUmGpT6RxknM"
+uri = "file://GIGFI_SUBMISSION_GUIDE.md"
+type = "text"
+title = "GigFi Submission Guide"
