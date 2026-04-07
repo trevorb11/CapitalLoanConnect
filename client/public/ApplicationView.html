@@ -285,6 +285,7 @@
     <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 40px;">
         <button class="btn" onclick="downloadPDF(false)" style="max-width: 250px;">Download Full PDF</button>
         <button class="btn" onclick="downloadPDF(true)" style="max-width: 250px; background: #666666;">Download Redacted PDF</button>
+        <button class="btn" onclick="downloadPDF(false, true)" style="max-width: 250px; background: #1B2E4D;">Download with LCG Lingo</button>
     </div>
 </div>
 
@@ -421,7 +422,7 @@
     }
 
     // Download PDF function
-    function downloadPDF(isRedacted = false) {
+    function downloadPDF(isRedacted = false, includeLingo = false) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         
@@ -455,7 +456,7 @@
                 doc.setFontSize(10);
                 doc.text(`Date: ${dateText}`, 150, 20);
                 
-                continuePDFGeneration(doc, darkNavy, teal, isRedacted);
+                continuePDFGeneration(doc, darkNavy, teal, isRedacted, includeLingo);
             } catch (error) {
                 // If logo fails, fallback to text
                 console.error('Failed to add logo:', error);
@@ -477,7 +478,7 @@
             doc.setFontSize(10);
             doc.text(`Date: ${dateText}`, 150, 20);
             
-            continuePDFGeneration(doc, darkNavy, teal, isRedacted);
+            continuePDFGeneration(doc, darkNavy, teal, isRedacted, includeLingo);
         };
         
         // Set up handlers BEFORE setting src to avoid race condition
@@ -499,7 +500,7 @@
     }
     
     // Continue PDF generation after header
-    function continuePDFGeneration(doc, darkNavy, teal, isRedacted = false) {
+    function continuePDFGeneration(doc, darkNavy, teal, isRedacted = false, includeLingo = false) {
         let yPos = 50;
         
         // Fields to redact (hide in redacted version) - only email and phone
@@ -672,10 +673,46 @@
             }
         }
         
+        // LCG Lingo block
+        if (includeLingo) {
+            yPos += 20;
+            if (yPos > 240) {
+                doc.addPage();
+                yPos = 20;
+            }
+
+            // Section header
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...darkNavy);
+            doc.text('Authorization & Consent', 20, yPos);
+            doc.setDrawColor(...teal);
+            doc.setLineWidth(0.5);
+            doc.line(20, yPos + 2, 100, yPos + 2);
+            yPos += 10;
+
+            const lingoText = 'The Merchant and Owner(s)/Officer(s) identified above (individually, and "Applicant") each represents, acknowledges and agrees that (1) all the information and documents provided to ______________ ("Representative") including credit card processor statements are true, accurate and complete, (2) Applicant will immediately notify Representative of any change in such information or financial condition, (3) Applicant authorizes Representative to disclose all information and documents that Representative may obtain including credit reports to the other persons or entities (collectively, "Assignees") that may be involved with or acquire commercial funding having daily repayment features or purchases of future receivables, including Merchant Cash Advance transactions, including without limitation the application therefor (collectively, "Transactions"), and each Assignee is authorized to use such information and documents, and share such information and documents with other Assignees, in connection with potential Transactions, (4) Representative and each Assignee will rely upon the accuracy and completeness of such information and documents, (5) Representative, Assignees, and each of their representatives, successors, assigns and designees (collectively, "Recipients") are authorized to request and receive and investigative reports, credit reports, statements from creditors or financial institutions, verification information, or any other information that a Recipient deems necessary, (6) Applicant waives and releases and claims against Recipients and any other information-providers arising from any act or omission relating to the requesting, receiving, or release of information, (7) each Owner/Officer represents that he or she is authorized to sign this form on behalf of Merchant and (8) Applicant consents to receive marketing calls and texts from Representative and its affiliates or assigns using automated technology. Consent is not a condition of funding. A copy of this authorization may be accepted as an original.';
+
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(60, 60, 60);
+            const splitLingo = doc.splitTextToSize(lingoText, 170);
+            // Paginate lingo text if it overflows
+            for (let i = 0; i < splitLingo.length; i++) {
+                if (yPos > 280) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+                doc.text(splitLingo[i], 20, yPos);
+                yPos += 4.5;
+            }
+        }
+
         // Save PDF
         const businessName = document.getElementById('legal_business_name').textContent || 'Application';
         const redactedSuffix = isRedacted ? ' *' : '';
-        const fileName = `Application_${businessName.replace(/[^a-z0-9]/gi, '_')}${redactedSuffix}.pdf`;
+        const lingoSuffix = includeLingo ? ' (LCG)' : '';
+        const fileName = `Application_${businessName.replace(/[^a-z0-9]/gi, '_')}${redactedSuffix}${lingoSuffix}.pdf`;
         doc.save(fileName);
     }
 
