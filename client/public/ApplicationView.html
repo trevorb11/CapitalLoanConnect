@@ -287,7 +287,7 @@
         <button class="btn" onclick="downloadPDF(true)" style="max-width: 250px; background: #666666;">Download Redacted PDF</button>
         <button class="btn" onclick="downloadPDF(false, true)" style="max-width: 250px; background: #1B2E4D;">Download with LCG Lingo</button>
         <button class="btn" onclick="openSignatureModal()" style="max-width: 250px; background: #2d7dd2;" data-testid="button-sign-application">Sign Application</button>
-        <button id="restoreEsigBtn" class="btn" onclick="restoreESignature()" style="max-width: 250px; background: #b45309; display: none;" data-testid="button-restore-esig">Restore E-Signature</button>
+        <button id="restoreEsigBtn" class="btn" onclick="restoreESignature()" style="max-width: 250px; background: #b45309; display: none;" data-testid="button-restore-esig">Switch to E-Sig</button>
     </div>
 </div>
 
@@ -433,6 +433,15 @@
                         </div>
                     `;
                     signaturePlaceholder.style.display = 'block';
+
+                    // Page already has a drawn sig — store reconstruction data and show Switch button
+                    originalSigSnapshot = {
+                        signature: null, // no original e-sig value; will reconstruct from name
+                        signatureDate: data.signatureDate || data.updatedAt || data.createdAt,
+                        fullName: data.fullName || 'Unknown',
+                        placeholderHTML: null, // will be built fresh by restoreESignature
+                    };
+                    document.getElementById('restoreEsigBtn').style.display = 'block';
                 } else {
                     // It's a checkbox/text signature - display stamp with proper date
                     const rawDate = data.signatureDate || data.updatedAt || data.createdAt;
@@ -887,34 +896,55 @@
 
         const btn = document.getElementById('restoreEsigBtn');
         btn.disabled = true;
-        btn.textContent = 'Restoring...';
+        btn.textContent = 'Switching...';
 
-        // Restore the displayed signature to the original e-sig state
+        const fullName = originalSigSnapshot.fullName || document.getElementById('full_name').textContent || 'Unknown';
+        const rawDate = originalSigSnapshot.signatureDate;
+        const signedDate = rawDate
+            ? new Date(rawDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        // Build the e-sig stamp HTML (from snapshot if available, else reconstruct)
+        const stampHTML = originalSigSnapshot.placeholderHTML || `
+            <div style="padding: 20px; text-align: left;">
+                <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px;">Digitally Signed by: ${fullName}</div>
+                <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">Date: ${signedDate}</div>
+                <div style="font-size: 13px; font-style: italic; color: #6b7280;">Electronic Consent Accepted</div>
+            </div>`;
+
+        // Restore displayed signature
         const signatureImg = document.getElementById('signature_image');
         signatureImg.src = '';
         signatureImg.style.display = 'none';
         signatureImg.dataset.updatedAt = '';
 
         const signaturePlaceholder = document.getElementById('signature_placeholder');
-        signaturePlaceholder.innerHTML = originalSigSnapshot.placeholderHTML;
+        signaturePlaceholder.innerHTML = stampHTML;
         signaturePlaceholder.style.display = 'block';
 
-        // Persist original e-sig back to server
+        // Determine what to persist — use original value if available, else use full name as e-sig marker
+        const sigValue = originalSigSnapshot.signature || fullName;
+
         try {
             await fetch(`/api/applications/${applicationId}/signature`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    signature: originalSigSnapshot.signature,
-                    signedAt: originalSigSnapshot.signatureDate,
-                })
+                body: JSON.stringify({ signature: sigValue, signedAt: rawDate })
             });
         } catch (err) {
-            console.error('Failed to restore e-signature:', err);
+            console.error('Failed to switch to e-signature:', err);
         }
 
+        // Update snapshot so that if user draws again we can restore back here
+        originalSigSnapshot = {
+            signature: sigValue,
+            signatureDate: rawDate,
+            fullName,
+            placeholderHTML: stampHTML,
+        };
+
         btn.disabled = false;
-        btn.textContent = 'Restore E-Signature';
+        btn.textContent = 'Switch to E-Sig';
         btn.style.display = 'none';
     }
 
