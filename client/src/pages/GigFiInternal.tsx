@@ -238,7 +238,7 @@ function SubmitPanel({ app, onClose }: SubmitPanelProps) {
       <div className="flex items-center justify-between p-5 border-b">
         <div>
           <h2 className="font-semibold text-base">{app.fullName?.trim()}</h2>
-          <p className="text-sm text-muted-foreground">{app.businessName?.trim() || "No business name"}</p>
+          <p className="text-sm text-muted-foreground">{app.businessName?.trim() || app.legalBusinessName?.trim() || "No business name"}</p>
         </div>
         <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-panel">
           <X className="w-4 h-4" />
@@ -470,7 +470,7 @@ function AppCard({ app, selected, onSelect }: { app: AppResult; selected: boolea
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm truncate">{app.fullName?.trim()}</span>
           </div>
-          <p className="text-xs text-muted-foreground truncate mt-0.5">{app.businessName?.trim() || app.email}</p>
+          <p className="text-xs text-muted-foreground truncate mt-0.5">{app.businessName?.trim() || app.legalBusinessName?.trim() || app.email}</p>
           <p className="text-xs text-muted-foreground">{app.email}</p>
 
           <div className="flex flex-wrap gap-1.5 mt-2">
