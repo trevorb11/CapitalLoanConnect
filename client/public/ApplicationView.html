@@ -286,6 +286,36 @@
         <button class="btn" onclick="downloadPDF(false)" style="max-width: 250px;">Download Full PDF</button>
         <button class="btn" onclick="downloadPDF(true)" style="max-width: 250px; background: #666666;">Download Redacted PDF</button>
         <button class="btn" onclick="downloadPDF(false, true)" style="max-width: 250px; background: #1B2E4D;">Download with LCG Lingo</button>
+        <button class="btn" onclick="openSignatureModal()" style="max-width: 250px; background: #2d7dd2;" data-testid="button-sign-application">Sign Application</button>
+    </div>
+</div>
+
+<!-- Signature Pad Modal -->
+<div id="signatureModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:9999; justify-content:center; align-items:center; padding:20px;">
+    <div style="background:white; border-radius:10px; padding:28px; width:100%; max-width:580px; box-shadow:0 20px 40px rgba(0,0,0,0.3);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="color:#1B2E4D; margin:0; font-size:20px; font-weight:700;">Sign Application</h3>
+            <button onclick="closeSignatureModal()" style="background:none; border:none; cursor:pointer; font-size:22px; color:#9ca3af; line-height:1;">&times;</button>
+        </div>
+        <p style="color:#6b7280; font-size:14px; margin:0 0 14px 0;">Draw your signature in the box below using your mouse or finger.</p>
+        <canvas id="sigCanvas" width="520" height="180"
+            style="border:2px solid #e5e7eb; border-radius:6px; display:block; width:100%; background:white; cursor:crosshair; touch-action:none;">
+        </canvas>
+        <div id="sigEmptyWarning" style="display:none; color:#dc2626; font-size:13px; margin-top:8px;">Please draw your signature before saving.</div>
+        <div style="display:flex; gap:10px; margin-top:18px; justify-content:flex-end; flex-wrap:wrap;">
+            <button onclick="clearSignaturePad()"
+                style="padding:10px 20px; border:1px solid #e5e7eb; border-radius:6px; background:white; cursor:pointer; font-size:14px; color:#6b7280;">
+                Clear
+            </button>
+            <button onclick="closeSignatureModal()"
+                style="padding:10px 20px; border:1px solid #e5e7eb; border-radius:6px; background:white; cursor:pointer; font-size:14px; color:#6b7280;">
+                Cancel
+            </button>
+            <button id="saveSignatureBtn" onclick="saveSignature()"
+                style="padding:10px 24px; border:none; border-radius:6px; background:#5FBFB8; color:white; cursor:pointer; font-size:14px; font-weight:600;">
+                Save Signature
+            </button>
+        </div>
     </div>
 </div>
 
@@ -715,6 +745,130 @@
         const fileName = `Application_${businessName.replace(/[^a-z0-9]/gi, '_')}${redactedSuffix}${lingoSuffix}.pdf`;
         doc.save(fileName);
     }
+
+    // =============================================
+    // SIGNATURE PAD
+    // =============================================
+    let sigCanvas, sigCtx, isDrawing = false, lastX = 0, lastY = 0, hasMoved = false;
+
+    function initSignaturePad() {
+        sigCanvas = document.getElementById('sigCanvas');
+        sigCtx = sigCanvas.getContext('2d');
+        sigCtx.strokeStyle = '#1B2E4D';
+        sigCtx.lineWidth = 2.5;
+        sigCtx.lineCap = 'round';
+        sigCtx.lineJoin = 'round';
+
+        sigCanvas.addEventListener('mousedown', startDraw);
+        sigCanvas.addEventListener('mousemove', draw);
+        sigCanvas.addEventListener('mouseup', stopDraw);
+        sigCanvas.addEventListener('mouseleave', stopDraw);
+        sigCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDraw(e.touches[0]); }, { passive: false });
+        sigCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e.touches[0]); }, { passive: false });
+        sigCanvas.addEventListener('touchend', stopDraw);
+    }
+
+    function getCanvasPos(e) {
+        const rect = sigCanvas.getBoundingClientRect();
+        return {
+            x: (e.clientX - rect.left) * (sigCanvas.width / rect.width),
+            y: (e.clientY - rect.top) * (sigCanvas.height / rect.height)
+        };
+    }
+
+    function startDraw(e) {
+        isDrawing = true;
+        hasMoved = false;
+        const pos = getCanvasPos(e);
+        lastX = pos.x;
+        lastY = pos.y;
+        // Draw a dot for click/tap without moving
+        sigCtx.beginPath();
+        sigCtx.arc(pos.x, pos.y, 1.2, 0, Math.PI * 2);
+        sigCtx.fillStyle = '#1B2E4D';
+        sigCtx.fill();
+    }
+
+    function draw(e) {
+        if (!isDrawing) return;
+        hasMoved = true;
+        const pos = getCanvasPos(e);
+        sigCtx.beginPath();
+        sigCtx.moveTo(lastX, lastY);
+        sigCtx.lineTo(pos.x, pos.y);
+        sigCtx.stroke();
+        lastX = pos.x;
+        lastY = pos.y;
+        document.getElementById('sigEmptyWarning').style.display = 'none';
+    }
+
+    function stopDraw() { isDrawing = false; }
+
+    function clearSignaturePad() {
+        if (sigCtx) sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
+        document.getElementById('sigEmptyWarning').style.display = 'none';
+    }
+
+    function openSignatureModal() {
+        const modal = document.getElementById('signatureModal');
+        modal.style.display = 'flex';
+        if (!sigCtx) initSignaturePad();
+        else clearSignaturePad();
+    }
+
+    function closeSignatureModal() {
+        document.getElementById('signatureModal').style.display = 'none';
+    }
+
+    async function saveSignature() {
+        const pixelData = sigCtx.getImageData(0, 0, sigCanvas.width, sigCanvas.height).data;
+        const hasDrawing = Array.from(pixelData).some((val, i) => i % 4 === 3 && val > 0);
+        if (!hasDrawing) {
+            document.getElementById('sigEmptyWarning').style.display = 'block';
+            return;
+        }
+
+        const btn = document.getElementById('saveSignatureBtn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        const dataUrl = sigCanvas.toDataURL('image/png');
+        const now = new Date();
+        const signedDate = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        // Replace displayed signature in page
+        const signatureImg = document.getElementById('signature_image');
+        signatureImg.src = dataUrl;
+        signatureImg.style.display = 'block';
+        signatureImg.dataset.updatedAt = now.toISOString();
+
+        const signaturePlaceholder = document.getElementById('signature_placeholder');
+        signaturePlaceholder.innerHTML = `
+            <div style="padding: 8px 0; text-align: left;">
+                <div style="font-size: 13px; color: #6b7280;">Date: ${signedDate}</div>
+            </div>`;
+        signaturePlaceholder.style.display = 'block';
+
+        // Persist to server
+        try {
+            await fetch(`/api/applications/${applicationId}/signature`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ signature: dataUrl, signedAt: now.toISOString() })
+            });
+        } catch (err) {
+            console.error('Failed to persist signature:', err);
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Save Signature';
+        closeSignatureModal();
+    }
+
+    // Close modal on backdrop click
+    document.getElementById('signatureModal').addEventListener('click', function(e) {
+        if (e.target === this) closeSignatureModal();
+    });
 
     // Load data on page load
     loadApplicationData();
