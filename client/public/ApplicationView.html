@@ -287,6 +287,7 @@
         <button class="btn" onclick="downloadPDF(true)" style="max-width: 250px; background: #666666;">Download Redacted PDF</button>
         <button class="btn" onclick="downloadPDF(false, true)" style="max-width: 250px; background: #1B2E4D;">Download with LCG Lingo</button>
         <button class="btn" onclick="openSignatureModal()" style="max-width: 250px; background: #2d7dd2;" data-testid="button-sign-application">Sign Application</button>
+        <button id="restoreEsigBtn" class="btn" onclick="restoreESignature()" style="max-width: 250px; background: #b45309; display: none;" data-testid="button-restore-esig">Restore E-Signature</button>
     </div>
 </div>
 
@@ -323,6 +324,9 @@
     // Get application ID from URL path
     const pathParts = window.location.pathname.split('/');
     const applicationId = pathParts[pathParts.length - 1];
+
+    // Stores original e-sig state so it can be restored after a drawn sig is applied
+    let originalSigSnapshot = null;
     
     // Check if redacted mode is requested
     const urlParams = new URLSearchParams(window.location.search);
@@ -443,6 +447,14 @@
                         </div>
                     `;
                     signaturePlaceholder.style.display = 'block';
+
+                    // Snapshot the e-sig so it can be restored if user draws over it
+                    originalSigSnapshot = {
+                        signature: data.applicantSignature,
+                        signatureDate: data.signatureDate || data.updatedAt || data.createdAt,
+                        fullName: data.fullName || 'Unknown',
+                        placeholderHTML: signaturePlaceholder.innerHTML,
+                    };
                 }
             }
         } catch (error) {
@@ -863,6 +875,47 @@
         btn.disabled = false;
         btn.textContent = 'Save Signature';
         closeSignatureModal();
+
+        // Show restore button if there was an original e-sig to go back to
+        if (originalSigSnapshot) {
+            document.getElementById('restoreEsigBtn').style.display = 'block';
+        }
+    }
+
+    async function restoreESignature() {
+        if (!originalSigSnapshot) return;
+
+        const btn = document.getElementById('restoreEsigBtn');
+        btn.disabled = true;
+        btn.textContent = 'Restoring...';
+
+        // Restore the displayed signature to the original e-sig state
+        const signatureImg = document.getElementById('signature_image');
+        signatureImg.src = '';
+        signatureImg.style.display = 'none';
+        signatureImg.dataset.updatedAt = '';
+
+        const signaturePlaceholder = document.getElementById('signature_placeholder');
+        signaturePlaceholder.innerHTML = originalSigSnapshot.placeholderHTML;
+        signaturePlaceholder.style.display = 'block';
+
+        // Persist original e-sig back to server
+        try {
+            await fetch(`/api/applications/${applicationId}/signature`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    signature: originalSigSnapshot.signature,
+                    signedAt: originalSigSnapshot.signatureDate,
+                })
+            });
+        } catch (err) {
+            console.error('Failed to restore e-signature:', err);
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Restore E-Signature';
+        btn.style.display = 'none';
     }
 
     // Close modal on backdrop click
