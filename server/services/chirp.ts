@@ -19,9 +19,34 @@
  *   CHIRP_ENV        - Informational only (sandbox | production). Token determines environment.
  */
 
+import axiosLib from "axios";
+
 const CHIRP_BASE_URL = process.env.CHIRP_BASE_URL || "https://chirp.digital/api";
 const CHIRP_API_TOKEN = process.env.CHIRP_API_TOKEN || "";
 const CHIRP_ENV = process.env.CHIRP_ENV || "sandbox";
+
+// Axios instance — uses Node's http/https module (HTTP/1.1) which avoids the
+// undici/HTTP2 fingerprint that Cloudflare WAF flags on server-side requests.
+const chirpAxios = axiosLib.create({
+  baseURL: CHIRP_BASE_URL,
+  timeout: 30000,
+  headers: {
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Content-Type": "application/json",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "sec-ch-ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Origin": "https://chirp.digital",
+    "Referer": "https://chirp.digital/",
+  },
+});
 
 // Shared analysis types - kept compatible with the previous PlaidService so
 // downstream consumers (funding analysis, AI summaries, merchant insights)
@@ -143,14 +168,14 @@ export class ChirpService {
 
   private async request<T>(
     path: string,
-    init: RequestInit & { query?: Record<string, string | number | undefined> } = {},
+    init: { method?: string; body?: string; query?: Record<string, string | number | undefined>; headers?: Record<string, string> } = {},
   ): Promise<T> {
     if (!this.token) {
       throw new ChirpApiError("CHIRP_API_TOKEN is not configured", 500);
     }
 
-    const { query, headers, ...rest } = init;
-    let url = `${this.baseUrl}${path}`;
+    const { query, headers: extraHeaders, method = "GET", body } = init;
+    let url = path;
     if (query) {
       const qs = Object.entries(query)
         .filter(([, v]) => v !== undefined && v !== null)
@@ -159,34 +184,31 @@ export class ChirpService {
       if (qs) url += `?${qs}`;
     }
 
-    const response = await fetch(url, {
-      ...rest,
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        Authorization: this.token,
-        ...headers,
-      },
-    });
+    try {
+      const axiosResponse = await chirpAxios.request<T>({
+        method: method as any,
+        url,
+        baseURL: this.baseUrl,
+        data: body ? JSON.parse(body) : undefined,
+        headers: {
+          Authorization: this.token,
+          ...extraHeaders,
+        },
+        validateStatus: () => true,
+      });
 
-    const text = await response.text();
-    let body: any = null;
-    if (text) {
-      try {
-        body = JSON.parse(text);
-      } catch {
-        body = text;
+      if (axiosResponse.status >= 400) {
+        const body = axiosResponse.data;
+        const message = (body && typeof body === "object" && ((body as any).message || (body as any).error)) || `Chirp API error ${axiosResponse.status}`;
+        console.error(`[CHIRP] ${axiosResponse.status} ${path}`, typeof body === "string" ? body.slice(0, 200) : body);
+        throw new ChirpApiError(String(message), axiosResponse.status, body);
       }
-    }
 
-    if (!response.ok) {
-      const message = (body && typeof body === "object" && (body.message || body.error)) || `Chirp API error ${response.status}`;
-      console.error(`[CHIRP] ${response.status} ${path}`, body);
-      throw new ChirpApiError(String(message), response.status, body);
+      return axiosResponse.data;
+    } catch (err: any) {
+      if (err instanceof ChirpApiError) throw err;
+      throw new ChirpApiError(err.message || "Network error calling Chirp API", 500);
     }
-
-    return body as T;
   }
 
   // ---------------------------------------------------------------------------
@@ -603,31 +625,30 @@ export class ChirpService {
     requestCode: string;
     validUpto: string;
   }> {
-    const url = `${this.baseUrl}/genAuthTokenForChirpLink/chirpLink/${encodeURIComponent(requestCode)}`;
     if (!this.token) {
       throw new ChirpApiError("CHIRP_API_TOKEN is not configured", 500);
     }
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: this.token,
-      },
-    });
-    const text = await response.text();
-    let body: any = null;
-    try { body = JSON.parse(text); } catch { body = text; }
-    if (!response.ok) {
-      const message = (body && typeof body === "object" && (body.message || body.error)) || `Chirp genAuthToken error ${response.status}`;
-      throw new ChirpApiError(String(message), response.status, body);
+    try {
+      const axiosResponse = await chirpAxios.post(
+        `/genAuthTokenForChirpLink/chirpLink/${encodeURIComponent(requestCode)}`,
+        {},
+        { headers: { Authorization: this.token }, validateStatus: () => true },
+      );
+      const body = axiosResponse.data;
+      if (axiosResponse.status >= 400) {
+        const message = (body && typeof body === "object" && (body.message || body.error)) || `Chirp genAuthToken error ${axiosResponse.status}`;
+        throw new ChirpApiError(String(message), axiosResponse.status, body);
+      }
+      return {
+        success: Boolean(body?.success),
+        token: body?.token || "",
+        requestCode: body?.requestCode || requestCode,
+        validUpto: body?.validUpto || "",
+      };
+    } catch (err: any) {
+      if (err instanceof ChirpApiError) throw err;
+      throw new ChirpApiError(err.message || "Network error calling Chirp API", 500);
     }
-    return {
-      success: Boolean(body?.success),
-      token: body?.token || "",
-      requestCode: body?.requestCode || requestCode,
-      validUpto: body?.validUpto || "",
-    };
   }
 
   // ---------------------------------------------------------------------------
