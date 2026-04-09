@@ -20,16 +20,43 @@
  */
 
 import axiosLib from "axios";
+import https from "https";
 
 const CHIRP_BASE_URL = process.env.CHIRP_BASE_URL || "https://chirp.digital/api";
 const CHIRP_API_TOKEN = process.env.CHIRP_API_TOKEN || "";
 const CHIRP_ENV = process.env.CHIRP_ENV || "sandbox";
 
-// Axios instance — uses Node's http/https module (HTTP/1.1) which avoids the
-// undici/HTTP2 fingerprint that Cloudflare WAF flags on server-side requests.
+// Chrome 122 TLS cipher suite order — changes the JA3 fingerprint so Cloudflare
+// WAF does not flag the request as a Node.js/server-side bot.
+const CHROME_CIPHERS = [
+  "TLS_AES_128_GCM_SHA256",
+  "TLS_AES_256_GCM_SHA384",
+  "TLS_CHACHA20_POLY1305_SHA256",
+  "ECDHE-ECDSA-AES128-GCM-SHA256",
+  "ECDHE-RSA-AES128-GCM-SHA256",
+  "ECDHE-ECDSA-AES256-GCM-SHA384",
+  "ECDHE-RSA-AES256-GCM-SHA384",
+  "ECDHE-ECDSA-CHACHA20-POLY1305",
+  "ECDHE-RSA-CHACHA20-POLY1305",
+  "ECDHE-RSA-AES128-SHA",
+  "ECDHE-RSA-AES256-SHA",
+  "AES128-GCM-SHA256",
+  "AES256-GCM-SHA384",
+  "AES128-SHA",
+  "AES256-SHA",
+].join(":");
+
+const chirpHttpsAgent = new https.Agent({
+  ciphers: CHROME_CIPHERS,
+  honorCipherOrder: false,
+  minVersion: "TLSv1.2",
+  keepAlive: true,
+});
+
 const chirpAxios = axiosLib.create({
   baseURL: CHIRP_BASE_URL,
   timeout: 30000,
+  httpsAgent: chirpHttpsAgent,
   headers: {
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
