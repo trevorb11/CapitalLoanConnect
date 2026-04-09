@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
-import { usePlaidLink } from "react-plaid-link";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -35,11 +34,18 @@ import {
 import { Progress } from "@/components/ui/progress";
 
 const formSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
   businessName: z.string().min(2, "Business name must be at least 2 characters"),
-  email: z.string().email("Please enter a valid email address")
+  email: z.string().email("Please enter a valid email address"),
+  phone: z.string().min(7, "Phone number is required"),
 });
 
 type FormData = z.infer<typeof formSchema>;
+
+const CHIRP_REQUEST_STORAGE_KEY = "tcg.chirp.pendingRequestCode";
+const POLL_INTERVAL_MS = 4000;
+const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface RedFlag {
   issue: string;
@@ -152,99 +158,200 @@ function ResultCard({
 }
 
 export default function FundingAnalysis() {
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [step, setStep] = useState<'input' | 'analyzing' | 'results'>('input');
+  const [step, setStep] = useState<'input' | 'awaiting' | 'analyzing' | 'results'>('input');
   const [results, setResults] = useState<AnalysisResults | null>(null);
+  const [pendingRequestCode, setPendingRequestCode] = useState<string | null>(null);
+  const [pollExpired, setPollExpired] = useState(false);
+  const pollStartRef = useRef<number>(0);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      firstName: "",
+      lastName: "",
       businessName: "",
-      email: ""
+      email: "",
+      phone: "",
     }
   });
 
-  const createLinkTokenMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/plaid/create-link-token");
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setLinkToken(data.link_token);
-    },
-    onError: () => {
-      toast({
-        title: "Connection Error",
-        description: "Failed to initialize bank connection. Please try again later.",
-        variant: "destructive"
-      });
+  // Resume a pending verification if we stored one previously
+  useEffect(() => {
+    const stored = sessionStorage.getItem(CHIRP_REQUEST_STORAGE_KEY);
+    if (stored) {
+      setPendingRequestCode(stored);
+      setStep('awaiting');
+      pollStartRef.current = Date.now();
     }
+  }, []);
+
+  // Map a raw fundingAnalyses row from the Chirp status response into the
+  // AnalysisResults shape the results view expects.
+  const mapAnalysis = (fundingAnalysis: any, institutionName?: string): AnalysisResults => ({
+    type: 'basic_analysis',
+    metrics: {
+      monthlyRevenue: Number(fundingAnalysis?.calculatedMonthlyRevenue ?? 0),
+      avgBalance: Number(fundingAnalysis?.calculatedAvgBalance ?? 0),
+      negativeDays: Number(fundingAnalysis?.negativeDaysCount ?? 0),
+    },
+    recommendations: fundingAnalysis?.analysisResult ?? {
+      sba: { status: "Low", reason: "" },
+      loc: { status: "Low", reason: "" },
+      mca: { status: "Low", reason: "" },
+    },
+    institutionName,
   });
 
-  const exchangeTokenMutation = useMutation({
-    mutationFn: async (payload: { publicToken: string; metadata: any }) => {
-      const res = await apiRequest("POST", "/api/plaid/exchange-token", {
-        publicToken: payload.publicToken,
-        metadata: payload.metadata,
-        businessName: form.getValues("businessName"),
-        email: form.getValues("email"),
-        useAIAnalysis: true
+  // Polling effect
+  useEffect(() => {
+    if (step !== 'awaiting' || !pendingRequestCode) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      if (Date.now() - pollStartRef.current > POLL_TIMEOUT_MS) {
+        setPollExpired(true);
+        return;
+      }
+
+      try {
+        const res = await apiRequest("GET", `/api/chirp/status/${pendingRequestCode}`);
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data.status === "Verified" && data.fundingAnalysis) {
+          sessionStorage.removeItem(CHIRP_REQUEST_STORAGE_KEY);
+          queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+          setResults(mapAnalysis(data.fundingAnalysis, data.selectedBank));
+          setStep('results');
+          toast({
+            title: "Analysis Complete",
+            description: "Your funding eligibility report is ready!",
+          });
+          return;
+        }
+
+        if (data.status === "Rejected" || data.status === "Expired") {
+          sessionStorage.removeItem(CHIRP_REQUEST_STORAGE_KEY);
+          setPendingRequestCode(null);
+          setStep('input');
+          toast({
+            title: "Verification Failed",
+            description: `Verification was ${data.status.toLowerCase()}. Please try again.`,
+            variant: "destructive",
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn("[CHIRP POLL] Transient error:", err);
+      }
+
+      if (!cancelled) setTimeout(poll, POLL_INTERVAL_MS);
+    };
+
+    const handle = setTimeout(poll, POLL_INTERVAL_MS);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [step, pendingRequestCode, toast]);
+
+  const createChirpRequestMutation = useMutation({
+    mutationFn: async (payload: FormData) => {
+      const res = await apiRequest("POST", "/api/chirp/create-request", {
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        email: payload.email,
+        phone: payload.phone,
+        businessName: payload.businessName,
+        useAIAnalysis: true,
       });
       return res.json();
     },
     onSuccess: (data) => {
-      setResults(data);
-      setStep('results');
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
-      toast({
-        title: "Analysis Complete",
-        description: "Your AI-powered funding eligibility report is ready!"
-      });
+      if (!data.requestCode || !data.verificationUrl) {
+        toast({
+          title: "Connection Error",
+          description: "Chirp did not return a verification URL. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      sessionStorage.setItem(CHIRP_REQUEST_STORAGE_KEY, data.requestCode);
+      setPendingRequestCode(data.requestCode);
+      setStep('awaiting');
+      pollStartRef.current = Date.now();
+      window.open(data.verificationUrl, "_blank", "noopener,noreferrer");
     },
     onError: () => {
       setStep('input');
       toast({
-        title: "Analysis Failed",
-        description: "We couldn't analyze your bank data. Please try again.",
-        variant: "destructive"
+        title: "Connection Error",
+        description: "Failed to initialize bank verification. Please try again later.",
+        variant: "destructive",
       });
     }
   });
 
-  useEffect(() => {
-    createLinkTokenMutation.mutate();
-  }, []);
-
-  const onSuccess = useCallback(async (publicToken: string, metadata: any) => {
-    setStep('analyzing');
-    exchangeTokenMutation.mutate({ publicToken, metadata });
-  }, []);
-
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
-    onSuccess,
-  });
-
-  const handleConnectBank = () => {
-    const isValid = form.trigger();
-    isValid.then((valid) => {
-      if (valid && ready) {
-        open();
-      }
-    });
+  const handleConnectBank = async () => {
+    const valid = await form.trigger();
+    if (!valid) return;
+    createChirpRequestMutation.mutate(form.getValues());
   };
 
-  if (step === 'analyzing' || exchangeTokenMutation.isPending) {
+  const handleCancelAwaiting = () => {
+    sessionStorage.removeItem(CHIRP_REQUEST_STORAGE_KEY);
+    setPendingRequestCode(null);
+    setPollExpired(false);
+    setStep('input');
+  };
+
+  const handleCheckNow = async () => {
+    if (!pendingRequestCode) return;
+    try {
+      const res = await apiRequest("GET", `/api/chirp/status/${pendingRequestCode}`);
+      const data = await res.json();
+      if (data.status === "Verified" && data.fundingAnalysis) {
+        sessionStorage.removeItem(CHIRP_REQUEST_STORAGE_KEY);
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+        setResults(mapAnalysis(data.fundingAnalysis, data.selectedBank));
+        setStep('results');
+      } else {
+        toast({ title: "Still waiting", description: `Current status: ${data.status}.` });
+      }
+    } catch (err) {
+      toast({ title: "Check Failed", description: "Couldn't check verification status right now.", variant: "destructive" });
+    }
+  };
+
+  if (step === 'awaiting') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#192F56] to-[#19112D] flex flex-col items-center justify-center text-white p-4">
-        <Loader2 className="w-16 h-16 animate-spin text-[#5FBFB8] mb-4" data-testid="loader-analyzing" />
-        <h2 className="text-2xl font-bold mb-2">Analyzing Bank Data with AI...</h2>
-        <p className="text-white/70 text-center max-w-md">
-          Our AI is reviewing your bank transactions, balance history, and financial patterns to provide personalized funding recommendations.
+        {pollExpired ? (
+          <AlertCircle className="w-16 h-16 text-blue-400 mb-4" data-testid="icon-poll-expired" />
+        ) : (
+          <Loader2 className="w-16 h-16 animate-spin text-[#5FBFB8] mb-4" data-testid="loader-awaiting" />
+        )}
+        <h2 className="text-2xl font-bold mb-2">
+          {pollExpired ? "Still Waiting?" : "Verifying Your Bank..."}
+        </h2>
+        <p className="text-white/70 text-center max-w-md mb-6">
+          {pollExpired
+            ? "We haven't received verification yet. If you've finished in the other tab, click below to check now."
+            : "Complete the bank verification in the tab that just opened. We'll analyze your data as soon as it's done."}
         </p>
-        <p className="text-white/50 text-sm mt-4">This may take up to 30 seconds...</p>
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          <Button onClick={handleCheckNow} className="bg-[#5FBFB8] hover:bg-[#4ca8a1]" data-testid="button-check-now">
+            Check Verification Status
+          </Button>
+          <Button variant="outline" onClick={handleCancelAwaiting} className="bg-transparent text-white border-white/30 hover:bg-white/10" data-testid="button-cancel-awaiting">
+            Start Over
+          </Button>
+        </div>
+        {pendingRequestCode && (
+          <p className="text-white/40 text-xs mt-4" data-testid="text-request-code">
+            Request code: {pendingRequestCode}
+          </p>
+        )}
       </div>
     );
   }
@@ -550,18 +657,47 @@ export default function FundingAnalysis() {
           </p>
         </CardHeader>
         <CardContent className="p-8 space-y-6 bg-white rounded-b-xl">
-          {createLinkTokenMutation.isError && (
-            <div 
-              className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2" 
+          {createChirpRequestMutation.isError && (
+            <div
+              className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2"
               data-testid="text-error"
             >
               <AlertCircle className="w-5 h-5" />
-              Failed to initialize. Please refresh the page.
+              Failed to initialize bank verification. Please try again.
             </div>
           )}
-          
+
           <Form {...form}>
             <form className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Jane" data-testid="input-first-name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Doe" data-testid="input-last-name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
               <FormField
                 control={form.control}
                 name="businessName"
@@ -569,35 +705,50 @@ export default function FundingAnalysis() {
                   <FormItem>
                     <FormLabel>Business Name</FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="e.g. Acme Corp" 
+                      <Input
+                        placeholder="e.g. Acme Corp"
                         data-testid="input-business-name"
-                        {...field} 
+                        {...field}
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email Address</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="you@company.com" 
-                        type="email"
-                        data-testid="input-email"
-                        {...field} 
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email Address</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="you@company.com"
+                          type="email"
+                          data-testid="input-email"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <Input placeholder="(555) 123-4567" type="tel" data-testid="input-phone" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
                 <div className="flex items-start gap-2">
@@ -616,22 +767,22 @@ export default function FundingAnalysis() {
               </div>
 
               <div className="pt-4">
-                <Button 
+                <Button
                   type="button"
                   onClick={handleConnectBank}
-                  disabled={!ready || !linkToken || createLinkTokenMutation.isPending}
+                  disabled={createChirpRequestMutation.isPending}
                   className="w-full bg-[#5FBFB8] hover:bg-[#4ca8a1] text-white py-6 text-lg font-semibold flex items-center justify-center gap-2"
                   data-testid="button-connect-bank"
                 >
-                  {createLinkTokenMutation.isPending ? (
+                  {createChirpRequestMutation.isPending ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
                     <Lock className="w-5 h-5" />
                   )}
-                  Connect Bank & Get AI Analysis
+                  Verify Bank & Get Analysis
                 </Button>
                 <p className="text-xs text-center text-gray-400 mt-3">
-                  Secure connection via Plaid. We do not store your login credentials.
+                  Secure bank verification. We do not store your login credentials.
                 </p>
               </div>
             </form>

@@ -1,5 +1,4 @@
-import { useState, useCallback, useRef } from "react";
-import { usePlaidLink } from "react-plaid-link";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -19,75 +18,155 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Loader2, CheckCircle2, Lock, AlertCircle, Upload, Building2, FileText, Mail, ExternalLink } from "lucide-react";
-import plaidLogo from "@assets/plaid_logo_1770240188710.png";
 
 const formSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
   businessName: z.string().min(2, "Business name must be at least 2 characters"),
-  email: z.string().email("Please enter a valid email address")
+  email: z.string().email("Please enter a valid email address"),
+  phone: z.string().min(7, "Please enter a valid phone number"),
 });
 
 type FormData = z.infer<typeof formSchema>;
 
+const CHIRP_REQUEST_STORAGE_KEY = "tcg.chirp.pendingRequestCode";
+const POLL_INTERVAL_MS = 4000;
+const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 export default function ConnectBank() {
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [step, setStep] = useState<'input' | 'connecting' | 'uploading' | 'success'>('input');
-  const [connectionMethod, setConnectionMethod] = useState<'plaid' | 'upload' | null>(null);
+  const [step, setStep] = useState<'input' | 'awaiting' | 'uploading' | 'success'>('input');
+  const [connectionMethod, setConnectionMethod] = useState<'chirp' | 'upload' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pendingRequestCode, setPendingRequestCode] = useState<string | null>(null);
+  const [pollExpired, setPollExpired] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollStartRef = useRef<number>(0);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      firstName: "",
+      lastName: "",
       businessName: "",
-      email: ""
+      email: "",
+      phone: "",
     }
   });
 
-  const createLinkTokenMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/plaid/create-link-token");
+  // Resume a pending Chirp verification on mount, either from a return URL
+  // param or from sessionStorage (when the user completes verification in a
+  // new tab and returns to this page).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("requestCode");
+    const fromStorage = sessionStorage.getItem(CHIRP_REQUEST_STORAGE_KEY);
+    const code = fromUrl || fromStorage;
+    if (code) {
+      setPendingRequestCode(code);
+      setConnectionMethod('chirp');
+      setStep('awaiting');
+      pollStartRef.current = Date.now();
+    }
+  }, []);
+
+  // Polling effect - while in 'awaiting' state with a pending request code,
+  // poll /api/chirp/status every few seconds until Verified/Rejected/Expired
+  // or until we hit the timeout.
+  useEffect(() => {
+    if (step !== 'awaiting' || !pendingRequestCode) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+
+      if (Date.now() - pollStartRef.current > POLL_TIMEOUT_MS) {
+        setPollExpired(true);
+        return;
+      }
+
+      try {
+        const res = await apiRequest("GET", `/api/chirp/status/${pendingRequestCode}`);
+        const data = await res.json();
+
+        if (cancelled) return;
+
+        if (data.status === "Verified") {
+          sessionStorage.removeItem(CHIRP_REQUEST_STORAGE_KEY);
+          queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+          setStep('success');
+          toast({
+            title: "Bank Verified",
+            description: "Your bank account has been successfully verified!",
+          });
+          return;
+        }
+
+        if (data.status === "Rejected" || data.status === "Expired") {
+          sessionStorage.removeItem(CHIRP_REQUEST_STORAGE_KEY);
+          setStep('input');
+          setPendingRequestCode(null);
+          toast({
+            title: "Verification Failed",
+            description: `Verification was ${data.status.toLowerCase()}. Please try again.`,
+            variant: "destructive",
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn("[CHIRP POLL] Transient error:", err);
+      }
+
+      if (!cancelled) {
+        setTimeout(poll, POLL_INTERVAL_MS);
+      }
+    };
+
+    const handle = setTimeout(poll, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [step, pendingRequestCode, toast]);
+
+  const createChirpRequestMutation = useMutation({
+    mutationFn: async (payload: FormData) => {
+      const res = await apiRequest("POST", "/api/chirp/create-request", {
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        email: payload.email,
+        phone: payload.phone,
+        businessName: payload.businessName,
+        useAIAnalysis: true,
+      });
       return res.json();
     },
     onSuccess: (data) => {
-      setLinkToken(data.link_token);
+      if (!data.requestCode || !data.verificationUrl) {
+        toast({
+          title: "Connection Error",
+          description: "Chirp did not return a verification URL. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      sessionStorage.setItem(CHIRP_REQUEST_STORAGE_KEY, data.requestCode);
+      setPendingRequestCode(data.requestCode);
+      setConnectionMethod('chirp');
+      setStep('awaiting');
+      pollStartRef.current = Date.now();
+      // Open the Chirp hosted verification flow in a new tab. Polling on
+      // this page will detect the Verified state when the user returns.
+      window.open(data.verificationUrl, "_blank", "noopener,noreferrer");
     },
     onError: () => {
       toast({
         title: "Connection Error",
-        description: "Failed to initialize bank connection. Please try again later.",
-        variant: "destructive"
-      });
-    }
-  });
-
-  const exchangeTokenMutation = useMutation({
-    mutationFn: async (payload: { publicToken: string; metadata: any }) => {
-      const res = await apiRequest("POST", "/api/plaid/exchange-token", {
-        publicToken: payload.publicToken,
-        metadata: payload.metadata,
-        businessName: form.getValues("businessName"),
-        email: form.getValues("email")
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      setConnectionMethod('plaid');
-      setStep('success');
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
-      toast({
-        title: "Bank Connected",
-        description: "Your bank account has been successfully connected!"
-      });
-    },
-    onError: () => {
-      setStep('input');
-      toast({
-        title: "Connection Failed",
-        description: "We couldn't connect to your bank. Please try again.",
-        variant: "destructive"
+        description: "Failed to initialize bank verification. Please try again later.",
+        variant: "destructive",
       });
     }
   });
@@ -139,35 +218,41 @@ export default function ConnectBank() {
     }
   });
 
-  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
-    setStep('connecting');
-    exchangeTokenMutation.mutate({ publicToken, metadata });
-  }, [exchangeTokenMutation]);
+  const handleConnectBank = useCallback(async () => {
+    const valid = await form.trigger();
+    if (!valid) return;
+    const values = form.getValues();
+    createChirpRequestMutation.mutate(values);
+  }, [form, createChirpRequestMutation]);
 
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
-    onSuccess: onPlaidSuccess,
-  });
-
-  const handleConnectBank = () => {
-    const isValid = form.trigger();
-    isValid.then((valid) => {
-      if (valid) {
-        if (!linkToken) {
-          createLinkTokenMutation.mutate();
-          setTimeout(() => {
-            if (ready) open();
-          }, 1000);
-        } else if (ready) {
-          open();
-        }
-      }
-    });
+  const handleCancelAwaiting = () => {
+    sessionStorage.removeItem(CHIRP_REQUEST_STORAGE_KEY);
+    setPendingRequestCode(null);
+    setPollExpired(false);
+    setStep('input');
   };
 
-  const initializePlaidLink = () => {
-    if (!linkToken) {
-      createLinkTokenMutation.mutate();
+  const handleCheckNow = async () => {
+    if (!pendingRequestCode) return;
+    try {
+      const res = await apiRequest("GET", `/api/chirp/status/${pendingRequestCode}`);
+      const data = await res.json();
+      if (data.status === "Verified") {
+        sessionStorage.removeItem(CHIRP_REQUEST_STORAGE_KEY);
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+        setStep('success');
+      } else {
+        toast({
+          title: "Still waiting",
+          description: `Current status: ${data.status}. Complete verification in the other tab and try again.`,
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Check Failed",
+        description: "Couldn't check verification status right now.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -229,12 +314,50 @@ export default function ConnectBank() {
     }
   };
 
-  if (step === 'connecting' || exchangeTokenMutation.isPending) {
+  if (step === 'awaiting') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#192F56] to-[#19112D] flex flex-col items-center justify-center text-white p-4">
-        <Loader2 className="w-16 h-16 animate-spin text-[#5FBFB8] mb-4" data-testid="loader-connecting" />
-        <h2 className="text-2xl font-bold mb-2">Connecting Bank...</h2>
-        <p className="text-white/70">Securely connecting to your bank account.</p>
+      <div className="min-h-screen bg-gradient-to-br from-[#192F56] to-[#19112D] flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg shadow-xl border-0">
+          <CardContent className="p-8 text-center bg-white rounded-xl">
+            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              {pollExpired
+                ? <AlertCircle className="w-10 h-10 text-blue-500" data-testid="icon-poll-expired" />
+                : <Loader2 className="w-10 h-10 animate-spin text-[#5FBFB8]" data-testid="loader-awaiting" />
+              }
+            </div>
+            <h2 className="text-2xl font-bold text-[#192F56] mb-3" data-testid="heading-awaiting">
+              {pollExpired ? "Still Waiting?" : "Verifying Your Bank"}
+            </h2>
+            <p className="text-gray-600 mb-6">
+              {pollExpired
+                ? "We haven't received verification yet. If you've finished the process in the other tab, click below to check now."
+                : "Complete the bank verification in the tab that just opened. We'll automatically detect when it's done."
+              }
+            </p>
+            <div className="space-y-3">
+              <Button
+                className="w-full bg-[#192F56] hover:bg-[#2a4575] text-white"
+                onClick={handleCheckNow}
+                data-testid="button-check-now"
+              >
+                Check Verification Status
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleCancelAwaiting}
+                data-testid="button-cancel-awaiting"
+              >
+                Start Over
+              </Button>
+            </div>
+            {pendingRequestCode && (
+              <p className="text-xs text-gray-400 mt-4" data-testid="text-request-code">
+                Request code: {pendingRequestCode}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -246,7 +369,7 @@ export default function ConnectBank() {
         <h2 className="text-2xl font-bold mb-2">Uploading Statement...</h2>
         <p className="text-white/70">Securely uploading your bank statement.</p>
         <div className="w-64 h-2 bg-white/20 rounded-full mt-4">
-          <div 
+          <div
             className="h-full bg-[#5FBFB8] rounded-full transition-all duration-300"
             style={{ width: `${uploadProgress}%` }}
           />
@@ -264,15 +387,15 @@ export default function ConnectBank() {
               <CheckCircle2 className="w-10 h-10 text-green-600" />
             </div>
             <h2 className="text-2xl font-bold text-[#192F56] mb-3" data-testid="heading-success">
-              {connectionMethod === 'plaid' ? 'Bank Connected!' : 'Statement Uploaded!'}
+              {connectionMethod === 'chirp' ? 'Bank Verified!' : 'Statement Uploaded!'}
             </h2>
             <p className="text-gray-600 mb-6">
-              {connectionMethod === 'plaid' 
-                ? "Your bank account is now connected. We can access your statements for verification."
+              {connectionMethod === 'chirp'
+                ? "Your bank account is now verified. We can access your statements for underwriting."
                 : "Your bank statement has been received and will be reviewed by our team."}
             </p>
             <div className="space-y-3">
-              <Button 
+              <Button
                 className="w-full bg-[#192F56] hover:bg-[#2a4575] text-white"
                 onClick={() => setLocation("/")}
                 data-testid="button-go-to-application"
@@ -280,7 +403,7 @@ export default function ConnectBank() {
                 Go to Application
               </Button>
               <a href="https://www.todaycapitalgroup.com/#contact-us" target="_blank" rel="noopener noreferrer" className="block">
-                <Button 
+                <Button
                   variant="outline"
                   className="w-full"
                   data-testid="button-contact-team"
@@ -290,7 +413,7 @@ export default function ConnectBank() {
                 </Button>
               </a>
               <a href="https://fund.todaycapitalgroup.com" target="_blank" rel="noopener noreferrer" className="block">
-                <Button 
+                <Button
                   variant="outline"
                   className="w-full"
                   data-testid="button-view-offerings"
@@ -324,22 +447,56 @@ export default function ConnectBank() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="businessName"
+                  name="firstName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Business Name</FormLabel>
+                      <FormLabel>First Name</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="e.g. Acme Corp" 
-                          data-testid="input-business-name"
-                          {...field} 
+                        <Input
+                          placeholder="Jane"
+                          data-testid="input-first-name"
+                          {...field}
                         />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                
+                <FormField
+                  control={form.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Doe"
+                          data-testid="input-last-name"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="businessName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Business Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g. Acme Corp"
+                          data-testid="input-business-name"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="email"
@@ -347,11 +504,29 @@ export default function ConnectBank() {
                     <FormItem>
                       <FormLabel>Email Address</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="you@company.com" 
+                        <Input
+                          placeholder="you@company.com"
                           type="email"
                           data-testid="input-email"
-                          {...field} 
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="(555) 123-4567"
+                          type="tel"
+                          data-testid="input-phone"
+                          {...field}
                         />
                       </FormControl>
                       <FormMessage />
@@ -364,37 +539,32 @@ export default function ConnectBank() {
                 <h3 className="text-lg font-semibold text-[#192F56] mb-4 text-center">
                   Choose Your Method
                 </h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
-                  {/* Plaid Option */}
+                  {/* Chirp Instant Verification */}
                   <div className="border-2 border-[#5FBFB8] rounded-xl p-6 hover-elevate transition-all">
                     <div className="text-center mb-4">
-                      <img 
-                        src={plaidLogo} 
-                        alt="Plaid" 
-                        className="h-8 mx-auto mb-3"
-                      />
-                      <h4 className="font-semibold text-[#192F56]">Instant Connect</h4>
+                      <div className="w-12 h-12 bg-[#5FBFB8]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Lock className="w-6 h-6 text-[#5FBFB8]" />
+                      </div>
+                      <h4 className="font-semibold text-[#192F56]">Instant Verification</h4>
                       <p className="text-sm text-gray-500 mt-1">
-                        Securely connect via Plaid
+                        Verify your bank securely in seconds
                       </p>
                     </div>
-                    <Button 
+                    <Button
                       type="button"
-                      onClick={() => {
-                        initializePlaidLink();
-                        handleConnectBank();
-                      }}
-                      disabled={createLinkTokenMutation.isPending}
+                      onClick={handleConnectBank}
+                      disabled={createChirpRequestMutation.isPending}
                       className="w-full bg-[#5FBFB8] hover:bg-[#4ca8a1] text-white"
-                      data-testid="button-connect-plaid"
+                      data-testid="button-connect-bank"
                     >
-                      {createLinkTokenMutation.isPending ? (
+                      {createChirpRequestMutation.isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin mr-2" />
                       ) : (
                         <Lock className="w-4 h-4 mr-2" />
                       )}
-                      Connect Bank
+                      Verify Bank
                     </Button>
                     <p className="text-xs text-center text-gray-400 mt-2">
                       Fast & automatic verification
@@ -419,7 +589,7 @@ export default function ConnectBank() {
                         Upload PDF bank statements
                       </p>
                     </div>
-                    
+
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -428,7 +598,7 @@ export default function ConnectBank() {
                       className="hidden"
                       data-testid="input-file"
                     />
-                    
+
                     {!selectedFile ? (
                       <div
                         onClick={() => fileInputRef.current?.click()}
@@ -459,7 +629,7 @@ export default function ConnectBank() {
                             &times;
                           </button>
                         </div>
-                        <Button 
+                        <Button
                           type="button"
                           onClick={handleUpload}
                           disabled={uploadMutation.isPending}
@@ -481,13 +651,13 @@ export default function ConnectBank() {
                   </div>
                 </div>
 
-                {createLinkTokenMutation.isError && (
-                  <div 
-                    className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 mt-4" 
+                {createChirpRequestMutation.isError && (
+                  <div
+                    className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 mt-4"
                     data-testid="text-error"
                   >
                     <AlertCircle className="w-5 h-5" />
-                    Failed to initialize bank connection. Please try again.
+                    Failed to initialize bank verification. Please try again.
                   </div>
                 )}
               </div>

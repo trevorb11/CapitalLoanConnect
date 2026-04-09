@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { usePlaidLink } from "react-plaid-link";
 
 // ── CALC ENGINE ──────────────────────────────────────────────────────────
 function isWeekday(date: Date) {
@@ -2656,60 +2655,157 @@ function PreQualifiedOfferBanner({ deals }: { deals: Deal[] }) {
   );
 }
 
-// ── PLAID LINK BUTTON ─────────────────────────────────────────────────────
-function PlaidLinkButton({ onSuccess, label = "Connect Your Bank", previewToken }: { onSuccess: () => void; label?: string; previewToken?: string | null }) {
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+// ── CHIRP VERIFY BUTTON ──────────────────────────────────────────────────
+// Replaces the former Plaid Link button. Chirp uses a hosted verification
+// redirect, so after kicking off the request we open Chirp in a new tab and
+// poll for verification completion. When verified we invoke onSuccess so the
+// parent can refresh connection lists and insights.
+const CHIRP_MERCHANT_STORAGE_KEY = "tcg.chirp.merchant.pendingRequestCode";
+const MERCHANT_POLL_INTERVAL_MS = 4000;
+const MERCHANT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+function ChirpVerifyButton({ onSuccess, label = "Connect Your Bank", previewToken }: { onSuccess: () => void; label?: string; previewToken?: string | null }) {
+  const [pendingRequestCode, setPendingRequestCode] = useState<string | null>(null);
+  const [status, setStatus] = useState<'idle' | 'initializing' | 'awaiting' | 'expired'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const pollStartRef = useRef<number>(0);
 
-  const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
+  const previewHeaders: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
-  const fetchLinkToken = useCallback(async () => {
-    setLoading(true);
+  // Resume an in-flight verification on mount
+  useEffect(() => {
+    const stored = sessionStorage.getItem(CHIRP_MERCHANT_STORAGE_KEY);
+    if (stored) {
+      setPendingRequestCode(stored);
+      setStatus('awaiting');
+      pollStartRef.current = Date.now();
+    }
+  }, []);
+
+  // Polling loop
+  useEffect(() => {
+    if (status !== 'awaiting' || !pendingRequestCode) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      if (Date.now() - pollStartRef.current > MERCHANT_POLL_TIMEOUT_MS) {
+        setStatus('expired');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/chirp/status/${pendingRequestCode}`, { credentials: "include", headers: previewHeaders });
+        if (res.ok) {
+          const data = await res.json();
+          if (cancelled) return;
+          if (data.status === "Verified") {
+            sessionStorage.removeItem(CHIRP_MERCHANT_STORAGE_KEY);
+            setPendingRequestCode(null);
+            setStatus('idle');
+            onSuccess();
+            return;
+          }
+          if (data.status === "Rejected" || data.status === "Expired") {
+            sessionStorage.removeItem(CHIRP_MERCHANT_STORAGE_KEY);
+            setPendingRequestCode(null);
+            setStatus('idle');
+            setError(`Verification was ${data.status.toLowerCase()}. Please try again.`);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("[CHIRP MERCHANT POLL] Transient error:", err);
+      }
+      if (!cancelled) setTimeout(poll, MERCHANT_POLL_INTERVAL_MS);
+    };
+    const handle = setTimeout(poll, MERCHANT_POLL_INTERVAL_MS);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [status, pendingRequestCode, onSuccess]);
+
+  const handleStart = useCallback(async () => {
+    setStatus('initializing');
     setError(null);
     try {
-      const res = await fetch("/api/merchant/plaid/create-link-token", { method: "POST", credentials: "include", headers: previewHeaders });
-      if (!res.ok) throw new Error("Failed to create link token");
-      const data = await res.json();
-      setLinkToken(data.link_token);
-    } catch (e) {
-      setError("Could not initialize bank connection. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }, [previewToken]);
-
-  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
-    try {
-      const res = await fetch("/api/merchant/plaid/exchange-token", {
+      const res = await fetch("/api/merchant/chirp/create-request", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...previewHeaders },
-        body: JSON.stringify({ publicToken, metadata }),
+        body: JSON.stringify({}),
       });
-      if (!res.ok) throw new Error("Failed to exchange token");
-      onSuccess();
-    } catch (e) {
-      setError("Bank connection failed. Please try again.");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || body?.error || "Failed to initialize verification");
+      }
+      const data = await res.json();
+      if (!data.verificationUrl || !data.requestCode) {
+        throw new Error("Chirp did not return a verification URL");
+      }
+      sessionStorage.setItem(CHIRP_MERCHANT_STORAGE_KEY, data.requestCode);
+      setPendingRequestCode(data.requestCode);
+      setStatus('awaiting');
+      pollStartRef.current = Date.now();
+      window.open(data.verificationUrl, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      setStatus('idle');
+      setError(e?.message || "Could not initialize bank verification. Please try again.");
     }
-  }, [onSuccess]);
+  }, [previewToken]);
 
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
-    onSuccess: onPlaidSuccess,
-  });
+  const handleCheckNow = async () => {
+    if (!pendingRequestCode) return;
+    try {
+      const res = await fetch(`/api/chirp/status/${pendingRequestCode}`, { credentials: "include", headers: previewHeaders });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === "Verified") {
+          sessionStorage.removeItem(CHIRP_MERCHANT_STORAGE_KEY);
+          setPendingRequestCode(null);
+          setStatus('idle');
+          onSuccess();
+        }
+      }
+    } catch (err) {
+      // ignore - user can retry
+    }
+  };
+
+  const handleCancel = () => {
+    sessionStorage.removeItem(CHIRP_MERCHANT_STORAGE_KEY);
+    setPendingRequestCode(null);
+    setStatus('idle');
+    setError(null);
+  };
+
+  if (status === 'awaiting' || status === 'expired') {
+    return (
+      <div>
+        <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 8 }}>
+          {status === 'expired'
+            ? "Still waiting? Finish verification in the other tab, then check now."
+            : "Complete verification in the tab that just opened. We'll detect it automatically."}
+        </p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="connect-bank-cta" onClick={handleCheckNow}>Check Now</button>
+          <button
+            className="connect-bank-cta"
+            onClick={handleCancel}
+            style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.2)" }}
+          >
+            Cancel
+          </button>
+        </div>
+        {pendingRequestCode && (
+          <p style={{ color: "#64748b", fontSize: 11, marginTop: 8 }}>Request code: {pendingRequestCode}</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
-      {!linkToken ? (
-        <button className="connect-bank-cta" onClick={fetchLinkToken} disabled={loading}>
-          {loading ? "Initializing..." : label}
-        </button>
-      ) : (
-        <button className="connect-bank-cta" onClick={() => open()} disabled={!ready}>
-          {ready ? label : "Loading..."}
-        </button>
-      )}
+      <button className="connect-bank-cta" onClick={handleStart} disabled={status === 'initializing'}>
+        {status === 'initializing' ? "Initializing..." : label}
+      </button>
       {error && <p style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{error}</p>}
     </div>
   );
@@ -2901,7 +2997,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                   </div>
                 ))}
                 <div style={{ marginTop: 12 }}>
-                  <PlaidLinkButton onSuccess={fetchData} label="Connect Another Bank" previewToken={previewToken} />
+                  <ChirpVerifyButton onSuccess={fetchData} label="Connect Another Bank" previewToken={previewToken} />
                 </div>
               </>
             ) : (
@@ -2909,7 +3005,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                 <p style={{ color: "#94a3b8", marginBottom: 16, fontSize: 14, lineHeight: 1.6 }}>
                   Connect your bank to get live financial insights and make future funding faster.
                 </p>
-                <PlaidLinkButton onSuccess={fetchData} previewToken={previewToken} />
+                <ChirpVerifyButton onSuccess={fetchData} previewToken={previewToken} />
               </div>
             )}
           </div>

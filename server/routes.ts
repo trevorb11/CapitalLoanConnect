@@ -8951,6 +8951,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── MERCHANT CHIRP (replaces Merchant Plaid for new connections) ────
+
+  // Create a Chirp verification request for a merchant. Looks up name/phone
+  // from the linked loan application so the frontend doesn't need to
+  // collect them again.
+  app.post("/api/merchant/chirp/create-request", async (req, res) => {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
+
+    try {
+      // Pull firstName / lastName / phone from the merchant's linked loan
+      // application. Fall back to any fields passed in the request body.
+      const body = req.body || {};
+      const application = await storage.getLoanApplicationByEmail(merchantEmail);
+
+      const splitName = (full?: string | null) => {
+        if (!full) return { first: "", last: "" };
+        const parts = full.trim().split(/\s+/);
+        return { first: parts[0] || "", last: parts.slice(1).join(" ") || "" };
+      };
+      const fromAppName = splitName(application?.fullName);
+
+      const firstName = body.firstName || fromAppName.first;
+      const lastName = body.lastName || fromAppName.last;
+      const phone = body.phone || application?.phone || "";
+      const businessName = body.businessName || application?.businessName || application?.legalBusinessName || "";
+
+      if (!firstName || !lastName || !phone) {
+        return res.status(400).json({
+          error: "Missing customer info",
+          message: "First name, last name, and phone are required. Update your application or pass them in the request body.",
+        });
+      }
+
+      const webhookUrl = process.env.CHIRP_WEBHOOK_URL || "";
+      const webhookSecret = process.env.CHIRP_WEBHOOK_SECRET || "";
+
+      const chirpResult = await chirpService.createVerificationRequest({
+        cusFirstName: firstName,
+        cusLastName: lastName,
+        cusEmail: merchantEmail,
+        cusPhone: phone,
+        productId: application?.id,
+        notifyIf: ["VERIFIED", "ATTEMPTED"],
+      });
+
+      // Persist the bank connection row
+      const bankRow = await storage.createChirpBankConnection({
+        requestCode: chirpResult.requestCode,
+        verificationUrl: chirpResult.verificationUrl,
+        status: "Unverified",
+        customerEmail: merchantEmail,
+        businessName,
+      });
+
+      // Also persist a merchantPlaidConnections row so the existing connections
+      // list endpoint surfaces Chirp connections without a schema change.
+      await storage.createMerchantPlaidConnection({
+        merchantEmail: merchantEmail.toLowerCase(),
+        plaidItemId: chirpResult.requestCode, // repurposed as provider-agnostic identifier
+        institutionName: null,
+      });
+
+      if (webhookUrl && webhookSecret) {
+        try {
+          await chirpService.createCustomerNotification({
+            name: `tcg-merchant-${chirpResult.requestCode}`,
+            requestCode: chirpResult.requestCode,
+            type: "REQUEST_STATUS",
+            rule: "ALL",
+            webhookUrl: [webhookUrl],
+            notifyViaWebhook: true,
+            notifyViaEmail: false,
+            active: true,
+            authorizationType: "KEY_VALUE",
+            authorizationHeaderKey: "x-chirp-webhook-secret",
+            authorizationHeaderValue: webhookSecret,
+            enableRetryTimeout: true,
+            retryTimeout: 1,
+            retryLimit: 3,
+          });
+        } catch (webhookErr) {
+          console.warn(`[MERCHANT CHIRP] Webhook registration failed for ${chirpResult.requestCode}:`, webhookErr);
+        }
+      }
+
+      res.json({
+        requestCode: chirpResult.requestCode,
+        verificationUrl: chirpResult.verificationUrl,
+        widgetUrl: chirpResult.widgetUrl,
+        status: "Unverified",
+        bankConnectionId: bankRow.id,
+      });
+    } catch (error: any) {
+      const body = error instanceof ChirpApiError ? error.body : undefined;
+      console.error("[MERCHANT CHIRP] Create request error:", body || error?.message || error);
+      const status = error instanceof ChirpApiError ? error.status : 500;
+      res.status(status >= 400 && status < 600 ? status : 500).json({
+        error: "Failed to create merchant verification request",
+        detail: body,
+      });
+    }
+  });
+
   // Route 4: Analyze merchant's uploaded PDF bank statements
   app.post("/api/merchant/bank-statements/analyze", async (req, res) => {
     if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
