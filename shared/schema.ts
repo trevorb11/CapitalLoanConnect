@@ -115,6 +115,13 @@ export const loanApplications = pgTable("loan_applications", {
   isFullApplicationCompleted: boolean("is_full_application_completed").default(false),
   ghlContactId: text("ghl_contact_id"),
 
+  // --- Salesforce sync tracking (added in migration 0006) ---
+  sfAccountId: text("sf_account_id"),
+  sfContactId: text("sf_contact_id"),
+  sfOpportunityId: text("sf_opportunity_id"),
+  sfSyncedAt: timestamp("sf_synced_at"),
+  sfSyncMessage: text("sf_sync_message"),
+
   // --- Bot Detection ---
   isBotAttempt: boolean("is_bot_attempt").default(false), // Honeypot triggered
 
@@ -400,6 +407,12 @@ export const lenderApprovals = pgTable("lender_approvals", {
   ghlSyncMessage: text("ghl_sync_message"), // Success/error message from sync attempt
   ghlOpportunityId: text("ghl_opportunity_id"), // The opportunity ID it was synced to
 
+  // Salesforce Sync Tracking (added in migration 0006)
+  sfSynced: boolean("sf_synced").default(false),
+  sfSyncedAt: timestamp("sf_synced_at"),
+  sfSyncMessage: text("sf_sync_message"),
+  sfOpportunityId: text("sf_opportunity_id"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -468,6 +481,14 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   ghlSyncedAt: timestamp("ghl_synced_at"),
   ghlSyncMessage: text("ghl_sync_message"),
   ghlOpportunityId: text("ghl_opportunity_id"),
+
+  // Salesforce sync tracking (added in migration 0006)
+  sfSynced: boolean("sf_synced").default(false),
+  sfSyncedAt: timestamp("sf_synced_at"),
+  sfSyncMessage: text("sf_sync_message"),
+  sfAccountId: text("sf_account_id"),
+  sfContactId: text("sf_contact_id"),
+  sfOpportunityId: text("sf_opportunity_id"),
 
   // Audit fields
   reviewedBy: text("reviewed_by"), // Email of underwriter who made the decision
