@@ -587,6 +587,49 @@ export class ChirpService {
   }
 
   // ---------------------------------------------------------------------------
+  // ChirpLink widget token
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Generate a one-time token for the ChirpLink™ frontend widget.
+   * Must be called after `createVerificationRequest` to obtain a requestCode.
+   * Endpoint: POST /genAuthTokenForChirpLink/chirpLink/<requestCode>
+   * Note: Chirp uses bare token (no "Bearer" prefix) for this specific endpoint.
+   */
+  async genAuthTokenForChirpLink(requestCode: string): Promise<{
+    success: boolean;
+    token: string;
+    requestCode: string;
+    validUpto: string;
+  }> {
+    const url = `${this.baseUrl}/genAuthTokenForChirpLink/chirpLink/${encodeURIComponent(requestCode)}`;
+    if (!this.token) {
+      throw new ChirpApiError("CHIRP_API_TOKEN is not configured", 500);
+    }
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: this.token,
+      },
+    });
+    const text = await response.text();
+    let body: any = null;
+    try { body = JSON.parse(text); } catch { body = text; }
+    if (!response.ok) {
+      const message = (body && typeof body === "object" && (body.message || body.error)) || `Chirp genAuthToken error ${response.status}`;
+      throw new ChirpApiError(String(message), response.status, body);
+    }
+    return {
+      success: Boolean(body?.success),
+      token: body?.token || "",
+      requestCode: body?.requestCode || requestCode,
+      validUpto: body?.validUpto || "",
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Misc helpers
   // ---------------------------------------------------------------------------
 

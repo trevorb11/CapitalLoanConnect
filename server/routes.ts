@@ -9,6 +9,7 @@ import archiver from "archiver";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
+import { chirpService, ChirpApiError } from "./services/chirp";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand } from "./services/openai";
@@ -2571,6 +2572,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: error instanceof Error ? error.message : "Unknown error",
       });
     }
+  });
+
+  // ========================================
+  // CHIRP INTEGRATION ROUTES
+  // ========================================
+
+  // POST /api/chirp/request — create a verification request for a customer
+  app.post("/api/chirp/request", async (req: Request, res: Response) => {
+    try {
+      const { firstName, lastName, email, phone, applicationId, customerId } = req.body;
+      if (!firstName || !lastName || !email || !phone) {
+        return res.status(400).json({ error: "firstName, lastName, email, and phone are required" });
+      }
+      const result = await chirpService.createVerificationRequest({
+        cusFirstName: firstName,
+        cusLastName: lastName,
+        cusEmail: email,
+        cusPhone: phone,
+        customerId: customerId || applicationId,
+        leadId: applicationId,
+        leadProvider: "TodayCapital",
+      });
+      console.log(`[CHIRP] Created request ${result.requestCode} for ${firstName} ${lastName}`);
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      console.error("[CHIRP] createVerificationRequest error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/chirp/request/:code/token — generate ChirpLink widget token
+  app.post("/api/chirp/request/:code/token", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const result = await chirpService.genAuthTokenForChirpLink(code);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] genAuthTokenForChirpLink error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/request/:code/status — poll verification status
+  app.get("/api/chirp/request/:code/status", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const result = await chirpService.getRequestStatus(code);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] getRequestStatus error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/request/:code/details — get full verified data (accounts + transactions)
+  app.get("/api/chirp/request/:code/details", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const days = req.query.days ? Number(req.query.days) : 90;
+      const result = await chirpService.getRequestDetails(code, { numberOfDays: days, sort: "DESCENDING" });
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] getRequestDetails error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/request/:code/summary — pre-computed financial summary
+  app.get("/api/chirp/request/:code/summary", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const result = await chirpService.getSummaryInfoByRequestCode(code);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] getSummaryInfo error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/chirp/request/:code/pdf — generate PDF report
+  app.post("/api/chirp/request/:code/pdf", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const { accountNumber, chirpAccountId } = req.body;
+      const result = await chirpService.getRequestReportAsPDF(code, { accountNumber, chirpAccountId });
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] getRequestReportAsPDF error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/chirp/request/:code/refresh — refresh a verified connection
+  app.post("/api/chirp/request/:code/refresh", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const result = await chirpService.refreshRequest(code, req.body.metaInfo);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] refreshRequest error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/health — verify token is configured and environment
+  app.get("/api/chirp/health", async (_req: Request, res: Response) => {
+    const configured = !!process.env.CHIRP_API_TOKEN;
+    res.json({
+      configured,
+      environment: process.env.CHIRP_ENV || "production",
+      clientId: process.env.CHIRP_CLIENT_ID || null,
+    });
   });
 
   // ========================================
