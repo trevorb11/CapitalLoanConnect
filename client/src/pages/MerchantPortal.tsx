@@ -97,14 +97,58 @@ function calcDeal(deal: Deal): CalcResult {
   const isBiWeekly = deal.paymentFrequency === "bi-weekly" || deal.paymentFrequency === "biweekly";
   const isMonthly = deal.paymentFrequency === "monthly";
 
+  // Parse the term string (e.g. "6 months", "80 days", "52 weeks", "12") into
+  // a { value, unit } pair. Defaults to months if no unit is specified.
+  const parseTerm = (termStr: string | null | undefined): { value: number; unit: 'days' | 'weeks' | 'months' } => {
+    if (!termStr) return { value: 6, unit: 'months' };
+    const s = termStr.toLowerCase().trim();
+    const match = s.match(/(\d+(?:\.\d+)?)/);
+    if (!match) return { value: 6, unit: 'months' };
+    const value = parseFloat(match[1]);
+    if (/day/.test(s)) return { value, unit: 'days' };
+    if (/week/.test(s) || /wk/.test(s)) return { value, unit: 'weeks' };
+    if (/month/.test(s) || /mo\b/.test(s)) return { value, unit: 'months' };
+    // No unit — infer from payment frequency
+    if (isDaily) return { value, unit: 'days' };
+    if (isWeekly || isBiWeekly) return { value, unit: 'weeks' };
+    return { value, unit: 'months' };
+  };
+
+  const parsedTerm = parseTerm(deal.term);
+
+  // Convert parsed term to total number of payments based on payment frequency
+  const termToTotalPayments = (): number => {
+    const { value, unit } = parsedTerm;
+    if (isDaily) {
+      // Daily payments are business days
+      if (unit === 'days') return Math.round(value);
+      if (unit === 'weeks') return Math.round(value * 5); // 5 business days per week
+      if (unit === 'months') return Math.round(value * 21); // ~21 business days per month
+    }
+    if (isWeekly) {
+      if (unit === 'weeks') return Math.round(value);
+      if (unit === 'months') return Math.round(value * 4.33);
+      if (unit === 'days') return Math.round(value / 7);
+    }
+    if (isBiWeekly) {
+      if (unit === 'weeks') return Math.round(value / 2);
+      if (unit === 'months') return Math.round(value * 2);
+      if (unit === 'days') return Math.round(value / 14);
+    }
+    if (isMonthly) {
+      if (unit === 'months') return Math.round(value);
+      if (unit === 'weeks') return Math.round(value / 4.33);
+      if (unit === 'days') return Math.round(value / 30);
+    }
+    return Math.round(value);
+  };
+
   if (isDaily) {
-    totalPayments = businessDaysBetween(funded, new Date(funded.getTime() + 180 * 24 * 60 * 60 * 1000));
+    totalPayments = termToTotalPayments();
     paymentAmount = totalPayback / totalPayments;
     paymentsMade = businessDaysBetween(funded, today);
   } else {
-    const termMonths = deal.term ? parseInt(deal.term) : 6;
-    const paymentsPerMonth = isWeekly ? 4.33 : isBiWeekly ? 2 : 1;
-    totalPayments = Math.round(termMonths * paymentsPerMonth);
+    totalPayments = termToTotalPayments();
     paymentAmount = totalPayback / totalPayments;
 
     if (isMonthly) {
