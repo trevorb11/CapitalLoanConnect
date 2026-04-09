@@ -2312,11 +2312,9 @@ function BankStatementsTab() {
                     if (approvals.length === 0) return null;
 
                     const sortedApprovals = [...approvals].sort((a, b) => {
-                      if (a.isPrimary) return -1;
-                      if (b.isPrimary) return 1;
-                      // Sort remaining by approvalDate descending (newest first)
-                      const dateA = a.approvalDate || '';
-                      const dateB = b.approvalDate || '';
+                      // Sort all approvals newest to oldest by approvalDate
+                      const dateA = a.approvalDate || a.createdAt || '';
+                      const dateB = b.approvalDate || b.createdAt || '';
                       return dateB.localeCompare(dateA);
                     });
                     const bestApproval = sortedApprovals[0];
@@ -2355,6 +2353,11 @@ function BankStatementsTab() {
                               {appr.term && <span className="text-muted-foreground">{appr.term}</span>}
                               {appr.factorRate && <span className="text-muted-foreground">{appr.factorRate}x</span>}
                               {appr.paymentFrequency && <span className="text-muted-foreground capitalize">{appr.paymentFrequency}</span>}
+                              {appr.approvalDate && (
+                                <span className="text-muted-foreground text-xs">
+                                  {format(new Date(appr.approvalDate + 'T00:00:00'), 'MMM d, yyyy')}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
                               <Button
