@@ -3434,13 +3434,6 @@ function ResourcesTab() {
           tagColor: "#a78bfa",
         },
         {
-          title: "SBA Lender Match",
-          description: "Free SBA tool that connects you with SBA-approved lenders in your area based on your business profile.",
-          url: "https://www.sba.gov/funding-programs/loans/lender-match",
-          tag: "Free Tool",
-          tagColor: "#34d399",
-        },
-        {
           title: "Grants.gov — Federal Business Grants",
           description: "Search for federal grant opportunities. Unlike loans, grants don't need to be repaid.",
           url: "https://www.grants.gov/",
@@ -3456,13 +3449,6 @@ function ResourcesTab() {
           title: "Wave — Free Accounting Software",
           description: "Free invoicing, accounting, and receipt scanning for small businesses. No credit card required.",
           url: "https://www.waveapps.com/",
-          tag: "Free",
-          tagColor: "#34d399",
-        },
-        {
-          title: "SCORE — Free Business Mentoring",
-          description: "Get paired with a free business mentor through SCORE, backed by the SBA. Expert guidance on finances, growth, and operations.",
-          url: "https://www.score.org/",
           tag: "Free",
           tagColor: "#34d399",
         },
