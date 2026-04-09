@@ -1587,16 +1587,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allApplications = await storage.getAllLoanApplications();
       console.log(`[DASHBOARD] Total applications in DB: ${allApplications.length}`);
       console.log(`[DASHBOARD] User role: ${req.session.user.role}, email: ${req.session.user.agentEmail || 'N/A'}`);
-      
+
+      // Build partner name lookup map
+      const allPartners = await storage.getAllPartners();
+      const partnerNameMap = new Map(allPartners.map(p => [p.id, p.contactName]));
+      const enriched = allApplications.map(app => ({
+        ...app,
+        referralPartnerName: app.referralPartnerId ? (partnerNameMap.get(app.referralPartnerId) ?? null) : null,
+      }));
+
       // Filter based on role
       if (req.session.user.role === 'admin') {
         // Admin sees all applications
-        console.log(`[DASHBOARD] Returning all ${allApplications.length} applications for admin`);
-        return res.json(allApplications);
+        console.log(`[DASHBOARD] Returning all ${enriched.length} applications for admin`);
+        return res.json(enriched);
       } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
         // Agent sees only their applications
         const agentEmail = req.session.user.agentEmail.toLowerCase();
-        const filteredApplications = allApplications.filter(
+        const filteredApplications = enriched.filter(
           (app) => (app.agentEmail || '').toLowerCase() === agentEmail
         );
         console.log(`[DASHBOARD] Returning ${filteredApplications.length} applications for agent ${agentEmail}`);
@@ -1604,7 +1612,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (req.session.user.role === 'user' && req.session.user.agentEmail) {
         // User role - can only see applications they submitted (restricted access)
         const userEmail = req.session.user.agentEmail.toLowerCase();
-        const filteredApplications = allApplications.filter(
+        const filteredApplications = enriched.filter(
           (app) => (app.agentEmail || '').toLowerCase() === userEmail
         );
         console.log(`[DASHBOARD] Returning ${filteredApplications.length} applications for user ${userEmail}`);

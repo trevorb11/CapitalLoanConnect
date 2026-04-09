@@ -4004,6 +4004,12 @@ export default function Dashboard() {
                           {app.agentName}
                         </Badge>
                       )}
+                      {authData.role === "admin" && (app as any).referralPartnerName && (
+                        <Badge variant="outline" className="text-xs border-blue-400 text-blue-600 dark:text-blue-400" data-testid={`badge-partner-${app.id}`}>
+                          <User className="w-3 h-3 mr-1" />
+                          {(app as any).referralPartnerName}
+                        </Badge>
+                      )}
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
@@ -4248,12 +4254,19 @@ export default function Dashboard() {
               </div>
 
               {/* Agent Information */}
-              {selectedAppDetails.agentName && (
+              {(selectedAppDetails.agentName || (selectedAppDetails as any).referralPartnerName) && (
                 <div>
                   <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Agent Information</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    <div><span className="font-medium">Agent:</span> {selectedAppDetails.agentName}</div>
-                    <div><span className="font-medium">Agent Email:</span> {selectedAppDetails.agentEmail || "N/A"}</div>
+                    {selectedAppDetails.agentName && (
+                      <>
+                        <div><span className="font-medium">Agent:</span> {selectedAppDetails.agentName}</div>
+                        <div><span className="font-medium">Agent Email:</span> {selectedAppDetails.agentEmail || "N/A"}</div>
+                      </>
+                    )}
+                    {(selectedAppDetails as any).referralPartnerName && (
+                      <div><span className="font-medium">Referring Partner:</span> {(selectedAppDetails as any).referralPartnerName}</div>
+                    )}
                   </div>
                 </div>
               )}
