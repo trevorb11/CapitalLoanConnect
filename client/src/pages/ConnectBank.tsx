@@ -49,47 +49,13 @@ export default function ConnectBank() {
 
   const chirpRequestMutation = useMutation({
     mutationFn: async (values: FormData) => {
-      // First try calling Chirp directly from the browser (avoids server IP block).
-      // If CORS blocks the browser call, fall back to the server-side route.
-      try {
-        const configRes = await fetch("/api/chirp/client-config");
-        const { token, baseUrl } = await configRes.json();
-
-        const chirpRes = await fetch(`${baseUrl}/createRequest`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "Authorization": token,
-          },
-          body: JSON.stringify({
-            cusFirstName: values.firstName,
-            cusLastName: values.lastName,
-            cusEmail: values.email,
-            cusPhone: values.phone,
-            leadProvider: "TodayCapital",
-          }),
-        });
-
-        if (!chirpRes.ok) throw new Error(`Chirp returned ${chirpRes.status}`);
-        const chirpData = await chirpRes.json();
-        const data = chirpData?.response || chirpData?.result || chirpData;
-
-        return {
-          verificationUrl: data.ChirpVerificationURL || data.LendMateVerificationURL || data.verificationUrl,
-          requestCode: data.RequestCode || data.requestCode,
-        };
-      } catch (browserErr) {
-        // CORS or network error — fall back to server-side proxy
-        console.warn("[ConnectBank] Browser-direct Chirp call failed, trying server route:", browserErr);
-        const res = await apiRequest("POST", "/api/chirp/request", {
-          firstName: values.firstName,
-          lastName: values.lastName,
-          email: values.email,
-          phone: values.phone,
-        });
-        return res.json();
-      }
+      const res = await apiRequest("POST", "/api/chirp/request", {
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        phone: values.phone,
+      });
+      return res.json();
     },
     onSuccess: (data) => {
       if (data.verificationUrl) {
