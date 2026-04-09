@@ -86,6 +86,12 @@ export interface IStorage {
   getPlaidStatementsByItemId(plaidItemId: string): Promise<PlaidStatementRecord[]>;
   getPlaidStatementByStatementId(statementId: string): Promise<PlaidStatementRecord | undefined>;
   deletePlaidStatementsByItemId(plaidItemId: string): Promise<void>;
+
+  // Chirp bank connection methods (share the `plaid_items` table via the
+  // provider column - see schema.ts)
+  createChirpBankConnection(data: { requestCode: string; institutionName?: string | null; verificationUrl?: string | null; status?: string | null; customerEmail?: string | null; businessName?: string | null }): Promise<PlaidItem>;
+  getChirpBankConnectionByRequestCode(requestCode: string): Promise<PlaidItem | undefined>;
+  updateChirpBankConnectionStatus(requestCode: string, updates: { status?: string; institutionName?: string | null; lastAggregatedAt?: Date | null }): Promise<PlaidItem | undefined>;
   
   // Bank Statement Upload methods
   createBankStatementUpload(upload: InsertBankStatementUpload): Promise<BankStatementUpload>;
@@ -437,6 +443,62 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(plaidStatements)
       .where(eq(plaidStatements.plaidItemId, plaidItemId));
+  }
+
+  // Chirp bank connection methods. Chirp rows live in the same `plaid_items`
+  // table (via the `provider` column) so foreign keys and dashboards work
+  // uniformly across providers. For Chirp rows the unique identifier is
+  // `chirpRequestCode`; `itemId`/`accessToken` are null.
+  async createChirpBankConnection(data: {
+    requestCode: string;
+    institutionName?: string | null;
+    verificationUrl?: string | null;
+    status?: string | null;
+    customerEmail?: string | null;
+    businessName?: string | null;
+  }): Promise<PlaidItem> {
+    const [row] = await db
+      .insert(plaidItems)
+      .values({
+        provider: "chirp",
+        chirpRequestCode: data.requestCode,
+        institutionName: data.institutionName ?? null,
+        chirpVerificationUrl: data.verificationUrl ?? null,
+        chirpStatus: data.status ?? "Unverified",
+        chirpCustomerEmail: data.customerEmail ?? null,
+        chirpBusinessName: data.businessName ?? null,
+      } as any)
+      .returning();
+    return row;
+  }
+
+  async getChirpBankConnectionByRequestCode(requestCode: string): Promise<PlaidItem | undefined> {
+    const [row] = await db
+      .select()
+      .from(plaidItems)
+      .where(eq(plaidItems.chirpRequestCode, requestCode));
+    return row || undefined;
+  }
+
+  async updateChirpBankConnectionStatus(
+    requestCode: string,
+    updates: { status?: string; institutionName?: string | null; lastAggregatedAt?: Date | null },
+  ): Promise<PlaidItem | undefined> {
+    const patch: Record<string, unknown> = {};
+    if (updates.status !== undefined) patch.chirpStatus = updates.status;
+    if (updates.institutionName !== undefined) patch.institutionName = updates.institutionName;
+    if (updates.lastAggregatedAt !== undefined) patch.chirpLastAggregatedAt = updates.lastAggregatedAt;
+
+    if (Object.keys(patch).length === 0) {
+      return this.getChirpBankConnectionByRequestCode(requestCode);
+    }
+
+    const [row] = await db
+      .update(plaidItems)
+      .set(patch)
+      .where(eq(plaidItems.chirpRequestCode, requestCode))
+      .returning();
+    return row || undefined;
   }
 
   // Bank Statement Upload methods

@@ -9,6 +9,7 @@ import archiver from "archiver";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
+import { chirpService, ChirpApiError } from "./services/chirp";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand } from "./services/openai";
@@ -1695,7 +1696,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!plaidItem) {
         return res.status(404).json({ error: "Bank connection not found" });
       }
-      const tokenData = await plaidService.createUpdateLinkToken("user-session-id", plaidItem.accessToken);
+      const tokenData = await plaidService.createUpdateLinkToken("user-session-id", plaidItem.accessToken!);
       res.json(tokenData);
     } catch (error: any) {
       const plaidBody = error?.response?.data;
@@ -2004,7 +2005,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Bank connection data not found" });
       }
 
-      const statements = await plaidService.getBankStatements(plaidItem.accessToken, months);
+      const statements = await plaidService.getBankStatements(plaidItem.accessToken!, months);
       res.json(statements);
     } catch (error) {
       console.error("Error fetching bank statements:", error);
@@ -2092,7 +2093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Bank connection not found" });
       }
 
-      const statements = await plaidService.getBankStatements(plaidItem.accessToken, months);
+      const statements = await plaidService.getBankStatements(plaidItem.accessToken!, months);
       res.json(statements);
     } catch (error) {
       console.error("Error fetching bank statements:", error);
@@ -2162,7 +2163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`Creating asset report for Plaid item ${plaidItemId} (${days} days)...`);
-      const assetReport = await plaidService.createAndGetAssetReport(plaidItem.accessToken, days, userInfo);
+      const assetReport = await plaidService.createAndGetAssetReport(plaidItem.accessToken!, days, userInfo);
       
       res.json(assetReport);
     } catch (error: any) {
@@ -2246,7 +2247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // First create the asset report to get the token
       console.log(`Creating asset report for PDF download...`);
-      const { assetReportToken } = await plaidService.createAssetReport(plaidItem.accessToken, days, userInfo);
+      const { assetReportToken } = await plaidService.createAssetReport(plaidItem.accessToken!, days, userInfo);
       
       // Wait for the report to be ready
       await plaidService.getAssetReport(assetReportToken);
@@ -2288,7 +2289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Bank connection not found" });
       }
 
-      const statementsData = await plaidService.listStatements(plaidItem.accessToken);
+      const statementsData = await plaidService.listStatements(plaidItem.accessToken!);
       res.json(statementsData);
     } catch (error: any) {
       console.error("Error listing statements:", error);
@@ -2320,7 +2321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Bank connection not found" });
       }
 
-      const pdfBuffer = await plaidService.downloadStatement(plaidItem.accessToken, statementId);
+      const pdfBuffer = await plaidService.downloadStatement(plaidItem.accessToken!, statementId);
       
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="bank-statement-${statementId}.pdf"`);
@@ -2356,7 +2357,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Bank connection not found" });
       }
 
-      await plaidService.refreshStatements(plaidItem.accessToken, startDate, endDate);
+      await plaidService.refreshStatements(plaidItem.accessToken!, startDate, endDate);
       res.json({ success: true, message: "Statement refresh requested. New statements may take a few minutes to appear." });
     } catch (error: any) {
       console.error("Error refreshing statements:", error);
@@ -2441,7 +2442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[PLAID ANALYZE] Generating Asset Report for analysis...`);
       
       // Generate Asset Report for comprehensive financial data
-      const assetReport = await plaidService.createAndGetAssetReport(plaidItem.accessToken, 90);
+      const assetReport = await plaidService.createAndGetAssetReport(plaidItem.accessToken!, 90);
       
       // Format Asset Report data for OpenAI analysis
       let analysisText = "=== PLAID ASSET REPORT ===\n";
@@ -2574,9 +2575,365 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // CHIRP INTEGRATION ROUTES
+  // ========================================
+  //
+  // Chirp replaces Plaid going forward. Unlike Plaid's embedded Link flow,
+  // Chirp uses a hosted verification redirect: we create a verification
+  // request via the API, send the customer to `verificationUrl`, and find
+  // out about completion via either (a) the webhook at /api/chirp/webhook
+  // (authoritative) or (b) the polling endpoint at /api/chirp/status (for
+  // immediate UX feedback). Both paths call `runChirpVerificationPipeline`
+  // idempotently, so downstream side-effects (funding analysis, application
+  // linking) happen exactly once per request code.
+  //
+  // Existing Plaid routes above are left intact during the cutover. The
+  // `provider` column on `plaid_items` disambiguates row origin.
+
+  const chirpCreateRequestSchema = z.object({
+    firstName: z.string().min(1, "First name is required"),
+    lastName: z.string().min(1, "Last name is required"),
+    email: z.string().email("Valid email is required"),
+    phone: z.string().min(7, "Phone is required"),
+    businessName: z.string().min(1, "Business name is required"),
+    useAIAnalysis: z.boolean().optional().default(true),
+    bankName: z.string().optional(),
+    productId: z.string().optional(),
+    customerId: z.string().optional(),
+  });
+
+  // Post-verification pipeline - runs exactly once per requestCode. Fetches
+  // the verified details from Chirp, computes funding analysis, persists it
+  // to `fundingAnalyses`, and links the application if the email matches.
+  async function runChirpVerificationPipeline(requestCode: string): Promise<void> {
+    const row = await storage.getChirpBankConnectionByRequestCode(requestCode);
+    if (!row) {
+      console.warn(`[CHIRP PIPELINE] No bank connection row for ${requestCode}`);
+      return;
+    }
+
+    // Idempotency guard - skip if we already have a funding analysis for this request
+    const existing = await storage.getFundingAnalysisByPlaidItemId(requestCode);
+    if (existing) {
+      console.log(`[CHIRP PIPELINE] Funding analysis already exists for ${requestCode}, skipping`);
+      return;
+    }
+
+    const email = row.chirpCustomerEmail || "";
+    const businessName = row.chirpBusinessName || "";
+
+    try {
+      const analysis = await chirpService.analyzeFinancials(requestCode);
+
+      await storage.createFundingAnalysis({
+        businessName,
+        email,
+        calculatedMonthlyRevenue: analysis.metrics.monthlyRevenue.toString(),
+        calculatedAvgBalance: analysis.metrics.avgBalance.toString(),
+        negativeDaysCount: analysis.metrics.negativeDays,
+        analysisResult: analysis.recommendations,
+        plaidItemId: requestCode, // repurposed as the provider-agnostic bank connection identifier
+      });
+
+      // Auto-link to existing application by email
+      if (email) {
+        const applications = await storage.getAllLoanApplications();
+        const matchingApp = applications.find((app: LoanApplication) => app.email === email);
+        if (matchingApp && !matchingApp.plaidItemId) {
+          await storage.updateLoanApplication(matchingApp.id, { plaidItemId: requestCode });
+          console.log(`[CHIRP PIPELINE] Linked request ${requestCode} to application ${matchingApp.id}`);
+        }
+      }
+
+      // Update the connection row with any new institution name we learned
+      try {
+        const status = await chirpService.getRequestStatus(requestCode);
+        await storage.updateChirpBankConnectionStatus(requestCode, {
+          status: status.status,
+          institutionName: status.selectedBank || row.institutionName,
+          lastAggregatedAt: status.lastAggregatedAt ? new Date(status.lastAggregatedAt) : null,
+        });
+      } catch (statusErr) {
+        console.warn(`[CHIRP PIPELINE] Could not refresh status for ${requestCode}:`, statusErr);
+      }
+
+      console.log(`[CHIRP PIPELINE] Completed pipeline for ${requestCode}`);
+    } catch (err) {
+      console.error(`[CHIRP PIPELINE] Failed for ${requestCode}:`, err);
+      throw err;
+    }
+  }
+
+  // 1. Create a Chirp verification request. Returns the hosted verification
+  //    URL that the frontend should redirect the customer to.
+  app.post("/api/chirp/create-request", async (req, res) => {
+    try {
+      const validation = chirpCreateRequestSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: "Invalid request data", details: validation.error.errors });
+      }
+
+      const { firstName, lastName, email, phone, businessName, bankName, productId, customerId } = validation.data;
+
+      // Build webhook notification config so Chirp can push REQUEST_STATUS
+      // updates to /api/chirp/webhook. If CHIRP_WEBHOOK_URL is not set (e.g.
+      // local dev without a tunnel), we skip webhook registration and rely
+      // on frontend polling instead.
+      const webhookUrl = process.env.CHIRP_WEBHOOK_URL || "";
+      const webhookSecret = process.env.CHIRP_WEBHOOK_SECRET || "";
+
+      const chirpResult = await chirpService.createVerificationRequest({
+        cusFirstName: firstName,
+        cusLastName: lastName,
+        cusEmail: email,
+        cusPhone: phone,
+        bankName,
+        productId,
+        customerId,
+        notificationEmail: webhookUrl ? undefined : email,
+        notifyIf: ["VERIFIED", "ATTEMPTED"],
+      });
+
+      // Persist the bank connection row. We store customer email + business
+      // name so the webhook / polling handler can run the funding analysis
+      // pipeline later without needing to re-plumb user context.
+      await storage.createChirpBankConnection({
+        requestCode: chirpResult.requestCode,
+        verificationUrl: chirpResult.verificationUrl,
+        status: "Unverified",
+        customerEmail: email,
+        businessName,
+      });
+
+      // Best-effort webhook registration. Chirp will call our webhook when
+      // the request moves to Verified/Attempted. Failure here is non-fatal
+      // because frontend polling is a complete fallback.
+      if (webhookUrl && webhookSecret) {
+        try {
+          await chirpService.createCustomerNotification({
+            name: `tcg-request-status-${chirpResult.requestCode}`,
+            requestCode: chirpResult.requestCode,
+            type: "REQUEST_STATUS",
+            rule: "ALL",
+            webhookUrl: [webhookUrl],
+            notifyViaWebhook: true,
+            notifyViaEmail: false,
+            active: true,
+            authorizationType: "KEY_VALUE",
+            authorizationHeaderKey: "x-chirp-webhook-secret",
+            authorizationHeaderValue: webhookSecret,
+            enableRetryTimeout: true,
+            retryTimeout: 1,
+            retryLimit: 3,
+          });
+        } catch (webhookErr) {
+          console.warn(`[CHIRP CREATE] Webhook registration failed for ${chirpResult.requestCode}:`, webhookErr);
+        }
+      }
+
+      res.json({
+        requestCode: chirpResult.requestCode,
+        verificationUrl: chirpResult.verificationUrl,
+        widgetUrl: chirpResult.widgetUrl,
+        status: "Unverified",
+      });
+    } catch (error: any) {
+      const body = error instanceof ChirpApiError ? error.body : undefined;
+      console.error("[CHIRP CREATE] Error:", body || error?.message || error);
+      const status = error instanceof ChirpApiError ? error.status : 500;
+      res.status(status >= 400 && status < 600 ? status : 500).json({
+        error: "Failed to create Chirp verification request",
+        detail: body,
+      });
+    }
+  });
+
+  // 2. Polling endpoint. Returns the current Chirp status. If the status has
+  //    just flipped to Verified, runs the post-verification pipeline
+  //    (idempotent) and returns the fresh funding analysis alongside.
+  app.get("/api/chirp/status/:requestCode", async (req, res) => {
+    try {
+      const { requestCode } = req.params;
+      const status = await chirpService.getRequestStatus(requestCode);
+
+      // Persist status updates so the admin dashboard / webhook path
+      // converge on the same truth
+      await storage.updateChirpBankConnectionStatus(requestCode, {
+        status: status.status,
+        institutionName: status.selectedBank,
+        lastAggregatedAt: status.lastAggregatedAt ? new Date(status.lastAggregatedAt) : null,
+      });
+
+      let fundingAnalysis = null;
+      if (status.status === "Verified") {
+        await runChirpVerificationPipeline(requestCode);
+        fundingAnalysis = await storage.getFundingAnalysisByPlaidItemId(requestCode);
+      }
+
+      res.json({
+        requestCode,
+        status: status.status,
+        statusDetails: status.statusDetails,
+        selectedBank: status.selectedBank,
+        isAccountConnected: status.isAccountConnected,
+        isLinkExpired: status.isLinkExpired,
+        lastAggregatedAt: status.lastAggregatedAt,
+        fundingAnalysis,
+      });
+    } catch (error: any) {
+      const body = error instanceof ChirpApiError ? error.body : undefined;
+      console.error("[CHIRP STATUS] Error:", body || error?.message || error);
+      res.status(500).json({ error: "Failed to fetch Chirp status" });
+    }
+  });
+
+  // 3. Webhook receiver for Chirp REQUEST_STATUS notifications. Authenticates
+  //    via the shared secret configured during createCustomerNotification.
+  app.post("/api/chirp/webhook", async (req, res) => {
+    const expectedSecret = process.env.CHIRP_WEBHOOK_SECRET || "";
+    const providedSecret = req.headers["x-chirp-webhook-secret"];
+
+    if (!expectedSecret || providedSecret !== expectedSecret) {
+      console.warn("[CHIRP WEBHOOK] Rejected - missing or mismatched secret");
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    try {
+      // Chirp's webhook payload shape is not rigidly documented. We extract
+      // the identifying fields defensively from the common locations.
+      const payload = req.body || {};
+      const requestCode = payload.requestCode || payload.RequestCode || payload.request_code;
+      const status = payload.status || payload.Status;
+
+      if (!requestCode) {
+        return res.status(400).json({ error: "Missing requestCode in payload" });
+      }
+
+      console.log(`[CHIRP WEBHOOK] Received status=${status} for requestCode=${requestCode}`);
+
+      await storage.updateChirpBankConnectionStatus(requestCode, {
+        status: status || undefined,
+      });
+
+      if (typeof status === "string" && status.toLowerCase() === "verified") {
+        await runChirpVerificationPipeline(requestCode);
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error("[CHIRP WEBHOOK] Processing error:", error);
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  });
+
+  // 4. Full request details - accounts, transactions, transaction summaries.
+  //    Equivalent to the Plaid statements/account fetch combined.
+  app.get("/api/chirp/details/:requestCode", async (req, res) => {
+    try {
+      const { requestCode } = req.params;
+      const numberOfDays = req.query.numberOfDays ? Number(req.query.numberOfDays) : undefined;
+      const numberOfTransactions = req.query.numberOfTransactions ? Number(req.query.numberOfTransactions) : undefined;
+
+      const details = await chirpService.getRequestDetails(requestCode, {
+        numberOfDays,
+        numberOfTransactions,
+        sort: "DESCENDING",
+      });
+
+      res.json(details);
+    } catch (error: any) {
+      console.error("[CHIRP DETAILS] Error:", error?.message || error);
+      res.status(500).json({ error: "Failed to fetch Chirp details" });
+    }
+  });
+
+  // 5. Bank statements mapped into the legacy BankStatement shape so the
+  //    existing Statements.tsx / FundingAnalysis.tsx consumers don't break.
+  app.get("/api/chirp/statements/:requestCode", async (req, res) => {
+    try {
+      const { requestCode } = req.params;
+      const months = req.query.months ? Number(req.query.months) : 3;
+      const statements = await chirpService.getBankStatements(requestCode, months);
+      res.json(statements);
+    } catch (error: any) {
+      console.error("[CHIRP STATEMENTS] Error:", error?.message || error);
+      res.status(500).json({ error: "Failed to fetch Chirp statements" });
+    }
+  });
+
+  // 6. On-demand analysis. Re-runs the post-verification pipeline if the
+  //    caller explicitly wants fresh analysis.
+  app.post("/api/chirp/analyze/:requestCode", async (req, res) => {
+    try {
+      const { requestCode } = req.params;
+      const analysis = await chirpService.analyzeFinancials(requestCode);
+      res.json({
+        success: true,
+        source: "chirp",
+        ...analysis,
+      });
+    } catch (error: any) {
+      console.error("[CHIRP ANALYZE] Error:", error?.message || error);
+      res.status(500).json({ error: "Failed to analyze Chirp request" });
+    }
+  });
+
+  // 7. Refresh existing verified request - pulls latest transactions.
+  app.post("/api/chirp/refresh/:requestCode", async (req, res) => {
+    try {
+      const { requestCode } = req.params;
+      const { metaInfo } = req.body || {};
+      const result = await chirpService.refreshRequest(requestCode, metaInfo);
+      res.json(result);
+    } catch (error: any) {
+      const body = error instanceof ChirpApiError ? error.body : undefined;
+      console.error("[CHIRP REFRESH] Error:", body || error?.message || error);
+      const status = error instanceof ChirpApiError ? error.status : 500;
+      res.status(status >= 400 && status < 600 ? status : 500).json({
+        error: "Failed to refresh Chirp request",
+        detail: body,
+      });
+    }
+  });
+
+  // 8. PDF report generation. Returns the downloadable link from Chirp
+  //    (valid for 12 hours).
+  app.post("/api/chirp/report-pdf/:requestCode", async (req, res) => {
+    try {
+      const { requestCode } = req.params;
+      const { accountNumber, chirpAccountId } = req.body || {};
+
+      if (!accountNumber && !chirpAccountId) {
+        return res.status(400).json({ error: "accountNumber or chirpAccountId is required" });
+      }
+
+      const result = await chirpService.getRequestReportAsPDF(requestCode, { accountNumber, chirpAccountId });
+      res.json(result);
+    } catch (error: any) {
+      const body = error instanceof ChirpApiError ? error.body : undefined;
+      console.error("[CHIRP REPORT PDF] Error:", body || error?.message || error);
+      res.status(500).json({ error: "Failed to generate Chirp PDF report", detail: body });
+    }
+  });
+
+  // 9. Unsubscribe / disconnect a request. Permanent.
+  app.post("/api/chirp/unsubscribe/:requestCode", async (req, res) => {
+    try {
+      const { requestCode } = req.params;
+      const result = await chirpService.unsubscribeRequest(requestCode);
+      await storage.updateChirpBankConnectionStatus(requestCode, { status: "Unsubscribed" });
+      res.json(result);
+    } catch (error: any) {
+      const body = error instanceof ChirpApiError ? error.body : undefined;
+      console.error("[CHIRP UNSUBSCRIBE] Error:", body || error?.message || error);
+      res.status(500).json({ error: "Failed to unsubscribe Chirp request", detail: body });
+    }
+  });
+
+  // ========================================
   // LENDERS API
   // ========================================
-  
+
   // Get all active lenders
   app.get("/api/lenders", async (req, res) => {
     try {

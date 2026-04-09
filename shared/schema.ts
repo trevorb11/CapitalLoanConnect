@@ -223,11 +223,30 @@ export const fullApplicationSchema = z.object({
 
 export type FullApplicationData = z.infer<typeof fullApplicationSchema>;
 
-// Plaid Items - Store access tokens for bank connections
+// Bank Connections - Stores credentials/identifiers for verified bank
+// connections. Historically this table was Plaid-only (hence the name). It
+// now supports both Plaid and Chirp rows, disambiguated via the `provider`
+// column. Table name is kept for backward compatibility with existing data
+// and foreign keys (`loanApplications.plaidItemId`, `merchantPlaidConnections`,
+// etc.). For Chirp rows, `chirpRequestCode` is the source of truth and
+// `itemId`/`accessToken` are null.
 export const plaidItems = pgTable("plaid_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  itemId: text("item_id").notNull(),
-  accessToken: text("access_token").notNull(),
+  provider: text("provider").notNull().default("plaid"), // "plaid" | "chirp"
+  // Plaid-specific fields (nullable to allow Chirp rows)
+  itemId: text("item_id"),
+  accessToken: text("access_token"),
+  // Chirp-specific fields
+  chirpRequestCode: text("chirp_request_code"),
+  chirpStatus: text("chirp_status"), // Verified | Attempted | Rejected | Expired | etc.
+  chirpVerificationUrl: text("chirp_verification_url"),
+  chirpLastAggregatedAt: timestamp("chirp_last_aggregated_at"),
+  // Captured at request creation so the webhook/polling handlers can run the
+  // post-verification pipeline (funding analysis, application linking, etc.)
+  // without needing to re-plumb customer context from the frontend.
+  chirpCustomerEmail: text("chirp_customer_email"),
+  chirpBusinessName: text("chirp_business_name"),
+  // Shared
   institutionName: text("institution_name"),
   createdAt: timestamp("created_at").defaultNow(),
 });
