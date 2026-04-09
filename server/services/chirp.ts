@@ -164,7 +164,7 @@ export class ChirpService {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
+        Authorization: this.token,
         ...headers,
       },
     });
