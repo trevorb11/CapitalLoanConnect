@@ -344,6 +344,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // Diagnostic: returns the server's outbound IP — useful for IP whitelisting
+  app.get("/api/server-ip", async (_req, res) => {
+    try {
+      const r = await fetch("https://api.ipify.org?format=json");
+      const d = await r.json() as { ip: string };
+      res.json({ ip: d.ip, env: process.env.NODE_ENV });
+    } catch {
+      res.status(500).json({ error: "Could not resolve IP" });
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════════
   // CLAUDE ADMIN DATA API — remote Claude instance access
   // Auth: X-Claude-API-Key header (value from CLAUDE_API_KEY env var)

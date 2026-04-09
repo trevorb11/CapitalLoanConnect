@@ -21,6 +21,7 @@
 
 import axiosLib from "axios";
 import https from "https";
+import { execFile } from "child_process";
 
 const CHIRP_BASE_URL = process.env.CHIRP_BASE_URL || "https://chirp.digital/api";
 const CHIRP_API_TOKEN = process.env.CHIRP_API_TOKEN || "";
@@ -74,6 +75,57 @@ const chirpAxios = axiosLib.create({
     "Referer": "https://chirp.digital/",
   },
 });
+
+/**
+ * Make a Chirp API request using the system curl binary.
+ * curl uses libcurl which has a completely different TLS JA3 fingerprint
+ * from Node.js/OpenSSL — bypasses Cloudflare bot-detection on production IPs
+ * that get flagged when Node.js makes the request directly.
+ */
+function curlChirpRequest(
+  url: string,
+  method: string,
+  token: string,
+  body?: object,
+): Promise<{ status: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    const args: string[] = [
+      "-s",
+      "-X", method.toUpperCase(),
+      url,
+      "-H", `Authorization: ${token}`,
+      "-H", "Content-Type: application/json",
+      "-H", "Accept: application/json",
+      "-H", "Origin: https://chirp.digital",
+      "-H", "Referer: https://chirp.digital/",
+      "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "-H", "sec-fetch-dest: empty",
+      "-H", "sec-fetch-mode: cors",
+      "-H", "sec-fetch-site: same-origin",
+      "--compressed",
+      "-w", "\n__HTTP_STATUS__%{http_code}",
+      "--max-time", "30",
+    ];
+
+    if (body) {
+      args.push("-d", JSON.stringify(body));
+    }
+
+    execFile("curl", args, { timeout: 35000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(`curl failed: ${err.message}`));
+
+      const statusMatch = stdout.match(/__HTTP_STATUS__(\d+)$/);
+      const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+      const responseBody = stdout.replace(/__HTTP_STATUS__\d+$/, "").trim();
+
+      try {
+        resolve({ status, data: JSON.parse(responseBody) });
+      } catch {
+        resolve({ status, data: responseBody });
+      }
+    });
+  });
+}
 
 // Shared analysis types - kept compatible with the previous PlaidService so
 // downstream consumers (funding analysis, AI summaries, merchant insights)
@@ -211,30 +263,56 @@ export class ChirpService {
       if (qs) url += `?${qs}`;
     }
 
+    const fullUrl = `${this.baseUrl}${url}`;
+    const bodyObj = body ? JSON.parse(body) : undefined;
+
+    // ── Primary: axios with Chrome TLS fingerprint + browser headers ──────────
     try {
       const axiosResponse = await chirpAxios.request<T>({
         method: method as any,
         url,
         baseURL: this.baseUrl,
-        data: body ? JSON.parse(body) : undefined,
-        headers: {
-          Authorization: this.token,
-          ...extraHeaders,
-        },
+        data: bodyObj,
+        headers: { Authorization: this.token, ...extraHeaders },
         validateStatus: () => true,
       });
 
+      if (axiosResponse.status === 403) {
+        // Cloudflare is flagging this IP's Node.js TLS fingerprint.
+        // Fall through to curl fallback below.
+        console.warn(`[CHIRP] axios got 403 on ${path}, retrying with curl`);
+        throw Object.assign(new Error("cf_block"), { isCfBlock: true });
+      }
+
       if (axiosResponse.status >= 400) {
-        const body = axiosResponse.data;
-        const message = (body && typeof body === "object" && ((body as any).message || (body as any).error)) || `Chirp API error ${axiosResponse.status}`;
-        console.error(`[CHIRP] ${axiosResponse.status} ${path}`, typeof body === "string" ? body.slice(0, 200) : body);
-        throw new ChirpApiError(String(message), axiosResponse.status, body);
+        const respBody = axiosResponse.data;
+        const message = (respBody && typeof respBody === "object" && ((respBody as any).message || (respBody as any).error)) || `Chirp API error ${axiosResponse.status}`;
+        console.error(`[CHIRP] ${axiosResponse.status} ${path}`, typeof respBody === "string" ? respBody.slice(0, 200) : respBody);
+        throw new ChirpApiError(String(message), axiosResponse.status, respBody);
       }
 
       return axiosResponse.data;
     } catch (err: any) {
       if (err instanceof ChirpApiError) throw err;
-      throw new ChirpApiError(err.message || "Network error calling Chirp API", 500);
+      if (!err.isCfBlock) throw new ChirpApiError(err.message || "Network error calling Chirp API", 500);
+    }
+
+    // ── Fallback: curl subprocess (libcurl TLS fingerprint bypasses CF WAF) ───
+    try {
+      console.log(`[CHIRP] Using curl fallback for ${path}`);
+      const curlResult = await curlChirpRequest(fullUrl, method, this.token, bodyObj);
+
+      if (curlResult.status >= 400) {
+        const respBody = curlResult.data;
+        const message = (respBody && typeof respBody === "object" && ((respBody as any).message || (respBody as any).error)) || `Chirp API error ${curlResult.status}`;
+        console.error(`[CHIRP curl] ${curlResult.status} ${path}`, typeof respBody === "string" ? respBody.slice(0, 200) : respBody);
+        throw new ChirpApiError(String(message), curlResult.status, respBody);
+      }
+
+      return curlResult.data as T;
+    } catch (err: any) {
+      if (err instanceof ChirpApiError) throw err;
+      throw new ChirpApiError(err.message || "curl fallback failed for Chirp API", 500);
     }
   }
 
@@ -652,30 +730,14 @@ export class ChirpService {
     requestCode: string;
     validUpto: string;
   }> {
-    if (!this.token) {
-      throw new ChirpApiError("CHIRP_API_TOKEN is not configured", 500);
-    }
-    try {
-      const axiosResponse = await chirpAxios.post(
-        `/genAuthTokenForChirpLink/chirpLink/${encodeURIComponent(requestCode)}`,
-        {},
-        { headers: { Authorization: this.token }, validateStatus: () => true },
-      );
-      const body = axiosResponse.data;
-      if (axiosResponse.status >= 400) {
-        const message = (body && typeof body === "object" && (body.message || body.error)) || `Chirp genAuthToken error ${axiosResponse.status}`;
-        throw new ChirpApiError(String(message), axiosResponse.status, body);
-      }
-      return {
-        success: Boolean(body?.success),
-        token: body?.token || "",
-        requestCode: body?.requestCode || requestCode,
-        validUpto: body?.validUpto || "",
-      };
-    } catch (err: any) {
-      if (err instanceof ChirpApiError) throw err;
-      throw new ChirpApiError(err.message || "Network error calling Chirp API", 500);
-    }
+    const path = `/genAuthTokenForChirpLink/chirpLink/${encodeURIComponent(requestCode)}`;
+    const body = await this.request<any>(path, { method: "POST", body: JSON.stringify({}) });
+    return {
+      success: Boolean(body?.success),
+      token: body?.token || "",
+      requestCode: body?.requestCode || requestCode,
+      validUpto: body?.validUpto || "",
+    };
   }
 
   // ---------------------------------------------------------------------------
