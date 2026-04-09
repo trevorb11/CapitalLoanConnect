@@ -52,6 +52,12 @@ PRIVATE_OBJECT_DIR = "/tcg-statements"
 PLAID_ENV = "production"
 CHIRP_ENV = "sandbox"
 CHIRP_BASE_URL = "https://chirp.digital/api"
+# Auth header format defaults to `Authorization: Bearer <token>`. If Chirp
+# uses a different format, override here without code changes. Examples:
+#   X-API-Key: CHIRP_AUTH_HEADER = "X-API-Key", CHIRP_AUTH_VALUE_PREFIX = ""
+#   Token <t>: CHIRP_AUTH_HEADER = "Authorization", CHIRP_AUTH_VALUE_PREFIX = "Token "
+# CHIRP_AUTH_HEADER = "Authorization"
+# CHIRP_AUTH_VALUE_PREFIX = "Bearer "
 MCP_API_KEY = "tcg_mcp_dc00d9c5303bb6a7bfd77f943fd74b8da3bf004f4f920192"
 SMS_MIDDLEWARE_URL = "https://specificatively-hygrophytic-jermaine.ngrok-free.dev/sms/webhooks/capitaloan/stage-event"
 SMS_WEBHOOK_SECRET = "tcg-clc-webhook-2026"

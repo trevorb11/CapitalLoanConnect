@@ -2602,6 +2602,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     customerId: z.string().optional(),
   });
 
+  // 0. Healthcheck - smoke-tests Chirp connectivity, auth header format, and
+  //    the trackInfo endpoint path in one call without creating any data.
+  //    Use this to validate sandbox config before going through the full
+  //    create-request flow. Curl example:
+  //      curl -s http://localhost:5000/api/chirp/healthcheck | jq
+  app.get("/api/chirp/healthcheck", async (_req, res) => {
+    try {
+      const result = await chirpService.healthcheck();
+      res.json(result);
+    } catch (error: any) {
+      const body = error instanceof ChirpApiError ? error.body : undefined;
+      const status = error instanceof ChirpApiError ? error.status : 500;
+      res.status(status >= 400 && status < 600 ? status : 500).json({
+        ok: false,
+        error: error?.message || "Healthcheck failed",
+        chirpStatus: error instanceof ChirpApiError ? error.status : null,
+        chirpBody: body,
+        hint: "If this is a 404, the trackInfo path is wrong - update chirp.ts. If 401/403, set CHIRP_AUTH_HEADER and CHIRP_AUTH_VALUE_PREFIX env vars to match Chirp's expected format.",
+      });
+    }
+  });
+
   // Post-verification pipeline - runs exactly once per requestCode. Fetches
   // the verified details from Chirp, computes funding analysis, persists it
   // to `fundingAnalyses`, and links the application if the email matches.

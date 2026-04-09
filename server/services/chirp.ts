@@ -23,6 +23,17 @@ const CHIRP_BASE_URL = process.env.CHIRP_BASE_URL || "https://chirp.digital/api"
 const CHIRP_API_TOKEN = process.env.CHIRP_API_TOKEN || "";
 const CHIRP_ENV = process.env.CHIRP_ENV || "sandbox";
 
+// The Chirp dev guide does not document the exact auth header format. The
+// Postman collection is the authoritative source and is JS-rendered, so we
+// can't auto-parse it. These env vars let you switch auth styles without a
+// code change once you confirm the right format from Postman or the first
+// sandbox call. Defaults assume `Authorization: Bearer <token>`. Examples:
+//   X-API-Key:        CHIRP_AUTH_HEADER=X-API-Key,         CHIRP_AUTH_VALUE_PREFIX=""
+//   Token:            CHIRP_AUTH_HEADER=Authorization,     CHIRP_AUTH_VALUE_PREFIX="Token "
+//   Plain in header:  CHIRP_AUTH_HEADER=token,             CHIRP_AUTH_VALUE_PREFIX=""
+const CHIRP_AUTH_HEADER = process.env.CHIRP_AUTH_HEADER || "Authorization";
+const CHIRP_AUTH_VALUE_PREFIX = process.env.CHIRP_AUTH_VALUE_PREFIX ?? "Bearer ";
+
 // Shared analysis types - kept compatible with the previous PlaidService so
 // downstream consumers (funding analysis, AI summaries, merchant insights)
 // keep working without refactors.
@@ -135,10 +146,19 @@ export class ChirpApiError extends Error {
 export class ChirpService {
   private readonly baseUrl: string;
   private readonly token: string;
+  private readonly authHeader: string;
+  private readonly authValuePrefix: string;
 
-  constructor(baseUrl: string = CHIRP_BASE_URL, token: string = CHIRP_API_TOKEN) {
+  constructor(
+    baseUrl: string = CHIRP_BASE_URL,
+    token: string = CHIRP_API_TOKEN,
+    authHeader: string = CHIRP_AUTH_HEADER,
+    authValuePrefix: string = CHIRP_AUTH_VALUE_PREFIX,
+  ) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
+    this.authHeader = authHeader;
+    this.authValuePrefix = authValuePrefix;
   }
 
   private async request<T>(
@@ -159,12 +179,14 @@ export class ChirpService {
       if (qs) url += `?${qs}`;
     }
 
+    const method = (rest.method || "GET").toUpperCase();
+
     const response = await fetch(url, {
       ...rest,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
+        [this.authHeader]: `${this.authValuePrefix}${this.token}`,
         ...headers,
       },
     });
@@ -181,11 +203,33 @@ export class ChirpService {
 
     if (!response.ok) {
       const message = (body && typeof body === "object" && (body.message || body.error)) || `Chirp API error ${response.status}`;
-      console.error(`[CHIRP] ${response.status} ${path}`, body);
+      // Always log full URL + method on failure so the actual endpoint that
+      // 404'd is obvious. Add specific hints for the most common
+      // misconfigurations so the first sandbox failure self-diagnoses.
+      console.error(`[CHIRP] ${method} ${url} -> ${response.status}`, body);
+      if (response.status === 404) {
+        console.error(`[CHIRP] 404 hint: the path "${path}" is likely wrong. Check the Postman collection and update the literal path in chirp.ts.`);
+      }
+      if (response.status === 401 || response.status === 403) {
+        console.error(`[CHIRP] ${response.status} hint: auth rejected. Header used: "${this.authHeader}: ${this.authValuePrefix}<token>". If Chirp uses a different format, set CHIRP_AUTH_HEADER and CHIRP_AUTH_VALUE_PREFIX env vars.`);
+      }
       throw new ChirpApiError(String(message), response.status, body);
     }
 
     return body as T;
+  }
+
+  /**
+   * Lightweight smoke test - calls getRequestTrackInfo with a clearly fake
+   * request code. Per the docs, Chirp ignores invalid codes and returns an
+   * empty result, so a successful response proves the base URL, the auth
+   * header format, and the trackInfo endpoint path are all correct without
+   * creating any test data. Surfaces the underlying ChirpApiError on failure
+   * so the caller can see exactly what went wrong.
+   */
+  async healthcheck(): Promise<{ ok: true; environment: string; baseUrl: string }> {
+    await this.getRequestTrackInfo(["__chirp_healthcheck_fake_code__"]);
+    return { ok: true, environment: CHIRP_ENV, baseUrl: this.baseUrl };
   }
 
   // ---------------------------------------------------------------------------
