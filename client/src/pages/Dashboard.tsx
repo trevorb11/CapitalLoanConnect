@@ -159,6 +159,17 @@ interface BankConnection {
   createdAt: string;
 }
 
+interface ChirpConnection {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  businessName: string;
+  requestedAmount: string;
+  chirpRequestCode: string;
+  createdAt: string;
+}
+
 interface BotAttempt {
   id: string;
   email: string | null;
@@ -1222,6 +1233,15 @@ function BankStatementsTab() {
     },
   });
 
+  const { data: chirpConnections, isLoading: chirpConnectionsLoading } = useQuery<ChirpConnection[]>({
+    queryKey: ['/api/chirp/connections'],
+    queryFn: async () => {
+      const res = await fetch('/api/chirp/connections', { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const { data: bankUploads, isLoading: uploadsLoading } = useQuery<BankStatementUpload[]>({
     queryKey: ['/api/bank-statements/uploads'],
     queryFn: async () => {
@@ -1984,13 +2004,24 @@ function BankStatementsTab() {
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const isLoading = uploadsLoading || connectionsLoading;
+  // Filter & sort Chirp connections
+  const filteredChirpConnections = (chirpConnections || [])
+    .filter(conn => {
+      const name = conn.businessName || conn.fullName || '';
+      const matchesSearch = !lowerQuery || name.toLowerCase().includes(lowerQuery) || conn.email.toLowerCase().includes(lowerQuery);
+      const notDecided = showAllStatements || !emailHasDecision(conn.email);
+      return matchesSearch && notDecided;
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const isLoading = uploadsLoading || connectionsLoading || chirpConnectionsLoading;
   const hasUploads = filteredUploadsByBusiness.length > 0;
   const hasConnections = filteredConnections.length > 0;
-  const isEmpty = !hasUploads && !hasConnections;
+  const hasChirpConnections = filteredChirpConnections.length > 0;
+  const isEmpty = !hasUploads && !hasConnections && !hasChirpConnections;
 
   // Check if there's any data at all (before search filtering)
-  const hasAnyData = (bankUploads && bankUploads.length > 0) || (bankConnections && bankConnections.length > 0);
+  const hasAnyData = (bankUploads && bankUploads.length > 0) || (bankConnections && bankConnections.length > 0) || (chirpConnections && chirpConnections.length > 0);
 
   if (isLoading) {
     return (
@@ -2602,6 +2633,88 @@ function BankStatementsTab() {
                           </Button>
                         </div>
                       )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Chirp Connected Banks Section */}
+        {hasChirpConnections && (
+          <div>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Landmark className="w-5 h-5 text-blue-600" />
+              Chirp Connected Banks
+              <Badge className="bg-blue-600 text-white text-xs">{filteredChirpConnections.length}</Badge>
+            </h3>
+            <div className="space-y-4">
+              {filteredChirpConnections.map((conn) => (
+                <Card key={conn.id} className="p-6 hover-elevate" data-testid={`card-chirp-connection-${conn.id}`}>
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3 flex-wrap">
+                        <h4 className="font-semibold text-lg flex items-center gap-2">
+                          <Building2 className="w-5 h-5 text-primary" />
+                          {conn.businessName || conn.fullName}
+                        </h4>
+                        <Badge className="bg-blue-600 text-white">Chirp Connected</Badge>
+                        {(() => {
+                          const decision = getBusinessDecision(conn.email);
+                          if (!decision) return null;
+                          const statusColors: Record<string, string> = {
+                            approved: 'bg-blue-600 text-white',
+                            funded: 'bg-purple-600 text-white',
+                            declined: 'bg-red-600 text-white',
+                            unqualified: 'bg-amber-600 text-white',
+                          };
+                          const statusLabels: Record<string, string> = {
+                            approved: 'Approved',
+                            funded: 'Funded',
+                            declined: 'Declined',
+                            unqualified: 'Unqualified',
+                          };
+                          const cls = statusColors[decision.status] || 'bg-muted text-muted-foreground';
+                          const label = statusLabels[decision.status] || decision.status;
+                          return <Badge className={cls}>{label}</Badge>;
+                        })()}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Applicant:</span>
+                          <span className="font-medium">{conn.fullName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Connected:</span>
+                          <span className="font-medium">{format(new Date(conn.createdAt), 'MMM d, yyyy')}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <User className="w-4 h-4" />
+                        {conn.email}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 min-w-[160px]">
+                      <Button
+                        size="sm"
+                        onClick={() => window.open(`/api/chirp/request/${conn.chirpRequestCode}/pdf/download`, '_blank')}
+                        data-testid={`button-chirp-pdf-${conn.id}`}
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        Download PDF
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(`/api/chirp/request/${conn.chirpRequestCode}/details`, '_blank')}
+                        data-testid={`button-chirp-details-${conn.id}`}
+                      >
+                        <Landmark className="w-4 h-4 mr-2" />
+                        View Details
+                      </Button>
                     </div>
                   </div>
                 </Card>

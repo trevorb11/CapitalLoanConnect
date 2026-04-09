@@ -2616,9 +2616,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
         leadProvider: "TodayCapital",
       });
       console.log(`[CHIRP] Created request ${result.requestCode} for ${firstName} ${lastName}`);
+      // Fire-and-forget: store requestCode against the matching loan application
+      if (result.requestCode) {
+        storage.saveChirpRequestCode(email, phone, result.requestCode).catch(e =>
+          console.warn("[CHIRP] Failed to persist requestCode:", e)
+        );
+      }
       res.json({ success: true, ...result });
     } catch (err: any) {
       console.error("[CHIRP] createVerificationRequest error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/connections — list all applications with a stored Chirp request code
+  app.get("/api/chirp/connections", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    try {
+      const apps = await storage.getApplicationsWithChirpCode();
+      const connections = apps.map(a => ({
+        id: a.id,
+        fullName: a.fullName,
+        email: a.email,
+        phone: a.phone,
+        businessName: a.businessName,
+        requestedAmount: a.requestedAmount,
+        chirpRequestCode: (a as any).chirpRequestCode,
+        createdAt: a.createdAt,
+      }));
+      res.json(connections);
+    } catch (err: any) {
+      console.error("[CHIRP] getApplicationsWithChirpCode error:", err);
+      res.status(500).json({ error: "Failed to fetch Chirp connections" });
+    }
+  });
+
+  // GET /api/chirp/request/:code/pdf/download — stream PDF bank statement report
+  app.get("/api/chirp/request/:code/pdf/download", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    try {
+      const { code } = req.params;
+      const { accountNumber, chirpAccountId } = req.query as { accountNumber?: string; chirpAccountId?: string };
+
+      let account: { accountNumber?: string; chirpAccountId?: string } = {};
+      if (chirpAccountId) {
+        account = { chirpAccountId };
+      } else if (accountNumber) {
+        account = { accountNumber };
+      } else {
+        // Attempt to find the first account from details
+        try {
+          const details = await chirpService.getRequestDetails(code, { numberOfDays: 90, sort: "DESCENDING" });
+          const firstAccount = (details as any)?.accounts?.[0];
+          if (firstAccount?.chirpAccountId) account = { chirpAccountId: firstAccount.chirpAccountId };
+          else if (firstAccount?.accountNumber) account = { accountNumber: firstAccount.accountNumber };
+        } catch (_) { /* fall through with empty account */ }
+      }
+
+      const pdfBuffer = await chirpService.downloadReportPdfBytes(code, account);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="chirp-report-${code}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("[CHIRP] PDF download error:", err);
       res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
     }
   });

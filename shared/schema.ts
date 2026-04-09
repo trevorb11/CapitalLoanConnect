@@ -99,6 +99,9 @@ export const loanApplications = pgTable("loan_applications", {
   // --- Plaid Integration ---
   plaidItemId: text("plaid_item_id"), // Link to Plaid access token for retrieving statements
 
+  // --- Chirp Integration ---
+  chirpRequestCode: text("chirp_request_code"), // Chirp IFV request code after bank verification
+
   // --- Agent Tracking ---
   agentName: text("agent_name"), // Name of the agent who sent the application
   agentEmail: text("agent_email"), // Email of the agent

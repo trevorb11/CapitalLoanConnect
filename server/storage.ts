@@ -70,6 +70,10 @@ export interface IStorage {
   getAllLoanApplications(): Promise<LoanApplication[]>;
   searchFullApplicationsForGigFi(query: string): Promise<LoanApplication[]>;
   
+  // Chirp methods
+  saveChirpRequestCode(email: string, phone: string, requestCode: string): Promise<void>;
+  getApplicationsWithChirpCode(): Promise<LoanApplication[]>;
+
   // Plaid methods
   createPlaidItem(item: InsertPlaidItem): Promise<PlaidItem>;
   getPlaidItem(itemId: string): Promise<PlaidItem | undefined>;
@@ -398,6 +402,38 @@ export class DatabaseStorage implements IStorage {
       .where(eq(loanApplications.email, email))
       .orderBy(desc(loanApplications.createdAt));
     return application || undefined;
+  }
+
+  // Chirp methods
+  async saveChirpRequestCode(email: string, phone: string, requestCode: string): Promise<void> {
+    // Normalise phone to digits only for matching
+    const digitsOnly = (p: string) => p.replace(/\D/g, "");
+    const phoneDigits = digitsOnly(phone);
+
+    // Try email match first (most reliable), then phone
+    const all = await db.select().from(loanApplications).orderBy(desc(loanApplications.createdAt));
+    const match = all.find(a =>
+      (a.email && a.email.toLowerCase() === email.toLowerCase()) ||
+      (a.phone && digitsOnly(a.phone) === phoneDigits)
+    );
+
+    if (match) {
+      await db
+        .update(loanApplications)
+        .set({ chirpRequestCode: requestCode } as any)
+        .where(eq(loanApplications.id, match.id));
+      console.log(`[CHIRP] Saved requestCode ${requestCode} to application ${match.id} (${match.email})`);
+    } else {
+      console.warn(`[CHIRP] No application found for email=${email} phone=${phone} — requestCode ${requestCode} not stored`);
+    }
+  }
+
+  async getApplicationsWithChirpCode(): Promise<LoanApplication[]> {
+    return await db
+      .select()
+      .from(loanApplications)
+      .where(sql`chirp_request_code IS NOT NULL AND chirp_request_code != ''`)
+      .orderBy(desc(loanApplications.createdAt));
   }
 
   // Plaid Statements methods
