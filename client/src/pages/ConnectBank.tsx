@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -19,6 +19,22 @@ import {
 } from "@/components/ui/form";
 import { Loader2, CheckCircle2, Lock, AlertCircle, Upload, Building2, FileText, Mail, ExternalLink, Shield } from "lucide-react";
 
+declare global {
+  interface Window {
+    ChirpLink?: (options: {
+      token: string;
+      mode?: "POPUP" | "ADAPTABLE";
+      overlay?: boolean;
+      onLoad?: (payload: any) => void;
+      onBankSelect?: (payload: any) => void;
+      onSuccess?: (payload: any) => void;
+      onError?: (payload: any) => void;
+      onClose?: (payload: any) => void;
+      onAttempt?: (payload: any) => void;
+    }) => { close?: () => void };
+  }
+}
+
 const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
@@ -33,9 +49,25 @@ export default function ConnectBank() {
   const [connectionMethod, setConnectionMethod] = useState<'chirp' | 'upload' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [chirpScriptLoaded, setChirpScriptLoaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // Load ChirpLink CDN script once on mount
+  useEffect(() => {
+    if (document.getElementById("chirplink-cdn")) {
+      setChirpScriptLoaded(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "chirplink-cdn";
+    script.src = "https://chirp.digital/cdn/chirplink.js";
+    script.async = true;
+    script.onload = () => setChirpScriptLoaded(true);
+    script.onerror = () => console.warn("[ChirpLink] CDN script failed to load");
+    document.head.appendChild(script);
+  }, []);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -49,31 +81,67 @@ export default function ConnectBank() {
 
   const chirpRequestMutation = useMutation({
     mutationFn: async (values: FormData) => {
-      const res = await apiRequest("POST", "/api/chirp/request", {
+      // Step 1: Create the Chirp verification request
+      const createRes = await apiRequest("POST", "/api/chirp/request", {
         firstName: values.firstName,
         lastName: values.lastName,
         email: values.email,
         phone: values.phone,
       });
-      return res.json();
+      const createData = await createRes.json();
+      if (!createData.requestCode) {
+        throw new Error(createData.error || "No request code returned from Chirp");
+      }
+
+      // Step 2: Get a ChirpLink widget token for this request code
+      const tokenRes = await apiRequest("POST", `/api/chirp/request/${createData.requestCode}/token`, {});
+      const tokenData = await tokenRes.json();
+      if (!tokenData.token) {
+        throw new Error(tokenData.error || "Failed to generate ChirpLink token");
+      }
+
+      return { requestCode: createData.requestCode, token: tokenData.token };
     },
-    onSuccess: (data) => {
-      if (data.verificationUrl) {
-        window.location.href = data.verificationUrl;
-      } else {
+    onSuccess: ({ token }) => {
+      setStep('input');
+      if (!window.ChirpLink) {
         toast({
           title: "Error",
-          description: "No verification URL returned. Please try again.",
+          description: "ChirpLink widget could not be loaded. Please try again.",
           variant: "destructive",
         });
-        setStep('input');
+        return;
       }
+      window.ChirpLink({
+        token,
+        mode: "POPUP",
+        overlay: true,
+        onLoad: (payload: any) => {
+          if (payload?.isLinkExpired) {
+            toast({ title: "Link Expired", description: "This verification link has expired. Please try again.", variant: "destructive" });
+          }
+        },
+        onSuccess: () => {
+          setConnectionMethod('chirp');
+          setStep('success');
+        },
+        onError: (payload: any) => {
+          toast({
+            title: "Verification Error",
+            description: payload?.message || "An error occurred during bank verification. Please try again.",
+            variant: "destructive",
+          });
+        },
+        onClose: () => {
+          // Widget closed — do nothing, user can retry
+        },
+      });
     },
-    onError: () => {
+    onError: (err: Error) => {
       setStep('input');
       toast({
         title: "Connection Error",
-        description: "Failed to start bank verification. Please try again.",
+        description: err.message || "Failed to start bank verification. Please try again.",
         variant: "destructive",
       });
     },
@@ -200,6 +268,7 @@ export default function ConnectBank() {
   }
 
   if (step === 'success') {
+    const isChirp = connectionMethod === 'chirp';
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#192F56] to-[#19112D] flex items-center justify-center p-4">
         <Card className="w-full max-w-lg shadow-xl border-0">
@@ -208,10 +277,12 @@ export default function ConnectBank() {
               <CheckCircle2 className="w-10 h-10 text-green-600" />
             </div>
             <h2 className="text-2xl font-bold text-[#192F56] mb-3" data-testid="heading-success">
-              Statement Uploaded!
+              {isChirp ? "Bank Connected!" : "Statement Uploaded!"}
             </h2>
             <p className="text-gray-600 mb-6">
-              Your bank statement has been received and will be reviewed by our team.
+              {isChirp
+                ? "Your bank account has been successfully verified. Our team will review your financials shortly."
+                : "Your bank statement has been received and will be reviewed by our team."}
             </p>
             <div className="space-y-3">
               <Button

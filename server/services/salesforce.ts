@@ -1,9 +1,17 @@
 /**
  * Salesforce Sync — creates/updates SF records when a new application is saved.
+ *
+ * Auth: uses SF_REFRESH_TOKEN to auto-refresh the access token via OAuth2.
+ * Falls back to SF_ACCESS_TOKEN if refresh token is not configured.
+ * Tokens are cached in memory and refreshed on 401 or expiry.
  */
 
 const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
-const SF_ACCESS_TOKEN = process.env.SF_ACCESS_TOKEN;
+const SF_REFRESH_TOKEN = process.env.SF_REFRESH_TOKEN;
+const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://test.salesforce.com"; // test.salesforce.com for sandbox
+
+let cachedAccessToken = process.env.SF_ACCESS_TOKEN || "";
+let tokenExpiresAt = 0; // epoch ms — 0 = needs refresh on first call
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS",
@@ -11,24 +19,77 @@ const US_STATES = new Set([
   "NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"
 ]);
 
-function sfHeaders() {
+// ---------------------------------------------------------------------------
+// Token management — auto-refresh via OAuth2 refresh_token grant
+// ---------------------------------------------------------------------------
+async function refreshAccessToken(): Promise<string> {
+  if (!SF_REFRESH_TOKEN) {
+    return cachedAccessToken;
+  }
+  try {
+    const res = await fetch(`${SF_LOGIN_URL}/services/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: SF_REFRESH_TOKEN,
+        client_id: "PlatformCLI",
+      }),
+    });
+    const data = await res.json() as any;
+    if (data.access_token) {
+      cachedAccessToken = data.access_token;
+      tokenExpiresAt = Date.now() + 90 * 60 * 1000; // refresh at 90min
+      console.log("[SF Auth] Token refreshed successfully");
+      return cachedAccessToken;
+    }
+    console.error("[SF Auth] Refresh failed:", data.error, data.error_description);
+    return cachedAccessToken;
+  } catch (err: any) {
+    console.error("[SF Auth] Refresh error:", err.message);
+    return cachedAccessToken;
+  }
+}
+
+async function getAccessToken(): Promise<string> {
+  if (!cachedAccessToken || Date.now() > tokenExpiresAt) {
+    return refreshAccessToken();
+  }
+  return cachedAccessToken;
+}
+
+function sfHeaders(token: string) {
   return {
-    'Authorization': `Bearer ${SF_ACCESS_TOKEN}`,
-    'Content-Type': 'application/json',
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json",
   };
 }
 
 async function sfApi(method: string, path: string, body?: object): Promise<{ success: boolean; id?: string; data?: any; error?: string }> {
   try {
-    const res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
+    let token = await getAccessToken();
+    let res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
       method,
-      headers: sfHeaders(),
+      headers: sfHeaders(token),
       body: body ? JSON.stringify(body) : undefined,
     });
+
+    // Auto-retry on 401 with a fresh token
+    if (res.status === 401 && SF_REFRESH_TOKEN) {
+      console.log("[SF API] 401 — refreshing token and retrying...");
+      tokenExpiresAt = 0;
+      token = await refreshAccessToken();
+      res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
+        method,
+        headers: sfHeaders(token),
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    }
+
     if (res.status === 204) return { success: true };
     const data = await res.json();
     if (res.ok) return { success: true, id: data.id, data };
-    const msg = Array.isArray(data) ? data.map((e: any) => e.message).join('; ') : data.message || JSON.stringify(data);
+    const msg = Array.isArray(data) ? data.map((e: any) => e.message).join("; ") : data.message || JSON.stringify(data);
     return { success: false, error: msg };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -37,10 +98,23 @@ async function sfApi(method: string, path: string, body?: object): Promise<{ suc
 
 async function sfQuery(soql: string): Promise<any[]> {
   try {
+    const token = await getAccessToken();
     const res = await fetch(
       `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
-      { headers: sfHeaders() }
+      { headers: sfHeaders(token) }
     );
+
+    if (res.status === 401 && SF_REFRESH_TOKEN) {
+      tokenExpiresAt = 0;
+      const freshToken = await refreshAccessToken();
+      const retry = await fetch(
+        `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
+        { headers: sfHeaders(freshToken) }
+      );
+      const data = await retry.json();
+      return data.records || [];
+    }
+
     const data = await res.json();
     return data.records || [];
   } catch {
@@ -50,7 +124,7 @@ async function sfQuery(soql: string): Promise<any[]> {
 
 function parseNum(v: any): number | null {
   if (v === null || v === undefined) return null;
-  const n = Number(String(v).replace(/[$,]/g, ''));
+  const n = Number(String(v).replace(/[$,]/g, ""));
   return isNaN(n) ? null : n;
 }
 
@@ -58,27 +132,27 @@ function mapCreditScore(v: any): string | null {
   if (!v) return null;
   const n = parseInt(v);
   if (isNaN(n)) return String(v);
-  if (n >= 800) return '800+';
-  if (n >= 750) return '750-799';
-  if (n >= 700) return '700-749';
-  if (n >= 650) return '650-699';
-  if (n >= 600) return '600-649';
-  if (n >= 550) return '550-599';
-  if (n >= 500) return '500-549';
-  return 'Below 500';
+  if (n >= 800) return "800+";
+  if (n >= 750) return "750-799";
+  if (n >= 700) return "700-749";
+  if (n >= 650) return "650-699";
+  if (n >= 600) return "600-649";
+  if (n >= 550) return "550-599";
+  if (n >= 500) return "500-549";
+  return "Below 500";
 }
 
 function mapIndustry(v: any): string | null {
   if (!v) return null;
   const map: Record<string, string> = {
-    'Construction': 'Construction',
-    'Transportation': 'Transportation',
-    'Health Services': 'Healthcare',
-    'Retail': 'Retail',
-    'Professional Services': 'Professional Services',
-    'Utilities and Home Services': 'Construction',
-    'Hospitality': 'Hospitality',
-    'Restaurant': 'Restaurant',
+    "Construction": "Construction",
+    "Transportation": "Transportation",
+    "Health Services": "Healthcare",
+    "Retail": "Retail",
+    "Professional Services": "Professional Services",
+    "Utilities and Home Services": "Construction",
+    "Hospitality": "Hospitality",
+    "Restaurant": "Restaurant",
   };
   return map[v] || v;
 }
@@ -86,26 +160,40 @@ function mapIndustry(v: any): string | null {
 function clean(obj: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (v !== null && v !== undefined && v !== '') result[k] = v;
+    if (v !== null && v !== undefined && v !== "") result[k] = v;
   }
   return result;
 }
 
 /**
+ * Stage mapping: dashboard underwriting decision status → SF Opportunity stage.
+ */
+export function dashboardStatusToSfStage(status: string): string {
+  const map: Record<string, string> = {
+    approved: "Present Offer",
+    declined: "Closed Lost",
+    funded: "Closed Won",
+    unqualified: "Closed Lost",
+  };
+  return map[status?.toLowerCase()] || "Application & Docs";
+}
+
+/**
  * Main sync function — call this after saving a loan_application.
+ * Returns SF IDs for storage in the sf_* tracking columns.
  */
 export async function syncApplicationToSalesforce(app: Record<string, any>): Promise<{ synced: boolean; action?: string; accountId?: string; contactId?: string; oppId?: string; reason?: string; error?: string }> {
-  if (!SF_INSTANCE_URL || !SF_ACCESS_TOKEN) {
-    console.log('[SF Sync] Skipped — no SF credentials configured');
-    return { synced: false, reason: 'no credentials' };
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) {
+    console.log("[SF Sync] Skipped — no SF credentials configured");
+    return { synced: false, reason: "no credentials" };
   }
 
   try {
-    const email = app.email || app.business_email || '';
-    const phone = app.phone || '';
-    const fullName = app.fullName || app.full_name || '';
-    const businessName = app.businessName || app.business_name || app.legalBusinessName || '';
-    const state = (app.state || '').toUpperCase().trim();
+    const email = app.email || app.business_email || "";
+    const phone = app.phone || "";
+    const fullName = app.fullName || app.full_name || "";
+    const businessName = app.businessName || app.business_name || app.legalBusinessName || "";
+    const state = (app.state || "").toUpperCase().trim();
 
     console.log(`[SF Sync] Processing: ${businessName || fullName || email}`);
 
@@ -114,13 +202,13 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
 
     if (email) {
       const byEmail = await sfQuery(
-        `SELECT Id, Name FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}' LIMIT 1`
+        `SELECT Id, Name FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}'  LIMIT 1`
       );
       if (byEmail.length) existingOpp = byEmail[0];
     }
 
     if (!existingOpp && phone) {
-      const digits = phone.replace(/\D/g, '').slice(-10);
+      const digits = phone.replace(/\D/g, "").slice(-10);
       if (digits.length === 10) {
         const byPhone = await sfQuery(
           `SELECT Id, Name FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' LIMIT 1`
@@ -141,27 +229,24 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       });
 
       if (Object.keys(updateFields).length > 0) {
-        const res = await sfApi('PATCH', `/sobjects/Opportunity/${existingOpp.Id}`, updateFields);
-        console.log(`[SF Sync] Updated existing Opp: ${existingOpp.Name} (${existingOpp.Id}) — ${res.success ? 'OK' : res.error}`);
-        return { synced: true, action: 'updated', oppId: existingOpp.Id };
+        const res = await sfApi("PATCH", `/sobjects/Opportunity/${existingOpp.Id}`, updateFields);
+        console.log(`[SF Sync] Updated existing Opp: ${existingOpp.Name} (${existingOpp.Id}) — ${res.success ? "OK" : res.error}`);
+        return { synced: true, action: "updated", oppId: existingOpp.Id };
       }
-      return { synced: true, action: 'no-update-needed', oppId: existingOpp.Id };
+      return { synced: true, action: "no-update-needed", oppId: existingOpp.Id };
     }
 
     // 2. No match — create new Account + Contact + Opportunity
-
-    // Get Merchant RecordTypeId
     const rts = await sfQuery(
       "SELECT Id FROM RecordType WHERE SObjectType='Account' AND Name='Merchant' AND IsActive=true"
     );
     const merchantRtId = rts[0]?.Id;
 
-    const accountName = (businessName || fullName || email || 'Unknown').slice(0, 255);
+    const accountName = (businessName || fullName || email || "Unknown").slice(0, 255);
     const nameParts = fullName.split(/\s+/);
     const today = new Date();
     const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
 
-    // Create Account
     const account = clean({
       Name: accountName,
       ...(merchantRtId ? { RecordTypeId: merchantRtId } : {}),
@@ -176,21 +261,20 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       BillingCity: app.city || null,
       ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
       BillingPostalCode: app.zipCode || app.zip_code || null,
-      ...((state || app.city) ? { BillingCountryCode: 'US' } : {}),
-      Account_Status__c: 'Pending',
+      ...((state || app.city) ? { BillingCountryCode: "US" } : {}),
+      Account_Status__c: "Pending",
     });
 
-    const acctRes = await sfApi('POST', '/sobjects/Account', account);
+    const acctRes = await sfApi("POST", "/sobjects/Account", account);
     if (!acctRes.success) {
       console.log(`[SF Sync] Account creation failed: ${acctRes.error}`);
       return { synced: false, error: `Account: ${acctRes.error}` };
     }
 
-    // Create Contact
     const contact = clean({
       AccountId: acctRes.id,
       FirstName: nameParts[0] || null,
-      LastName: nameParts.slice(1).join(' ') || email || 'Unknown',
+      LastName: nameParts.slice(1).join(" ") || email || "Unknown",
       Email: email || null,
       Phone: phone || null,
       Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score),
@@ -202,18 +286,17 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       Consent_to_Text__c: false,
       MailingCity: app.city || null,
       ...(US_STATES.has(state) ? { MailingStateCode: state } : {}),
-      ...((state || app.city) ? { MailingCountryCode: 'US' } : {}),
+      ...((state || app.city) ? { MailingCountryCode: "US" } : {}),
     });
 
-    const ctRes = await sfApi('POST', '/sobjects/Contact', contact);
+    const ctRes = await sfApi("POST", "/sobjects/Contact", contact);
 
-    // Create Opportunity
-    const closeDate = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+    const closeDate = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
     const opportunity = clean({
       AccountId: acctRes.id,
       Primary_Contact__c: ctRes.success ? ctRes.id : null,
       Name: `${accountName} - ${dateStr}`.slice(0, 120),
-      StageName: 'Application & Docs',
+      StageName: "Application & Docs",
       CloseDate: closeDate,
       Amount_Requested__c: parseNum(app.requestedAmount || app.requested_amount),
       Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue),
@@ -225,17 +308,17 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       MCA_Balance_Amount__c: parseNum(app.mcaBalanceAmount || app.mca_balance_amount),
       Phone_Number__c: phone || null,
       Email__c: email || null,
-      LeadSource: app.referralSource || app.referral_source || 'Website',
+      LeadSource: app.referralSource || app.referral_source || "Website",
       Revenue_Verified__c: false,
       Bank_Statement_Tampering_Flag__c: false,
     });
 
-    const oppRes = await sfApi('POST', '/sobjects/Opportunity', opportunity);
+    const oppRes = await sfApi("POST", "/sobjects/Opportunity", opportunity);
 
-    console.log(`[SF Sync] Created: Account=${acctRes.id}, Contact=${ctRes.id || 'failed'}, Opp=${oppRes.id || 'failed'}`);
+    console.log(`[SF Sync] Created: Account=${acctRes.id}, Contact=${ctRes.id || "failed"}, Opp=${oppRes.id || "failed"}`);
     return {
       synced: true,
-      action: 'created',
+      action: "created",
       accountId: acctRes.id,
       contactId: ctRes.id,
       oppId: oppRes.id,
@@ -243,6 +326,116 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
 
   } catch (err: any) {
     console.error(`[SF Sync] Error: ${err.message}`);
+    return { synced: false, error: err.message };
+  }
+}
+
+/**
+ * Sync a business_underwriting_decision to Salesforce.
+ * Updates the linked Opportunity's stage, amounts, and funded details.
+ * If no SF Opportunity exists yet, attempts to find one via email/phone.
+ */
+export async function syncDecisionToSalesforce(decision: Record<string, any>, app?: Record<string, any>): Promise<{ synced: boolean; action?: string; oppId?: string; error?: string }> {
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) {
+    return { synced: false, error: "no credentials" };
+  }
+
+  try {
+    const email = decision.business_email || decision.businessEmail || app?.email || "";
+    const phone = decision.business_phone || decision.businessPhone || app?.phone || "";
+    const status = decision.status || "";
+    const sfStage = dashboardStatusToSfStage(status);
+
+    console.log(`[SF Decision Sync] ${decision.business_name || email} → status=${status}, sfStage=${sfStage}`);
+
+    // Find the SF Opportunity — first from tracking column, then by search
+    let oppId = decision.sf_opportunity_id || decision.sfOpportunityId || app?.sf_opportunity_id || app?.sfOpportunityId;
+
+    if (!oppId && email) {
+      const byEmail = await sfQuery(
+        `SELECT Id FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}'  LIMIT 1`
+      );
+      if (byEmail.length) oppId = byEmail[0].Id;
+    }
+
+    if (!oppId && phone) {
+      const digits = phone.replace(/\D/g, "").slice(-10);
+      if (digits.length === 10) {
+        const byPhone = await sfQuery(
+          `SELECT Id FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' LIMIT 1`
+        );
+        if (byPhone.length) oppId = byPhone[0].Id;
+      }
+    }
+
+    if (!oppId) {
+      console.log("[SF Decision Sync] No matching SF Opportunity found — skipping");
+      return { synced: false, error: "no matching Opportunity" };
+    }
+
+    // Build update payload based on decision status
+    const updateFields: Record<string, any> = {
+      StageName: sfStage,
+    };
+
+    // Approval fields
+    if (status === "approved" || status === "funded") {
+      if (decision.advance_amount || decision.advanceAmount) {
+        updateFields.Highest_Approval__c = parseNum(decision.advance_amount || decision.advanceAmount);
+      }
+      if (decision.factor_rate || decision.factorRate) {
+        updateFields.Factor_Rate__c = parseNum(decision.factor_rate || decision.factorRate);
+      }
+      if (decision.total_payback || decision.totalPayback) {
+        updateFields.Payback_Amount__c = parseNum(decision.total_payback || decision.totalPayback);
+      }
+      if (decision.lender) {
+        updateFields.Description = `Lender: ${decision.lender}`;
+      }
+      if (decision.term) {
+        updateFields.Term_Length__c = parseNum(decision.term?.replace?.(/[^\d]/g, ""));
+      }
+      if (decision.payment_frequency || decision.paymentFrequency) {
+        updateFields.Payment_Frequency__c = decision.payment_frequency || decision.paymentFrequency;
+      }
+    }
+
+    // Funded-specific fields
+    if (status === "funded") {
+      if (decision.advance_amount || decision.advanceAmount) {
+        updateFields.Amount_Funded__c = parseNum(decision.advance_amount || decision.advanceAmount);
+      }
+      if (decision.funded_date || decision.fundedDate) {
+        const fd = new Date(decision.funded_date || decision.fundedDate);
+        if (!isNaN(fd.getTime())) {
+          updateFields.Funded_Date__c = fd.toISOString().split("T")[0];
+          updateFields.CloseDate = fd.toISOString().split("T")[0];
+        }
+      }
+    }
+
+    // Declined/unqualified fields
+    if (status === "declined" || status === "unqualified") {
+      if (decision.decline_reason || decision.declineReason) {
+        updateFields.Declined_Reason__c = decision.decline_reason || decision.declineReason;
+      }
+      updateFields.CloseDate = new Date().toISOString().split("T")[0];
+    }
+
+    // Clean nulls
+    const cleaned = clean(updateFields);
+
+    const res = await sfApi("PATCH", `/sobjects/Opportunity/${oppId}`, cleaned);
+    if (res.success) {
+      console.log(`[SF Decision Sync] Updated Opp ${oppId}: stage=${sfStage}, fields=${Object.keys(cleaned).join(",")}`);
+      return { synced: true, action: "updated", oppId };
+    } else {
+      console.error(`[SF Decision Sync] Failed: ${res.error}`);
+      return { synced: false, oppId, error: res.error };
+    }
+
+  } catch (err: any) {
+    console.error(`[SF Decision Sync] Error: ${err.message}`);
     return { synced: false, error: err.message };
   }
 }
