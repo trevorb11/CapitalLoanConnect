@@ -24,8 +24,13 @@ import https from "https";
 import { execFile } from "child_process";
 
 const CHIRP_BASE_URL = process.env.CHIRP_BASE_URL || "https://chirp.digital/api";
-const CHIRP_API_TOKEN = process.env.CHIRP_API_TOKEN || "";
-const CHIRP_ENV = process.env.CHIRP_ENV || "sandbox";
+const CHIRP_ENV = process.env.CHIRP_ENV || "production";
+// Use sandbox token in non-production environments so testing works without IP whitelisting
+const IS_PROD = process.env.NODE_ENV === "production";
+const CHIRP_API_TOKEN = !IS_PROD && process.env.CHIRP_SANDBOX_API_TOKEN
+  ? process.env.CHIRP_SANDBOX_API_TOKEN
+  : process.env.CHIRP_API_TOKEN || "";
+console.log(`[CHIRP] Using ${IS_PROD ? "production" : "sandbox"} token (NODE_ENV=${process.env.NODE_ENV})`);
 
 // Chrome 122 TLS cipher suite order — changes the JA3 fingerprint so Cloudflare
 // WAF does not flag the request as a Node.js/server-side bot.
