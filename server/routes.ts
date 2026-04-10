@@ -9448,16 +9448,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result = await submitToGigFi(leadData, applicationId || `anon-${Date.now()}`);
 
-      // Log GigFi result against the application for tracking
-      if (applicationId) {
-        try {
-          const app = await storage.getLoanApplication(applicationId);
-          if (app) {
-            console.log(`[GIGFI] Application ${applicationId} submitted to GigFi: ${result.status}`);
-          }
-        } catch (lookupErr) {
-          console.error("[GIGFI] Failed to look up application:", lookupErr);
-        }
+      // Persist GigFi decision to the loan application record
+      if (applicationId && result.status) {
+        storage.saveGigFiResult(
+          applicationId,
+          result.status,
+          result.decisionId,
+          result.redirectUrl,
+        ).catch(err => console.error("[GIGFI] Failed to save result to DB:", err));
       }
 
       res.json(result);

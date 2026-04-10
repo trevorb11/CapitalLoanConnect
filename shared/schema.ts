@@ -102,6 +102,11 @@ export const loanApplications = pgTable("loan_applications", {
   // --- Chirp Integration ---
   chirpRequestCode: text("chirp_request_code"), // Chirp IFV request code after bank verification
 
+  // --- GigFi Submission ---
+  gigfiStatus: text("gigfi_status"), // "ACCEPTED" or "REJECTED"
+  gigfiDecisionId: text("gigfi_decision_id"), // Taktile decision ID
+  gigfiRedirectUrl: text("gigfi_redirect_url"), // Redirect URL if accepted
+
   // --- Agent Tracking ---
   agentName: text("agent_name"), // Name of the agent who sent the application
   agentEmail: text("agent_email"), // Email of the agent

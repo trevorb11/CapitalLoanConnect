@@ -74,6 +74,9 @@ export interface IStorage {
   saveChirpRequestCode(email: string, phone: string, requestCode: string): Promise<void>;
   getApplicationsWithChirpCode(): Promise<LoanApplication[]>;
 
+  // GigFi methods
+  saveGigFiResult(applicationId: string, status: string, decisionId?: string, redirectUrl?: string): Promise<void>;
+
   // Plaid methods
   createPlaidItem(item: InsertPlaidItem): Promise<PlaidItem>;
   getPlaidItem(itemId: string): Promise<PlaidItem | undefined>;
@@ -434,6 +437,18 @@ export class DatabaseStorage implements IStorage {
       .from(loanApplications)
       .where(sql`chirp_request_code IS NOT NULL AND chirp_request_code != ''`)
       .orderBy(desc(loanApplications.createdAt));
+  }
+
+  async saveGigFiResult(applicationId: string, status: string, decisionId?: string, redirectUrl?: string): Promise<void> {
+    await db
+      .update(loanApplications)
+      .set({
+        gigfiStatus: status,
+        gigfiDecisionId: decisionId || null,
+        gigfiRedirectUrl: redirectUrl || null,
+      } as any)
+      .where(eq(loanApplications.id, applicationId));
+    console.log(`[GIGFI] Saved result status=${status} decisionId=${decisionId} to application ${applicationId}`);
   }
 
   // Plaid Statements methods
