@@ -428,6 +428,12 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
     const res = await sfApi("PATCH", `/sobjects/Opportunity/${oppId}`, cleaned);
     if (res.success) {
       console.log(`[SF Decision Sync] Updated Opp ${oppId}: stage=${sfStage}, fields=${Object.keys(cleaned).join(",")}`);
+
+      // Also sync lender submissions for this decision
+      await syncLenderSubmissionsToSalesforce(oppId, decision).catch(err =>
+        console.error(`[SF Lender Sync] Error (non-fatal): ${err.message}`)
+      );
+
       return { synced: true, action: "updated", oppId };
     } else {
       console.error(`[SF Decision Sync] Failed: ${res.error}`);
@@ -438,4 +444,197 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
     console.error(`[SF Decision Sync] Error: ${err.message}`);
     return { synced: false, error: err.message };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Lender Submission sync — creates/updates Lender_Submission__c records
+// ---------------------------------------------------------------------------
+
+// Cache: lender name (lowercased) → SF Account Id
+let funderAccountCache: Map<string, string> | null = null;
+let funderRecordTypeId: string | null = null;
+
+async function getFunderAccountId(lenderName: string): Promise<string | null> {
+  if (!lenderName) return null;
+
+  // Build cache on first call
+  if (!funderAccountCache) {
+    funderAccountCache = new Map();
+    const funders = await sfQuery(
+      "SELECT Id, Name FROM Account WHERE RecordType.Name = 'Funder'"
+    );
+    for (const f of funders) {
+      funderAccountCache.set(f.Name.toLowerCase().trim(), f.Id);
+    }
+    console.log(`[SF Lender Sync] Cached ${funderAccountCache.size} Funder accounts`);
+  }
+
+  const key = lenderName.toLowerCase().trim();
+
+  // Exact match
+  if (funderAccountCache.has(key)) return funderAccountCache.get(key)!;
+
+  // Fuzzy: check if cache key contains or is contained by the search name
+  for (const [cachedName, id] of funderAccountCache) {
+    if (cachedName.includes(key) || key.includes(cachedName)) return id;
+  }
+
+  // No match — create a new Funder Account
+  console.log(`[SF Lender Sync] Creating new Funder account: ${lenderName}`);
+  if (!funderRecordTypeId) {
+    const rts = await sfQuery(
+      "SELECT Id FROM RecordType WHERE SObjectType='Account' AND Name='Funder' AND IsActive=true"
+    );
+    funderRecordTypeId = rts[0]?.Id || null;
+  }
+
+  const newAcct = await sfApi("POST", "/sobjects/Account", clean({
+    Name: lenderName,
+    ...(funderRecordTypeId ? { RecordTypeId: funderRecordTypeId } : {}),
+    Account_Status__c: "Active",
+  }));
+
+  if (newAcct.success && newAcct.id) {
+    funderAccountCache.set(key, newAcct.id);
+    return newAcct.id;
+  }
+  return null;
+}
+
+function mapDecisionStatusToSubmissionStatus(status: string): string {
+  const map: Record<string, string> = {
+    approved: "Approved",
+    declined: "Declined",
+    funded: "Approved", // funded deals were approved first
+    unqualified: "Declined",
+  };
+  return map[status?.toLowerCase()] || "Submitted";
+}
+
+function parseTermMonths(term: any): number | null {
+  if (!term) return null;
+  const s = String(term);
+  const n = parseInt(s.replace(/[^\d]/g, ""));
+  return isNaN(n) ? null : n;
+}
+
+/**
+ * Sync lender submissions for a decision to SF Lender_Submission__c records.
+ * Handles both the primary lender and any additional_approvals.
+ */
+export async function syncLenderSubmissionsToSalesforce(
+  oppId: string,
+  decision: Record<string, any>
+): Promise<{ created: number; updated: number; errors: number }> {
+  const results = { created: 0, updated: 0, errors: 0 };
+
+  // Gather all lender submissions from the decision
+  const submissions: Array<{
+    lender: string;
+    status: string;
+    amount: any;
+    factorRate: any;
+    term: any;
+    declineReason?: string;
+    date?: any;
+    notes?: string;
+  }> = [];
+
+  // Primary decision
+  if (decision.lender) {
+    submissions.push({
+      lender: decision.lender,
+      status: decision.status || "approved",
+      amount: decision.advance_amount || decision.advanceAmount,
+      factorRate: decision.factor_rate || decision.factorRate,
+      term: decision.term,
+      declineReason: decision.decline_reason || decision.declineReason,
+      date: decision.approval_date || decision.approvalDate || decision.created_at || decision.createdAt,
+      notes: decision.notes,
+    });
+  }
+
+  // Additional approvals (JSONB array)
+  const additionalApprovals = decision.additional_approvals || decision.additionalApprovals;
+  if (Array.isArray(additionalApprovals)) {
+    for (const aa of additionalApprovals) {
+      if (aa.lender) {
+        submissions.push({
+          lender: aa.lender,
+          status: "approved",
+          amount: aa.amount || aa.advanceAmount,
+          factorRate: aa.factorRate || aa.factor_rate,
+          term: aa.term,
+          date: aa.date || decision.approval_date || decision.approvalDate,
+        });
+      }
+    }
+  }
+
+  if (submissions.length === 0) return results;
+
+  // Fetch existing submissions for this Opportunity to avoid duplicates
+  const existing = await sfQuery(
+    `SELECT Id, Name FROM Lender_Submission__c WHERE Opportunity__c = '${oppId}'`
+  );
+  const existingByName = new Map<string, string>();
+  for (const e of existing) {
+    existingByName.set(e.Name?.toLowerCase()?.trim(), e.Id);
+  }
+
+  for (const sub of submissions) {
+    try {
+      const lenderAccountId = await getFunderAccountId(sub.lender);
+      const submissionStatus = mapDecisionStatusToSubmissionStatus(sub.status);
+      const subDate = sub.date ? new Date(sub.date) : new Date();
+      const dateStr = !isNaN(subDate.getTime()) ? subDate.toISOString().split("T")[0] : null;
+
+      const record = clean({
+        Opportunity__c: oppId,
+        Lender__c: lenderAccountId,
+        Status__c: submissionStatus,
+        Offer_Amount__c: parseNum(sub.amount),
+        Factor_Rate__c: parseNum(sub.factorRate),
+        Term_Months__c: parseTermMonths(sub.term),
+        Submitted_Date__c: dateStr,
+        Response_Date__c: dateStr,
+        Submission_Notes__c: sub.notes || null,
+        ...(submissionStatus === "Declined" && sub.declineReason
+          ? { Decline_Reason__c: sub.declineReason }
+          : {}),
+      });
+
+      // Check if this lender already has a submission for this Opp
+      const existingId = existingByName.get(sub.lender.toLowerCase().trim());
+
+      if (existingId) {
+        // Update existing
+        const res = await sfApi("PATCH", `/sobjects/Lender_Submission__c/${existingId}`, record);
+        if (res.success) {
+          results.updated++;
+          console.log(`[SF Lender Sync] Updated: ${sub.lender} on Opp ${oppId}`);
+        } else {
+          results.errors++;
+          console.error(`[SF Lender Sync] Update failed for ${sub.lender}: ${res.error}`);
+        }
+      } else {
+        // Create new — Name field is auto-set or we use lender name
+        const createRecord = { ...record, Name: sub.lender };
+        const res = await sfApi("POST", "/sobjects/Lender_Submission__c", createRecord);
+        if (res.success) {
+          results.created++;
+          console.log(`[SF Lender Sync] Created: ${sub.lender} on Opp ${oppId}`);
+        } else {
+          results.errors++;
+          console.error(`[SF Lender Sync] Create failed for ${sub.lender}: ${res.error}`);
+        }
+      }
+    } catch (err: any) {
+      results.errors++;
+      console.error(`[SF Lender Sync] Error for ${sub.lender}: ${err.message}`);
+    }
+  }
+
+  console.log(`[SF Lender Sync] Done: ${results.created} created, ${results.updated} updated, ${results.errors} errors`);
+  return results;
 }

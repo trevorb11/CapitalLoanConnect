@@ -3,6 +3,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { Pool } from "@neondatabase/serverless";
 import { registerRoutes } from "./routes";
+import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { registerMcpRoutes } from "./mcp";
 import { setupVite, serveStatic, log } from "./vite";
 import { startScheduledTriggers } from "./messaging-triggers";
@@ -176,6 +177,26 @@ app.use((req, res, next) => {
 
       // Start scheduled messaging triggers (stale approval reminders, incomplete app nudges)
       startScheduledTriggers();
+
+      // Auto-poll Salesforce for inbound changes every 5 minutes
+      const SF_POLL_INTERVAL_MS = 5 * 60 * 1000;
+      if (process.env.SF_INSTANCE_URL && (process.env.SF_REFRESH_TOKEN || process.env.SF_ACCESS_TOKEN)) {
+        console.log(`[STARTUP] SF auto-poll enabled (every ${SF_POLL_INTERVAL_MS / 1000}s)`);
+        // Initial poll after 30s delay (let server fully warm up)
+        setTimeout(() => {
+          pollSalesforceChanges().catch(err =>
+            console.error("[SF Poll] Initial poll error:", err.message)
+          );
+        }, 30000);
+        // Then every 5 minutes
+        setInterval(() => {
+          pollSalesforceChanges().catch(err =>
+            console.error("[SF Poll] Scheduled poll error:", err.message)
+          );
+        }, SF_POLL_INTERVAL_MS);
+      } else {
+        console.log("[STARTUP] SF auto-poll disabled — no SF credentials configured");
+      }
     });
   } catch (error) {
     console.error('[STARTUP] Failed to start server:', error);

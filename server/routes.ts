@@ -25,7 +25,9 @@ const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
-import { syncApplicationToSalesforce } from "./services/salesforce";
+import { syncApplicationToSalesforce, syncDecisionToSalesforce } from "./services/salesforce";
+import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
+import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
 
@@ -384,6 +386,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   ];
 
   // GET /api/admin/claude/ping — auth test
+  // ---------------------------------------------------------------------------
+  // Salesforce inbound poll — call periodically or via cron to sync SF → dashboard
+  // ---------------------------------------------------------------------------
+  app.post("/api/admin/sf-poll", async (req, res) => {
+    // Auth: require Claude API key or admin session
+    const apiKey = req.headers["x-claude-api-key"] as string;
+    const isAuthed = apiKey === process.env.CLAUDE_API_KEY || req.session?.user;
+    if (!isAuthed) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const result = await pollSalesforceChanges();
+      return res.json({ ok: true, ...result });
+    } catch (err: any) {
+      console.error("[SF Poll] Endpoint error:", err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/admin/claude/ping", claudeAuth, (_req, res) => {
     res.json({ ok: true, message: "Claude API authenticated", timestamp: new Date().toISOString() });
   });
@@ -1164,8 +1184,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Sync to Salesforce (fire-and-forget — never blocks the merchant experience)
-      syncApplicationToSalesforce(updatedApp || application).catch(err =>
+      syncApplicationToSalesforce(updatedApp || application).then(sfResult => {
+        // Also sync to dialer_contacts with SF IDs
+        if (sfResult.synced) {
+          syncApplicationToDialer(updatedApp || application, {
+            accountId: sfResult.accountId,
+            contactId: sfResult.contactId,
+            oppId: sfResult.oppId,
+          }).catch(err => console.error("[Dialer Sync] Error:", err.message));
+        }
+      }).catch(err =>
         console.error('[SF Sync] Background error:', err.message)
+      );
+
+      // Also sync to dialer even without SF (for business field updates)
+      syncApplicationToDialer(updatedApp || application).catch(err =>
+        console.error("[Dialer Sync] Error:", err.message)
       );
       
       // Only send intake webhook when explicitly completed
@@ -3594,6 +3628,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[UNDERWRITING] GHL sync error for ${businessEmail}:`, err);
       });
 
+      // Sync to Salesforce (async, non-blocking)
+      syncDecisionToSalesforce(decision).then(async (sfResult) => {
+        try {
+          await storage.updateBusinessUnderwritingDecision(decision.id, {
+            sfSynced: sfResult.synced,
+            sfSyncedAt: new Date(),
+            sfSyncMessage: sfResult.error || (sfResult.action || 'ok'),
+            sfOpportunityId: sfResult.oppId || null,
+          });
+          console.log(`[UNDERWRITING] SF sync for ${businessEmail}: ${sfResult.synced ? 'success' : 'skipped'} - ${sfResult.action || sfResult.error || 'no-op'}`);
+        } catch (dbErr) {
+          console.error(`[UNDERWRITING] Failed to save SF sync status for ${businessEmail}:`, dbErr);
+        }
+      }).catch(err => {
+        console.error(`[UNDERWRITING] SF sync error for ${businessEmail}:`, err);
+      });
+
+      // Sync decision to dialer_contacts (async, non-blocking)
+      syncDecisionToDialer(decision).catch(err =>
+        console.error(`[UNDERWRITING] Dialer sync error for ${businessEmail}:`, err)
+      );
+
       // SMS: approval_issued + auto congratulations message
       if (status === 'approved' && businessPhone) {
         const _proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
@@ -3741,6 +3797,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).catch(err => {
         console.error(`[UNDERWRITING] GHL sync error for decision ${id}:`, err);
       });
+
+      // Sync updated decision to Salesforce (async, non-blocking)
+      syncDecisionToSalesforce(updated).then(async (sfResult) => {
+        try {
+          await storage.updateBusinessUnderwritingDecision(id, {
+            sfSynced: sfResult.synced,
+            sfSyncedAt: new Date(),
+            sfSyncMessage: sfResult.error || (sfResult.action || 'ok'),
+            sfOpportunityId: sfResult.oppId || null,
+          });
+          console.log(`[UNDERWRITING] SF sync for decision ${id}: ${sfResult.synced ? 'success' : 'skipped'} - ${sfResult.action || sfResult.error || 'no-op'}`);
+        } catch (dbErr) {
+          console.error(`[UNDERWRITING] Failed to save SF sync status for decision ${id}:`, dbErr);
+        }
+      }).catch(err => {
+        console.error(`[UNDERWRITING] SF sync error for decision ${id}:`, err);
+      });
+
+      // Sync updated decision to dialer_contacts (async, non-blocking)
+      syncDecisionToDialer(updated).catch(err =>
+        console.error(`[UNDERWRITING] Dialer sync error for decision ${id}:`, err)
+      );
 
       // SMS: approval_issued + auto congratulations (PATCH path)
       if (updates.status === 'approved' && updated.businessPhone) {
