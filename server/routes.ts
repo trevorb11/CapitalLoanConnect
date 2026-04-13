@@ -1693,6 +1693,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Application not found" });
       }
       
+      // Prevent browser/CDN caching so edits are always reflected immediately
+      res.set({
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      });
+
       // Return application data (agent view is secure by obscurity via UUID)
       res.json(application);
     } catch (error) {

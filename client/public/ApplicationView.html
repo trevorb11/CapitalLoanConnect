@@ -335,7 +335,7 @@
     // Fetch application data
     async function loadApplicationData() {
         try {
-            const response = await fetch(`/api/applications/${applicationId}/view`);
+            const response = await fetch(`/api/applications/${applicationId}/view?t=${Date.now()}`, { cache: 'no-store' });
             if (!response.ok) throw new Error('Failed to load application');
             
             const data = await response.json();
