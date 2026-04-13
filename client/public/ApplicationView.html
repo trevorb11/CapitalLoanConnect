@@ -352,25 +352,10 @@
             document.getElementById('industry').textContent = data.industry || '';
             document.getElementById('business_address').textContent = data.businessStreetAddress || data.businessAddress || '';
             
-            // Parse businessCsz (format: "City, ST 12345") into separate fields
-            const businessCsz = data.businessCsz || '';
-            if (businessCsz) {
-                const parts = businessCsz.split(',').map(p => p.trim());
-                if (parts.length >= 2) {
-                    document.getElementById('city').textContent = parts[0] || '';
-                    const stateZip = parts[1].split(' ').filter(p => p);
-                    document.getElementById('state').textContent = stateZip[0] || '';
-                    document.getElementById('zip_code').textContent = stateZip[1] || '';
-                } else {
-                    document.getElementById('city').textContent = data.city || '';
-                    document.getElementById('state').textContent = data.state || '';
-                    document.getElementById('zip_code').textContent = data.zipCode || '';
-                }
-            } else {
-                document.getElementById('city').textContent = data.city || '';
-                document.getElementById('state').textContent = data.state || '';
-                document.getElementById('zip_code').textContent = data.zipCode || '';
-            }
+            // Business city/state/zip — server normalizes these, so read directly
+            document.getElementById('city').textContent = data.city || '';
+            document.getElementById('state').textContent = data.state || '';
+            document.getElementById('zip_code').textContent = data.zipCode || '';
             
             document.getElementById('requested_amount').textContent = data.requestedAmount ? `$${parseFloat(data.requestedAmount).toLocaleString()}` : '';
             document.getElementById('mca_balance_amount').textContent = data.mcaBalanceAmount ? `$${parseFloat(data.mcaBalanceAmount).toLocaleString()}` : '';
@@ -386,22 +371,10 @@
             document.getElementById('ownership').textContent = data.ownerPercentage || data.ownership || '';
             document.getElementById('owner_address1').textContent = data.ownerAddress1 || data.address1 || '';
             
-            // Prefer individual owner address fields — they are always authoritative when present.
-            // Only fall back to parsing ownerCsz if none of the individual fields exist.
-            if (data.ownerCity || data.ownerState || data.ownerZip) {
-                document.getElementById('owner_city').textContent = data.ownerCity || '';
-                document.getElementById('owner_state').textContent = data.ownerState || '';
-                document.getElementById('owner_zip').textContent = data.ownerZip || '';
-            } else {
-                const ownerCsz = data.ownerCsz || '';
-                const parts = ownerCsz.split(',').map(p => p.trim());
-                if (parts.length >= 2) {
-                    document.getElementById('owner_city').textContent = parts[0] || '';
-                    const stateZip = parts[1].split(' ').filter(p => p);
-                    document.getElementById('owner_state').textContent = stateZip[0] || '';
-                    document.getElementById('owner_zip').textContent = stateZip[1] || '';
-                }
-            }
+            // Owner city/state/zip — server normalizes these, so read directly
+            document.getElementById('owner_city').textContent = data.ownerCity || '';
+            document.getElementById('owner_state').textContent = data.ownerState || '';
+            document.getElementById('owner_zip').textContent = data.ownerZip || '';
             
             // Set submission date
             if (data.updatedAt) {

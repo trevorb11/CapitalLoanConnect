@@ -1712,8 +1712,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "Expires": "0",
       });
 
-      // Return application data (agent view is secure by obscurity via UUID)
-      res.json(application);
+      // ─── Normalize: resolve all combined-vs-individual field conflicts ───────
+      // Individual fields are ALWAYS authoritative when present. Combined/CSZ
+      // fields (businessCsz, ownerCsz) are only used as a fallback when the
+      // individual fields are completely absent. This ensures that admin edits
+      // to individual fields are always reflected immediately in the view.
+      const normalized: Record<string, any> = { ...application };
+
+      // Helper: parse "City, ST 12345" → { city, state, zip }
+      function parseCsz(csz: string): { city: string; state: string; zip: string } {
+        const parts = (csz || '').split(',').map(p => p.trim());
+        if (parts.length >= 2) {
+          const stateZip = parts[1].split(' ').filter(Boolean);
+          return { city: parts[0], state: stateZip[0] || '', zip: stateZip[1] || '' };
+        }
+        return { city: '', state: '', zip: '' };
+      }
+
+      // Business address — prefer individual fields; fall back to businessCsz
+      if (!normalized.city && !normalized.state && !normalized.zipCode && normalized.businessCsz) {
+        const parsed = parseCsz(normalized.businessCsz);
+        normalized.city      = parsed.city;
+        normalized.state     = parsed.state;
+        normalized.zipCode   = parsed.zip;
+      }
+
+      // Owner address — prefer individual fields; fall back to ownerCsz
+      if (!normalized.ownerCity && !normalized.ownerState && !normalized.ownerZip && normalized.ownerCsz) {
+        const parsed = parseCsz(normalized.ownerCsz);
+        normalized.ownerCity  = parsed.city;
+        normalized.ownerState = parsed.state;
+        normalized.ownerZip   = parsed.zip;
+      }
+
+      // Return normalized data — the view reads individual fields only
+      res.json(normalized);
     } catch (error) {
       console.error("Error fetching application for view:", error);
       res.status(500).json({ error: "Failed to fetch application" });
