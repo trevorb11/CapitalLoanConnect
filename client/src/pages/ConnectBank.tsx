@@ -50,14 +50,22 @@ export default function ConnectBank() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [chirpScriptLoaded, setChirpScriptLoaded] = useState(false);
+  const [pendingChirpToken, setPendingChirpToken] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   // Load ChirpLink CDN script once on mount
   useEffect(() => {
-    if (document.getElementById("chirplink-cdn")) {
-      setChirpScriptLoaded(true);
+    const existing = document.getElementById("chirplink-cdn");
+    if (existing) {
+      // Script tag already in DOM — check if it already executed
+      if (window.ChirpLink) {
+        setChirpScriptLoaded(true);
+      } else {
+        // Still loading — wait for its onload
+        existing.addEventListener("load", () => setChirpScriptLoaded(true));
+      }
       return;
     }
     const script = document.createElement("script");
@@ -68,6 +76,40 @@ export default function ConnectBank() {
     script.onerror = () => console.warn("[ChirpLink] CDN script failed to load");
     document.head.appendChild(script);
   }, []);
+
+  // Launch ChirpLink widget once we have both the token AND the CDN script ready
+  useEffect(() => {
+    if (!pendingChirpToken) return;
+    if (!chirpScriptLoaded || !window.ChirpLink) return;
+
+    const token = pendingChirpToken;
+    setPendingChirpToken(null);
+
+    window.ChirpLink({
+      token,
+      mode: "POPUP",
+      overlay: true,
+      onLoad: (payload: any) => {
+        if (payload?.isLinkExpired) {
+          toast({ title: "Link Expired", description: "This verification link has expired. Please try again.", variant: "destructive" });
+        }
+      },
+      onSuccess: () => {
+        setConnectionMethod('chirp');
+        setStep('success');
+      },
+      onError: (payload: any) => {
+        toast({
+          title: "Verification Error",
+          description: payload?.message || "An error occurred during bank verification. Please try again.",
+          variant: "destructive",
+        });
+      },
+      onClose: () => {
+        // Widget closed — user can retry
+      },
+    });
+  }, [pendingChirpToken, chirpScriptLoaded]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -104,38 +146,8 @@ export default function ConnectBank() {
     },
     onSuccess: ({ token }) => {
       setStep('input');
-      if (!window.ChirpLink) {
-        toast({
-          title: "Error",
-          description: "ChirpLink widget could not be loaded. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-      window.ChirpLink({
-        token,
-        mode: "POPUP",
-        overlay: true,
-        onLoad: (payload: any) => {
-          if (payload?.isLinkExpired) {
-            toast({ title: "Link Expired", description: "This verification link has expired. Please try again.", variant: "destructive" });
-          }
-        },
-        onSuccess: () => {
-          setConnectionMethod('chirp');
-          setStep('success');
-        },
-        onError: (payload: any) => {
-          toast({
-            title: "Verification Error",
-            description: payload?.message || "An error occurred during bank verification. Please try again.",
-            variant: "destructive",
-          });
-        },
-        onClose: () => {
-          // Widget closed — do nothing, user can retry
-        },
-      });
+      // Store token in state — the useEffect will launch ChirpLink once the CDN script is ready
+      setPendingChirpToken(token);
     },
     onError: (err: Error) => {
       setStep('input');
