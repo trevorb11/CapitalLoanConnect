@@ -386,24 +386,21 @@
             document.getElementById('ownership').textContent = data.ownerPercentage || data.ownership || '';
             document.getElementById('owner_address1').textContent = data.ownerAddress1 || data.address1 || '';
             
-            // Parse ownerCsz (format: "City, ST 12345") into separate fields
-            const ownerCsz = data.ownerCsz || '';
-            if (ownerCsz) {
+            // Prefer individual owner address fields — they are always authoritative when present.
+            // Only fall back to parsing ownerCsz if none of the individual fields exist.
+            if (data.ownerCity || data.ownerState || data.ownerZip) {
+                document.getElementById('owner_city').textContent = data.ownerCity || '';
+                document.getElementById('owner_state').textContent = data.ownerState || '';
+                document.getElementById('owner_zip').textContent = data.ownerZip || '';
+            } else {
+                const ownerCsz = data.ownerCsz || '';
                 const parts = ownerCsz.split(',').map(p => p.trim());
                 if (parts.length >= 2) {
                     document.getElementById('owner_city').textContent = parts[0] || '';
                     const stateZip = parts[1].split(' ').filter(p => p);
                     document.getElementById('owner_state').textContent = stateZip[0] || '';
                     document.getElementById('owner_zip').textContent = stateZip[1] || '';
-                } else {
-                    document.getElementById('owner_city').textContent = data.ownerCity || '';
-                    document.getElementById('owner_state').textContent = data.ownerState || '';
-                    document.getElementById('owner_zip').textContent = data.ownerZip || '';
                 }
-            } else {
-                document.getElementById('owner_city').textContent = data.ownerCity || '';
-                document.getElementById('owner_state').textContent = data.ownerState || '';
-                document.getElementById('owner_zip').textContent = data.ownerZip || '';
             }
             
             // Set submission date

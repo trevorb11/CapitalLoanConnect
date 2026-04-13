@@ -1461,6 +1461,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.agentViewUrl = generateApplicationUrl(req, id);
       }
 
+      // Keep ownerCsz in sync whenever individual owner address fields are updated,
+      // so the application view always reads the correct zip/city/state.
+      if (updates.ownerCity || updates.ownerState || updates.ownerZip) {
+        const existingApp2 = await storage.getLoanApplication(id);
+        const city  = updates.ownerCity  ?? existingApp2?.ownerCity  ?? '';
+        const state = updates.ownerState ?? existingApp2?.ownerState ?? '';
+        const zip   = updates.ownerZip   ?? existingApp2?.ownerZip   ?? '';
+        if (city || state || zip) {
+          updates.ownerCsz = `${city}, ${state} ${zip}`.trim();
+        }
+      }
+
       // Check if application was already completed BEFORE applying updates
       const appBeforeUpdate = await storage.getLoanApplication(id);
       const wasAlreadyCompleted = appBeforeUpdate?.isFullApplicationCompleted === true;
