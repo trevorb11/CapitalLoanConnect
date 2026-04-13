@@ -18,7 +18,7 @@ import {
   type MerchantFinancialInsight, type InsertMerchantFinancialInsight,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, desc, sql, ilike } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, getTableColumns } from "drizzle-orm";
 
 // Retry wrapper for database operations to handle connection drops
 async function withRetry<T>(
@@ -68,6 +68,8 @@ export interface IStorage {
   createLoanApplication(application: Partial<InsertLoanApplication>): Promise<LoanApplication>;
   updateLoanApplication(id: string, application: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined>;
   getAllLoanApplications(): Promise<LoanApplication[]>;
+  getAllLoanApplicationsSummary(): Promise<Omit<LoanApplication, 'applicantSignature'>[]>;
+  getApplicationEmailsByAgentEmail(agentEmail: string): Promise<string[]>;
   searchFullApplicationsForGigFi(query: string): Promise<LoanApplication[]>;
   
   // Chirp methods
@@ -297,6 +299,31 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(loanApplications)
       .orderBy(desc(loanApplications.createdAt));
+  }
+
+  // Lightweight list for the dashboard — excludes the heavy applicantSignature column
+  // (base64 image ~272KB total across all records). Signature is only needed on single-app view.
+  async getAllLoanApplicationsSummary(): Promise<Omit<LoanApplication, 'applicantSignature'>[]> {
+    const { applicantSignature, ...cols } = getTableColumns(loanApplications);
+    return await db
+      .select(cols)
+      .from(loanApplications)
+      .orderBy(desc(loanApplications.createdAt));
+  }
+
+  // Returns only the applicant emails for a given agent — avoids full table scans when
+  // checking which underwriting decisions belong to an agent.
+  async getApplicationEmailsByAgentEmail(agentEmail: string): Promise<string[]> {
+    const rows = await db
+      .select({ email: loanApplications.email })
+      .from(loanApplications)
+      .where(
+        and(
+          sql`LOWER(${loanApplications.agentEmail}) = ${agentEmail.toLowerCase()}`,
+          sql`${loanApplications.email} IS NOT NULL`
+        )
+      );
+    return rows.map(r => (r.email || '').toLowerCase()).filter(Boolean);
   }
 
   async searchFullApplicationsForGigFi(query: string): Promise<LoanApplication[]> {

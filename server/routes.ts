@@ -1641,7 +1641,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Authentication required" });
       }
       
-      const allApplications = await storage.getAllLoanApplications();
+      // Use summary query — excludes applicantSignature (base64, ~272KB across all records)
+      // which is never displayed in the list view and only needed for single-app view/download.
+      const allApplications = await storage.getAllLoanApplicationsSummary();
       console.log(`[DASHBOARD] Total applications in DB: ${allApplications.length}`);
       console.log(`[DASHBOARD] User role: ${req.session.user.role}, email: ${req.session.user.agentEmail || 'N/A'}`);
 
@@ -3482,14 +3484,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const agentName = req.session.user.agentName;
         const agentEmail = (req.session.user.agentEmail || '').toLowerCase();
 
-        // Build set of business emails from apps assigned to this agent
-        const allApps = await storage.getAllLoanApplications();
-        const agentBusinessEmails = new Set<string>();
-        for (const app of allApps) {
-          if (app.agentEmail && app.agentEmail.toLowerCase() === agentEmail && app.email) {
-            agentBusinessEmails.add(app.email.toLowerCase());
-          }
-        }
+        // Build set of business emails from apps assigned to this agent —
+        // use a targeted query instead of scanning all 1,300+ applications.
+        const agentApps = await storage.getApplicationEmailsByAgentEmail(agentEmail);
+        const agentBusinessEmails = new Set<string>(agentApps);
 
         const agentDecisions = decisions.filter(d => {
           // Direct assignment
