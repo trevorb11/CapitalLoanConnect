@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -19,21 +19,6 @@ import {
 } from "@/components/ui/form";
 import { Loader2, CheckCircle2, Lock, AlertCircle, Upload, Building2, FileText, Mail, ExternalLink, Shield } from "lucide-react";
 
-declare global {
-  interface Window {
-    ChirpLink?: (options: {
-      token: string;
-      mode?: "POPUP" | "ADAPTABLE";
-      overlay?: boolean;
-      onLoad?: (payload: any) => void;
-      onBankSelect?: (payload: any) => void;
-      onSuccess?: (payload: any) => void;
-      onError?: (payload: any) => void;
-      onClose?: (payload: any) => void;
-      onAttempt?: (payload: any) => void;
-    }) => { close?: () => void };
-  }
-}
 
 const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -49,67 +34,9 @@ export default function ConnectBank() {
   const [connectionMethod, setConnectionMethod] = useState<'chirp' | 'upload' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [chirpScriptLoaded, setChirpScriptLoaded] = useState(false);
-  const [pendingChirpToken, setPendingChirpToken] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-
-  // Load ChirpLink CDN script once on mount
-  useEffect(() => {
-    const existing = document.getElementById("chirplink-cdn");
-    if (existing) {
-      // Script tag already in DOM — check if it already executed
-      if (window.ChirpLink) {
-        setChirpScriptLoaded(true);
-      } else {
-        // Still loading — wait for its onload
-        existing.addEventListener("load", () => setChirpScriptLoaded(true));
-      }
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = "chirplink-cdn";
-    script.src = "https://chirp.digital/cdn/chirplink.js";
-    script.async = true;
-    script.onload = () => setChirpScriptLoaded(true);
-    script.onerror = () => console.warn("[ChirpLink] CDN script failed to load");
-    document.head.appendChild(script);
-  }, []);
-
-  // Launch ChirpLink widget once we have both the token AND the CDN script ready
-  useEffect(() => {
-    if (!pendingChirpToken) return;
-    if (!chirpScriptLoaded || !window.ChirpLink) return;
-
-    const token = pendingChirpToken;
-    setPendingChirpToken(null);
-
-    window.ChirpLink({
-      token,
-      mode: "POPUP",
-      overlay: true,
-      onLoad: (payload: any) => {
-        if (payload?.isLinkExpired) {
-          toast({ title: "Link Expired", description: "This verification link has expired. Please try again.", variant: "destructive" });
-        }
-      },
-      onSuccess: () => {
-        setConnectionMethod('chirp');
-        setStep('success');
-      },
-      onError: (payload: any) => {
-        toast({
-          title: "Verification Error",
-          description: payload?.message || "An error occurred during bank verification. Please try again.",
-          variant: "destructive",
-        });
-      },
-      onClose: () => {
-        // Widget closed — user can retry
-      },
-    });
-  }, [pendingChirpToken, chirpScriptLoaded]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -135,19 +62,13 @@ export default function ConnectBank() {
         throw new Error(createData.error || "No request code returned from Chirp");
       }
 
-      // Step 2: Get a ChirpLink widget token for this request code
-      const tokenRes = await apiRequest("POST", `/api/chirp/request/${createData.requestCode}/token`, {});
-      const tokenData = await tokenRes.json();
-      if (!tokenData.token) {
-        throw new Error(tokenData.error || "Failed to generate ChirpLink token");
-      }
+      const widgetUrl = createData.verificationUrl
+        || `https://chirp.digital/api/widget?requestCode=${createData.requestCode}`;
 
-      return { requestCode: createData.requestCode, token: tokenData.token };
+      return { requestCode: createData.requestCode, widgetUrl };
     },
-    onSuccess: ({ token }) => {
-      setStep('input');
-      // Store token in state — the useEffect will launch ChirpLink once the CDN script is ready
-      setPendingChirpToken(token);
+    onSuccess: ({ widgetUrl }) => {
+      window.location.href = widgetUrl;
     },
     onError: (err: Error) => {
       setStep('input');
