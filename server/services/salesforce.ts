@@ -180,9 +180,10 @@ export function dashboardStatusToSfStage(status: string): string {
 
 /**
  * Main sync function — call this after saving a loan_application.
- * Returns SF IDs for storage in the sf_* tracking columns.
+ * UPDATE-ONLY: searches for existing SF Leads and Opportunities by email/phone,
+ * updates them with application data. Does NOT create new records.
  */
-export async function syncApplicationToSalesforce(app: Record<string, any>): Promise<{ synced: boolean; action?: string; accountId?: string; contactId?: string; oppId?: string; reason?: string; error?: string }> {
+export async function syncApplicationToSalesforce(app: Record<string, any>): Promise<{ synced: boolean; action?: string; accountId?: string; contactId?: string; oppId?: string; leadId?: string; reason?: string; error?: string }> {
   if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) {
     console.log("[SF Sync] Skipped — no SF credentials configured");
     return { synced: false, reason: "no credentials" };
@@ -195,134 +196,146 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
     const businessName = app.businessName || app.business_name || app.legalBusinessName || "";
     const state = (app.state || "").toUpperCase().trim();
 
-    console.log(`[SF Sync] Processing: ${businessName || fullName || email}`);
-
-    // 1. Check for existing Opportunity by email or phone
-    let existingOpp: any = null;
-
-    if (email) {
-      const byEmail = await sfQuery(
-        `SELECT Id, Name FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}'  LIMIT 1`
-      );
-      if (byEmail.length) existingOpp = byEmail[0];
+    if (!email && !phone) {
+      return { synced: false, reason: "no email or phone to match" };
     }
 
-    if (!existingOpp && phone) {
-      const digits = phone.replace(/\D/g, "").slice(-10);
-      if (digits.length === 10) {
-        const byPhone = await sfQuery(
-          `SELECT Id, Name FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' LIMIT 1`
-        );
-        if (byPhone.length) existingOpp = byPhone[0];
-      }
-    }
+    console.log(`[SF Sync] Processing (update-only): ${businessName || fullName || email}`);
 
-    if (existingOpp) {
-      const updateFields = clean({
-        Amount_Requested__c: parseNum(app.requestedAmount || app.requested_amount),
-        Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue),
-        Industry__c: mapIndustry(app.industry),
-        Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score),
-        Primary_Business_Bank__c: app.bankName || app.bank_name || null,
-        Purpose_Of_Funds__c: app.useOfFunds || app.use_of_funds || null,
-        Funding_Time_Frame__c: app.fundingUrgency || app.funding_urgency || null,
-      });
-
-      if (Object.keys(updateFields).length > 0) {
-        const res = await sfApi("PATCH", `/sobjects/Opportunity/${existingOpp.Id}`, updateFields);
-        console.log(`[SF Sync] Updated existing Opp: ${existingOpp.Name} (${existingOpp.Id}) — ${res.success ? "OK" : res.error}`);
-        return { synced: true, action: "updated", oppId: existingOpp.Id };
-      }
-      return { synced: true, action: "no-update-needed", oppId: existingOpp.Id };
-    }
-
-    // 2. No match — create new Account + Contact + Opportunity
-    const rts = await sfQuery(
-      "SELECT Id FROM RecordType WHERE SObjectType='Account' AND Name='Merchant' AND IsActive=true"
-    );
-    const merchantRtId = rts[0]?.Id;
-
-    const accountName = (businessName || fullName || email || "Unknown").slice(0, 255);
-    const nameParts = fullName.split(/\s+/);
-    const today = new Date();
-    const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
-
-    const account = clean({
-      Name: accountName,
-      ...(merchantRtId ? { RecordTypeId: merchantRtId } : {}),
-      Company_Name__c: businessName || null,
-      Doing_Business_As__c: app.doingBusinessAs || app.doing_business_as || null,
-      EIN__c: app.ein || null,
-      Industry: mapIndustry(app.industry),
-      Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue),
-      Primary_Business_Bank__c: app.bankName || app.bank_name || null,
-      Phone: phone || null,
-      Website: app.companyWebsite || app.company_website || null,
-      BillingCity: app.city || null,
-      ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
-      BillingPostalCode: app.zipCode || app.zip_code || null,
-      ...((state || app.city) ? { BillingCountryCode: "US" } : {}),
-      Account_Status__c: "Pending",
-    });
-
-    const acctRes = await sfApi("POST", "/sobjects/Account", account);
-    if (!acctRes.success) {
-      console.log(`[SF Sync] Account creation failed: ${acctRes.error}`);
-      return { synced: false, error: `Account: ${acctRes.error}` };
-    }
-
-    const contact = clean({
-      AccountId: acctRes.id,
-      FirstName: nameParts[0] || null,
-      LastName: nameParts.slice(1).join(" ") || email || "Unknown",
-      Email: email || null,
-      Phone: phone || null,
-      Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score),
-      Scrubbed__c: false,
-      Scrubbed1__c: false,
-      Opted_In_for_AI_Calls__c: false,
-      Opted_In_for_AI_Calls1__c: false,
-      Do_Not_Contact__c: false,
-      Consent_to_Text__c: false,
-      MailingCity: app.city || null,
-      ...(US_STATES.has(state) ? { MailingStateCode: state } : {}),
-      ...((state || app.city) ? { MailingCountryCode: "US" } : {}),
-    });
-
-    const ctRes = await sfApi("POST", "/sobjects/Contact", contact);
-
-    const closeDate = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
-    const opportunity = clean({
-      AccountId: acctRes.id,
-      Primary_Contact__c: ctRes.success ? ctRes.id : null,
-      Name: `${accountName} - ${dateStr}`.slice(0, 120),
-      StageName: "Application & Docs",
-      CloseDate: closeDate,
+    // Application fields to push to both Leads and Opportunities
+    const appFields = clean({
       Amount_Requested__c: parseNum(app.requestedAmount || app.requested_amount),
       Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue),
-      Industry__c: mapIndustry(app.industry),
-      Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score),
+      Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score || app.personalCreditScoreRange || app.personal_credit_score_range),
       Primary_Business_Bank__c: app.bankName || app.bank_name || null,
       Purpose_Of_Funds__c: app.useOfFunds || app.use_of_funds || null,
       Funding_Time_Frame__c: app.fundingUrgency || app.funding_urgency || null,
       MCA_Balance_Amount__c: parseNum(app.mcaBalanceAmount || app.mca_balance_amount),
-      Phone_Number__c: phone || null,
-      Email__c: email || null,
-      LeadSource: app.referralSource || app.referral_source || "Website",
-      Revenue_Verified__c: false,
-      Bank_Statement_Tampering_Flag__c: false,
     });
 
-    const oppRes = await sfApi("POST", "/sobjects/Opportunity", opportunity);
+    // Additional fields only applicable to Leads
+    const leadOnlyFields = clean({
+      Company: businessName || null,
+      Company_Name__c: businessName || null,
+      Doing_Business_As__c: app.doingBusinessAs || app.doing_business_as || null,
+      EIN__c: app.ein || null,
+      Industry: mapIndustry(app.industry),
+      Business_Start_Date__c: app.businessStartDate || app.business_start_date || null,
+      Ownership_Percentage__c: parseNum(app.ownership || app.ownerPercentage || app.owner_percentage),
+      Do_You_Process_Credit_Cards__c: app.doYouProcessCreditCards || app.do_you_process_credit_cards || null,
+      UTM_Source__c: app.utmSource || app.utm_source || null,
+      Application_URL__c: app.agentViewUrl || app.agent_view_url || null,
+    });
 
-    console.log(`[SF Sync] Created: Account=${acctRes.id}, Contact=${ctRes.id || "failed"}, Opp=${oppRes.id || "failed"}`);
-    return {
-      synced: true,
-      action: "created",
-      accountId: acctRes.id,
-      contactId: ctRes.id,
-      oppId: oppRes.id,
-    };
+    // Additional fields only applicable to Opportunities
+    const oppOnlyFields = clean({
+      Industry__c: mapIndustry(app.industry),
+      Doing_Business_As_DBA__c: businessName || null,
+      Phone_Number__c: phone || null,
+      Email__c: email || null,
+    });
+
+    const digits = phone ? phone.replace(/\D/g, "").slice(-10) : "";
+    let updated = false;
+    let leadId: string | undefined;
+    let oppId: string | undefined;
+
+    // --- 1. Search and update existing Lead ---
+    let existingLead: any = null;
+
+    if (email) {
+      const byEmail = await sfQuery(
+        `SELECT Id, Name FROM Lead WHERE Email = '${email.replace(/'/g, "\\'")}' AND IsConverted = false LIMIT 1`
+      );
+      if (byEmail.length) existingLead = byEmail[0];
+    }
+
+    if (!existingLead && digits.length === 10) {
+      const byPhone = await sfQuery(
+        `SELECT Id, Name FROM Lead WHERE Phone LIKE '%${digits}' AND IsConverted = false LIMIT 1`
+      );
+      if (byPhone.length) existingLead = byPhone[0];
+    }
+
+    if (existingLead) {
+      const leadUpdate = clean({ ...appFields, ...leadOnlyFields });
+      if (Object.keys(leadUpdate).length > 0) {
+        const res = await sfApi("PATCH", `/sobjects/Lead/${existingLead.Id}`, leadUpdate);
+        if (res.success) {
+          console.log(`[SF Sync] Updated Lead: ${existingLead.Name} (${existingLead.Id}) — ${Object.keys(leadUpdate).length} fields`);
+          leadId = existingLead.Id;
+          updated = true;
+        } else {
+          console.log(`[SF Sync] Lead update failed: ${res.error}`);
+        }
+      }
+    }
+
+    // --- 2. Search and update existing Opportunity ---
+    let existingOpp: any = null;
+
+    if (email) {
+      const byEmail = await sfQuery(
+        `SELECT Id, Name, AccountId FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}' LIMIT 1`
+      );
+      if (byEmail.length) existingOpp = byEmail[0];
+    }
+
+    if (!existingOpp && digits.length === 10) {
+      const byPhone = await sfQuery(
+        `SELECT Id, Name, AccountId FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' LIMIT 1`
+      );
+      if (byPhone.length) existingOpp = byPhone[0];
+    }
+
+    if (existingOpp) {
+      const oppUpdate = clean({ ...appFields, ...oppOnlyFields });
+      if (Object.keys(oppUpdate).length > 0) {
+        const res = await sfApi("PATCH", `/sobjects/Opportunity/${existingOpp.Id}`, oppUpdate);
+        if (res.success) {
+          console.log(`[SF Sync] Updated Opp: ${existingOpp.Name} (${existingOpp.Id}) — ${Object.keys(oppUpdate).length} fields`);
+          oppId = existingOpp.Id;
+          updated = true;
+        } else {
+          console.log(`[SF Sync] Opp update failed: ${res.error}`);
+        }
+      }
+
+      // Also update the parent Account if we have business details
+      if (existingOpp.AccountId) {
+        const acctUpdate = clean({
+          Company_Name__c: businessName || null,
+          Doing_Business_As__c: app.doingBusinessAs || app.doing_business_as || null,
+          EIN__c: app.ein || null,
+          Industry: mapIndustry(app.industry),
+          Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue),
+          Primary_Business_Bank__c: app.bankName || app.bank_name || null,
+          Phone: phone || null,
+          Website: app.companyWebsite || app.company_website || null,
+          BillingCity: app.city || null,
+          ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
+          BillingPostalCode: app.zipCode || app.zip_code || null,
+          ...((state || app.city) ? { BillingCountryCode: "US" } : {}),
+        });
+        if (Object.keys(acctUpdate).length > 0) {
+          await sfApi("PATCH", `/sobjects/Account/${existingOpp.AccountId}`, acctUpdate);
+        }
+      }
+    }
+
+    if (updated) {
+      return {
+        synced: true,
+        action: "updated",
+        leadId,
+        oppId,
+        accountId: existingOpp?.AccountId,
+      };
+    }
+
+    // No existing Lead or Opportunity found — skip (update-only mode)
+    console.log(`[SF Sync] No existing Lead or Opportunity found for ${email || phone} — skipping (update-only mode)`);
+    return { synced: false, reason: "no existing SF record to update" };
 
   } catch (err: any) {
     console.error(`[SF Sync] Error: ${err.message}`);
