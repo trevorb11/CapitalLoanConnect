@@ -2877,14 +2877,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
 
   // Shared helper: build + persist merchant snapshot from Chirp responses
-  async function syncMerchantSnapshotFromChirp(merchantEmail: string, requestCode: string): Promise<MerchantBankSnapshot | null> {
+  // Helper: register a Chirp webhook for a given requestCode so Chirp pushes
+  // status updates to us (inbound) rather than us polling (outbound GET blocked
+  // by Cloudflare WAF on some server IPs).
+  async function registerChirpWebhookForCode(requestCode: string): Promise<void> {
+    const baseUrl = process.env.PUBLIC_BASE_URL;
+    if (!baseUrl) return;
+    const webhookUrl = `${baseUrl.replace(/\/$/, "")}/api/chirp/webhook`;
     try {
-      const [status, details, summary] = await Promise.all([
-        chirpService.getRequestStatus(requestCode).catch(() => null),
-        chirpService.getRequestDetails(requestCode, { numberOfDays: 90, sort: "DESCENDING" }).catch(() => null),
-        chirpService.getSummaryInfoByRequestCode(requestCode).catch(() => null),
-      ]);
+      await chirpService.createCustomerNotification({
+        name: `merchant-portal-status-${requestCode}`,
+        requestCode,
+        type: "REQUEST_STATUS",
+        rule: "GREATER_THAN",
+        webhookUrl: [webhookUrl],
+        notifyIf: ["ALL"],
+        notifyViaWebhook: true,
+      });
+      console.log(`[CHIRP] Webhook registered for requestCode ${requestCode} → ${webhookUrl}`);
+    } catch (e: any) {
+      console.warn(`[CHIRP] Failed to register webhook for ${requestCode}:`, e?.message || e);
+    }
+  }
 
+  async function syncMerchantSnapshotFromChirp(merchantEmail: string, requestCode: string): Promise<MerchantBankSnapshot | null> {
+    // Track whether ANY of the three read endpoints succeeded.
+    let anySucceeded = false;
+    let status: any = null;
+    let details: any = null;
+    let summary: any = null;
+
+    try {
+      [status, details, summary] = await Promise.all([
+        chirpService.getRequestStatus(requestCode).catch((e) => { console.warn(`[CHIRP] getRequestStatus 403/err: ${e?.message}`); return null; }),
+        chirpService.getRequestDetails(requestCode, { numberOfDays: 90, sort: "DESCENDING" }).catch((e) => { console.warn(`[CHIRP] getRequestDetails 403/err: ${e?.message}`); return null; }),
+        chirpService.getSummaryInfoByRequestCode(requestCode).catch((e) => { console.warn(`[CHIRP] getSummaryInfo 403/err: ${e?.message}`); return null; }),
+      ]);
+      anySucceeded = status !== null || details !== null || summary !== null;
+    } catch (err: any) {
+      console.warn(`[CHIRP] sync parallel fetch error: ${err?.message}`);
+    }
+
+    // If ALL endpoints failed (likely WAF block), register a webhook so we get
+    // notified when data becomes available, then return the current snapshot.
+    if (!anySucceeded) {
+      console.warn(`[CHIRP] All read endpoints blocked for ${requestCode}. Registering webhook for push delivery.`);
+      registerChirpWebhookForCode(requestCode).catch(() => {});
+      return await storage.getMerchantBankSnapshotByRequestCode(requestCode);
+    }
+
+    try {
       const accounts: any[] = (details as any)?.Accounts || (details as any)?.accounts || [];
       const institutionName =
         (details as any)?.InstitutionName ||
@@ -2939,7 +2981,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       return snapshot;
     } catch (err: any) {
-      console.error(`[CHIRP] syncMerchantSnapshotFromChirp failed for ${merchantEmail}:`, err?.message || err);
+      console.error(`[CHIRP] syncMerchantSnapshotFromChirp upsert failed for ${merchantEmail}:`, err?.message || err);
       return null;
     }
   }
@@ -3043,12 +3085,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const snapshot = await storage.getMerchantBankSnapshot(req.session.user.merchantEmail);
       if (!snapshot) {
-        return res.json({ connected: false });
+        return res.json({ connected: false, hasPendingConnection: false });
       }
       const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
       const metrics = (snapshot.metrics as any) || {};
+      // hasPendingConnection = we have a requestCode but bank isn't confirmed connected yet
+      const hasPendingConnection = Boolean(snapshot.chirpRequestCode) && !snapshot.isAccountConnected;
       res.json({
         connected: Boolean(snapshot.isAccountConnected),
+        hasPendingConnection,
         status: snapshot.status,
         institutionName: snapshot.institutionName,
         connectedAt: snapshot.connectedAt,
@@ -3087,19 +3132,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!existing?.chirpRequestCode) {
         return res.status(400).json({ error: "No bank connection found. Connect your bank first." });
       }
-      // Cooldown: once every 10 minutes is plenty for merchant-initiated syncs.
+      // Cooldown: once every 10 minutes for already-connected accounts.
+      // Skip cooldown when account is still pending (not yet confirmed connected).
       const COOLDOWN_MS = 10 * 60 * 1000;
-      if (existing.lastSyncedAt && Date.now() - new Date(existing.lastSyncedAt).getTime() < COOLDOWN_MS) {
+      const isPending = !existing.isAccountConnected;
+      if (!isPending && existing.lastSyncedAt && Date.now() - new Date(existing.lastSyncedAt).getTime() < COOLDOWN_MS) {
         return res.status(429).json({ error: "Recently synced — try again in a few minutes." });
       }
       const snapshot = await syncMerchantSnapshotFromChirp(merchantEmail, existing.chirpRequestCode);
       if (!snapshot) {
-        return res.status(502).json({ error: "Could not refresh banking data right now." });
+        // Sync returned null — could mean WAF block; webhook is already registered.
+        // Return a non-error 200 so the merchant portal doesn't show an error toast.
+        return res.json({ success: true, pending: true, message: "Your bank status will update automatically when Chirp sends us the data." });
       }
       res.json({ success: true, lastSyncedAt: snapshot.lastSyncedAt });
     } catch (err: any) {
       console.error("[CHIRP] merchant sync error:", err);
       res.status(500).json({ error: err.message || "Sync failed" });
+    }
+  });
+
+  // POST /api/merchant/chirp/register-webhook — re-registers the Chirp webhook
+  // for the merchant's existing requestCode. Useful when PUBLIC_BASE_URL was not
+  // set at the time the request was created, or after server restart.
+  app.post("/api/merchant/chirp/register-webhook", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    const merchantEmail = req.session.user.merchantEmail;
+    try {
+      const snapshot = await storage.getMerchantBankSnapshot(merchantEmail);
+      if (!snapshot?.chirpRequestCode) {
+        return res.status(400).json({ error: "No bank connection found." });
+      }
+      await registerChirpWebhookForCode(snapshot.chirpRequestCode);
+      res.json({ success: true, requestCode: snapshot.chirpRequestCode });
+    } catch (err: any) {
+      console.error("[CHIRP] register-webhook error:", err);
+      res.status(500).json({ error: err.message || "Failed to register webhook" });
     }
   });
 
@@ -3120,9 +3190,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /api/chirp/webhook — Chirp pushes REQUEST_STATUS / REFRESH events
-  // here. We look up the merchant by requestCode and re-pull the snapshot
-  // (no bank calls — Chirp's cache only). Optional shared-secret auth if
-  // CHIRP_WEBHOOK_SECRET is set.
+  // here. We extract status from the payload itself so we don't need to
+  // make outbound API calls (which Cloudflare may block on some server IPs).
   app.post("/api/chirp/webhook", async (req: Request, res: Response) => {
     try {
       const secret = process.env.CHIRP_WEBHOOK_SECRET;
@@ -3133,23 +3202,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       const body = req.body || {};
+      console.log("[CHIRP] webhook received:", JSON.stringify(body).slice(0, 500));
+
+      // Chirp payload shapes vary; flatten nested data/payload wrapper if present
+      const data = body?.data || body?.payload || body;
       const requestCode: string | undefined =
-        body.requestCode || body.RequestCode || body.request_code ||
+        data.requestCode || data.RequestCode || data.request_code ||
         body?.data?.requestCode || body?.payload?.requestCode;
       if (!requestCode) {
         console.warn("[CHIRP] webhook received without requestCode", body);
         return res.status(400).json({ error: "Missing requestCode" });
       }
+
       const snapshot = await storage.getMerchantBankSnapshotByRequestCode(requestCode);
       if (!snapshot) {
-        // Not a merchant-portal connection (could be an intake request). Ack
-        // and move on — no merchant to update.
+        console.log(`[CHIRP] webhook for unknown requestCode ${requestCode} — ignoring`);
         return res.json({ success: true, ignored: true });
       }
-      // Fire-and-forget refresh of our cache.
+
+      // --- Extract status info directly from webhook payload ---
+      // Chirp sends various field names depending on notification type.
+      const statusStr: string =
+        data.status || data.Status || data.requestStatus || data.RequestStatus || "";
+      const isVerified = /verif/i.test(statusStr) || statusStr === "1";
+      const isConnected: boolean =
+        data.isAccountConnected ?? data.IsAccountConnected ?? data.accountConnected ?? isVerified;
+      const institutionName: string =
+        data.institutionName || data.InstitutionName || data.selectedBank || data.bank || snapshot.institutionName || "";
+      const accounts: any[] = data.accounts || data.Accounts || [];
+
+      // Persist what we know from the webhook payload immediately so the
+      // merchant portal reflects the new status without waiting for a sync.
+      await storage.upsertMerchantBankSnapshot({
+        merchantEmail: snapshot.merchantEmail,
+        chirpRequestCode: requestCode,
+        status: statusStr || snapshot.status,
+        isAccountConnected: Boolean(isConnected),
+        institutionName: institutionName || snapshot.institutionName,
+        connectedAt: isConnected && !snapshot.connectedAt ? new Date() : snapshot.connectedAt,
+        accountsData: accounts.length > 0 ? accounts : (snapshot.accountsData as any[]),
+        // Preserve existing metrics if the webhook doesn't include them
+        metrics: snapshot.metrics,
+        lastSyncedAt: new Date(),
+      });
+      console.log(`[CHIRP] webhook updated snapshot for ${snapshot.merchantEmail}: connected=${isConnected}, status="${statusStr}"`);
+
+      // Also attempt a full data sync (gets financial metrics if API is reachable).
+      // Fire-and-forget — don't let API errors block the webhook 200 response.
       syncMerchantSnapshotFromChirp(snapshot.merchantEmail, requestCode).catch(e =>
-        console.warn("[CHIRP] webhook-triggered sync failed:", e?.message || e)
+        console.warn("[CHIRP] webhook-triggered full sync failed (may be WAF block):", e?.message || e)
       );
+
       res.json({ success: true });
     } catch (err: any) {
       console.error("[CHIRP] webhook error:", err);

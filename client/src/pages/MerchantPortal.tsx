@@ -3145,6 +3145,18 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // When the portal loads and we have a pending connection (requestCode exists
+  // but not yet confirmed), auto-register the webhook so Chirp can push the
+  // status update to us even if the server can't poll Chirp's read API.
+  useEffect(() => {
+    if (banking?.hasPendingConnection) {
+      fetch("/api/merchant/chirp/register-webhook", {
+        method: "POST",
+        credentials: "include",
+      }).catch(() => {});
+    }
+  }, [banking?.hasPendingConnection]);
+
   const handleAnalyze = async () => {
     setAnalyzing(true);
     setAnalyzeError(null);
@@ -3221,6 +3233,11 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                 Connected
               </span>
             )}
+            {!chirpConnected && banking?.hasPendingConnection && (
+              <span style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", borderRadius: 20, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>
+                Pending
+              </span>
+            )}
           </div>
           <svg
             width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -3279,6 +3296,37 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                 </div>
                 {syncError && <p style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{syncError}</p>}
               </>
+            ) : banking?.hasPendingConnection ? (
+              <div style={{ textAlign: "center", padding: "24px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </div>
+                <p style={{ color: "#e8eaf0", fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+                  Awaiting Bank Verification
+                </p>
+                <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, marginBottom: 16, maxWidth: 320, margin: "0 auto 16px" }}>
+                  You started linking your bank account. Once Chirp confirms the connection, your financial data will appear here automatically.
+                </p>
+                <p style={{ color: "#64748b", fontSize: 12, marginBottom: 16 }}>
+                  Status: <span style={{ color: "#fbbf24" }}>{banking.status || "Unverified"}</span>
+                </p>
+                <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                  <ChirpConnectButton onSuccess={fetchData} label="Reconnect Bank" />
+                  <button
+                    className="analyze-btn"
+                    onClick={handleSync}
+                    disabled={syncing}
+                    style={{ fontSize: 12, padding: "8px 14px" }}
+                    data-testid="button-retry-sync"
+                  >
+                    {syncing ? "Checking..." : "Check Status"}
+                  </button>
+                </div>
+                {syncError && <p style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{syncError}</p>}
+              </div>
             ) : (
               <div style={{ textAlign: "center", padding: "20px 0" }}>
                 <p style={{ color: "#e8eaf0", marginBottom: 8, fontSize: 14, lineHeight: 1.6, fontWeight: 500 }}>
