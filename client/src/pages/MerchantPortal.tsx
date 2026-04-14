@@ -88,7 +88,16 @@ interface CalcResult {
 function calcDeal(deal: Deal): CalcResult {
   const today = new Date();
   const funded = new Date(deal.fundedDate);
-  const totalPayback = deal.totalPayback || deal.advanceAmount * deal.factorRate;
+  // Payoff timeline must reflect the total amount the merchant owes — i.e.
+  // the funded/advance amount multiplied by the factor rate. Always compute
+  // from advance × factorRate when we have a valid factor rate (> 1) so the
+  // timeline never accidentally shows just the funded amount, and fall back
+  // to the stored totalPayback only when we don't have enough info to derive it.
+  const derivedPayback = deal.advanceAmount * deal.factorRate;
+  const totalPayback =
+    deal.advanceAmount > 0 && deal.factorRate > 1
+      ? derivedPayback
+      : (deal.totalPayback || derivedPayback || 0);
   const isDaily = deal.paymentFrequency === "daily";
 
   let paymentsMade: number, paymentAmount: number, totalPayments: number;
@@ -564,6 +573,13 @@ const CSS = `
   }
 
   .deal-stat-val.teal { color: #2dd4bf; }
+
+  .deal-stat-sub {
+    font-size: 10px;
+    color: #4b5568;
+    margin-top: 3px;
+    letter-spacing: 0.02em;
+  }
 
   .progress-wrap { margin-bottom: 12px; }
 
@@ -2241,15 +2257,22 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
         <div>
           <div className="deal-stat-label">Advance</div>
           <div className="deal-stat-val">{fmt$(deal.advanceAmount)}</div>
+          <div className="deal-stat-sub">Funded amount</div>
         </div>
         <div>
           <div className="deal-stat-label">Total Payback</div>
           <div className="deal-stat-val">{fmt$(calc.totalPayback)}</div>
+          <div className="deal-stat-sub">
+            {fmt$(deal.advanceAmount)} &times; {deal.factorRate}x factor
+          </div>
         </div>
         <div>
           <div className="deal-stat-label">Remaining</div>
           <div className={`deal-stat-val ${!calc.isComplete ? "teal" : ""}`}>
             {calc.isComplete ? "\u2014" : fmt$(calc.remaining)}
+          </div>
+          <div className="deal-stat-sub">
+            {calc.isComplete ? "Paid in full" : "of total owed"}
           </div>
         </div>
       </div>
@@ -2339,7 +2362,9 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
               <div className="tracker-paid">
                 <strong>{fmt$(calc.amountPaid)}</strong> paid
               </div>
-              <div className="tracker-total">{fmt$(calc.totalPayback)} total</div>
+              <div className="tracker-total">
+                {fmt$(calc.totalPayback)} total owed ({fmt$(deal.advanceAmount)} &times; {deal.factorRate}x)
+              </div>
             </div>
 
             <div className="tracker-metrics">
@@ -2365,7 +2390,10 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
             <div>
               <div className="balance-left-label">Remaining Balance</div>
               <div className="balance-amount">{fmt$(calc.remaining)}</div>
-              <div className="balance-sub">{fmt$(calc.amountPaid)} paid of {fmt$(calc.totalPayback)} total</div>
+              <div className="balance-sub">
+                {fmt$(calc.amountPaid)} paid of {fmt$(calc.totalPayback)} total owed
+                {" "}({fmt$(deal.advanceAmount)} funded &times; {deal.factorRate}x factor)
+              </div>
             </div>
             <div className="payoff-date-wrap">
               <div className="payoff-date-label">Projected Payoff</div>
@@ -3355,7 +3383,7 @@ function PayoffCountdownWidget({ deal }: { deal: Deal }) {
         Estimated payoff: <strong>{fmtDate(payoff)}</strong>
       </div>
       <div className="payoff-countdown-sub">
-        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} left
+        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} of {fmt$(calc.totalPayback)} owed ({deal.factorRate}x factor)
       </div>
     </div>
   );
