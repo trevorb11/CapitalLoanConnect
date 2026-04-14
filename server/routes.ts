@@ -5505,10 +5505,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Download blank application template as PDF (matching completed application style)
   app.get("/api/application-template", async (req, res) => {
     try {
+      const templateType = (req.query.type as string) || 'standard';
+      const isRedacted   = templateType === 'redacted';
+      const includeLingo = templateType === 'lcg';
+      const includeSignature = templateType === 'signature';
+      const typeLabels: Record<string, string> = {
+        standard: 'Standard', signature: 'Signature', lcg: 'LCG', redacted: 'Redacted',
+      };
+      const typeLabel = typeLabels[templateType] || 'Standard';
+
       const doc = new PDFDocument({ margin: 0, size: 'A4' });
       
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", 'attachment; filename="Application-Template.pdf"');
+      res.setHeader("Content-Disposition", `attachment; filename="Application-Template-${typeLabel}.pdf"`);
       
       doc.pipe(res);
       
@@ -5606,10 +5615,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       yPos += rowSpacing;
       
       addField('Phone:', leftCol, yPos, fieldWidth);
-      addField('SSN:', rightCol, yPos, fieldWidth);
+      if (isRedacted) {
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('SSN:', rightCol, yPos);
+        doc.rect(rightCol, yPos + 10, fieldWidth, fieldHeight).fillAndStroke('#F0F0F0', '#E5E7EB');
+        doc.fillColor('#C0C0C0').fontSize(9).font('Helvetica').text('[REDACTED]', rightCol + 8, yPos + 17);
+      } else {
+        addField('SSN:', rightCol, yPos, fieldWidth);
+      }
       yPos += rowSpacing;
       
-      addField('Date of Birth:', leftCol, yPos, fieldWidth);
+      if (isRedacted) {
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Date of Birth:', leftCol, yPos);
+        doc.rect(leftCol, yPos + 10, fieldWidth, fieldHeight).fillAndStroke('#F0F0F0', '#E5E7EB');
+        doc.fillColor('#C0C0C0').fontSize(9).font('Helvetica').text('[REDACTED]', leftCol + 8, yPos + 17);
+      } else {
+        addField('Date of Birth:', leftCol, yPos, fieldWidth);
+      }
       addField('FICO Score:', rightCol, yPos, fieldWidth);
       yPos += rowSpacing;
       
@@ -5620,6 +5641,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       addField('City:', leftCol, yPos, fieldWidth);
       addField('State:', rightCol, yPos, smallFieldWidth);
       addField('ZIP:', rightCol + 120, yPos, smallFieldWidth);
+      yPos += 50;
+
+      // — Signature section (signature template only) —
+      if (includeSignature) {
+        if (yPos > 680) { doc.addPage(); yPos = 50; }
+        doc.strokeColor(teal).lineWidth(2).moveTo(leftCol, yPos).lineTo(leftCol + 160, yPos).stroke();
+        yPos += 8;
+        doc.fillColor(darkNavy).fontSize(14).font('Helvetica-Bold').text('Applicant Signature', leftCol, yPos);
+        yPos += 28;
+        // Signature line
+        doc.strokeColor('#9CA3AF').lineWidth(1)
+          .moveTo(leftCol, yPos + 30).lineTo(leftCol + 230, yPos + 30).stroke();
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Signature', leftCol, yPos + 33);
+        // Date line
+        doc.strokeColor('#9CA3AF').lineWidth(1)
+          .moveTo(rightCol, yPos + 30).lineTo(rightCol + 140, yPos + 30).stroke();
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Date', rightCol, yPos + 33);
+        yPos += 60;
+        // Printed name line
+        doc.strokeColor('#9CA3AF').lineWidth(1)
+          .moveTo(leftCol, yPos).lineTo(leftCol + 230, yPos).stroke();
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Printed Name', leftCol, yPos + 3);
+        // Title line
+        doc.strokeColor('#9CA3AF').lineWidth(1)
+          .moveTo(rightCol, yPos).lineTo(rightCol + 140, yPos).stroke();
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Title', rightCol, yPos + 3);
+      }
+
+      // — Authorization & Consent block (LCG template only) —
+      if (includeLingo) {
+        if (yPos > 620) { doc.addPage(); yPos = 50; }
+        doc.fillColor(darkNavy).fontSize(14).font('Helvetica-Bold').text('Authorization & Consent', leftCol, yPos);
+        doc.strokeColor(teal).lineWidth(2).moveTo(leftCol, yPos + 18).lineTo(leftCol + 160, yPos + 18).stroke();
+        yPos += 32;
+        const lingoText = 'The Merchant and Owner(s)/Officer(s) identified above (individually, and "Applicant") each represents, acknowledges and agrees that (1) all the information and documents provided to Today Capital Group LLC ("Representative") including credit card processor statements are true, accurate and complete, (2) Applicant will immediately notify Representative of any change in such information or financial condition, (3) Applicant authorizes Representative to disclose all information and documents that Representative may obtain including credit reports to the other persons or entities (collectively, "Assignees") that may be involved with or acquire commercial funding having daily repayment features or purchases of future receivables, including Merchant Cash Advance transactions, including without limitation the application therefor (collectively, "Transactions"), and each Assignee is authorized to use such information and documents, and share such information and documents with other Assignees, in connection with potential Transactions, (4) Representative and each Assignee will rely upon the accuracy and completeness of such information and documents, (5) Representative, Assignees, and each of their representatives, successors, assigns and designees (collectively, "Recipients") are authorized to request and receive and investigative reports, credit reports, statements from creditors or financial institutions, verification information, or any other information that a Recipient deems necessary, (6) Applicant waives and releases and claims against Recipients and any other information-providers arising from any act or omission relating to the requesting, receiving, or release of information, (7) each Owner/Officer represents that he or she is authorized to sign this form on behalf of Merchant and (8) Applicant consents to receive marketing calls and texts from Representative and its affiliates or assigns using automated technology. Consent is not a condition of funding. A copy of this authorization may be accepted as an original. Applicant further agrees to the use of electronic signatures for the execution of this document, including, but not limited to, the use of specialized electronic signature platforms.';
+        doc.fontSize(8).font('Helvetica').fillColor('#3C3C3C');
+        const lines = doc.heightOfString(lingoText, { width: 481 });
+        if (yPos + lines > 750) { doc.addPage(); yPos = 50; }
+        doc.text(lingoText, leftCol, yPos, { width: 481, lineGap: 2 });
+      }
       
       doc.end();
     } catch (error) {

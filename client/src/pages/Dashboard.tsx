@@ -3952,15 +3952,51 @@ export default function Dashboard() {
                 )}
               </div>
               <div className="flex gap-2 w-full md:w-auto">
-                <Button
-                  variant="outline"
-                  onClick={() => window.open("/api/application-template", "_blank")}
-                  data-testid="button-download-template"
-                  className="flex-1 md:flex-none"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download Template
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      data-testid="button-download-template"
+                      className="flex-1 md:flex-none"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Template
+                      <ChevronDown className="w-3 h-3 ml-2" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Select Template Type</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      data-testid="template-standard"
+                      onClick={() => window.open("/api/application-template?type=standard", "_blank")}
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      Standard
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-testid="template-signature"
+                      onClick={() => window.open("/api/application-template?type=signature", "_blank")}
+                    >
+                      <FileEdit className="w-4 h-4 mr-2" />
+                      Signature
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-testid="template-lcg"
+                      onClick={() => window.open("/api/application-template?type=lcg", "_blank")}
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      LCG
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-testid="template-redacted"
+                      onClick={() => window.open("/api/application-template?type=redacted", "_blank")}
+                    >
+                      <Lock className="w-4 h-4 mr-2" />
+                      Redacted
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button
                   variant="outline"
                   onClick={() => window.open("/api/applications/export/csv", "_blank")}
