@@ -2874,6 +2874,9 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSucc
   const [starting, setStarting] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Phone capture: shown when server tells us a phone number is needed
+  const [needsPhone, setNeedsPhone] = useState(false);
+  const [phone, setPhone] = useState("");
   const pollRef = useRef<number | null>(null);
   const popupRef = useRef<Window | null>(null);
 
@@ -2926,7 +2929,7 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSucc
     }, 5000);
   }, [onSuccess]);
 
-  const handleConnect = useCallback(async () => {
+  const doConnect = useCallback(async (phoneOverride?: string) => {
     setStarting(true);
     setError(null);
     try {
@@ -2934,16 +2937,23 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSucc
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(phoneOverride ? { phone: phoneOverride } : {}),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        // If the server says we need a phone number, show the inline form
+        if (res.status === 400 && err.error?.toLowerCase().includes("phone")) {
+          setNeedsPhone(true);
+          setStarting(false);
+          return;
+        }
         throw new Error(err.error || "Could not start bank connection.");
       }
       const data = await res.json();
       const url = data.widgetUrl || data.verificationUrl;
       if (!url) throw new Error("Chirp did not return a connection URL.");
 
+      setNeedsPhone(false);
       popupRef.current = window.open(url, "chirp-connect", "width=480,height=720,menubar=no,toolbar=no");
       if (!popupRef.current) {
         // Popup blocked — fall back to a new tab.
@@ -2956,6 +2966,56 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSucc
       setStarting(false);
     }
   }, [startPolling]);
+
+  const handleConnect = useCallback(() => doConnect(), [doConnect]);
+
+  const handlePhoneSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 10) {
+      setError("Please enter a valid 10-digit phone number.");
+      return;
+    }
+    setError(null);
+    doConnect(digits.length === 10 ? `+1${digits}` : `+${digits}`);
+  }, [phone, doConnect]);
+
+  if (needsPhone) {
+    return (
+      <div style={{ maxWidth: 340 }}>
+        <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 10 }}>
+          We need a phone number to verify your identity with Chirp. This won't be shared with anyone else.
+        </p>
+        <form onSubmit={handlePhoneSubmit} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input
+            type="tel"
+            placeholder="(555) 000-0000"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              border: "1.5px solid #334155",
+              background: "#1e293b",
+              color: "#f8fafc",
+              fontSize: 14,
+              outline: "none",
+            }}
+            autoFocus
+          />
+          {error && <p style={{ color: "#f87171", fontSize: 12, margin: 0 }}>{error}</p>}
+          <button
+            type="submit"
+            className="connect-bank-cta"
+            disabled={starting}
+            style={{ marginTop: 4 }}
+          >
+            {starting ? "Connecting..." : "Continue →"}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div>

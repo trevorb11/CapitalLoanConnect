@@ -2711,7 +2711,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.warn("[CHIRP] Failed to persist requestCode:", e)
         );
       }
-      res.json({ success: true, ...result });
+      // Sanitize URLs — Chirp sandbox sometimes returns "NA" as a placeholder
+      const sanitizeUrl = (u?: string) =>
+        u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
+      const safeWidget = sanitizeUrl(result.widgetUrl)
+        || `https://chirp.digital/api/widget?requestCode=${result.requestCode}`;
+      const safeVerification = sanitizeUrl(result.verificationUrl) || safeWidget;
+      res.json({ success: true, ...result, widgetUrl: safeWidget, verificationUrl: safeVerification });
     } catch (err: any) {
       console.error("[CHIRP] createVerificationRequest error:", err);
       res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
@@ -3009,10 +3015,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).catch(e => console.warn("[CHIRP] Failed to register REFRESH webhook:", e?.message || e));
       }
 
+      // Sanitize URLs — Chirp sandbox sometimes returns "NA" as a placeholder
+      const sanitizeUrl = (u?: string) =>
+        u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
+      const safeWidget = sanitizeUrl(result.widgetUrl)
+        || `https://chirp.digital/api/widget?requestCode=${result.requestCode}`;
+      const safeVerification = sanitizeUrl(result.verificationUrl) || safeWidget;
+
       res.json({
         success: true,
-        widgetUrl: result.widgetUrl,
-        verificationUrl: result.verificationUrl,
+        widgetUrl: safeWidget,
+        verificationUrl: safeVerification,
+        requestCode: result.requestCode,
       });
     } catch (err: any) {
       console.error("[CHIRP] merchant connect error:", err);
