@@ -3424,6 +3424,11 @@ function BotAttemptsTab() {
 export default function Dashboard() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [additionalApps, setAdditionalApps] = useState<LoanApplication[]>([]);
+  const [loadMoreOffset, setLoadMoreOffset] = useState(100);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial" | "low-revenue">("all");
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>("all");
   const [selectedAppDetails, setSelectedAppDetails] = useState<LoanApplication | null>(null);
@@ -3437,12 +3442,64 @@ export default function Dashboard() {
     queryFn: getQueryFn({ on401: "returnNull" }),
   });
 
-  const { data: applications, isLoading: appsLoading } = useQuery<LoanApplication[]>({
-    queryKey: ["/api/applications"],
+  // Debounce search: wait 400 ms after the user stops typing before hitting the server
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // Reset additional pages whenever search term changes
+  useEffect(() => {
+    setAdditionalApps([]);
+    setLoadMoreOffset(100);
+    setHasMore(false);
+  }, [debouncedSearch]);
+
+  const { data: firstPageApps, isLoading: appsLoading } = useQuery<LoanApplication[]>({
+    queryKey: ["/api/applications", debouncedSearch],
     enabled: authData?.isAuthenticated === true,
-    queryFn: getQueryFn({ on401: "returnNull" }),
+    queryFn: async () => {
+      const url = debouncedSearch
+        ? `/api/applications?search=${encodeURIComponent(debouncedSearch)}`
+        : `/api/applications`;
+      const res = await fetch(url, { credentials: "include" });
+      if (res.status === 401) return null;
+      if (!res.ok) throw new Error("Failed to fetch applications");
+      const data: LoanApplication[] = await res.json();
+      // Show "load more" only for admin/underwriting, no search active, exactly 100 records back
+      setHasMore(!debouncedSearch && data.length === 100);
+      return data;
+    },
     retry: false,
+    staleTime: 30_000, // cache for 30s so tab switching doesn't re-fetch constantly
   });
+
+  // Merge first page + any additional pages loaded via "Load More"
+  const applications = [...(firstPageApps ?? []), ...additionalApps];
+
+  const loadMore = async () => {
+    setIsLoadingMore(true);
+    try {
+      const res = await fetch(`/api/applications?offset=${loadMoreOffset}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      const data: LoanApplication[] = await res.json();
+      setAdditionalApps(prev => [...prev, ...data]);
+      setLoadMoreOffset(prev => prev + 100);
+      setHasMore(data.length === 100);
+    } catch {
+      /* silently fail — user can try again */
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Helper: invalidate first-page query AND clear accumulated extra pages
+  const resetAndRefetch = () => {
+    setAdditionalApps([]);
+    setLoadMoreOffset(100);
+    setHasMore(false);
+    queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+  };
 
 
   const { data: bankUploads } = useQuery<BankStatementUpload[]>({
@@ -3497,7 +3554,7 @@ export default function Dashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/check"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+      resetAndRefetch();
     },
   });
 
@@ -3520,7 +3577,7 @@ export default function Dashboard() {
       setSelectedAppDetails(updatedApp);
       setIsEditMode(false);
       // Refresh the applications list
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+      resetAndRefetch();
     },
   });
 
@@ -3619,7 +3676,7 @@ export default function Dashboard() {
 
   const handleLoginSuccess = () => {
     refetchAuth();
-    queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+    resetAndRefetch();
   };
 
   if (authLoading) {
@@ -3643,11 +3700,7 @@ export default function Dashboard() {
   const filteredApplications = applications
     ? applications
         .filter((app) => {
-          const matchesSearch =
-            (app.fullName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (app.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (app.businessName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (app.legalBusinessName || "").toLowerCase().includes(searchTerm.toLowerCase());
+          // Search filtering is now server-side — client only handles status + agent filters
 
           // Parse monthly revenue for low-revenue filter
           const revenueStr = app.monthlyRevenue || app.averageMonthlyRevenue || "0";
@@ -3667,7 +3720,7 @@ export default function Dashboard() {
           const matchesAgentFilter =
             selectedAgentFilter === "all" || app.agentName === selectedAgentFilter;
 
-          return matchesSearch && matchesFilter && matchesAgentFilter;
+          return matchesFilter && matchesAgentFilter;
         })
         .sort((a, b) => {
           const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -4091,6 +4144,7 @@ export default function Dashboard() {
           </div>
         </Card>
 
+
         {appsLoading ? (
           <Card className="p-12" data-testid="card-loading-state">
             <p className="text-center text-muted-foreground" data-testid="text-loading-message">Loading applications...</p>
@@ -4282,6 +4336,25 @@ export default function Dashboard() {
                 </div>
               </Card>
             ))}
+
+            {/* Load more */}
+            {hasMore && (
+              <div className="flex justify-center pt-2 pb-4" data-testid="div-load-more">
+                <Button
+                  variant="outline"
+                  onClick={loadMore}
+                  disabled={isLoadingMore}
+                  data-testid="button-load-more"
+                >
+                  {isLoadingMore ? "Loading..." : "Load more applications"}
+                </Button>
+              </div>
+            )}
+            {!hasMore && applications.length > 100 && (
+              <p className="text-center text-xs text-muted-foreground py-3" data-testid="text-all-loaded">
+                All {applications.length} applications loaded — use search to filter further.
+              </p>
+            )}
           </div>
         ) : (
           <Card className="p-12" data-testid="card-empty-state">

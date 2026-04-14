@@ -70,6 +70,8 @@ export interface IStorage {
   updateLoanApplication(id: string, application: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined>;
   getAllLoanApplications(): Promise<LoanApplication[]>;
   getAllLoanApplicationsSummary(): Promise<Omit<LoanApplication, 'applicantSignature'>[]>;
+  getApplicationsSummaryFiltered(opts: { search?: string; limit?: number; agentEmail?: string }): Promise<Omit<LoanApplication, 'applicantSignature'>[]>;
+  getApplicationsCount(opts?: { search?: string; agentEmail?: string }): Promise<number>;
   getApplicationEmailsByAgentEmail(agentEmail: string): Promise<string[]>;
   searchFullApplicationsForGigFi(query: string): Promise<LoanApplication[]>;
   
@@ -316,6 +318,58 @@ export class DatabaseStorage implements IStorage {
       .select(cols)
       .from(loanApplications)
       .orderBy(desc(loanApplications.createdAt));
+  }
+
+  async getApplicationsSummaryFiltered(opts: {
+    search?: string;
+    limit?: number;
+    offset?: number;
+    agentEmail?: string;
+  }): Promise<Omit<LoanApplication, 'applicantSignature'>[]> {
+    const { applicantSignature, ...cols } = getTableColumns(loanApplications);
+    const conditions: any[] = [];
+    if (opts.agentEmail) {
+      conditions.push(sql`LOWER(${loanApplications.agentEmail}) = ${opts.agentEmail.toLowerCase()}`);
+    }
+    if (opts.search) {
+      const pattern = `%${opts.search}%`;
+      conditions.push(or(
+        ilike(loanApplications.fullName, pattern),
+        ilike(loanApplications.email, pattern),
+        ilike(loanApplications.businessName, pattern),
+        ilike(loanApplications.legalBusinessName, pattern),
+        ilike(loanApplications.phone, pattern),
+      ));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const base = db.select(cols).from(loanApplications);
+    const ordered = where
+      ? base.where(where).orderBy(desc(loanApplications.createdAt))
+      : base.orderBy(desc(loanApplications.createdAt));
+    const limited  = opts.limit  ? ordered.limit(opts.limit)   : ordered;
+    const paginated = opts.offset ? limited.offset(opts.offset) : limited;
+    return await paginated;
+  }
+
+  async getApplicationsCount(opts: { search?: string; agentEmail?: string } = {}): Promise<number> {
+    const conditions: any[] = [];
+    if (opts.agentEmail) {
+      conditions.push(sql`LOWER(${loanApplications.agentEmail}) = ${opts.agentEmail.toLowerCase()}`);
+    }
+    if (opts.search) {
+      const pattern = `%${opts.search}%`;
+      conditions.push(or(
+        ilike(loanApplications.fullName, pattern),
+        ilike(loanApplications.email, pattern),
+        ilike(loanApplications.businessName, pattern),
+        ilike(loanApplications.legalBusinessName, pattern),
+        ilike(loanApplications.phone, pattern),
+      ));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const base = db.select({ count: sql<number>`count(*)` }).from(loanApplications);
+    const [row] = where ? await base.where(where) : await base;
+    return Number(row.count);
   }
 
   // Returns only the applicant emails for a given agent — avoids full table scans when

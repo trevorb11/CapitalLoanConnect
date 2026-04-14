@@ -1640,44 +1640,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!req.session.user?.isAuthenticated) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      
-      // Use summary query — excludes applicantSignature (base64, ~272KB across all records)
-      // which is never displayed in the list view and only needed for single-app view/download.
-      const allApplications = await storage.getAllLoanApplicationsSummary();
-      console.log(`[DASHBOARD] Total applications in DB: ${allApplications.length}`);
-      console.log(`[DASHBOARD] User role: ${req.session.user.role}, email: ${req.session.user.agentEmail || 'N/A'}`);
 
-      // Build partner name lookup map
+      const search  = (req.query.search  as string) || undefined;
+      const offset  = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+      // Admin default: 100 most recent records per page when not searching (prevents 3-5 MB payloads)
+      const ADMIN_LIMIT = 100;
+
+      // Build partner name lookup map (lightweight — partners table is tiny)
       const allPartners = await storage.getAllPartners();
       const partnerNameMap = new Map(allPartners.map(p => [p.id, p.contactName]));
-      const enriched = allApplications.map(app => ({
+
+      const enrich = (apps: any[]) => apps.map(app => ({
         ...app,
         referralPartnerName: app.referralPartnerId ? (partnerNameMap.get(app.referralPartnerId) ?? null) : null,
       }));
 
-      // Filter based on role
-      if (req.session.user.role === 'admin') {
-        // Admin sees all applications
-        console.log(`[DASHBOARD] Returning all ${enriched.length} applications for admin`);
+      const role = req.session.user.role;
+      console.log(`[DASHBOARD] User role: ${role}, search: "${search || ''}", email: ${req.session.user.agentEmail || 'N/A'}`);
+
+      if (role === 'admin' || role === 'underwriting') {
+        // Paginate: 100 records per page when not searching; searching returns all matches
+        const limit = search ? undefined : ADMIN_LIMIT;
+        const pageOffset = search ? 0 : offset;
+        const [apps, total] = await Promise.all([
+          storage.getApplicationsSummaryFiltered({ search, limit, offset: pageOffset }),
+          storage.getApplicationsCount({ search }),
+        ]);
+        const enriched = enrich(apps);
+        console.log(`[DASHBOARD] Returning ${enriched.length} (offset ${pageOffset}) of ${total} for ${role}`);
+        res.setHeader('X-Total-Count', String(total));
         return res.json(enriched);
-      } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
-        // Agent sees only their applications
+
+      } else if ((role === 'agent' || role === 'user') && req.session.user.agentEmail) {
         const agentEmail = req.session.user.agentEmail.toLowerCase();
-        const filteredApplications = enriched.filter(
-          (app) => (app.agentEmail || '').toLowerCase() === agentEmail
-        );
-        console.log(`[DASHBOARD] Returning ${filteredApplications.length} applications for agent ${agentEmail}`);
-        return res.json(filteredApplications);
-      } else if (req.session.user.role === 'user' && req.session.user.agentEmail) {
-        // User role - can only see applications they submitted (restricted access)
-        const userEmail = req.session.user.agentEmail.toLowerCase();
-        const filteredApplications = enriched.filter(
-          (app) => (app.agentEmail || '').toLowerCase() === userEmail
-        );
-        console.log(`[DASHBOARD] Returning ${filteredApplications.length} applications for user ${userEmail}`);
-        return res.json(filteredApplications);
+        const apps = await storage.getApplicationsSummaryFiltered({ search, agentEmail });
+        console.log(`[DASHBOARD] Returning ${apps.length} applications for ${role} ${agentEmail}`);
+        res.setHeader('X-Total-Count', String(apps.length));
+        return res.json(enrich(apps));
       }
-      
+
       return res.status(403).json({ error: "Access denied" });
     } catch (error) {
       console.error("Error fetching applications:", error);
