@@ -8338,11 +8338,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       oauth2Client.setCredentials({ access_token: accessToken });
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+      const baseUrl = process.env.PUBLIC_BASE_URL
+        ? process.env.PUBLIC_BASE_URL.replace(/\/$/, '')
+        : process.env.NODE_ENV === 'production'
+        ? 'https://app.todaycapitalgroup.com'
+        : process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-        : 'https://todaycapitalgroup.com';
+        : 'http://localhost:5000';
 
       const activateUrl = `${baseUrl}/merchant/activate?token=${token}`;
 
@@ -8456,11 +8458,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       oauth2Client.setCredentials({ access_token: accessToken });
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+      const baseUrl = process.env.PUBLIC_BASE_URL
+        ? process.env.PUBLIC_BASE_URL.replace(/\/$/, '')
+        : process.env.NODE_ENV === 'production'
+        ? 'https://app.todaycapitalgroup.com'
+        : process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-        : 'https://todaycapitalgroup.com';
+        : 'http://localhost:5000';
 
       const resetUrl = `${baseUrl}/merchant/reset-password?token=${token}`;
 
@@ -8535,11 +8539,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       oauth2Client.setCredentials({ access_token: accessToken });
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+      const baseUrl = process.env.PUBLIC_BASE_URL
+        ? process.env.PUBLIC_BASE_URL.replace(/\/$/, '')
+        : process.env.NODE_ENV === 'production'
+        ? 'https://app.todaycapitalgroup.com'
+        : process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-        : 'https://todaycapitalgroup.com';
+        : 'http://localhost:5000';
 
       const truncatedMsg = messagePreview.length > 200 ? messagePreview.slice(0, 200) + '...' : messagePreview;
 

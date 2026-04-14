@@ -62,7 +62,7 @@ SF_INSTANCE_URL = "https://customization-data-47--dev.sandbox.my.salesforce.com"
 CHIRP_CLIENT_ID = "95019adf-7fda-4819-843b-6d54dd477271"
 
 [userenv.production]
-PUBLIC_BASE_URL = "https://tcg-interest-form.replit.app"
+PUBLIC_BASE_URL = "https://app.todaycapitalgroup.com"
 
 [postMerge]
 path = "scripts/post-merge.sh"
