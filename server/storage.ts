@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings, merchantPortalAccounts, merchantPlaidConnections, merchantFinancialInsights,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings, merchantPortalAccounts, merchantPlaidConnections, merchantFinancialInsights, merchantBankSnapshots,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -16,6 +16,7 @@ import {
   type MerchantPortalAccount, type InsertMerchantPortalAccount,
   type MerchantPlaidConnection, type InsertMerchantPlaidConnection,
   type MerchantFinancialInsight, type InsertMerchantFinancialInsight,
+  type MerchantBankSnapshot, type InsertMerchantBankSnapshot,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql, ilike, getTableColumns } from "drizzle-orm";
@@ -75,6 +76,12 @@ export interface IStorage {
   // Chirp methods
   saveChirpRequestCode(email: string, phone: string, requestCode: string): Promise<void>;
   getApplicationsWithChirpCode(): Promise<LoanApplication[]>;
+
+  // Merchant bank snapshot (Chirp cache) methods
+  getMerchantBankSnapshot(merchantEmail: string): Promise<MerchantBankSnapshot | undefined>;
+  getMerchantBankSnapshotByRequestCode(chirpRequestCode: string): Promise<MerchantBankSnapshot | undefined>;
+  upsertMerchantBankSnapshot(data: InsertMerchantBankSnapshot): Promise<MerchantBankSnapshot>;
+  deleteMerchantBankSnapshot(merchantEmail: string): Promise<void>;
 
   // GigFi methods
   saveGigFiResult(applicationId: string, status: string, decisionId?: string, redirectUrl?: string): Promise<void>;
@@ -464,6 +471,55 @@ export class DatabaseStorage implements IStorage {
       .from(loanApplications)
       .where(sql`chirp_request_code IS NOT NULL AND chirp_request_code != ''`)
       .orderBy(desc(loanApplications.createdAt));
+  }
+
+  // Merchant bank snapshot (Chirp cache) methods
+  async getMerchantBankSnapshot(merchantEmail: string): Promise<MerchantBankSnapshot | undefined> {
+    const [row] = await db
+      .select()
+      .from(merchantBankSnapshots)
+      .where(eq(merchantBankSnapshots.merchantEmail, merchantEmail.toLowerCase()))
+      .limit(1);
+    return row || undefined;
+  }
+
+  async getMerchantBankSnapshotByRequestCode(chirpRequestCode: string): Promise<MerchantBankSnapshot | undefined> {
+    const [row] = await db
+      .select()
+      .from(merchantBankSnapshots)
+      .where(eq(merchantBankSnapshots.chirpRequestCode, chirpRequestCode))
+      .limit(1);
+    return row || undefined;
+  }
+
+  async upsertMerchantBankSnapshot(data: InsertMerchantBankSnapshot): Promise<MerchantBankSnapshot> {
+    const normalized = { ...data, merchantEmail: data.merchantEmail.toLowerCase() };
+    const [row] = await db
+      .insert(merchantBankSnapshots)
+      .values(normalized)
+      .onConflictDoUpdate({
+        target: merchantBankSnapshots.merchantEmail,
+        set: {
+          chirpRequestCode: normalized.chirpRequestCode,
+          institutionName: normalized.institutionName ?? null,
+          status: normalized.status ?? null,
+          isAccountConnected: normalized.isAccountConnected ?? false,
+          accountsData: normalized.accountsData ?? null,
+          summaryData: normalized.summaryData ?? null,
+          metrics: normalized.metrics ?? null,
+          lastSyncedAt: normalized.lastSyncedAt ?? null,
+          lastRefreshAt: normalized.lastRefreshAt ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async deleteMerchantBankSnapshot(merchantEmail: string): Promise<void> {
+    await db
+      .delete(merchantBankSnapshots)
+      .where(eq(merchantBankSnapshots.merchantEmail, merchantEmail.toLowerCase()));
   }
 
   async saveGigFiResult(applicationId: string, status: string, decisionId?: string, redirectUrl?: string): Promise<void> {
