@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { usePlaidLink } from "react-plaid-link";
 
 // ── CALC ENGINE ──────────────────────────────────────────────────────────
 function isWeekday(date: Date) {
@@ -88,7 +87,16 @@ interface CalcResult {
 function calcDeal(deal: Deal): CalcResult {
   const today = new Date();
   const funded = new Date(deal.fundedDate);
-  const totalPayback = deal.totalPayback || deal.advanceAmount * deal.factorRate;
+  // Payoff timeline must reflect the total amount the merchant owes — i.e.
+  // the funded/advance amount multiplied by the factor rate. Always compute
+  // from advance × factorRate when we have a valid factor rate (> 1) so the
+  // timeline never accidentally shows just the funded amount, and fall back
+  // to the stored totalPayback only when we don't have enough info to derive it.
+  const derivedPayback = deal.advanceAmount * deal.factorRate;
+  const totalPayback =
+    deal.advanceAmount > 0 && deal.factorRate > 1
+      ? derivedPayback
+      : (deal.totalPayback || derivedPayback || 0);
   const isDaily = deal.paymentFrequency === "daily";
 
   let paymentsMade: number, paymentAmount: number, totalPayments: number;
@@ -564,6 +572,13 @@ const CSS = `
   }
 
   .deal-stat-val.teal { color: #2dd4bf; }
+
+  .deal-stat-sub {
+    font-size: 10px;
+    color: #4b5568;
+    margin-top: 3px;
+    letter-spacing: 0.02em;
+  }
 
   .progress-wrap { margin-bottom: 12px; }
 
@@ -2241,15 +2256,22 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
         <div>
           <div className="deal-stat-label">Advance</div>
           <div className="deal-stat-val">{fmt$(deal.advanceAmount)}</div>
+          <div className="deal-stat-sub">Funded amount</div>
         </div>
         <div>
           <div className="deal-stat-label">Total Payback</div>
           <div className="deal-stat-val">{fmt$(calc.totalPayback)}</div>
+          <div className="deal-stat-sub">
+            {fmt$(deal.advanceAmount)} &times; {deal.factorRate}x factor
+          </div>
         </div>
         <div>
           <div className="deal-stat-label">Remaining</div>
           <div className={`deal-stat-val ${!calc.isComplete ? "teal" : ""}`}>
             {calc.isComplete ? "\u2014" : fmt$(calc.remaining)}
+          </div>
+          <div className="deal-stat-sub">
+            {calc.isComplete ? "Paid in full" : "of total owed"}
           </div>
         </div>
       </div>
@@ -2339,7 +2361,9 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
               <div className="tracker-paid">
                 <strong>{fmt$(calc.amountPaid)}</strong> paid
               </div>
-              <div className="tracker-total">{fmt$(calc.totalPayback)} total</div>
+              <div className="tracker-total">
+                {fmt$(calc.totalPayback)} total owed ({fmt$(deal.advanceAmount)} &times; {deal.factorRate}x)
+              </div>
             </div>
 
             <div className="tracker-metrics">
@@ -2365,7 +2389,10 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
             <div>
               <div className="balance-left-label">Remaining Balance</div>
               <div className="balance-amount">{fmt$(calc.remaining)}</div>
-              <div className="balance-sub">{fmt$(calc.amountPaid)} paid of {fmt$(calc.totalPayback)} total</div>
+              <div className="balance-sub">
+                {fmt$(calc.amountPaid)} paid of {fmt$(calc.totalPayback)} total owed
+                {" "}({fmt$(deal.advanceAmount)} funded &times; {deal.factorRate}x factor)
+              </div>
             </div>
             <div className="payoff-date-wrap">
               <div className="payoff-date-label">Projected Payoff</div>
@@ -2378,6 +2405,9 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
 
       {/* Payoff Countdown */}
       <PayoffCountdownWidget deal={deal} />
+
+      {/* Payoff coverage from bank revenue (only shown if merchant has connected via Chirp) */}
+      <PayoffCoverageInsight deal={deal} />
 
       {/* Renewal Eligibility Tracker */}
       <RenewalEligibilityTracker deal={deal} />
@@ -2835,59 +2865,107 @@ function PreQualifiedOfferBanner({ deals }: { deals: Deal[] }) {
   );
 }
 
-// ── PLAID LINK BUTTON ─────────────────────────────────────────────────────
-function PlaidLinkButton({ onSuccess, label = "Connect Your Bank", previewToken }: { onSuccess: () => void; label?: string; previewToken?: string | null }) {
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+// ── CHIRP CONNECT BUTTON ──────────────────────────────────────────────────
+// Replaces the previous PlaidLinkButton. Opens Chirp's hosted verification
+// widget in a popup and polls our server for connection status. Once the
+// merchant finishes verifying their bank on Chirp's side, we trigger a sync
+// to populate our local snapshot so subsequent portal views are cheap.
+function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSuccess: () => void; label?: string }) {
+  const [starting, setStarting] = useState(false);
+  const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<number | null>(null);
+  const popupRef = useRef<Window | null>(null);
 
-  const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
+  useEffect(() => () => {
+    if (pollRef.current) window.clearInterval(pollRef.current);
+  }, []);
 
-  const fetchLinkToken = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/merchant/plaid/create-link-token", { method: "POST", credentials: "include", headers: previewHeaders });
-      if (!res.ok) throw new Error("Failed to create link token");
-      const data = await res.json();
-      setLinkToken(data.link_token);
-    } catch (e) {
-      setError("Could not initialize bank connection. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }, [previewToken]);
-
-  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
-    try {
-      const res = await fetch("/api/merchant/plaid/exchange-token", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...previewHeaders },
-        body: JSON.stringify({ publicToken, metadata }),
-      });
-      if (!res.ok) throw new Error("Failed to exchange token");
-      onSuccess();
-    } catch (e) {
-      setError("Bank connection failed. Please try again.");
-    }
+  const startPolling = useCallback(() => {
+    setWaiting(true);
+    let attempts = 0;
+    const MAX_ATTEMPTS = 60; // ~5 minutes at 5s interval
+    pollRef.current = window.setInterval(async () => {
+      attempts += 1;
+      try {
+        const res = await fetch("/api/merchant/banking/insights", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.connected) {
+            if (pollRef.current) window.clearInterval(pollRef.current);
+            pollRef.current = null;
+            setWaiting(false);
+            onSuccess();
+            return;
+          }
+        }
+      } catch (_) { /* ignore transient errors */ }
+      // If the popup was closed and we still have no connection, bail out.
+      if (popupRef.current && popupRef.current.closed && attempts > 2) {
+        // Try one sync pull before giving up, in case status just flipped.
+        try {
+          await fetch("/api/merchant/chirp/sync", { method: "POST", credentials: "include" });
+        } catch (_) { /* ignore */ }
+        const finalRes = await fetch("/api/merchant/banking/insights", { credentials: "include" });
+        if (finalRes.ok) {
+          const data = await finalRes.json();
+          if (data.connected) {
+            onSuccess();
+          }
+        }
+        if (pollRef.current) window.clearInterval(pollRef.current);
+        pollRef.current = null;
+        setWaiting(false);
+        return;
+      }
+      if (attempts >= MAX_ATTEMPTS) {
+        if (pollRef.current) window.clearInterval(pollRef.current);
+        pollRef.current = null;
+        setWaiting(false);
+      }
+    }, 5000);
   }, [onSuccess]);
 
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
-    onSuccess: onPlaidSuccess,
-  });
+  const handleConnect = useCallback(async () => {
+    setStarting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/merchant/chirp/connect", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Could not start bank connection.");
+      }
+      const data = await res.json();
+      const url = data.widgetUrl || data.verificationUrl;
+      if (!url) throw new Error("Chirp did not return a connection URL.");
+
+      popupRef.current = window.open(url, "chirp-connect", "width=480,height=720,menubar=no,toolbar=no");
+      if (!popupRef.current) {
+        // Popup blocked — fall back to a new tab.
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+      startPolling();
+    } catch (e: any) {
+      setError(e.message || "Could not start bank connection.");
+    } finally {
+      setStarting(false);
+    }
+  }, [startPolling]);
 
   return (
     <div>
-      {!linkToken ? (
-        <button className="connect-bank-cta" onClick={fetchLinkToken} disabled={loading}>
-          {loading ? "Initializing..." : label}
-        </button>
-      ) : (
-        <button className="connect-bank-cta" onClick={() => open()} disabled={!ready}>
-          {ready ? label : "Loading..."}
-        </button>
+      <button className="connect-bank-cta" onClick={handleConnect} disabled={starting || waiting}>
+        {starting ? "Initializing..." : waiting ? "Waiting for Chirp..." : label}
+      </button>
+      {waiting && (
+        <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 8 }}>
+          Finish connecting in the Chirp window — we'll update this page automatically.
+        </p>
       )}
       {error && <p style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{error}</p>}
     </div>
@@ -2927,12 +3005,21 @@ interface FinancialInsights {
   statements: StatementFile[];
 }
 
-interface PlaidConnection {
-  id: string;
-  institutionName: string | null;
-  connectedAt: string | null;
-  isActive: boolean;
-  source: 'portal' | 'intake';
+interface BankingInsights {
+  connected: boolean;
+  status?: string | null;
+  institutionName?: string | null;
+  connectedAt?: string | null;
+  lastSyncedAt?: string | null;
+  accounts?: Array<{ name: string; type: string; balance: number }>;
+  metrics?: {
+    monthlyRevenue: number;
+    monthlyExpenses: number;
+    netCashFlow: number;
+    avgBalance: number;
+    currentBalance: number;
+    monthsAnalyzed: number;
+  };
 }
 
 function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken, uploadedStatements }: {
@@ -2944,10 +3031,12 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   uploadedStatements?: VaultDocument[];
 }) {
   const [insights, setInsights] = useState<FinancialInsights | null>(null);
-  const [connections, setConnections] = useState<PlaidConnection[]>([]);
+  const [banking, setBanking] = useState<BankingInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [showBanks, setShowBanks] = useState(false);
 
   const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
@@ -2955,18 +3044,44 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [insightsRes, connectionsRes] = await Promise.all([
+      const [insightsRes, bankingRes] = await Promise.all([
         fetch("/api/merchant/financial-insights", { credentials: "include", headers: previewHeaders }),
-        fetch("/api/merchant/plaid/connections", { credentials: "include", headers: previewHeaders }),
+        fetch("/api/merchant/banking/insights", { credentials: "include", headers: previewHeaders }),
       ]);
       if (insightsRes.ok) setInsights(await insightsRes.json());
-      if (connectionsRes.ok) setConnections(await connectionsRes.json());
+      if (bankingRes.ok) setBanking(await bankingRes.json());
     } catch (e) {
       console.error("Failed to load financial data:", e);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await fetch("/api/merchant/chirp/sync", { method: "POST", credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Sync failed");
+      }
+      await fetchData();
+    } catch (e: any) {
+      setSyncError(e.message || "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }, [fetchData]);
+
+  const handleDisconnectChirp = useCallback(async () => {
+    try {
+      await fetch("/api/merchant/chirp/connection", { method: "DELETE", credentials: "include" });
+      await fetchData();
+    } catch (e) {
+      console.error("Failed to disconnect Chirp:", e);
+    }
+  }, [fetchData]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -2990,15 +3105,6 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
     }
   };
 
-  const handleDisconnect = async (id: string) => {
-    try {
-      await fetch(`/api/merchant/plaid/connections/${id}`, { method: "DELETE", credentials: "include", headers: previewHeaders });
-      await fetchData();
-    } catch (e) {
-      console.error("Failed to disconnect:", e);
-    }
-  };
-
   if (loading) {
     return (
       <div className="financials-section">
@@ -3011,9 +3117,11 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
     );
   }
 
-  const hasAnyData = insights?.pdfInsights || insights?.plaidInsights;
+  const hasAnyData = insights?.pdfInsights || insights?.plaidInsights || (banking?.connected && banking?.metrics);
   const pdf = insights?.pdfInsights;
   const plaid = insights?.plaidInsights;
+  const chirpConnected = Boolean(banking?.connected);
+  const chirpMetrics = banking?.metrics;
 
   // Merge statement sources: prefer vault docs passed from parent (already verified working),
   // fall back to what financial-insights returned
@@ -3028,14 +3136,16 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
     vaultStatements.length > 0 ? vaultStatements : (insights?.statements || []);
   const showStatementsSection = displayStatements.length > 0 || insights?.hasStatements;
 
-  // Use Plaid data when available, fall back to PDF
-  const monthlyRevenue = plaid?.monthlyRevenue || pdf?.estimatedMonthlyRevenue || 0;
-  const avgBalance = plaid?.avgBalance || pdf?.averageDailyBalance || 0;
-  const cashFlowHealth = pdf?.cashFlowHealth || (plaid ? 'moderate' : null);
+  // Prefer live Chirp data when available; fall back to Plaid, then to PDF-parsed statements.
+  const monthlyRevenue = chirpMetrics?.monthlyRevenue || plaid?.monthlyRevenue || pdf?.estimatedMonthlyRevenue || 0;
+  const monthlyExpenses = chirpMetrics?.monthlyExpenses || 0;
+  const netCashFlow = chirpMetrics?.netCashFlow || 0;
+  const avgBalance = chirpMetrics?.avgBalance || plaid?.avgBalance || pdf?.averageDailyBalance || 0;
+  const cashFlowHealth = pdf?.cashFlowHealth || (chirpConnected || plaid ? 'moderate' : null);
 
   return (
     <div className="financials-section">
-      {/* ── Connected Banks ── */}
+      {/* ── Bank Connection (Chirp) ── */}
       <div className="insight-card" style={{ padding: 0 }}>
         <button
           onClick={() => setShowBanks(prev => !prev)}
@@ -3044,11 +3154,11 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
-              Connected Banks
+              Bank Connection
             </h3>
-            {connections.length > 0 && (
-              <span style={{ background: "rgba(45,212,191,0.15)", color: "#2dd4bf", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 600 }}>
-                {connections.length}
+            {chirpConnected && (
+              <span style={{ background: "rgba(45,212,191,0.15)", color: "#2dd4bf", borderRadius: 20, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>
+                Connected
               </span>
             )}
           </div>
@@ -3061,34 +3171,66 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
         </button>
         {showBanks && (
           <div style={{ padding: "0 20px 20px" }}>
-            {connections.length > 0 ? (
+            {chirpConnected ? (
               <>
-                {connections.map(conn => (
-                  <div key={conn.id} className="plaid-connection-row">
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span className="health-indicator health-strong" style={{ width: 8, height: 8 }} />
-                      <span style={{ fontWeight: 500 }}>{conn.institutionName || "Connected Bank"}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: "#94a3b8" }}>
-                      {conn.connectedAt && <span>Connected {new Date(conn.connectedAt).toLocaleDateString()}</span>}
-                      {conn.source === 'portal' && (
-                        <button onClick={() => handleDisconnect(conn.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12 }}>
-                          Disconnect
-                        </button>
-                      )}
-                    </div>
+                <div className="plaid-connection-row">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span className="health-indicator health-strong" style={{ width: 8, height: 8 }} />
+                    <span style={{ fontWeight: 500 }}>{banking?.institutionName || "Connected Bank"}</span>
                   </div>
-                ))}
-                <div style={{ marginTop: 12 }}>
-                  <PlaidLinkButton onSuccess={fetchData} label="Connect Another Bank" previewToken={previewToken} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: "#94a3b8" }}>
+                    {banking?.lastSyncedAt && (
+                      <span>Updated {new Date(banking.lastSyncedAt).toLocaleDateString()}</span>
+                    )}
+                  </div>
                 </div>
+                {banking?.accounts && banking.accounts.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    {banking.accounts.map((acct, i) => (
+                      <div key={i} className="plaid-connection-row" style={{ padding: "6px 0" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>{acct.name}</span>
+                          {acct.type && (
+                            <span style={{ color: "#94a3b8", fontSize: 11 }}>{acct.type}</span>
+                          )}
+                        </div>
+                        <span style={{ fontWeight: 600, color: "#2dd4bf", fontSize: 13 }}>
+                          ${Number(acct.balance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+                  <button
+                    className="analyze-btn"
+                    onClick={handleSync}
+                    disabled={syncing}
+                    style={{ fontSize: 12, padding: "8px 14px" }}
+                  >
+                    {syncing ? "Syncing..." : "Sync now"}
+                  </button>
+                  <button
+                    onClick={handleDisconnectChirp}
+                    style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12 }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+                {syncError && <p style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{syncError}</p>}
               </>
             ) : (
               <div style={{ textAlign: "center", padding: "20px 0" }}>
-                <p style={{ color: "#94a3b8", marginBottom: 16, fontSize: 14, lineHeight: 1.6 }}>
-                  Connect your bank to get live financial insights and make future funding faster.
+                <p style={{ color: "#e8eaf0", marginBottom: 8, fontSize: 14, lineHeight: 1.6, fontWeight: 500 }}>
+                  Connect your bank to unlock your financial dashboard.
                 </p>
-                <PlaidLinkButton onSuccess={fetchData} previewToken={previewToken} />
+                <ul style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.8, textAlign: "left", display: "inline-block", margin: "8px 0 16px", paddingLeft: 18 }}>
+                  <li>Live revenue &amp; expense tracking</li>
+                  <li>Cash flow trends month over month</li>
+                  <li>See how your deposits stack up against your payments</li>
+                  <li>Faster approvals on renewals &mdash; no re-uploading statements</li>
+                </ul>
+                <ChirpConnectButton onSuccess={fetchData} />
               </div>
             )}
           </div>
@@ -3181,6 +3323,11 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
               <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
                 ${monthlyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </p>
+              {chirpConnected && chirpMetrics?.monthsAnalyzed ? (
+                <p style={{ color: "#4b5568", fontSize: 10, marginTop: 4 }}>
+                  Avg of last {chirpMetrics.monthsAnalyzed} mo
+                </p>
+              ) : null}
             </div>
             <div className="insight-card" style={{ textAlign: "center" }}>
               <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Avg. Daily Balance</p>
@@ -3189,6 +3336,30 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
               </p>
             </div>
           </div>
+
+          {/* Chirp-only: Expense + Cash Flow tiles */}
+          {chirpConnected && chirpMetrics && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+              <div className="insight-card" style={{ textAlign: "center" }}>
+                <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Est. Monthly Expenses</p>
+                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#e8eaf0" }}>
+                  ${monthlyExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <div className="insight-card" style={{ textAlign: "center" }}>
+                <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Net Cash Flow</p>
+                <p style={{
+                  fontFamily: "'Syne', sans-serif",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  color: netCashFlow >= 0 ? "#2dd4bf" : "#f87171",
+                }}>
+                  {netCashFlow >= 0 ? "+" : "-"}${Math.abs(netCashFlow).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+                <p style={{ color: "#4b5568", fontSize: 10, marginTop: 4 }}>revenue - expenses / mo</p>
+              </div>
+            </div>
+          )}
 
           {/* Account Balances (Plaid) */}
           {plaid && plaid.accounts.length > 0 && (
@@ -3355,7 +3526,93 @@ function PayoffCountdownWidget({ deal }: { deal: Deal }) {
         Estimated payoff: <strong>{fmtDate(payoff)}</strong>
       </div>
       <div className="payoff-countdown-sub">
-        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} left
+        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} of {fmt$(calc.totalPayback)} owed ({deal.factorRate}x factor)
+      </div>
+    </div>
+  );
+}
+
+// ── PAYOFF COVERAGE INSIGHT ───────────────────────────────────────────────
+// Uses cached Chirp banking data to show how well the merchant's typical
+// monthly revenue covers this deal's monthly payment load. Renders nothing
+// until the merchant has connected their bank.
+function PayoffCoverageInsight({ deal }: { deal: Deal }) {
+  const [banking, setBanking] = useState<BankingInsights | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/merchant/banking/insights", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setBanking(data); })
+      .catch(() => { /* silent — tile just won't render */ })
+      .finally(() => setLoaded(true));
+  }, []);
+
+  if (!loaded) return null;
+  if (!banking?.connected || !banking.metrics?.monthlyRevenue) return null;
+
+  const calc = calcDeal(deal);
+  if (calc.isComplete) return null;
+
+  // Normalize the payment amount to a monthly equivalent so the comparison
+  // works regardless of payment frequency (daily ACH vs. monthly ACH).
+  const freq = deal.paymentFrequency;
+  const paymentsPerMonth =
+    freq === "daily" ? 21 :
+    freq === "weekly" ? 4.33 :
+    freq === "bi-weekly" || freq === "biweekly" ? 2.17 :
+    1;
+  const monthlyPaymentLoad = calc.paymentAmount * paymentsPerMonth;
+  const monthlyRevenue = banking.metrics.monthlyRevenue;
+  const coverageMultiple = monthlyPaymentLoad > 0 ? monthlyRevenue / monthlyPaymentLoad : 0;
+  const paymentShareOfRevenue = monthlyRevenue > 0 ? (monthlyPaymentLoad / monthlyRevenue) * 100 : 0;
+
+  // Simple health label — not financial advice, just a visual cue.
+  const health: "strong" | "moderate" | "tight" =
+    coverageMultiple >= 10 ? "strong" :
+    coverageMultiple >= 5 ? "moderate" :
+    "tight";
+  const healthColor = health === "strong" ? "#2dd4bf" : health === "moderate" ? "#facc15" : "#f87171";
+  const healthLabel = health === "strong" ? "Healthy coverage" : health === "moderate" ? "Comfortable coverage" : "Tight coverage";
+
+  return (
+    <div className="insight-card" style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600, margin: 0 }}>
+          Payment Coverage
+        </h3>
+        <span style={{ color: healthColor, fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {healthLabel}
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <div>
+          <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+            Monthly Revenue
+          </div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: "#2dd4bf" }}>
+            {fmt$(monthlyRevenue)}
+          </div>
+        </div>
+        <div>
+          <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+            Monthly Payment Load
+          </div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: "#e8eaf0" }}>
+            {fmt$(monthlyPaymentLoad)}
+          </div>
+        </div>
+        <div>
+          <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+            Coverage
+          </div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: healthColor }}>
+            {coverageMultiple.toFixed(1)}&times;
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
+        Your payments on this position take up about <strong style={{ color: "#e8eaf0" }}>{paymentShareOfRevenue.toFixed(1)}%</strong> of your average monthly revenue. Based on bank data from {banking.institutionName || "your connected bank"}.
       </div>
     </div>
   );

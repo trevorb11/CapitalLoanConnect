@@ -667,3 +667,37 @@ export const insertMerchantFinancialInsightSchema = createInsertSchema(merchantF
 
 export type InsertMerchantFinancialInsight = z.infer<typeof insertMerchantFinancialInsightSchema>;
 export type MerchantFinancialInsight = typeof merchantFinancialInsights.$inferSelect;
+
+// Merchant Bank Snapshots - cached snapshot of a merchant's Chirp-connected
+// banking data. All merchant-portal banking views read from here to avoid
+// per-request calls to Chirp (which would incur bank-sync charges on PAYG
+// and rate limits on subscription). Populated on initial connect, refreshed
+// via Chirp webhooks and an explicit "sync" action.
+export const merchantBankSnapshots = pgTable("merchant_bank_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  merchantEmail: text("merchant_email").notNull().unique(),
+  chirpRequestCode: text("chirp_request_code").notNull(),
+  institutionName: text("institution_name"),
+  // Mirrors chirp status: "Verified" | "Attempted" | "Rejected" | "Expired" | "Unverified..."
+  status: text("status"),
+  isAccountConnected: boolean("is_account_connected").default(false),
+  // Raw arrays/objects returned by Chirp, kept for display + future analysis
+  accountsData: jsonb("accounts_data"), // array of { name, type, subtype, balance, accountNumber? }
+  summaryData: jsonb("summary_data"),   // raw `/summary` response (activityByMonth, currentBalance, etc.)
+  // Derived metrics we compute once at sync time so merchant portal views are pure DB reads
+  metrics: jsonb("metrics"), // { monthlyRevenue, monthlyExpenses, netCashFlow, avgBalance, currentBalance, monthsAnalyzed }
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastRefreshAt: timestamp("last_refresh_at"), // Last time we asked Chirp to refresh from the bank (rate-limited)
+  connectedAt: timestamp("connected_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMerchantBankSnapshotSchema = createInsertSchema(merchantBankSnapshots).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertMerchantBankSnapshot = z.infer<typeof insertMerchantBankSnapshotSchema>;
+export type MerchantBankSnapshot = typeof merchantBankSnapshots.$inferSelect;

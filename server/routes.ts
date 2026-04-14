@@ -29,7 +29,7 @@ import { syncApplicationToSalesforce, syncDecisionToSalesforce } from "./service
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { z } from "zod";
-import type { LoanApplication } from "@shared/schema";
+import type { LoanApplication, MerchantBankSnapshot } from "@shared/schema";
 
 // Initialize Object Storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
@@ -2857,6 +2857,289 @@ export async function registerRoutes(app: Express): Promise<Server> {
       environment: process.env.CHIRP_ENV || "production",
       clientId: process.env.CHIRP_CLIENT_ID || null,
     });
+  });
+
+  // ========================================
+  // MERCHANT-SCOPED CHIRP BANKING ROUTES
+  //
+  // These endpoints power the merchant portal's banking view. They never
+  // expose raw request codes to the client; they resolve the merchant's
+  // connection from the authenticated session and proxy through our cached
+  // snapshot so we only hit Chirp on (a) initial connect, (b) an explicit
+  // sync, or (c) a Chirp webhook push. Everything else is pure DB reads.
+  // ========================================
+
+  // Shared helper: build + persist merchant snapshot from Chirp responses
+  async function syncMerchantSnapshotFromChirp(merchantEmail: string, requestCode: string): Promise<MerchantBankSnapshot | null> {
+    try {
+      const [status, details, summary] = await Promise.all([
+        chirpService.getRequestStatus(requestCode).catch(() => null),
+        chirpService.getRequestDetails(requestCode, { numberOfDays: 90, sort: "DESCENDING" }).catch(() => null),
+        chirpService.getSummaryInfoByRequestCode(requestCode).catch(() => null),
+      ]);
+
+      const accounts: any[] = (details as any)?.Accounts || (details as any)?.accounts || [];
+      const institutionName =
+        (details as any)?.InstitutionName ||
+        (details as any)?.institutionName ||
+        status?.selectedBank ||
+        null;
+
+      // Derive merchant-friendly metrics from Chirp's pre-aggregated summary.
+      const parseMoney = (v: unknown): number => {
+        if (typeof v === "number") return v;
+        if (typeof v !== "string") return 0;
+        const n = Number.parseFloat(v.replace(/[^0-9.\-]/g, ""));
+        return Number.isFinite(n) ? n : 0;
+      };
+
+      const activityByMonth: any[] = (summary as any)?.activityByMonth || [];
+      const perMonth = activityByMonth.filter((m: any) => (m.month || "").toLowerCase() !== "all");
+      const monthlyRevenue = perMonth.length
+        ? perMonth.reduce((s, m) => s + parseMoney(m.totalCredit), 0) / perMonth.length
+        : 0;
+      const monthlyExpenses = perMonth.length
+        ? perMonth.reduce((s, m) => s + parseMoney(m.totalDebit), 0) / perMonth.length
+        : 0;
+      const netCashFlow = monthlyRevenue - monthlyExpenses;
+      const overall = activityByMonth.find((m: any) => (m.month || "").toLowerCase() === "all") || activityByMonth[0];
+      const avgBalance = parseMoney(overall?.averageDailyBalance ?? overall?.averageMonthlyBalance);
+      const currentBalance = parseMoney((summary as any)?.currentBalance);
+
+      const snapshot = await storage.upsertMerchantBankSnapshot({
+        merchantEmail,
+        chirpRequestCode: requestCode,
+        institutionName,
+        status: status?.status || null,
+        isAccountConnected: Boolean(status?.isAccountConnected),
+        accountsData: accounts.map((a: any) => ({
+          accountName: a.name || a.accountName || "Account",
+          type: a.type || a.accountType || "",
+          subtype: a.subtype || "",
+          balance: parseMoney(a.balance ?? a.available_balance ?? 0),
+          chirpAccountId: a.chirpAccountId || a.guid || null,
+        })),
+        summaryData: summary || null,
+        metrics: {
+          monthlyRevenue: Math.round(monthlyRevenue * 100) / 100,
+          monthlyExpenses: Math.round(monthlyExpenses * 100) / 100,
+          netCashFlow: Math.round(netCashFlow * 100) / 100,
+          avgBalance: Math.round(avgBalance * 100) / 100,
+          currentBalance: Math.round(currentBalance * 100) / 100,
+          monthsAnalyzed: perMonth.length,
+        },
+        lastSyncedAt: new Date(),
+      });
+      return snapshot;
+    } catch (err: any) {
+      console.error(`[CHIRP] syncMerchantSnapshotFromChirp failed for ${merchantEmail}:`, err?.message || err);
+      return null;
+    }
+  }
+
+  // POST /api/merchant/chirp/connect — create a verification request for the
+  // authenticated merchant and stash a stub snapshot so we can look up the
+  // request code later by merchant email.
+  app.post("/api/merchant/chirp/connect", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    const merchantEmail = req.session.user.merchantEmail;
+    try {
+      // Pull contact info from the business underwriting decision so the merchant doesn't re-enter it.
+      const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(merchantEmail);
+      const primary = decisions[0];
+      const fullName = (req.session.user as any).merchantName || primary?.businessName || "";
+      const [firstGuess, ...restGuess] = fullName.trim().split(/\s+/);
+      const firstName = (req.body?.firstName || firstGuess || "Merchant").toString();
+      const lastName = (req.body?.lastName || restGuess.join(" ") || "Owner").toString();
+      const phone = (req.body?.phone || primary?.businessPhone || "").toString();
+
+      if (!phone) {
+        return res.status(400).json({ error: "We need a phone number on file to connect your bank. Please update your profile or contact your rep." });
+      }
+
+      const result = await chirpService.createVerificationRequest({
+        cusFirstName: firstName,
+        cusLastName: lastName,
+        cusEmail: merchantEmail,
+        cusPhone: phone,
+        customerId: primary?.id,
+        leadId: primary?.id,
+        leadProvider: "TodayCapitalMerchantPortal",
+      });
+
+      // Persist a stub snapshot tied to merchant email so we can look up the
+      // request code later without trusting the client.
+      await storage.upsertMerchantBankSnapshot({
+        merchantEmail,
+        chirpRequestCode: result.requestCode,
+        status: "Unverified",
+        isAccountConnected: false,
+      });
+
+      // Also persist on the loan application for cross-compat with existing admin views.
+      storage.saveChirpRequestCode(merchantEmail, phone, result.requestCode).catch(e =>
+        console.warn("[CHIRP] Failed to mirror requestCode on loan_applications:", e)
+      );
+
+      // Best-effort: register a webhook notification so Chirp pushes us status/refresh updates.
+      if (process.env.PUBLIC_BASE_URL) {
+        const webhookUrl = `${process.env.PUBLIC_BASE_URL.replace(/\/$/, "")}/api/chirp/webhook`;
+        chirpService.createCustomerNotification({
+          name: `merchant-portal-${result.requestCode}`,
+          requestCode: result.requestCode,
+          type: "REQUEST_STATUS",
+          rule: "GREATER_THAN",
+          webhookUrl: [webhookUrl],
+          notifyViaWebhook: true,
+          notifyViaEmail: false,
+          active: true,
+        }).catch(e => console.warn("[CHIRP] Failed to register REQUEST_STATUS webhook:", e?.message || e));
+        chirpService.createCustomerNotification({
+          name: `merchant-portal-refresh-${result.requestCode}`,
+          requestCode: result.requestCode,
+          type: "REFRESH",
+          rule: "GREATER_THAN",
+          webhookUrl: [webhookUrl],
+          notifyViaWebhook: true,
+          notifyViaEmail: false,
+          active: true,
+        }).catch(e => console.warn("[CHIRP] Failed to register REFRESH webhook:", e?.message || e));
+      }
+
+      res.json({
+        success: true,
+        widgetUrl: result.widgetUrl,
+        verificationUrl: result.verificationUrl,
+      });
+    } catch (err: any) {
+      console.error("[CHIRP] merchant connect error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message || "Failed to start bank connection" });
+    }
+  });
+
+  // GET /api/merchant/banking/insights — pure DB read, called on every portal
+  // view. Returns our cached snapshot; never hits Chirp.
+  app.get("/api/merchant/banking/insights", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const snapshot = await storage.getMerchantBankSnapshot(req.session.user.merchantEmail);
+      if (!snapshot) {
+        return res.json({ connected: false });
+      }
+      const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
+      const metrics = (snapshot.metrics as any) || {};
+      res.json({
+        connected: Boolean(snapshot.isAccountConnected),
+        status: snapshot.status,
+        institutionName: snapshot.institutionName,
+        connectedAt: snapshot.connectedAt,
+        lastSyncedAt: snapshot.lastSyncedAt,
+        accounts: accounts.map(a => ({
+          name: a.accountName || "Account",
+          type: a.type || "",
+          balance: Number(a.balance) || 0,
+        })),
+        metrics: {
+          monthlyRevenue: Number(metrics.monthlyRevenue) || 0,
+          monthlyExpenses: Number(metrics.monthlyExpenses) || 0,
+          netCashFlow: Number(metrics.netCashFlow) || 0,
+          avgBalance: Number(metrics.avgBalance) || 0,
+          currentBalance: Number(metrics.currentBalance) || 0,
+          monthsAnalyzed: Number(metrics.monthsAnalyzed) || 0,
+        },
+      });
+    } catch (err: any) {
+      console.error("[CHIRP] banking insights error:", err);
+      res.status(500).json({ error: "Failed to load banking insights" });
+    }
+  });
+
+  // POST /api/merchant/chirp/sync — explicit sync. Reads from Chirp's own
+  // cache (getRequestDetails + getSummaryInfoByRequestCode) and does NOT call
+  // /refresh (which would bill a bank sync). Server-side cooldown prevents
+  // back-to-back calls from racing.
+  app.post("/api/merchant/chirp/sync", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    const merchantEmail = req.session.user.merchantEmail;
+    try {
+      const existing = await storage.getMerchantBankSnapshot(merchantEmail);
+      if (!existing?.chirpRequestCode) {
+        return res.status(400).json({ error: "No bank connection found. Connect your bank first." });
+      }
+      // Cooldown: once every 10 minutes is plenty for merchant-initiated syncs.
+      const COOLDOWN_MS = 10 * 60 * 1000;
+      if (existing.lastSyncedAt && Date.now() - new Date(existing.lastSyncedAt).getTime() < COOLDOWN_MS) {
+        return res.status(429).json({ error: "Recently synced — try again in a few minutes." });
+      }
+      const snapshot = await syncMerchantSnapshotFromChirp(merchantEmail, existing.chirpRequestCode);
+      if (!snapshot) {
+        return res.status(502).json({ error: "Could not refresh banking data right now." });
+      }
+      res.json({ success: true, lastSyncedAt: snapshot.lastSyncedAt });
+    } catch (err: any) {
+      console.error("[CHIRP] merchant sync error:", err);
+      res.status(500).json({ error: err.message || "Sync failed" });
+    }
+  });
+
+  // DELETE /api/merchant/chirp/connection — disconnect (removes our cached
+  // snapshot; Chirp side remains subscribed until we call unsubscribeRequest
+  // from an admin flow — keeping this scope tight on purpose).
+  app.delete("/api/merchant/chirp/connection", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      await storage.deleteMerchantBankSnapshot(req.session.user.merchantEmail);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[CHIRP] disconnect error:", err);
+      res.status(500).json({ error: "Failed to disconnect" });
+    }
+  });
+
+  // POST /api/chirp/webhook — Chirp pushes REQUEST_STATUS / REFRESH events
+  // here. We look up the merchant by requestCode and re-pull the snapshot
+  // (no bank calls — Chirp's cache only). Optional shared-secret auth if
+  // CHIRP_WEBHOOK_SECRET is set.
+  app.post("/api/chirp/webhook", async (req: Request, res: Response) => {
+    try {
+      const secret = process.env.CHIRP_WEBHOOK_SECRET;
+      if (secret) {
+        const header = (req.headers["x-chirp-secret"] || req.headers["authorization"]) as string | undefined;
+        if (!header || !header.includes(secret)) {
+          return res.status(401).json({ error: "Unauthorized webhook" });
+        }
+      }
+      const body = req.body || {};
+      const requestCode: string | undefined =
+        body.requestCode || body.RequestCode || body.request_code ||
+        body?.data?.requestCode || body?.payload?.requestCode;
+      if (!requestCode) {
+        console.warn("[CHIRP] webhook received without requestCode", body);
+        return res.status(400).json({ error: "Missing requestCode" });
+      }
+      const snapshot = await storage.getMerchantBankSnapshotByRequestCode(requestCode);
+      if (!snapshot) {
+        // Not a merchant-portal connection (could be an intake request). Ack
+        // and move on — no merchant to update.
+        return res.json({ success: true, ignored: true });
+      }
+      // Fire-and-forget refresh of our cache.
+      syncMerchantSnapshotFromChirp(snapshot.merchantEmail, requestCode).catch(e =>
+        console.warn("[CHIRP] webhook-triggered sync failed:", e?.message || e)
+      );
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[CHIRP] webhook error:", err);
+      res.status(500).json({ error: "Webhook handler failed" });
+    }
   });
 
   // ========================================
