@@ -34,6 +34,7 @@ import RetargetingLanding from "@/pages/RetargetingLanding";
 import ProgressTracker from "@/pages/ProgressTracker";
 import PartnerDashboard from "@/pages/PartnerDashboard";
 import PartnerApplication from "@/pages/PartnerApplication";
+import PartnerLanding from "@/pages/PartnerLanding";
 import ReferralLanding from "@/pages/ReferralLanding";
 import Approvals from "@/pages/Approvals";
 import Declines from "@/pages/Declines";
@@ -143,6 +144,7 @@ function Router() {
       <Route path="/merchant-profile/:email" component={MerchantProfile} />
 
       {/* Partner Portal Routes */}
+      <Route path="/partners" component={PartnerLanding} />
       <Route path="/partner" component={PartnerDashboard} />
       <Route path="/partner/dashboard" component={PartnerDashboard} />
       <Route path="/apply/:slug" component={PartnerApplication} />
