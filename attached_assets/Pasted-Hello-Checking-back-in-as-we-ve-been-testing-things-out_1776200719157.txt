@@ -1,0 +1,300 @@
+Hello,
+
+Checking back in as we've been testing things out.
+
+The whitelisting did the trick for the POST /createrequest api calls! However, it does seem we are still running into some restrictions when it comes to attempting GET requests. GET requests are still turning up 403 errors which look to be related to IP Whitelisting issues.
+
+Would you be able to extend that WAF exemption to cover all authenticated API requests from our account token rather than just the create endpoint?
+
+Our goal would be to pull in some of the data collected to make it accessible from our platform.
+
+One other question outside of api access - when we go to unsubscribe someone with their bank connected, is it also possible to go ahead and remove them from the requests dashboard? The unsubscribe option is nice and straightforward but I'm not seeing a way to delete them from the dashboard altogether.
+
+ extend that WAF exemption to cover all authenticated API requests from our account token, not just the create endpoint?
+
+On Fri, Apr 10, 2026 at 6:52 PM Chirp Support <support@chirp.digital> wrote:
+Hi Trevor -  
+
+It was a pleasure meeting with you today and learning more about your implementation plans for Chirp. 
+
+Per our discussion the IP Whitelist bypass functionality is enabled. 
+
+Don't hesitate to reach out with any questions or feedback as you continue your journey with Chirp. 
+
+---
+Thank you,
+Chirp Support Team
+Where Support Takes Flight — Because Your Success Is Our Priority.
+
+────────────────────────
+✉️ support@chirp.digital
+🌐 https://chirp.digital
+────────────────────────
+
+From: Beatriz Sevilla <BSevilla@chirp.digital>
+Sent: Friday, April 10, 2026 5:48:15 PM
+To: Chirp Support <support@chirp.digital>; Marketing Department <marketing@todaycapitalgroup.com>
+Cc: admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>; Cheryl Dolgan <CDolgan@chirp.digital>
+Subject: Re: Chirp Account Sign up and Dev Resources
+ 
+Hi Trevor! could you join link below:
+
+meet.google.com/vxo-qosv-kuq 
+Or dial: (US) +1 669-220-6517 
+PIN: 842 513 515# 
+More numbers: t.meet/vxo-qosv-kuq
+
+
+Beatriz Tavel
+Director of Business Strategy
+
+
+
+
+Book time to meet with me
+From: Chirp Support <support@chirp.digital>
+Sent: Friday, April 10, 2026 5:43 PM
+To: Marketing Department <marketing@todaycapitalgroup.com>
+Cc: Beatriz Sevilla <BSevilla@chirp.digital>; admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>; Cheryl Dolgan <CDolgan@chirp.digital>
+Subject: Re: Chirp Account Sign up and Dev Resources
+ 
+I can join now for a few minutes. 
+
+meet.google.com/vxo-qosv-kuq 
+Or dial: (US) +1 669-220-6517 
+PIN: 842 513 515# 
+More numbers: t.meet/vxo-qosv-kuq
+
+---
+Thank you,
+Chirp Support Team
+Where Support Takes Flight — Because Your Success Is Our Priority.
+
+────────────────────────
+✉️ support@chirp.digital
+🌐 https://chirp.digital
+────────────────────────
+
+From: Marketing Department <marketing@todaycapitalgroup.com>
+Sent: Friday, April 10, 2026 5:31:49 PM
+To: Chirp Support <support@chirp.digital>
+Cc: Beatriz Sevilla <BSevilla@chirp.digital>; admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>; Cheryl Dolgan <CDolgan@chirp.digital>
+Subject: Re: Chirp Account Sign up and Dev Resources
+ 
+Thanks for the information!
+
+It does sound like a call may be helpful. I know it's close to the end of the day, but would you have some time to jump on a call before the day comes to an end? We would love to have things up and running to test out by Monday.
+
+In the meantime, a few quick responses to your feedback:
+
+- If there is a route other than whitelisting IP's, that would be great! We were able to get the API integration setup and working. We've just been running into issues with different IP addresses across development and production environments, along with the worry that our IP address will rotate and we'll lose access.
+
+- For the widget vs link, if the link is easier that works for us! I may just need a bit of direction on how to utilize the link vs the widget. I'm not seeing a clear link to use to send users to? 
+
+On Fri, Apr 10, 2026 at 3:19 PM Chirp Support <support@chirp.digital> wrote:
+Hi - 
+
+The IP whitelisting is for API calls. We do have a configuration option to bypass whitelisting IPs if that's a desired option. 
+
+The stand-alone website widget is an option be we highly recommend using ChirpLink. The stand-alone website widget is not as flexible for request management and administration.
+
+A call might be the best option to cover the details for each widget.
+
+Thank you,
+Chirp Support Team
+Where Support Takes Flight — Because Your Success Is Our Priority.
+
+────────────────────────
+✉️ support@chirp.digital
+🌐 https://chirp.digital
+────────────────────────
+
+From: Marketing Department <marketing@todaycapitalgroup.com>
+Sent: Friday, April 10, 2026 1:17 PM
+To: Beatriz Sevilla <BSevilla@chirp.digital>
+Cc: admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>; Cheryl Dolgan <CDolgan@chirp.digital>; Chirp Support <support@chirp.digital>
+Subject: Re: Chirp Account Sign up and Dev Resources
+ 
+Sounds good, thanks for the help!
+
+On Fri, Apr 10, 2026 at 11:05 AM Beatriz Sevilla <BSevilla@chirp.digital> wrote:
+Ok! Thank you for the clarification! I've looped in our Support Team, so we can look into the scenario with the IPs and for them to point you in the right direction to implement the widget. 
+
+
+Beatriz Tavel
+Director of Business Strategy
+
+
+
+
+Book time to meet with me
+From: Marketing Department <marketing@todaycapitalgroup.com>
+Sent: Friday, April 10, 2026 12:35 PM
+To: Beatriz Sevilla <BSevilla@chirp.digital>
+Cc: admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>; Cheryl Dolgan <CDolgan@chirp.digital>
+Subject: Re: Chirp Account Sign up and Dev Resources
+ 
+Hi Beatriz,
+
+As the alternative to setting things up via api, I saw the other option mentioned is to setup a stand alone widget where users can go directly to connect to chirp. The docs mention if we don't have access to this in the portal to reach out and see if access can be granted. 
+
+For the api, seeing that IP's need to be whitelisted first, I'm a little worried that we'll run into issues because our application dashboard's IP address rotates periodically. If we whitelist one today, we'd be good for the time being but based on my understanding, we might run into issues when the IP address rotates. With that, I figured just using the widget itself would be the most straightforward option.
+
+If I'm misunderstanding any of that above or there's a more straightforward option than the widget, please let me know!
+
+If it would be helpful and quicker to hop on a call, I would be happy to do so as well.
+
+image.png
+
+On Fri, Apr 10, 2026 at 7:50 AM Beatriz Sevilla <BSevilla@chirp.digital> wrote:
+Trevor - are you referring to editing the messaging depends on the status during the process? If so, you can find those under the menu option called "ChirpLink". 
+
+Happy to jump on a call if needed! 
+
+Beatriz Tavel
+Director of Business Strategy
+
+
+
+
+Book time to meet with me
+From: Marketing Department <marketing@todaycapitalgroup.com>
+Sent: Thursday, April 9, 2026 7:15 PM
+To: Beatriz Sevilla <BSevilla@chirp.digital>
+Cc: admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>; Cheryl Dolgan <CDolgan@chirp.digital>
+Subject: Re: Chirp Account Sign up and Dev Resources
+ 
+Hi Beatriz,
+
+Would it also be possible to enable the widget settings in the portal?
+
+On Thu, Apr 9, 2026 at 2:24 PM Marketing Department <marketing@todaycapitalgroup.com> wrote:
+Hi Beatriz,
+
+It looks like the connection is working when testing it on our dev server!
+
+It does look like we'll need one more IP address whitelisted to get it working on our live dashboard. 
+
+Would you be able to whitelist this IP address as well: 34.96.49.107
+
+On Thu, Apr 9, 2026 at 11:36 AM Beatriz Sevilla <BSevilla@chirp.digital> wrote:
+This is completed!
+
+Beatriz Tavel
+Director of Business Strategy
+
+
+
+
+Book time to meet with me
+From: Marketing Department <marketing@todaycapitalgroup.com>
+Sent: Thursday, April 9, 2026 1:02 PM
+To: Beatriz Sevilla <BSevilla@chirp.digital>
+Cc: admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>; Cheryl Dolgan <CDolgan@chirp.digital>
+Subject: Re: Chirp Account Sign up and Dev Resources
+ 
+Hi Beatriz,
+
+If we could get your help whitelisting this ip address for our application dashboard, that would be great: 34.26.218.38
+
+
+On Wed, Apr 8, 2026 at 6:43 PM Beatriz Sevilla <BSevilla@chirp.digital> wrote:
+Hi Trevor! Great, welcome to Chirp! 
+
+Attached is the finalized document. The entity is now approved and running. If there are any IPs you'd like us to whitelist, please let me know, and I can send those over to support. 
+
+Best, 
+
+Beatriz Tavel
+Director of Business Strategy
+
+
+
+
+Book time to meet with me
+From: Marketing Department <marketing@todaycapitalgroup.com>
+Sent: Wednesday, April 8, 2026 4:22 PM
+To: Beatriz Sevilla <BSevilla@chirp.digital>
+Cc: admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>; Cheryl Dolgan <CDolgan@chirp.digital>
+Subject: Re: Chirp Account Sign up and Dev Resources
+ 
+Hi Beatriz,
+
+Here are the signed agreements.
+
+I signed the word docx as a google doc to make it easy to share:
+https://docs.google.com/document/d/1uO5-JDyv-IRkDY-Dweth4kAqqw8WJ4Do/edit
+
+and the signed pdf is attached!
+
+On Wed, Apr 8, 2026 at 10:50 AM Beatriz Sevilla <BSevilla@chirp.digital> wrote:
+Amazing! Yes - We got the request! Once we sign the paperwork, we should be ready to get this account live within a few minutes and add those free verifications. 
+
+Again, more of a formality since you'll be testing with real financial data - if you want to stop after the free verifications, you can or if you keep it going then price is already set. 
+
+Beatriz Tavel
+Director of Business Strategy
+
+
+
+
+Book time to meet with me
+From: Marketing Department <marketing@todaycapitalgroup.com>
+Sent: Wednesday, April 8, 2026 12:47 PM
+To: Beatriz Sevilla <BSevilla@chirp.digital>
+Cc: admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>; Cheryl Dolgan <CDolgan@chirp.digital>
+Subject: Re: Chirp Account Sign up and Dev Resources
+ 
+Thanks for sending this over Beatriz!
+
+We were able to get the sign up form completed on our end as well. Anything else you need from us in order to be ready to start testing things out?
+
+Excited to get started!
+
+On Wed, Apr 8, 2026 at 8:44 AM Beatriz Sevilla <BSevilla@chirp.digital> wrote:
+Good morning! 
+
+I owed you both the pricing for the PDF. The price per call is 0.25 for PDF statements. 
+
+Beatriz Tavel
+Director of Business Strategy
+
+
+
+
+Book time to meet with me
+From: Beatriz Sevilla <BSevilla@chirp.digital>
+Sent: Tuesday, April 7, 2026 5:11 PM
+To: marketing@todaycapitalgroup.com <marketing@todaycapitalgroup.com>; admin@todaycapitalgroup.com <admin@todaycapitalgroup.com>
+Cc: Robert Wheeler <robert@chirp.digital>; Chirp Support <support@chirp.digital>; Cheryl Dolgan <CDolgan@Chirp.digital>
+Subject: Chirp Account Sign up and Dev Resources
+ 
+Hi all! 
+
+Thank you for meeting with us today! As promised, attached is our documentation for onboarding - once finalized, you can go ahead and sign up for a Chirp Account at your convenience using the link below. Once you've submitted your request, our Support Team will activate your access.
+
+🔗 Account Signup:
+Chirp Signup Link
+
+Once approved, you can use this link to learn how to navigate the portal: Chirp Portal User Guide
+
+I've also attached the pricing we discussed and the agreement. I will send over the PDF request pricing early tomorrow. To recap - we do not have any monthly minimums, no annual commitments, and no setup fees. Once you are ready, we are happy to provide 200 free verifications to get started. 
+If you have any further questions or would like to schedule another call after reviewing the documentation, please don’t hesitate to reach out. We truly appreciate your time and interest in Chirp.
+Below are the key resources to help you get started in case if interested in an integration:
+📘 Developer Resources:
+Chirp API Developer Guide
+ChirpLink™ Request Widget
+Chirp Results Widget
+Chirp Postman Developer Docs
+Chirp Notifications Guide
+Let me know if you have any questions!
+Best, 
+
+Beatriz Sevilla Tavel
+Director of Business Strategy
+
+
+
+
+Book time to meet with me
+Confidentiality Notice: This email is intended solely for the named addressee and may contain privileged and confidential information. If you are not the intended recipient, you are notified that disclosing, copying, distributing, or taking any action in reliance on the contents of this information is strictly prohibited. If you received this email in error, please notify the sender immediately by reply email and delete this email from your system without making any copies.
