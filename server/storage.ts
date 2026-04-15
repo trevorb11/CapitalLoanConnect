@@ -19,7 +19,7 @@ import {
   type MerchantBankSnapshot, type InsertMerchantBankSnapshot,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, desc, sql, ilike, getTableColumns } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, getTableColumns, isNotNull } from "drizzle-orm";
 
 // Retry wrapper for database operations to handle connection drops
 async function withRetry<T>(
@@ -87,6 +87,7 @@ export interface IStorage {
 
   // GigFi methods
   saveGigFiResult(applicationId: string, status: string, decisionId?: string, redirectUrl?: string): Promise<void>;
+  getGigFiSubmissions(): Promise<LoanApplication[]>;
 
   // Plaid methods
   createPlaidItem(item: InsertPlaidItem): Promise<PlaidItem>;
@@ -586,6 +587,14 @@ export class DatabaseStorage implements IStorage {
       } as any)
       .where(eq(loanApplications.id, applicationId));
     console.log(`[GIGFI] Saved result status=${status} decisionId=${decisionId} to application ${applicationId}`);
+  }
+
+  async getGigFiSubmissions(): Promise<LoanApplication[]> {
+    return await db
+      .select()
+      .from(loanApplications)
+      .where(isNotNull(loanApplications.gigfiStatus))
+      .orderBy(desc(loanApplications.createdAt));
   }
 
   // Plaid Statements methods

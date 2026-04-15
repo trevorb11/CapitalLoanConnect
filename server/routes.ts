@@ -9950,6 +9950,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/gigfi/submissions — all leads that have been submitted to GigFi
+  app.get("/api/gigfi/submissions", async (req: Request, res: Response) => {
+    if (!req.session.user || !['admin', 'agent', 'user'].includes(req.session.user.role)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const submissions = await storage.getGigFiSubmissions();
+      return res.json({ submissions });
+    } catch (err) {
+      console.error("[GIGFI SUBMISSIONS]", err);
+      return res.status(500).json({ error: "Failed to load submissions" });
+    }
+  });
+
   // Internal GigFi applicant search — admin/agent only
   app.get("/api/gigfi/search", async (req: Request, res: Response) => {
     if (!req.session.user || !['admin', 'agent', 'user'].includes(req.session.user.role)) {
