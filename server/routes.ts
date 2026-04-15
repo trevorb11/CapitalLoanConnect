@@ -9964,6 +9964,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/gigfi/record — record a pre-existing GigFi result without re-submitting to GigFi
+  app.post("/api/gigfi/record", async (req: Request, res: Response) => {
+    const { applicationId, status, decisionId, redirectUrl } = req.body;
+    if (!applicationId || !status) {
+      return res.status(400).json({ error: "applicationId and status are required" });
+    }
+    try {
+      await storage.saveGigFiResult(applicationId, status, decisionId, redirectUrl);
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[GIGFI RECORD]", err);
+      return res.status(500).json({ error: "Failed to record result" });
+    }
+  });
+
   // Internal GigFi applicant search — admin/agent only
   app.get("/api/gigfi/search", async (req: Request, res: Response) => {
     if (!req.session.user || !['admin', 'agent', 'user'].includes(req.session.user.role)) {
