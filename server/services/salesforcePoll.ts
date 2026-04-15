@@ -14,6 +14,7 @@ import { db } from "../db";
 import { businessUnderwritingDecisions } from "@shared/schema";
 import { eq, sql as drizzleSql } from "drizzle-orm";
 import { updateDialerFromSfOpp } from "./dialerSync";
+import { computePipelineBucket } from "./salesforce";
 
 const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
 const SF_REFRESH_TOKEN = process.env.SF_REFRESH_TOKEN;
@@ -132,17 +133,16 @@ export async function pollSalesforceChanges(): Promise<{
 
   const since = await getLastPollTime();
   results.since = since;
-  // SOQL requires ISO 8601 with T separator: 2026-04-10T05:30:00Z
-  const sinceFormatted = new Date(since).toISOString();
+  const sinceFormatted = since.replace("T", " ").replace("Z", "+00:00").slice(0, 23) + "+00:00";
 
-  console.log(`[SF Poll] Checking for Opportunities modified since ${sinceFormatted}`);
+  console.log(`[SF Poll] Checking for Opportunities modified since ${since}`);
 
   // Query SF for recently modified Opportunities
   const opps = await sfQuery(
     `SELECT Id, Name, StageName, CloseDate, Amount_Requested__c, Amount_Funded__c,
             Highest_Approval__c, Factor_Rate__c, Email__c, Phone_Number__c,
             GHL_Id__c, Primary_Contact__c, AccountId, Owner.Name,
-            LastModifiedDate
+            Engagement_Status__c, LastModifiedDate
      FROM Opportunity
      WHERE LastModifiedDate > ${sinceFormatted}
      ORDER BY LastModifiedDate ASC`
@@ -156,6 +156,21 @@ export async function pollSalesforceChanges(): Promise<{
       const email = (opp.Email__c || "").toLowerCase().trim();
       const stage = opp.StageName || "";
       const dashboardStatus = sfStageToStatus(stage);
+      const hasApproval = !!(opp.Highest_Approval__c && parseFloat(opp.Highest_Approval__c) > 0);
+      const expectedBucket = computePipelineBucket(stage, hasApproval);
+      const currentBucket = opp.Engagement_Status__c || "";
+
+      // Auto-set Pipeline Bucket if it doesn't match the computed value
+      if (currentBucket !== expectedBucket) {
+        try {
+          const token = await getToken();
+          await fetch(`${SF_INSTANCE_URL}/services/data/v66.0/sobjects/Opportunity/${opp.Id}`, {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ Engagement_Status__c: expectedBucket }),
+          });
+        } catch {}
+      }
       const ownerName = opp.Owner?.Name || "";
 
       // --- Update dashboard main DB (business_underwriting_decisions) ---

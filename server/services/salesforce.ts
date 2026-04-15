@@ -179,6 +179,33 @@ export function dashboardStatusToSfStage(status: string): string {
 }
 
 /**
+ * Auto-compute Pipeline Bucket (Engagement_Status__c) from stage + approval data.
+ * Reps can override manually; this sets the default whenever stage changes.
+ */
+export function computePipelineBucket(stage: string, hasApproval?: boolean): string {
+  switch (stage) {
+    case "Present Offer":
+    case "Contracts Out":
+    case "Contracts In":
+    case "Final Review":
+    case "Negotiate":
+      return hasApproval ? "Hot Pipeline" : "Warm Pipeline";
+    case "Underwriting":
+      return "Underwriting";
+    case "Application & Docs":
+      return "Working";
+    case "Renewal Prospecting":
+      return "Renewal";
+    case "Closed Won":
+      return "Closed Won";
+    case "Closed Lost":
+      return "Closed Lost";
+    default:
+      return "Working";
+  }
+}
+
+/**
  * Main sync function — call this after saving a loan_application.
  * UPDATE-ONLY: searches for existing SF Leads and Opportunities by email/phone,
  * updates them with application data. Does NOT create new records.
@@ -387,8 +414,10 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
     }
 
     // Build update payload based on decision status
+    const hasApproval = !!(decision.advance_amount || decision.advanceAmount);
     const updateFields: Record<string, any> = {
       StageName: sfStage,
+      Engagement_Status__c: computePipelineBucket(sfStage, hasApproval),
     };
 
     // Approval fields
