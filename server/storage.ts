@@ -963,9 +963,19 @@ export class DatabaseStorage implements IStorage {
         .update(businessUnderwritingDecisions)
         .set({
           ...decision,
-          additionalFundings: mergedFundings,
-          approvalSlug: approvalSlug ?? existing.approvalSlug,
-          updatedAt: new Date(),
+          // Preserve existing approval packages and approval columns when not explicitly
+          // provided — adding a funded deal should never wipe what was approved.
+          additionalApprovals: decision.additionalApprovals ?? existing.additionalApprovals,
+          advanceAmount:       decision.advanceAmount       ?? existing.advanceAmount,
+          lender:              decision.lender              ?? existing.lender,
+          term:                decision.term                ?? existing.term,
+          paymentFrequency:    decision.paymentFrequency    ?? existing.paymentFrequency,
+          factorRate:          decision.factorRate          ?? existing.factorRate,
+          totalPayback:        decision.totalPayback        ?? existing.totalPayback,
+          netAfterFees:        decision.netAfterFees        ?? existing.netAfterFees,
+          additionalFundings:  mergedFundings,
+          approvalSlug:        approvalSlug ?? existing.approvalSlug,
+          updatedAt:           new Date(),
         })
         .where(eq(businessUnderwritingDecisions.id, existing.id))
         .returning();

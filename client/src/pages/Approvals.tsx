@@ -637,29 +637,38 @@ export default function Approvals() {
     if (!fundingDecision) return;
     setFundSaving(true);
     try {
-      let approvals = getApprovalsForDecision(fundingDecision);
-      const primary = approvals.find(a => a.isPrimary) || approvals[0];
+      // Build a funded entry from the form values — do NOT mutate the approval packages
+      const fundedEntry = {
+        id: crypto.randomUUID(),
+        lender: fundForm.lender || null,
+        advanceAmount: fundForm.advanceAmount || null,
+        term: fundForm.term || null,
+        paymentFrequency: fundForm.paymentFrequency || null,
+        factorRate: fundForm.factorRate || null,
+        maxUpsell: fundForm.maxUpsell || null,
+        totalPayback: fundForm.totalPayback || null,
+        netAfterFees: fundForm.netAfterFees || null,
+        notes: fundForm.notes || null,
+        fundedDate: fundForm.fundedDate
+          ? new Date(fundForm.fundedDate + 'T12:00:00').toISOString()
+          : new Date().toISOString(),
+        assignedRep: null,
+        createdAt: new Date().toISOString(),
+      };
 
-      if (primary) {
-        primary.advanceAmount = fundForm.advanceAmount;
-        primary.term = fundForm.term;
-        primary.paymentFrequency = fundForm.paymentFrequency;
-        primary.factorRate = fundForm.factorRate;
-        primary.maxUpsell = fundForm.maxUpsell;
-        primary.totalPayback = fundForm.totalPayback;
-        primary.netAfterFees = fundForm.netAfterFees;
-        primary.lender = fundForm.lender;
-        primary.notes = fundForm.notes;
-        primary.approvalDate = fundForm.approvalDate;
-        approvals = approvals.map(a => (a.id === primary.id ? primary : a));
-      }
+      // Prepend new entry to existing funded entries (newest first)
+      const existingFundings = Array.isArray((fundingDecision as any).additionalFundings)
+        ? ((fundingDecision as any).additionalFundings as any[])
+        : [];
+      const mergedFundings = [fundedEntry, ...existingFundings];
 
       await updateMutation.mutateAsync({
         id: fundingDecision.id,
         updates: {
           status: 'funded',
           fundedDate: fundForm.fundedDate,
-          additionalApprovals: approvals,
+          additionalFundings: mergedFundings,
+          // additionalApprovals intentionally omitted — approval packages are never touched when funding
         },
       });
       setFundingDecision(null);
