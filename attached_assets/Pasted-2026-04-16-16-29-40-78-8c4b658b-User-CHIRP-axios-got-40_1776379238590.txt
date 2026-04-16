@@ -1,0 +1,102 @@
+2026-04-16 16:29:40.78
+8c4b658b
+User
+[CHIRP] axios got 403 on /request/KYILOA/status, retrying with curl
+
+2026-04-16 16:29:40.78
+8c4b658b
+User
+[CHIRP] Using curl fallback for /request/KYILOA/status
+2026-04-16 16:29:40.79
+8c4b658b
+User
+[CHIRP] axios got 403 on /request/KYILOA/summary, retrying with curl
+2026-04-16 16:29:40.79
+8c4b658b
+User
+[CHIRP] Using curl fallback for /request/KYILOA/summary
+2026-04-16 16:29:40.94
+8c4b658b
+User
+<head>
+2026-04-16 16:29:40.94
+8c4b658b
+User
+<meta name="viewport" content="width=device-width, initial-scale=1">
+2026-04-16 16:29:40.94
+8c4b658b
+User
+<html>
+2026-04-16 16:29:40.94
+8c4b658b
+User
+<meta name="descripti
+2026-04-16 16:29:40.94
+8c4b658b
+User
+2026-04-16 16:29:40.94
+8c4b658b
+User
+<title>Chirp | Error 403</title>
+2026-04-16 16:29:40.94
+8c4b658b
+User
+<meta charset="utf-8">
+2026-04-16 16:29:40.94
+8c4b658b
+User
+[CHIRP curl] 403 /request/KYILOA/summary <!DOCTYPE html>
+2026-04-16 16:29:40.94
+8c4b658b
+User
+[CHIRP] getSummaryInfo 403/err: Chirp API error 403
+2026-04-16 16:29:40.96
+8c4b658b
+User
+<head>
+2026-04-16 16:29:40.96
+8c4b658b
+User
+<html>
+2026-04-16 16:29:40.96
+8c4b658b
+User
+2026-04-16 16:29:40.96
+8c4b658b
+User
+[CHIRP curl] 403 /request/KYILOA/status <!DOCTYPE html>
+2026-04-16 16:29:40.96
+8c4b658b
+User
+<meta charset="utf-8">
+2026-04-16 16:29:41.13
+8c4b658b
+User
+10:29:41 PM [express] GET /api/merchant/banking/insights 200 in 36ms :: {"connected":false,"hasPendin…
+2026-04-16 16:29:49.09
+8c4b658b
+User
+[CHIRP] axios got 403 on /request/KYILOA/summary, retrying with curl
+2026-04-16 16:29:49.09
+8c4b658b
+User
+[CHIRP] Using curl fallback for /request/KYILOA/summary
+2026-04-16 16:29:49.11
+8c4b658b
+User
+[CHIRP] axios got 403 on /request/KYILOA/status, retrying with curl
+2026-04-16 16:29:49.11
+8c4b658b
+User
+[CHIRP] Using curl fallback for /request/KYILOA/status
+2026-04-16 16:29:49.26
+8c4b658b
+User
+<title>Chirp | Error 403</title>
+2026-04-16 16:29:49.26
+8c4b658b
+User
+2026-04-16 16:29:49.26
+8c4b658b
+User
+[CHIRP curl] 403 /request/KYILOA/summary <!DOCTYPE html>
