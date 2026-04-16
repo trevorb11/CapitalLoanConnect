@@ -657,9 +657,8 @@ export default function Approvals() {
       };
 
       // Prepend new entry to existing funded entries (newest first)
-      const existingFundings = Array.isArray((fundingDecision as any).additionalFundings)
-        ? ((fundingDecision as any).additionalFundings as any[])
-        : [];
+      const rawFundings = fundingDecision.additionalFundings;
+      const existingFundings: unknown[] = Array.isArray(rawFundings) ? rawFundings : [];
       const mergedFundings = [fundedEntry, ...existingFundings];
 
       await updateMutation.mutateAsync({
