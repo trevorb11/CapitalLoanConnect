@@ -53,6 +53,7 @@ const CHROME_CIPHERS = [
 ].join(":");
 
 const chirpHttpsAgent = new https.Agent({
+  family: 4,
   ciphers: CHROME_CIPHERS,
   honorCipherOrder: false,
   minVersion: "TLSv1.2",
@@ -95,6 +96,7 @@ function curlChirpRequest(
 ): Promise<{ status: number; data: any }> {
   return new Promise((resolve, reject) => {
     const args: string[] = [
+      "-4",
       "-s",
       "-X", method.toUpperCase(),
       url,

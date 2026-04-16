@@ -10462,5 +10462,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Temporary diagnostic: reveals the production outbound IPv4 so it can be
+  // sent to Chirp support for whitelisting. Remove once Chirp confirms the IP.
+  app.get("/api/debug/outbound-ip", (req: Request, res: Response) => {
+    if (!req.session.user || req.session.user.role !== "admin") {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { execFile } = require("child_process");
+    execFile("curl", ["-4", "-s", "https://api.ipify.org"], { timeout: 10000 }, (err: any, stdout: string) => {
+      if (err) return res.json({ error: err.message });
+      res.json({ outboundIpv4: stdout.trim() });
+    });
+  });
+
   return httpServer;
 }
