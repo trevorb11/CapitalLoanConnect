@@ -594,7 +594,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(loanApplications)
       .where(isNotNull(loanApplications.gigfiStatus))
-      .orderBy(desc(loanApplications.createdAt));
+      .orderBy(desc(loanApplications.updatedAt));
   }
 
   // Plaid Statements methods

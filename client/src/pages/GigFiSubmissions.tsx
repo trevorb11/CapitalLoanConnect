@@ -22,11 +22,13 @@ interface Submission {
   id: string;
   fullName: string | null;
   businessName: string | null;
+  legalBusinessName: string | null;
   email: string;
   phone: string | null;
   gigfiStatus: string | null;
   gigfiDecisionId: string | null;
   gigfiRedirectUrl: string | null;
+  updatedAt: string;
   createdAt: string;
 }
 
@@ -150,7 +152,7 @@ export default function GigFiSubmissions() {
               const isAccepted = sub.gigfiStatus === "ACCEPTED";
               const isRejected = sub.gigfiStatus === "REJECTED";
               const name = sub.fullName || "—";
-              const biz = sub.businessName || "—";
+              const biz = sub.legalBusinessName || sub.businessName || "—";
 
               return (
                 <Card key={sub.id} data-testid={`card-gigfi-submission-${sub.id}`}>
