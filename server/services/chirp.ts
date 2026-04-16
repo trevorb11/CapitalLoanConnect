@@ -30,7 +30,9 @@ const IS_PROD = process.env.NODE_ENV === "production";
 const CHIRP_API_TOKEN = !IS_PROD && process.env.CHIRP_SANDBOX_API_TOKEN
   ? process.env.CHIRP_SANDBOX_API_TOKEN
   : process.env.CHIRP_API_TOKEN || "";
-console.log(`[CHIRP] Using ${IS_PROD ? "production" : "sandbox"} token (NODE_ENV=${process.env.NODE_ENV})`);
+const tokenSet = !!CHIRP_API_TOKEN;
+const tokenHint = CHIRP_API_TOKEN ? `...${CHIRP_API_TOKEN.slice(-4)}` : "NOT SET";
+console.log(`[CHIRP] Using ${IS_PROD ? "production" : "sandbox"} token (NODE_ENV=${process.env.NODE_ENV}) | token configured: ${tokenSet} | ends: ${tokenHint}`);;
 
 // Chrome 122 TLS cipher suite order — changes the JA3 fingerprint so Cloudflare
 // WAF does not flag the request as a Node.js/server-side bot.
@@ -312,7 +314,15 @@ export class ChirpService {
       if (curlResult.status >= 400) {
         const respBody = curlResult.data;
         const message = (respBody && typeof respBody === "object" && ((respBody as any).message || (respBody as any).error)) || `Chirp API error ${curlResult.status}`;
-        console.error(`[CHIRP curl] ${curlResult.status} ${path}`, typeof respBody === "string" ? respBody.slice(0, 200) : respBody);
+        // Log full body (up to 800 chars) — helps distinguish Cloudflare WAF vs Chirp app-level 403
+        console.error(`[CHIRP curl] ${curlResult.status} ${path}`, typeof respBody === "string" ? respBody.slice(0, 800) : respBody);
+        if (curlResult.status === 403) {
+          // Log the outbound IP so we can confirm what IP Chirp is seeing
+          const { execFile } = await import("child_process");
+          execFile("curl", ["-4", "-s", "https://api.ipify.org", "--max-time", "5"], { timeout: 8000 }, (_e, stdout) => {
+            console.error(`[CHIRP] 403 diagnostic — outbound IPv4: ${stdout?.trim() || "unknown"} | token ends: ${tokenHint} | endpoint: ${fullUrl}`);
+          });
+        }
         throw new ChirpApiError(String(message), curlResult.status, respBody);
       }
 

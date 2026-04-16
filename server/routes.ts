@@ -10462,8 +10462,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Temporary diagnostic: reveals the production outbound IPv4 so it can be
-  // sent to Chirp support for whitelisting. Remove once Chirp confirms the IP.
+  // Diagnostic: outbound IP + live Chirp token/connection test (admin only)
+  app.get("/api/debug/chirp-diagnostics", async (req: Request, res: Response) => {
+    if (!req.session.user || req.session.user.role !== "admin") {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { execFile } = await import("child_process");
+    const token = process.env.CHIRP_API_TOKEN || "";
+    const sandboxToken = process.env.CHIRP_SANDBOX_API_TOKEN || "";
+    const isProd = process.env.NODE_ENV === "production";
+    const activeToken = isProd ? token : (sandboxToken || token);
+
+    // 1. Get outbound IPv4
+    const outboundIp: string = await new Promise((resolve) => {
+      execFile("curl", ["-4", "-s", "https://api.ipify.org", "--max-time", "5"], { timeout: 8000 }, (_e, stdout) => {
+        resolve(stdout?.trim() || "unknown");
+      });
+    });
+
+    // 2. Make a live test call to Chirp (a benign GET to the base URL to see HTTP status)
+    const chirpTestUrl = (process.env.CHIRP_BASE_URL || "https://chirp.digital/api") + "/";
+    const chirpResult: { status: number; body: string } = await new Promise((resolve) => {
+      const args = [
+        "-4", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+        "-H", `Authorization: ${activeToken}`,
+        "-H", "Content-Type: application/json",
+        "--max-time", "10",
+        chirpTestUrl,
+      ];
+      execFile("curl", args, { timeout: 12000 }, (_e, stdout) => {
+        resolve({ status: parseInt(stdout?.trim() || "0", 10), body: stdout?.trim() });
+      });
+    });
+
+    res.json({
+      outboundIpv4: outboundIp,
+      environment: isProd ? "production" : "development",
+      productionTokenConfigured: !!token,
+      productionTokenEnds: token ? `...${token.slice(-4)}` : "NOT SET",
+      sandboxTokenConfigured: !!sandboxToken,
+      activeTokenEnds: activeToken ? `...${activeToken.slice(-4)}` : "NOT SET",
+      chirpBaseUrl: process.env.CHIRP_BASE_URL || "https://chirp.digital/api",
+      chirpTestHttpStatus: chirpResult.status,
+      note: chirpResult.status === 403
+        ? "Chirp returned 403 — IP may not be whitelisted at application level, or token is invalid"
+        : chirpResult.status === 200 || chirpResult.status === 404
+        ? "Chirp connection OK (token accepted)"
+        : "Unexpected response from Chirp",
+    });
+  });
+
+  // Legacy: outbound IP only
   app.get("/api/debug/outbound-ip", async (req: Request, res: Response) => {
     if (!req.session.user || req.session.user.role !== "admin") {
       return res.status(401).json({ error: "Unauthorized" });
