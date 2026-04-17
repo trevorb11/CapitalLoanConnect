@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,15 @@ import {
   ExternalLink,
   Copy,
   Search,
-  User,
   Building2,
   Phone,
   Mail,
   Hash,
+  Send,
+  AlertTriangle,
+  SkipForward,
 } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface Submission {
@@ -51,12 +54,48 @@ function CopyButton({ value, label }: { value: string; label: string }) {
   );
 }
 
+interface BatchResult {
+  searchTerm: string;
+  businessName: string;
+  appId: string | null;
+  status: string;
+  gigfiStatus?: string;
+  decisionId?: string;
+  redirectUrl?: string;
+  skippedReason?: string;
+}
+
+interface BatchSummary {
+  total: number;
+  submitted: number;
+  accepted: number;
+  rejected: number;
+  skipped: number;
+}
+
 export default function GigFiSubmissions() {
   const [search, setSearch] = useState("");
+  const [batchResults, setBatchResults] = useState<{ summary: BatchSummary; results: BatchResult[] } | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isError } = useQuery<{ submissions: Submission[] }>({
     queryKey: ["/api/gigfi/submissions"],
+  });
+
+  const batchMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/gigfi-batch-submit", {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setBatchResults(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/gigfi/submissions"] });
+      toast({ title: "Batch complete", description: `${data.summary.submitted} submitted, ${data.summary.accepted} accepted, ${data.summary.skipped} skipped` });
+    },
+    onError: () => {
+      toast({ title: "Batch failed", description: "Could not run batch submission. Check console.", variant: "destructive" });
+    },
   });
 
   const submissions = data?.submissions ?? [];
@@ -88,7 +127,7 @@ export default function GigFiSubmissions() {
               All leads that have been submitted to GigFi for a decision
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
               <CheckCircle2 size={14} className="text-green-500" />
               <span className="font-medium">{accepted}</span>
@@ -99,8 +138,67 @@ export default function GigFiSubmissions() {
               <span className="font-medium">{rejected}</span>
               <span className="text-muted-foreground">Rejected</span>
             </div>
+            <Button
+              data-testid="button-batch-submit"
+              variant="outline"
+              size="sm"
+              disabled={batchMutation.isPending}
+              onClick={() => batchMutation.mutate()}
+              className="flex items-center gap-1.5"
+            >
+              <Send size={13} />
+              {batchMutation.isPending ? "Submitting batch…" : "Run Apr 2026 Batch"}
+            </Button>
           </div>
         </div>
+
+        {/* Batch Results */}
+        {batchResults && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex flex-wrap items-center gap-3">
+                <span>Batch Results</span>
+                <div className="flex flex-wrap gap-2 text-sm font-normal">
+                  <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                    <CheckCircle2 size={13} />{batchResults.summary.accepted} accepted
+                  </span>
+                  <span className="flex items-center gap-1 text-red-500">
+                    <XCircle size={13} />{batchResults.summary.rejected} rejected
+                  </span>
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <SkipForward size={13} />{batchResults.summary.skipped} skipped
+                  </span>
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-2">
+              {batchResults.results.map((r, i) => (
+                <div key={i} className="flex flex-wrap items-start justify-between gap-2 border rounded-md px-3 py-2 text-sm">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium">{r.businessName}</span>
+                    {r.appId && <span className="text-xs text-muted-foreground font-mono">{r.appId.slice(0, 8)}…</span>}
+                    {r.skippedReason && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <AlertTriangle size={11} />{r.skippedReason}
+                      </span>
+                    )}
+                    {r.decisionId && (
+                      <span className="text-xs text-muted-foreground font-mono">Decision: {r.decisionId.slice(0, 20)}…</span>
+                    )}
+                  </div>
+                  <div className="shrink-0">
+                    {r.status === "NOT_FOUND" && <Badge variant="secondary">Not Found</Badge>}
+                    {r.status === "SKIPPED" && <Badge variant="secondary">Skipped</Badge>}
+                    {r.status === "ERROR" && <Badge className="bg-red-500/15 text-red-600 dark:text-red-400 border-0">Error</Badge>}
+                    {r.status === "SUBMITTED" && r.gigfiStatus === "ACCEPTED" && <Badge className="bg-green-500/15 text-green-600 dark:text-green-400 border-0"><CheckCircle2 size={11} className="mr-1" />Accepted</Badge>}
+                    {r.status === "SUBMITTED" && r.gigfiStatus === "REJECTED" && <Badge className="bg-red-500/15 text-red-600 dark:text-red-400 border-0"><XCircle size={11} className="mr-1" />Rejected</Badge>}
+                    {r.status === "SUBMITTED" && r.gigfiStatus === "ERROR" && <Badge className="bg-orange-500/15 text-orange-600 dark:text-orange-400 border-0"><AlertTriangle size={11} className="mr-1" />Error</Badge>}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Search */}
         <div className="relative">

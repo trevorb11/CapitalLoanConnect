@@ -19,7 +19,9 @@ import { notifyMerchantNewMessage } from "./services/twilio";
 import { fireSmsStageEvent } from "./sms-middleware";
 import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
-import { pool, neonPool } from "./db";
+import { pool, neonPool, db } from "./db";
+import { loanApplications } from "@shared/schema";
+import { ilike, or, desc } from "drizzle-orm";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
@@ -10509,6 +10511,180 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : chirpResult.status === 200 || chirpResult.status === 404
         ? "Chirp connection OK (token accepted)"
         : "Unexpected response from Chirp",
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // ADMIN BATCH GIGFI SUBMISSION — one-time batch for specific businesses
+  // ═══════════════════════════════════════════════════════════════
+  app.post("/api/admin/gigfi-batch-submit", async (req: Request, res: Response) => {
+    if (!req.session.user || req.session.user.role !== "admin") {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    if (!isGigFiConfigured()) {
+      return res.status(503).json({ error: "GigFi not configured" });
+    }
+
+    const BATCH_BUSINESSES: Array<{ name: string; knownEmail?: string }> = [
+      { name: "ONELLA HOME CARE", knownEmail: "jtndumbe@gmail.com" },
+      { name: "Generations Group Home" },
+      { name: "Wormac Group", knownEmail: "gil@thewormacgroup.com" },
+      { name: "Argyle Executive Forum", knownEmail: "pprice@argyleforum.com" },
+      { name: "Bfields Investment", knownEmail: "tbutter22@icloud.com" },
+      { name: "Arco Petroleum Transport", knownEmail: "gsmall443322@gmail.com" },
+      { name: "Top Flight Transportation", knownEmail: "topflightdispatch1@gmail.com" },
+      { name: "WESTIN", knownEmail: "ramonher71@gmail.com" },
+      { name: "pure and healthy hair", knownEmail: "isaacisaac1972@yahoo.com" },
+      { name: "ESCAPADEUSA", knownEmail: "maxi@escapadeusa.com" },
+      { name: "Andromel Estates", knownEmail: "romelhilaire@yahoo.com" },
+    ];
+
+    function isValidEmail(e: string): boolean {
+      return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e || "");
+    }
+    function normalizePhone(p: string): string {
+      return (p || "").replace(/\D/g, "").slice(0, 10);
+    }
+    function isValidPhone(p: string): boolean {
+      return normalizePhone(p).length === 10;
+    }
+    function parseNameParts(fullName: string): { firstName: string; lastName: string } {
+      const parts = (fullName || "").trim().split(/\s+/);
+      if (parts.length === 0) return { firstName: "Unknown", lastName: "Unknown" };
+      if (parts.length === 1) return { firstName: parts[0], lastName: parts[0] };
+      return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+    }
+
+    const results: Array<{
+      searchTerm: string;
+      businessName: string;
+      appId: string | null;
+      status: string;
+      gigfiStatus?: string;
+      decisionId?: string;
+      redirectUrl?: string;
+      skippedReason?: string;
+    }> = [];
+
+    for (const biz of BATCH_BUSINESSES) {
+      try {
+        const pattern = `%${biz.name}%`;
+        const found = await db
+          .select()
+          .from(loanApplications)
+          .where(
+            or(
+              ilike(loanApplications.businessName, pattern),
+              ilike(loanApplications.legalBusinessName, pattern)
+            )
+          )
+          .orderBy(desc(loanApplications.createdAt))
+          .limit(5);
+
+        if (found.length === 0) {
+          results.push({ searchTerm: biz.name, businessName: "(not found)", appId: null, status: "NOT_FOUND", skippedReason: "No application found in DB" });
+          continue;
+        }
+
+        // Use the most recent matching application
+        const app = found[0];
+        const appId = app.id;
+        const businessName = app.businessName || app.legalBusinessName || biz.name;
+
+        // Resolve email: prefer known valid, fall back to DB
+        const resolvedEmail = isValidEmail(biz.knownEmail || "") ? biz.knownEmail! :
+                              isValidEmail(app.email) ? app.email : "";
+        if (!resolvedEmail) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: "No valid email" });
+          continue;
+        }
+
+        // Require SSN
+        const ssn = (app.socialSecurityNumber || "").replace(/\D/g, "");
+        if (ssn.length !== 9) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: `SSN missing or invalid (found: "${app.socialSecurityNumber || "none"}")` });
+          continue;
+        }
+
+        // Require DOB
+        const dob = app.dateOfBirth || "";
+        if (!dob) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: "Date of birth missing" });
+          continue;
+        }
+
+        // Address — prefer owner address, fall back to business address
+        const homeAddress = app.ownerAddress1 || app.businessStreetAddress || app.businessAddress || "";
+        const homeCity = app.ownerCity || app.city || "";
+        const homeState = (app.ownerState || app.state || "").toUpperCase().slice(0, 2);
+        const homeZip = (app.ownerZip || app.zipCode || "").replace(/\D/g, "").slice(0, 5);
+
+        if (!homeAddress || !homeCity || homeState.length !== 2 || homeZip.length !== 5) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: `Incomplete address (addr="${homeAddress}" city="${homeCity}" state="${homeState}" zip="${homeZip}")` });
+          continue;
+        }
+
+        // Phone — normalize
+        const rawPhone = app.phone || "";
+        const phone = isValidPhone(rawPhone) ? rawPhone : "";
+        if (!phone) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: `Invalid phone: "${rawPhone}"` });
+          continue;
+        }
+
+        const { firstName, lastName } = parseNameParts(app.fullName || "");
+        const monthlyRevenue = parseFloat(app.monthlyRevenue || app.averageMonthlyRevenue || "3000");
+
+        const leadData: GigFiLeadData = {
+          firstName,
+          lastName,
+          email: resolvedEmail,
+          phone,
+          businessName,
+          monthlyRevenue,
+          financingAmount: 10000,   // hard-capped at $10k per admin request
+          businessAge: app.timeInBusiness || undefined,
+          ssn,
+          dob,
+          homeAddress,
+          homeCity,
+          homeState,
+          homeZip,
+          ...(app.bankName && { bankName: app.bankName }),
+          payFrequency: "4",        // Monthly — hardcoded per admin request
+          nextPayDay: "05/01/2026", // Next upcoming pay date
+          cellPhone: phone,
+        };
+
+        const gigfiResult = await submitToGigFi(leadData, appId);
+
+        // Persist result
+        storage.saveGigFiResult(appId, gigfiResult.status, gigfiResult.decisionId, gigfiResult.redirectUrl)
+          .catch(err => console.error("[GIGFI-BATCH] Failed to save result:", err));
+
+        results.push({
+          searchTerm: biz.name,
+          businessName,
+          appId,
+          status: "SUBMITTED",
+          gigfiStatus: gigfiResult.status,
+          decisionId: gigfiResult.decisionId,
+          redirectUrl: gigfiResult.redirectUrl,
+          skippedReason: gigfiResult.errorMessage,
+        });
+      } catch (err: any) {
+        results.push({ searchTerm: biz.name, businessName: biz.name, appId: null, status: "ERROR", skippedReason: err.message });
+      }
+    }
+
+    const submitted = results.filter(r => r.status === "SUBMITTED");
+    const accepted = submitted.filter(r => r.gigfiStatus === "ACCEPTED");
+    const rejected = submitted.filter(r => r.gigfiStatus === "REJECTED");
+    const skipped = results.filter(r => r.status === "SKIPPED" || r.status === "NOT_FOUND" || r.status === "ERROR");
+
+    res.json({
+      summary: { total: BATCH_BUSINESSES.length, submitted: submitted.length, accepted: accepted.length, rejected: rejected.length, skipped: skipped.length },
+      results,
     });
   });
 
