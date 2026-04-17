@@ -408,6 +408,35 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
       }
     }
 
+    // Fallback: search by Contact email (catches Opps where Email__c is null but Contact has email)
+    if (!oppId && email) {
+      const byContactEmail = await sfQuery(
+        `SELECT Id FROM Opportunity WHERE Primary_Contact__r.Email = '${email.replace(/'/g, "\\'")}' LIMIT 1`
+      );
+      if (byContactEmail.length) oppId = byContactEmail[0].Id;
+    }
+
+    // Fallback: search by business name (normalized — catches Opps with no email/phone)
+    if (!oppId) {
+      const bizName = decision.business_name || decision.businessName || "";
+      if (bizName && bizName.length > 3) {
+        const byName = await sfQuery(
+          `SELECT Id FROM Opportunity WHERE Name LIKE '${bizName.replace(/'/g, "\\'").slice(0, 80)}%' AND IsClosed = false LIMIT 1`
+        );
+        if (byName.length) oppId = byName[0].Id;
+      }
+    }
+
+    // Fallback: look up phone from loan_applications if decision has no phone
+    if (!oppId && !phone && email) {
+      try {
+        const appPhone = await sfQuery(
+          `SELECT Id, Phone_Number__c FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Opportunity WHERE Primary_Contact__r.Email = '${email.replace(/'/g, "\\'")}') AND Phone_Number__c != null LIMIT 1`
+        );
+        if (appPhone.length) oppId = appPhone[0].Id;
+      } catch {}
+    }
+
     if (!oppId) {
       console.log("[SF Decision Sync] No matching SF Opportunity found — skipping");
       return { synced: false, error: "no matching Opportunity" };
