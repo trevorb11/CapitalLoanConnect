@@ -3826,92 +3826,36 @@ function ApplicationStatusBanner({ appStatus }: {
 }
 
 // ── RESOURCES TAB ────────────────────────────────────────────────────────
+type ResourceItem = {
+  id: string;
+  title: string;
+  description: string;
+  url: string;
+  tag: string | null;
+  tagColor: string | null;
+  isIndustrySpecific: boolean;
+};
+type ResourceGroup = { category: string; items: ResourceItem[] };
+type ResourcesResponse = {
+  industry: string | null;
+  industryKey: string | null;
+  resources: ResourceGroup[];
+};
+
 function ResourcesTab() {
-  const resources = [
-    {
-      category: "Credit Monitoring",
-      items: [
-        {
-          title: "Nav.com — Free Business Credit Scores",
-          description: "See your Dun & Bradstreet and Experian business credit scores for free. Understand what lenders see when they review your business.",
-          url: "https://www.nav.com/business-credit-scores/",
-          tag: "Free",
-          tagColor: "#34d399",
-        },
-        {
-          title: "Experian Business Credit",
-          description: "Monitor your Experian business credit profile. Get alerts when your score changes and see what factors are impacting it.",
-          url: "https://www.experian.com/business/check-business-credit.html",
-          tag: "Free Report",
-          tagColor: "#60a5fa",
-        },
-        {
-          title: "Dun & Bradstreet — Get Your D-U-N-S Number",
-          description: "A D-U-N-S number is essential for building business credit. Get yours for free if you don't have one yet.",
-          url: "https://www.dnb.com/duns-number/get-a-duns.html",
-          tag: "Free",
-          tagColor: "#34d399",
-        },
-      ],
-    },
-    {
-      category: "SBA & Government Programs",
-      items: [
-        {
-          title: "SBA Loan Programs Overview",
-          description: "Explore SBA 7(a), 504, and Microloan programs. Government-backed loans with lower rates and longer terms for qualifying businesses.",
-          url: "https://www.sba.gov/funding-programs/loans",
-          tag: "Gov",
-          tagColor: "#a78bfa",
-        },
-        {
-          title: "Grants.gov — Federal Business Grants",
-          description: "Search for federal grant opportunities. Unlike loans, grants don't need to be repaid.",
-          url: "https://www.grants.gov/",
-          tag: "Grants",
-          tagColor: "#fbbf24",
-        },
-      ],
-    },
-    {
-      category: "Financial Tools",
-      items: [
-        {
-          title: "Wave — Free Accounting Software",
-          description: "Free invoicing, accounting, and receipt scanning for small businesses. No credit card required.",
-          url: "https://www.waveapps.com/",
-          tag: "Free",
-          tagColor: "#34d399",
-        },
-        {
-          title: "IRS Tax Calendar for Businesses",
-          description: "Never miss a tax deadline. See all federal tax due dates for your business type at a glance.",
-          url: "https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendars",
-          tag: "IRS",
-          tagColor: "#a78bfa",
-        },
-      ],
-    },
-    {
-      category: "Business Growth",
-      items: [
-        {
-          title: "Google Business Profile",
-          description: "Claim and optimize your free Google Business listing. Show up in local search results and Google Maps.",
-          url: "https://business.google.com/",
-          tag: "Free",
-          tagColor: "#34d399",
-        },
-        {
-          title: "NEXT Insurance — Business Insurance",
-          description: "Get affordable business insurance in minutes. General liability, professional liability, workers' comp, and more.",
-          url: "https://www.nextinsurance.com/",
-          tag: "Quote",
-          tagColor: "#60a5fa",
-        },
-      ],
-    },
-  ];
+  const [data, setData] = useState<ResourcesResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/merchant/resources")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Failed to load resources"))))
+      .then((json: ResourcesResponse) => { if (!cancelled) setData(json); })
+      .catch((err) => { if (!cancelled) setError(err.message || "Failed to load resources"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="resources-section">
@@ -3920,35 +3864,46 @@ function ResourcesTab() {
         <div>
           <div className="resources-intro-title">Business Resources</div>
           <div className="resources-intro-sub">
-            Free tools and resources to help you monitor credit, find funding programs, and grow your business.
+            {data?.industry
+              ? `Tailored picks for ${data.industry} businesses, plus universal tools to monitor credit, find funding programs, and grow.`
+              : "Free tools and resources to help you monitor credit, find funding programs, and grow your business."}
           </div>
         </div>
       </div>
 
-      {resources.map((group) => (
+      {loading && <div className="resources-group-title">Loading resources…</div>}
+      {error && <div className="resources-group-title">{error}</div>}
+
+      {!loading && !error && data?.resources.map((group) => (
         <div key={group.category} className="resources-group">
           <div className="resources-group-title">{group.category}</div>
           <div className="resources-grid">
-            {group.items.map((item) => (
-              <a
-                key={item.title}
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="resource-card"
-              >
-                <div className="resource-card-header">
-                  <div className="resource-card-title">{item.title}</div>
-                  <div className="resource-tag" style={{ background: `${item.tagColor}20`, color: item.tagColor, borderColor: `${item.tagColor}40` }}>
-                    {item.tag}
+            {group.items.map((item) => {
+              const tagColor = item.tagColor || "#60a5fa";
+              const tagLabel = item.tag || (item.isIndustrySpecific ? "For You" : "");
+              return (
+                <a
+                  key={item.id}
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="resource-card"
+                >
+                  <div className="resource-card-header">
+                    <div className="resource-card-title">{item.title}</div>
+                    {tagLabel && (
+                      <div className="resource-tag" style={{ background: `${tagColor}20`, color: tagColor, borderColor: `${tagColor}40` }}>
+                        {tagLabel}
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div className="resource-card-desc">{item.description}</div>
-                <div className="resource-card-link">
-                  Visit &rarr;
-                </div>
-              </a>
-            ))}
+                  <div className="resource-card-desc">{item.description}</div>
+                  <div className="resource-card-link">
+                    Visit &rarr;
+                  </div>
+                </a>
+              );
+            })}
           </div>
         </div>
       ))}

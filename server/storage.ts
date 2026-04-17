@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings, merchantPortalAccounts, merchantPlaidConnections, merchantFinancialInsights, merchantBankSnapshots,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings, merchantPortalAccounts, merchantPlaidConnections, merchantFinancialInsights, merchantBankSnapshots, industryResources,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -17,6 +17,7 @@ import {
   type MerchantPlaidConnection, type InsertMerchantPlaidConnection,
   type MerchantFinancialInsight, type InsertMerchantFinancialInsight,
   type MerchantBankSnapshot, type InsertMerchantBankSnapshot,
+  type IndustryResource, type InsertIndustryResource,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql, ilike, getTableColumns, isNotNull } from "drizzle-orm";
@@ -195,6 +196,13 @@ export interface IStorage {
   createOrUpdateMerchantInsight(data: InsertMerchantFinancialInsight): Promise<MerchantFinancialInsight>;
   getMerchantInsight(email: string, sourceType: string): Promise<MerchantFinancialInsight | undefined>;
   getPlaidAccessTokensForMerchant(email: string): Promise<{ accessToken: string; institutionName: string | null }[]>;
+
+  // Industry Resources
+  listIndustryResources(filter?: { industryKey?: string | null; includeInactive?: boolean }): Promise<IndustryResource[]>;
+  getIndustryResourcesForMerchant(industryKey: string | null): Promise<IndustryResource[]>;
+  createIndustryResource(data: InsertIndustryResource): Promise<IndustryResource>;
+  updateIndustryResource(id: string, updates: Partial<InsertIndustryResource>): Promise<IndustryResource | undefined>;
+  deleteIndustryResource(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1246,6 +1254,7 @@ export class DatabaseStorage implements IStorage {
           name: account.name || undefined,
           phone: account.phone || undefined,
           businessName: account.businessName || undefined,
+          industry: account.industry || undefined,
           applicationId: account.applicationId || undefined,
           decisionId: account.decisionId || undefined,
           portalToken: account.portalToken || undefined,
@@ -1380,6 +1389,65 @@ export class DatabaseStorage implements IStorage {
     }
 
     return results;
+  }
+
+  // Industry Resources
+  async listIndustryResources(filter?: { industryKey?: string | null; includeInactive?: boolean }): Promise<IndustryResource[]> {
+    const conditions = [] as any[];
+    if (filter && 'industryKey' in filter) {
+      conditions.push(
+        filter.industryKey === null
+          ? sql`${industryResources.industryKey} IS NULL`
+          : eq(industryResources.industryKey, filter.industryKey as string)
+      );
+    }
+    if (!filter?.includeInactive) {
+      conditions.push(eq(industryResources.isActive, true));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    return await db
+      .select()
+      .from(industryResources)
+      .where(where as any)
+      .orderBy(desc(industryResources.priority), industryResources.category, industryResources.title);
+  }
+
+  async getIndustryResourcesForMerchant(industryKey: string | null): Promise<IndustryResource[]> {
+    const where = industryKey
+      ? and(
+          eq(industryResources.isActive, true),
+          or(
+            sql`${industryResources.industryKey} IS NULL`,
+            eq(industryResources.industryKey, industryKey),
+          ),
+        )
+      : and(
+          eq(industryResources.isActive, true),
+          sql`${industryResources.industryKey} IS NULL`,
+        );
+    return await db
+      .select()
+      .from(industryResources)
+      .where(where as any)
+      .orderBy(desc(industryResources.priority), industryResources.category, industryResources.title);
+  }
+
+  async createIndustryResource(data: InsertIndustryResource): Promise<IndustryResource> {
+    const [record] = await db.insert(industryResources).values(data).returning();
+    return record;
+  }
+
+  async updateIndustryResource(id: string, updates: Partial<InsertIndustryResource>): Promise<IndustryResource | undefined> {
+    const [record] = await db
+      .update(industryResources)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(industryResources.id, id))
+      .returning();
+    return record;
+  }
+
+  async deleteIndustryResource(id: string): Promise<void> {
+    await db.delete(industryResources).where(eq(industryResources.id, id));
   }
 }
 

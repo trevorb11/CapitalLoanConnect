@@ -1231,6 +1231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: _smsApp.fullName || undefined,
             phone: _smsApp.phone || undefined,
             businessName: _smsApp.businessName || (_smsApp as any).legalBusinessName || undefined,
+            industry: _smsApp.industry || undefined,
             applicationId: _smsApp.id,
             triggerKey: 'trigger.portal_after_intake',
             sendLink: true,
@@ -1512,6 +1513,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: updatedApp.fullName || undefined,
             phone: updatedApp.phone || undefined,
             businessName: updatedApp.businessName || updatedApp.legalBusinessName || undefined,
+            industry: updatedApp.industry || undefined,
             applicationId: updatedApp.id,
             triggerKey: 'trigger.portal_after_application',
             sendLink: true,
@@ -1578,6 +1580,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: application.fullName || undefined,
             phone: application.phone || undefined,
             businessName: application.businessName || undefined,
+            industry: application.industry || undefined,
             applicationId: application.id,
             triggerKey: 'trigger.portal_after_intake',
             sendLink: true,
@@ -8393,6 +8396,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     name?: string;
     phone?: string;
     businessName?: string;
+    industry?: string;
     applicationId?: number;
     triggerKey: string; // which setting key to check
     sendLink: boolean; // whether to actually send the email
@@ -8412,6 +8416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: opts.name || null,
         phone: opts.phone || null,
         businessName: opts.businessName || null,
+        industry: opts.industry || null,
         applicationId: opts.applicationId || null,
         portalLinkSentAt: enabled && opts.sendLink ? new Date() : null,
       });
@@ -9210,6 +9215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let targetEmail = email?.toLowerCase();
       let name = '';
       let businessName = '';
+      let industryValue: string | null = null;
       let appId: number | null = null;
 
       if (applicationId) {
@@ -9218,6 +9224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         targetEmail = app.email?.toLowerCase();
         name = app.fullName || '';
         businessName = app.businessName || app.legalBusinessName || '';
+        industryValue = app.industry || null;
         appId = app.id;
       }
 
@@ -9233,6 +9240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         portalToken: token,
         name: name || null,
         businessName: businessName || null,
+        industry: industryValue,
         applicationId: appId,
         portalLinkSentAt: new Date(),
       });
@@ -9249,6 +9257,158 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[MERCHANT] Send portal link error:", error);
       res.status(500).json({ error: "Failed to send portal link" });
+    }
+  });
+
+  // Map a free-text industry string (whatever the applicant picked) into the
+  // canonical industry_resources.industry_key slug. Returns null for industries
+  // that don't have a curated vertical yet — they just see universal resources.
+  function industryToKey(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    const s = raw.toLowerCase();
+    if (s.includes('restaurant') || s.includes('food')) return 'restaurant';
+    if (s.includes('truck') || s.includes('transport') || s.includes('logistics') || s.includes('freight')) return 'trucking';
+    if (s.includes('construction') || s.includes('contractor') || s.includes('builder')) return 'construction';
+    if (s.includes('retail')) return 'retail';
+    if (s.includes('professional service') || s.includes('consult') || s.includes('legal') || s.includes('accounting')) return 'professional_services';
+    return null;
+  }
+
+  // Merchant Resources - returns curated resources for the authenticated merchant,
+  // merging universal rows with any that match the merchant's industry.
+  app.get("/api/merchant/resources", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail;
+      const account = await storage.getMerchantPortalAccountByEmail(email);
+
+      // Fall back to the application record if the portal account pre-dates the
+      // industry column or was created before backfill ran.
+      let industryRaw = account?.industry || null;
+      if (!industryRaw) {
+        const app = await storage.getLoanApplicationByEmail(email);
+        industryRaw = app?.industry || null;
+      }
+
+      const industryKey = industryToKey(industryRaw);
+      const rows = await storage.getIndustryResourcesForMerchant(industryKey);
+
+      // Group by category in a stable order (preserves priority within category)
+      const grouped = new Map<string, typeof rows>();
+      for (const row of rows) {
+        const arr = grouped.get(row.category) || [];
+        arr.push(row);
+        grouped.set(row.category, arr);
+      }
+
+      const resources = Array.from(grouped.entries()).map(([category, items]) => ({
+        category,
+        items: items.map((r) => ({
+          id: r.id,
+          title: r.title,
+          description: r.description,
+          url: r.url,
+          tag: r.tag,
+          tagColor: r.tagColor,
+          isIndustrySpecific: r.industryKey != null,
+        })),
+      }));
+
+      res.json({
+        industry: industryRaw,
+        industryKey,
+        resources,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Resources error:", error);
+      res.status(500).json({ error: "Failed to load resources" });
+    }
+  });
+
+  // ── Admin CRUD for industry_resources ───────────────────────────────────
+  function requireStaff(req: any, res: any): boolean {
+    if (!req.session.user?.isAuthenticated) {
+      res.status(401).json({ error: "Authentication required" });
+      return false;
+    }
+    const role = req.session.user.role;
+    if (role !== 'admin' && role !== 'underwriting' && role !== 'agent') {
+      res.status(403).json({ error: "Staff access required" });
+      return false;
+    }
+    return true;
+  }
+
+  app.get("/api/admin/industry-resources", async (req, res) => {
+    if (!requireStaff(req, res)) return;
+    try {
+      const { industryKey, includeInactive } = req.query;
+      const filter: { industryKey?: string | null; includeInactive?: boolean } = {};
+      if (typeof industryKey === 'string') {
+        filter.industryKey = industryKey === 'null' || industryKey === '' ? null : industryKey;
+      }
+      if (includeInactive === '1' || includeInactive === 'true') filter.includeInactive = true;
+      const rows = await storage.listIndustryResources(filter);
+      res.json({ resources: rows });
+    } catch (error) {
+      console.error("[ADMIN] List industry resources error:", error);
+      res.status(500).json({ error: "Failed to list resources" });
+    }
+  });
+
+  app.post("/api/admin/industry-resources", async (req, res) => {
+    if (!requireStaff(req, res)) return;
+    try {
+      const { industryKey, category, title, description, url, tag, tagColor, priority, isActive } = req.body || {};
+      if (!category || !title || !description || !url) {
+        return res.status(400).json({ error: "category, title, description, and url are required" });
+      }
+      const created = await storage.createIndustryResource({
+        industryKey: industryKey || null,
+        category,
+        title,
+        description,
+        url,
+        tag: tag || null,
+        tagColor: tagColor || null,
+        priority: typeof priority === 'number' ? priority : 0,
+        isActive: isActive !== false,
+      });
+      res.json({ resource: created });
+    } catch (error) {
+      console.error("[ADMIN] Create industry resource error:", error);
+      res.status(500).json({ error: "Failed to create resource" });
+    }
+  });
+
+  app.patch("/api/admin/industry-resources/:id", async (req, res) => {
+    if (!requireStaff(req, res)) return;
+    try {
+      const { id } = req.params;
+      const updates: any = {};
+      const fields = ['industryKey', 'category', 'title', 'description', 'url', 'tag', 'tagColor', 'priority', 'isActive'] as const;
+      for (const f of fields) {
+        if (f in (req.body || {})) updates[f] = (req.body as any)[f];
+      }
+      const updated = await storage.updateIndustryResource(id, updates);
+      if (!updated) return res.status(404).json({ error: "Not found" });
+      res.json({ resource: updated });
+    } catch (error) {
+      console.error("[ADMIN] Update industry resource error:", error);
+      res.status(500).json({ error: "Failed to update resource" });
+    }
+  });
+
+  app.delete("/api/admin/industry-resources/:id", async (req, res) => {
+    if (!requireStaff(req, res)) return;
+    try {
+      await storage.deleteIndustryResource(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[ADMIN] Delete industry resource error:", error);
+      res.status(500).json({ error: "Failed to delete resource" });
     }
   });
 

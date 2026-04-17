@@ -618,6 +618,7 @@ export const merchantPortalAccounts = pgTable("merchant_portal_accounts", {
   name: text("name"),
   phone: text("phone"),
   businessName: text("business_name"),
+  industry: text("industry"), // raw industry string from the originating application; drives portal personalization
   applicationId: integer("application_id"), // links to loan application if applicable
   decisionId: text("decision_id"), // links to businessUnderwritingDecision if funded
   portalLinkSentAt: timestamp("portal_link_sent_at"), // when the activation link was last sent
@@ -701,3 +702,30 @@ export const insertMerchantBankSnapshotSchema = createInsertSchema(merchantBankS
 
 export type InsertMerchantBankSnapshot = z.infer<typeof insertMerchantBankSnapshotSchema>;
 export type MerchantBankSnapshot = typeof merchantBankSnapshots.$inferSelect;
+
+// Industry Resources - curated links shown in the merchant-portal Resources tab.
+// Rows with industryKey = null are universal (shown to every merchant).
+// Rows with an industryKey are shown only to merchants whose account maps to that key.
+export const industryResources = pgTable("industry_resources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  industryKey: text("industry_key"), // null = universal; otherwise slug like 'restaurant', 'trucking'
+  category: text("category").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  url: text("url").notNull(),
+  tag: text("tag"),
+  tagColor: text("tag_color"),
+  priority: integer("priority").default(0), // higher shows first within a category
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertIndustryResourceSchema = createInsertSchema(industryResources).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertIndustryResource = z.infer<typeof insertIndustryResourceSchema>;
+export type IndustryResource = typeof industryResources.$inferSelect;
