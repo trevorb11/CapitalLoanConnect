@@ -32,7 +32,14 @@ const CHIRP_API_TOKEN = !IS_PROD && process.env.CHIRP_SANDBOX_API_TOKEN
   : process.env.CHIRP_API_TOKEN || "";
 const tokenSet = !!CHIRP_API_TOKEN;
 const tokenHint = CHIRP_API_TOKEN ? `...${CHIRP_API_TOKEN.slice(-4)}` : "NOT SET";
-console.log(`[CHIRP] Using ${IS_PROD ? "production" : "sandbox"} token (NODE_ENV=${process.env.NODE_ENV}) | token configured: ${tokenSet} | ends: ${tokenHint}`);;
+
+// Portal session cookie — when set, bypasses IP whitelist requirement.
+// Value should be the full cookie string e.g. "id=s%3AaBcD..."
+// Obtain from portal.chirp.digital after logging in (DevTools → Application → Cookies → id).
+const CHIRP_SESSION_COOKIE = process.env.CHIRP_SESSION_COOKIE || "";
+const cookieSet = !!CHIRP_SESSION_COOKIE;
+
+console.log(`[CHIRP] Using ${IS_PROD ? "production" : "sandbox"} token (NODE_ENV=${process.env.NODE_ENV}) | token configured: ${tokenSet} | ends: ${tokenHint} | session cookie: ${cookieSet ? "SET (IP whitelist bypass active)" : "NOT SET"}`);;
 
 // Chrome 122 TLS cipher suite order — changes the JA3 fingerprint so Cloudflare
 // WAF does not flag the request as a Node.js/server-side bot.
@@ -107,7 +114,7 @@ function curlChirpRequest(
       "-H", "Accept: application/json",
       "-H", "Origin: https://chirp.digital",
       "-H", "Referer: https://chirp.digital/",
-      "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "-H", "User-Agent: PostmanRuntime/7.49.1",
       "-H", "sec-fetch-dest: empty",
       "-H", "sec-fetch-mode: cors",
       "-H", "sec-fetch-site: same-origin",
@@ -115,6 +122,11 @@ function curlChirpRequest(
       "-w", "\n__HTTP_STATUS__%{http_code}",
       "--max-time", "30",
     ];
+
+    // Include portal session cookie when configured — bypasses IP whitelist
+    if (CHIRP_SESSION_COOKIE) {
+      args.push("-H", `Cookie: ${CHIRP_SESSION_COOKIE}`);
+    }
 
     if (body) {
       args.push("-d", JSON.stringify(body));
@@ -277,12 +289,13 @@ export class ChirpService {
 
     // ── Primary: axios with Chrome TLS fingerprint + browser headers ──────────
     try {
+      const cookieHeader = CHIRP_SESSION_COOKIE ? { Cookie: CHIRP_SESSION_COOKIE } : {};
       const axiosResponse = await chirpAxios.request<T>({
         method: method as any,
         url,
         baseURL: this.baseUrl,
         data: bodyObj,
-        headers: { Authorization: this.token, ...extraHeaders },
+        headers: { Authorization: this.token, ...cookieHeader, ...extraHeaders },
         validateStatus: () => true,
       });
 

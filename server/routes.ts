@@ -10482,20 +10482,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     });
 
-    // 2. Make a live test call to Chirp (a benign GET to the base URL to see HTTP status)
-    const chirpTestUrl = (process.env.CHIRP_BASE_URL || "https://chirp.digital/api") + "/";
+    const sessionCookie = process.env.CHIRP_SESSION_COOKIE || "";
+
+    // 2. Make a live test call to Chirp using getRequestStatus on a known code
+    const chirpTestUrl = (process.env.CHIRP_BASE_URL || "https://chirp.digital/api") + "/getRequestStatus/KYILOA";
     const chirpResult: { status: number; body: string } = await new Promise((resolve) => {
       const args = [
-        "-4", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+        "-4", "-s",
+        "-X", "POST",
+        "-w", "\n__STATUS__%{http_code}",
         "-H", `Authorization: ${activeToken}`,
         "-H", "Content-Type: application/json",
+        "-H", "User-Agent: PostmanRuntime/7.49.1",
         "--max-time", "10",
         chirpTestUrl,
       ];
+      if (sessionCookie) {
+        args.push("-H", `Cookie: ${sessionCookie}`);
+      }
       execFile("curl", args, { timeout: 12000 }, (_e, stdout) => {
-        resolve({ status: parseInt(stdout?.trim() || "0", 10), body: stdout?.trim() });
+        const statusMatch = (stdout || "").match(/__STATUS__(\d+)$/);
+        const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+        const body = (stdout || "").replace(/__STATUS__\d+$/, "").trim();
+        resolve({ status, body });
       });
     });
+
+    const note = chirpResult.status === 403
+      ? sessionCookie
+        ? "403 despite cookie — cookie may be expired or belong to wrong account"
+        : "403 — IP not whitelisted. Set CHIRP_SESSION_COOKIE to bypass."
+      : (chirpResult.status === 200 || chirpResult.status === 404 || chirpResult.status === 400)
+      ? "Chirp connection OK (token accepted)"
+      : `HTTP ${chirpResult.status}`;
 
     res.json({
       outboundIpv4: outboundIp,
@@ -10504,13 +10523,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       productionTokenEnds: token ? `...${token.slice(-4)}` : "NOT SET",
       sandboxTokenConfigured: !!sandboxToken,
       activeTokenEnds: activeToken ? `...${activeToken.slice(-4)}` : "NOT SET",
+      sessionCookieConfigured: !!sessionCookie,
       chirpBaseUrl: process.env.CHIRP_BASE_URL || "https://chirp.digital/api",
       chirpTestHttpStatus: chirpResult.status,
-      note: chirpResult.status === 403
-        ? "Chirp returned 403 — IP may not be whitelisted at application level, or token is invalid"
-        : chirpResult.status === 200 || chirpResult.status === 404
-        ? "Chirp connection OK (token accepted)"
-        : "Unexpected response from Chirp",
+      chirpTestResponseBody: chirpResult.body.slice(0, 300),
+      note,
     });
   });
 
