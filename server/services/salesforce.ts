@@ -625,11 +625,12 @@ export async function syncLenderSubmissionsToSalesforce(
     });
   }
 
-  // Additional approvals (JSONB array)
+  // Additional approvals (JSONB array) — skip if same lender as primary to avoid duplicates
+  const primaryLender = (decision.lender || "").toLowerCase().trim();
   const additionalApprovals = decision.additional_approvals || decision.additionalApprovals;
   if (Array.isArray(additionalApprovals)) {
     for (const aa of additionalApprovals) {
-      if (aa.lender) {
+      if (aa.lender && aa.lender.toLowerCase().trim() !== primaryLender) {
         submissions.push({
           lender: aa.lender,
           status: "approved",
