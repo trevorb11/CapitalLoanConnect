@@ -389,6 +389,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET /api/admin/claude/ping — auth test
   // ---------------------------------------------------------------------------
+  // Batch retry: re-sync all failed decisions to Salesforce
+  // ---------------------------------------------------------------------------
+  app.post("/api/admin/sf-retry-failed", async (req, res) => {
+    const apiKey = req.headers["x-claude-api-key"] as string;
+    const isAuthed = apiKey === process.env.CLAUDE_API_KEY || req.session?.user;
+    if (!isAuthed) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      // Get all decisions that failed or were never attempted
+      const failed = await storage.getBusinessUnderwritingDecisions();
+      const toRetry = failed.filter(d =>
+        d.sfSynced === false || d.sfSyncedAt === null
+      );
+
+      let retried = 0, succeeded = 0, stillFailed = 0;
+
+      for (const decision of toRetry) {
+        try {
+          const result = await syncDecisionToSalesforce(decision);
+          retried++;
+
+          await storage.updateBusinessUnderwritingDecision(decision.id, {
+            sfSynced: result.synced,
+            sfSyncedAt: new Date(),
+            sfSyncMessage: result.error || (result.action || "ok"),
+            sfOpportunityId: result.oppId || null,
+          });
+
+          if (result.synced) succeeded++;
+          else stillFailed++;
+
+          // Rate limit: small delay between API calls
+          await new Promise(r => setTimeout(r, 200));
+        } catch (err: any) {
+          stillFailed++;
+          console.error(`[SF Retry] Error for ${decision.businessName}:`, err.message);
+        }
+      }
+
+      console.log(`[SF Retry] Done: retried=${retried}, succeeded=${succeeded}, failed=${stillFailed}`);
+      return res.json({ ok: true, retried, succeeded, stillFailed, total: toRetry.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // Salesforce inbound poll — call periodically or via cron to sync SF → dashboard
   // ---------------------------------------------------------------------------
   app.post("/api/admin/sf-poll", async (req, res) => {
@@ -4091,6 +4138,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sfOpportunityId: sfResult.oppId || null,
           });
           console.log(`[UNDERWRITING] SF sync for ${businessEmail}: ${sfResult.synced ? 'success' : 'skipped'} - ${sfResult.action || sfResult.error || 'no-op'}`);
+
+          // #3: Alert on sync failure via SMS
+          if (!sfResult.synced && process.env.SMS_MIDDLEWARE_URL) {
+            try {
+              const alertPhone = process.env.SYNC_ALERT_PHONE || "+18189174757";
+              await fetch(`${process.env.SMS_MIDDLEWARE_URL.replace('/stage-event', '')}/webhooks/ghl/workflow-trigger`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  phone: alertPhone,
+                  message: `[TCG Sync Alert] Decision for ${decision.businessName || businessEmail} failed to sync to SF: ${sfResult.error || sfResult.reason || 'unknown'}`,
+                }),
+              }).catch(() => {});
+            } catch {}
+          }
         } catch (dbErr) {
           console.error(`[UNDERWRITING] Failed to save SF sync status for ${businessEmail}:`, dbErr);
         }

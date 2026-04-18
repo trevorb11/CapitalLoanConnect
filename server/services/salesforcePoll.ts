@@ -12,9 +12,9 @@
 
 import { db } from "../db";
 import { businessUnderwritingDecisions } from "@shared/schema";
-import { eq, sql as drizzleSql } from "drizzle-orm";
+import { eq, isNull, or, sql as drizzleSql } from "drizzle-orm";
 import { updateDialerFromSfOpp } from "./dialerSync";
-import { computePipelineBucket } from "./salesforce";
+import { computePipelineBucket, syncDecisionToSalesforce } from "./salesforce";
 
 const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
 const SF_REFRESH_TOKEN = process.env.SF_REFRESH_TOKEN;
@@ -241,9 +241,41 @@ export async function pollSalesforceChanges(): Promise<{
     }
   }
 
+  // --- Auto-link: find unlinked decisions that match any polled Opp's email ---
+  // This catches decisions that existed before the Opp was created (e.g., Lead just converted)
+  let autoLinked = 0;
+  for (const opp of opps) {
+    const oppEmail = (opp.Email__c || "").toLowerCase().trim();
+    if (!oppEmail) continue;
+
+    try {
+      const unlinked = await db
+        .select({ id: businessUnderwritingDecisions.id, businessName: businessUnderwritingDecisions.businessName })
+        .from(businessUnderwritingDecisions)
+        .where(
+          drizzleSql`LOWER(${businessUnderwritingDecisions.businessEmail}) = ${oppEmail}
+            AND ${businessUnderwritingDecisions.sfOpportunityId} IS NULL`
+        )
+        .limit(5);
+
+      for (const d of unlinked) {
+        await db.update(businessUnderwritingDecisions)
+          .set({ sfOpportunityId: opp.Id, sfSyncMessage: "Auto-linked by poll" })
+          .where(eq(businessUnderwritingDecisions.id, d.id));
+
+        // Trigger the full sync now that we have the link
+        syncDecisionToSalesforce({ ...d, sf_opportunity_id: opp.Id }).catch(err =>
+          console.error(`[SF Poll] Auto-link sync error for ${d.businessName}:`, err.message)
+        );
+        autoLinked++;
+        console.log(`[SF Poll] Auto-linked decision ${d.businessName} → Opp ${opp.Id}`);
+      }
+    } catch {}
+  }
+
   // Save the poll timestamp (use now, not the last opp's modified date, to avoid gaps)
   await setLastPollTime(new Date().toISOString());
 
-  console.log(`[SF Poll] Done: polled=${results.polled}, dashboard=${results.dashboardUpdated}, dialer=${results.dialerUpdated}, errors=${results.errors}`);
-  return results;
+  console.log(`[SF Poll] Done: polled=${results.polled}, dashboard=${results.dashboardUpdated}, dialer=${results.dialerUpdated}, autoLinked=${autoLinked}, errors=${results.errors}`);
+  return { ...results, autoLinked };
 }

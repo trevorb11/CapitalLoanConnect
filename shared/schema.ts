@@ -487,6 +487,9 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   ghlSyncMessage: text("ghl_sync_message"),
   ghlOpportunityId: text("ghl_opportunity_id"),
 
+  // Secondary email for improved SF matching (migration 0007)
+  secondaryEmail: text("secondary_email"),
+
   // Salesforce sync tracking (added in migration 0006)
   sfSynced: boolean("sf_synced").default(false),
   sfSyncedAt: timestamp("sf_synced_at"),

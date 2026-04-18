@@ -382,6 +382,7 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
 
   try {
     const email = decision.business_email || decision.businessEmail || app?.email || "";
+    const secondaryEmail = decision.secondary_email || decision.secondaryEmail || app?.business_email || app?.company_email || "";
     const phone = decision.business_phone || decision.businessPhone || app?.phone || "";
     const status = decision.status || "";
     const sfStage = dashboardStatusToSfStage(status);
@@ -408,12 +409,22 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
       }
     }
 
-    // Fallback: search by Contact email (catches Opps where Email__c is null but Contact has email)
-    if (!oppId && email) {
-      const byContactEmail = await sfQuery(
-        `SELECT Id FROM Opportunity WHERE Primary_Contact__r.Email = '${email.replace(/'/g, "\\'")}' LIMIT 1`
+    // Fallback: search by secondary email on the Opportunity
+    if (!oppId && secondaryEmail) {
+      const bySecondary = await sfQuery(
+        `SELECT Id FROM Opportunity WHERE Email__c = '${secondaryEmail.replace(/'/g, "\\'")}' LIMIT 1`
       );
-      if (byContactEmail.length) oppId = byContactEmail[0].Id;
+      if (bySecondary.length) oppId = bySecondary[0].Id;
+    }
+
+    // Fallback: search by Contact email (catches Opps where Email__c is null but Contact has email)
+    if (!oppId) {
+      for (const e of [email, secondaryEmail].filter(Boolean)) {
+        const byContactEmail = await sfQuery(
+          `SELECT Id FROM Opportunity WHERE Primary_Contact__r.Email = '${e.replace(/'/g, "\\'")}' LIMIT 1`
+        );
+        if (byContactEmail.length) { oppId = byContactEmail[0].Id; break; }
+      }
     }
 
     // Fallback: search by business name (normalized — catches Opps with no email/phone)
