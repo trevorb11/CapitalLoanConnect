@@ -3066,21 +3066,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         avgBalance = parseMoney(overall?.averageDailyBalance ?? overall?.averageMonthlyBalance);
         currentBalance = parseMoney((summary as any)?.currentBalance);
       } else if (details) {
-        // Fallback: compute metrics from raw transaction data in details
+        // Fallback: compute metrics from raw transaction data in details.
+        // Chirp returns TransactionSummaries as a flat array where each item
+        // IS a transaction (not a wrapper with a sub-array).
         console.log(`[CHIRP] Summary unavailable for ${requestCode}, computing from transaction details`);
-        const txnSummaries: any[] = (details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || [];
-        const allTxns: any[] = txnSummaries.flatMap((s: any) => s.transactions || s.transaction || []);
+        const allTxns: any[] = (details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || [];
 
-        // Group transactions by month
+        // Group transactions by month, using type/is_income to classify
         const byMonth = new Map<string, { credits: number; debits: number }>();
         for (const txn of allTxns) {
           const date = txn.date || txn.transacted_at || txn.posted_at || "";
           const monthKey = date.substring(0, 7); // YYYY-MM
           if (!monthKey) continue;
           const entry = byMonth.get(monthKey) || { credits: 0, debits: 0 };
-          const amt = parseMoney(txn.amount);
-          if (amt > 0) entry.credits += amt;
-          else entry.debits += Math.abs(amt);
+          const amt = Math.abs(parseMoney(txn.amount));
+          const isCredit = txn.type === "CREDIT" || txn.is_income === true || txn.is_direct_deposit === true;
+          if (isCredit) {
+            entry.credits += amt;
+          } else {
+            entry.debits += amt;
+          }
           byMonth.set(monthKey, entry);
         }
 
@@ -3095,13 +3100,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           monthlyExpenses = totalDebits / monthsAnalyzed;
         }
 
-        // Current balance from first account
+        // Current balance = sum of all account balances
         if (accounts.length > 0) {
-          currentBalance = parseMoney(accounts[0].balance ?? accounts[0].available_balance ?? 0);
-          // Average across all accounts
-          const totalBal = accounts.reduce((s: number, a: any) => s + parseMoney(a.balance ?? a.available_balance ?? 0), 0);
-          avgBalance = totalBal / accounts.length;
+          currentBalance = accounts.reduce((s: number, a: any) => s + parseMoney(a.balance ?? a.available_balance ?? 0), 0);
+          avgBalance = currentBalance / accounts.length;
         }
+
+        console.log(`[CHIRP] Computed from ${allTxns.length} txns over ${monthsAnalyzed} months: revenue=$${Math.round(monthlyRevenue)}, expenses=$${Math.round(monthlyExpenses)}, balance=$${Math.round(currentBalance)}`);
       }
 
       const netCashFlow = monthlyRevenue - monthlyExpenses;

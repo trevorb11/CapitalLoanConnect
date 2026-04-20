@@ -408,17 +408,17 @@ export class ChirpService {
       availableBalance: acc.available_balance != null ? Number(acc.available_balance) : null,
     }));
 
-    const transactions = transactionSummaries.flatMap((summary: any) => {
-      const list: any[] = summary.transactions || summary.transaction || [];
-      return list.map((txn: any) => ({
-        transactionId: txn.chirpTransactionId || txn.guid || txn.id || "",
-        date: txn.date || txn.transacted_at || txn.posted_at || "",
-        name: txn.description || txn.original_description || "",
-        amount: Number(txn.amount ?? 0),
-        category: [txn.top_level_category, txn.category].filter(Boolean),
-        pending: String(txn.status || "").toUpperCase() === "PENDING",
-      }));
-    });
+    // Chirp returns TransactionSummaries as a flat array where each item
+    // IS a transaction directly (not a wrapper with a nested sub-array).
+    const transactions = transactionSummaries.map((txn: any) => ({
+      transactionId: txn.chirpTransactionId || txn.guid || txn.id || "",
+      date: txn.date || txn.transacted_at || txn.posted_at || "",
+      name: txn.description || txn.original_description || "",
+      amount: Number(txn.amount ?? 0),
+      category: [txn.top_level_category, txn.category].filter(Boolean),
+      pending: String(txn.status || "").toUpperCase() === "PENDING",
+      type: txn.type || (txn.is_income ? "CREDIT" : "DEBIT"),
+    }));
 
     const dates = transactions.map(t => t.date).filter(Boolean).sort();
     const endDate = dates[dates.length - 1] || new Date().toISOString().split("T")[0];
