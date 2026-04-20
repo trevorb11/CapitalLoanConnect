@@ -2870,7 +2870,7 @@ function PreQualifiedOfferBanner({ deals }: { deals: Deal[] }) {
 // widget in a popup and polls our server for connection status. Once the
 // merchant finishes verifying their bank on Chirp's side, we trigger a sync
 // to populate our local snapshot so subsequent portal views are cheap.
-function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSuccess: () => void; label?: string }) {
+function ChirpConnectButton({ onSuccess, label = "Connect Your Bank", previewToken }: { onSuccess: () => void; label?: string; previewToken?: string | null }) {
   const [starting, setStarting] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2879,6 +2879,7 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSucc
   const [phone, setPhone] = useState("");
   const pollRef = useRef<number | null>(null);
   const popupRef = useRef<Window | null>(null);
+  const pvHeaders: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
   useEffect(() => () => {
     if (pollRef.current) window.clearInterval(pollRef.current);
@@ -2891,7 +2892,7 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSucc
     pollRef.current = window.setInterval(async () => {
       attempts += 1;
       try {
-        const res = await fetch("/api/merchant/banking/insights", { credentials: "include" });
+        const res = await fetch("/api/merchant/banking/insights", { credentials: "include", headers: pvHeaders });
         if (res.ok) {
           const data = await res.json();
           if (data.connected) {
@@ -2907,9 +2908,9 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSucc
       if (popupRef.current && popupRef.current.closed && attempts > 2) {
         // Try one sync pull before giving up, in case status just flipped.
         try {
-          await fetch("/api/merchant/chirp/sync", { method: "POST", credentials: "include" });
+          await fetch("/api/merchant/chirp/sync", { method: "POST", credentials: "include", headers: pvHeaders });
         } catch (_) { /* ignore */ }
-        const finalRes = await fetch("/api/merchant/banking/insights", { credentials: "include" });
+        const finalRes = await fetch("/api/merchant/banking/insights", { credentials: "include", headers: pvHeaders });
         if (finalRes.ok) {
           const data = await finalRes.json();
           if (data.connected) {
@@ -2936,7 +2937,7 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSucc
       const res = await fetch("/api/merchant/chirp/connect", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...pvHeaders },
         body: JSON.stringify(phoneOverride ? { phone: phoneOverride } : {}),
       });
       if (!res.ok) {
@@ -3127,7 +3128,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
     setSyncing(true);
     setSyncError(null);
     try {
-      const res = await fetch("/api/merchant/chirp/sync", { method: "POST", credentials: "include" });
+      const res = await fetch("/api/merchant/chirp/sync", { method: "POST", credentials: "include", headers: previewHeaders });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Sync failed");
@@ -3142,7 +3143,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
 
   const handleDisconnectChirp = useCallback(async () => {
     try {
-      await fetch("/api/merchant/chirp/connection", { method: "DELETE", credentials: "include" });
+      await fetch("/api/merchant/chirp/connection", { method: "DELETE", credentials: "include", headers: previewHeaders });
       await fetchData();
     } catch (e) {
       console.error("Failed to disconnect Chirp:", e);
@@ -3159,6 +3160,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       fetch("/api/merchant/chirp/register-webhook", {
         method: "POST",
         credentials: "include",
+        headers: previewHeaders,
       }).catch(() => {});
     }
   }, [banking?.hasPendingConnection]);
@@ -3170,6 +3172,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       const res = await fetch("/api/merchant/bank-statements/analyze", {
         method: "POST",
         credentials: "include",
+        headers: previewHeaders,
       });
       if (!res.ok) {
         const data = await res.json();
@@ -3359,7 +3362,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                   Status: <span style={{ color: "#fbbf24" }}>{banking.status || "Unverified"}</span>
                 </p>
                 <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
-                  <ChirpConnectButton onSuccess={fetchData} label="Reconnect Bank" />
+                  <ChirpConnectButton onSuccess={fetchData} label="Reconnect Bank" previewToken={previewToken} />
                   <button
                     className="analyze-btn"
                     onClick={handleSync}
@@ -3383,7 +3386,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                   <li>See how your deposits stack up against your payments</li>
                   <li>Faster approvals on renewals &mdash; no re-uploading statements</li>
                 </ul>
-                <ChirpConnectButton onSuccess={fetchData} />
+                <ChirpConnectButton onSuccess={fetchData} previewToken={previewToken} />
               </div>
             )}
           </div>
