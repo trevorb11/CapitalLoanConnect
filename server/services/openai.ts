@@ -77,7 +77,10 @@ export interface BankStatementAnalysis {
   overallScore: number; // 0-100
   qualificationTier: string;
   estimatedMonthlyRevenue: number;
+  estimatedMonthlyExpenses: number;
+  netCashFlow: number;
   averageDailyBalance: number;
+  currentBalance: number;
   redFlags: Array<{
     issue: string;
     severity: "low" | "medium" | "high";
@@ -129,7 +132,10 @@ Analyze this bank statement and respond with a JSON object following this exact 
   "overallScore": <number 0-100 representing funding readiness>,
   "qualificationTier": "<one of: Prime Borrower, Growth Capital, Working Capital, Cash Flow Financing, Startup Capital, Foundation Building>",
   "estimatedMonthlyRevenue": <number - estimated average monthly deposits/revenue>,
+  "estimatedMonthlyExpenses": <number - estimated average monthly debits/expenses/withdrawals>,
+  "netCashFlow": <number - monthly revenue minus monthly expenses>,
   "averageDailyBalance": <number - estimated average daily balance>,
+  "currentBalance": <number - most recent ending balance visible, or 0 if not visible>,
   "redFlags": [
     {
       "issue": "<brief issue name>",

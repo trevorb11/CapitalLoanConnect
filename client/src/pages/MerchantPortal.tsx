@@ -3048,7 +3048,10 @@ interface FinancialInsights {
   pdfInsights: {
     cashFlowHealth: 'strong' | 'moderate' | 'needs-attention';
     estimatedMonthlyRevenue: number;
+    estimatedMonthlyExpenses: number;
+    netCashFlow: number;
     averageDailyBalance: number;
+    currentBalance: number;
     positiveIndicators: string[];
     concerns: string[];
     tips: string[];
@@ -3230,12 +3233,18 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   const monthlyRevenue = useChirp
     ? (chirpMetrics?.monthlyRevenue || plaid?.monthlyRevenue || 0)
     : (pdf?.estimatedMonthlyRevenue || plaid?.monthlyRevenue || 0);
-  const monthlyExpenses = useChirp ? (chirpMetrics?.monthlyExpenses || 0) : 0;
-  const netCashFlow = useChirp ? (chirpMetrics?.netCashFlow || 0) : 0;
+  const monthlyExpenses = useChirp
+    ? (chirpMetrics?.monthlyExpenses || 0)
+    : (pdf?.estimatedMonthlyExpenses || 0);
+  const netCashFlow = useChirp
+    ? (chirpMetrics?.netCashFlow || 0)
+    : (pdf?.netCashFlow || 0);
   const avgBalance = useChirp
     ? (chirpMetrics?.avgBalance || plaid?.avgBalance || 0)
     : (pdf?.averageDailyBalance || plaid?.avgBalance || 0);
-  const currentBalance = useChirp ? (chirpMetrics?.currentBalance || 0) : 0;
+  const currentBalance = useChirp
+    ? (chirpMetrics?.currentBalance || 0)
+    : (pdf?.currentBalance || 0);
   const revenueTrend = useChirp ? (chirpMetrics?.revenueTrend || plaid?.revenueTrend || null) : (plaid?.revenueTrend || null);
   const healthScore = useChirp ? (chirpMetrics?.healthScore || 0) : 0;
   const monthsAnalyzed = useChirp ? (chirpMetrics?.monthsAnalyzed || 0) : 0;

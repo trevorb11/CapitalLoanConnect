@@ -9698,7 +9698,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pdfInsights = {
           cashFlowHealth,
           estimatedMonthlyRevenue: pdfData.estimatedMonthlyRevenue || 0,
+          estimatedMonthlyExpenses: pdfData.estimatedMonthlyExpenses || 0,
+          netCashFlow: pdfData.netCashFlow || 0,
           averageDailyBalance: pdfData.averageDailyBalance || 0,
+          currentBalance: pdfData.currentBalance || 0,
           positiveIndicators: (pdfData.positiveIndicators || []).map((p: any) =>
             typeof p === 'string' ? p : p.indicator || p.details || ''
           ),
