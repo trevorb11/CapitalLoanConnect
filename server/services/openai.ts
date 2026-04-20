@@ -8,9 +8,16 @@ const openai = new OpenAI({
 });
 
 // Anthropic — used for bank statement analysis (deeper financial reasoning)
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy-init to avoid crashing at startup if key is not yet set
+let _anthropic: Anthropic | null = null;
+function getAnthropic(): Anthropic {
+  if (!_anthropic) {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new Error("ANTHROPIC_API_KEY is not configured");
+    _anthropic = new Anthropic({ apiKey: key });
+  }
+  return _anthropic;
+}
 const CLAUDE_MODEL = "claude-opus-4-7-20250415";
 
 // Lender criteria for funding qualification analysis
@@ -181,7 +188,7 @@ Important:
 Respond ONLY with the JSON object, no additional text.`;
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await getAnthropic().messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 3000,
       system: `You are a financial analyst on a business finance brokerage platform called Today Capital Group. The platform brokers SBA loans, MCAs (merchant cash advances), lines of credit, revenue-based financing, and other business funding products.
@@ -228,6 +235,11 @@ Your analysis should be accurate, conservative, and framed in a way that is help
     return analysis;
   } catch (error) {
     console.error("[CLAUDE] Bank statement analysis error:", error);
+
+    // Log more detail for debugging
+    if (error instanceof Error) {
+      console.error("[CLAUDE] Error name:", error.name, "| Message:", error.message);
+    }
 
     if (error instanceof SyntaxError) {
       throw new Error(
