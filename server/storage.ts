@@ -19,7 +19,7 @@ import {
   type MerchantBankSnapshot, type InsertMerchantBankSnapshot,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, desc, sql, ilike, getTableColumns, isNotNull } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, getTableColumns, isNotNull, isNull, gte } from "drizzle-orm";
 
 // Retry wrapper for database operations to handle connection drops
 async function withRetry<T>(
@@ -87,7 +87,9 @@ export interface IStorage {
 
   // GigFi methods
   saveGigFiResult(applicationId: string, status: string, decisionId?: string, redirectUrl?: string): Promise<void>;
+  saveGigFiResultByEmail(email: string, status: string, decisionId?: string, redirectUrl?: string): Promise<{ applicationId: string } | null>;
   getGigFiSubmissions(): Promise<LoanApplication[]>;
+  getDeclinedDecisionsForExternalGigFi(lookbackDays: number): Promise<Array<BusinessUnderwritingDecision & { applicationId?: string; applicationData?: Record<string, unknown> }>>;
 
   // Plaid methods
   createPlaidItem(item: InsertPlaidItem): Promise<PlaidItem>;
@@ -595,6 +597,93 @@ export class DatabaseStorage implements IStorage {
       .from(loanApplications)
       .where(isNotNull(loanApplications.gigfiStatus))
       .orderBy(desc(loanApplications.updatedAt));
+  }
+
+  async saveGigFiResultByEmail(email: string, status: string, decisionId?: string, redirectUrl?: string): Promise<{ applicationId: string } | null> {
+    const normalizedEmail = email.toLowerCase().trim();
+    const [app] = await db
+      .select({ id: loanApplications.id })
+      .from(loanApplications)
+      .where(and(
+        eq(loanApplications.email, normalizedEmail),
+        isNull(loanApplications.gigfiStatus),
+      ))
+      .orderBy(desc(loanApplications.createdAt))
+      .limit(1);
+
+    if (!app) {
+      console.warn(`[GIGFI] No un-submitted application found for email: ${normalizedEmail}`);
+      return null;
+    }
+
+    await db
+      .update(loanApplications)
+      .set({
+        gigfiStatus: status,
+        gigfiDecisionId: decisionId || null,
+        gigfiRedirectUrl: redirectUrl || null,
+      } as any)
+      .where(eq(loanApplications.id, app.id));
+
+    console.log(`[GIGFI] Saved external result status=${status} decisionId=${decisionId} to application ${app.id} (by email ${normalizedEmail})`);
+    return { applicationId: app.id };
+  }
+
+  async getDeclinedDecisionsForExternalGigFi(lookbackDays: number): Promise<Array<BusinessUnderwritingDecision & { applicationId?: string; applicationData?: Record<string, unknown> }>> {
+    const lookbackDate = new Date();
+    lookbackDate.setDate(lookbackDate.getDate() - lookbackDays);
+
+    const decisions = await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(and(
+        or(
+          eq(businessUnderwritingDecisions.status, 'declined'),
+          eq(businessUnderwritingDecisions.status, 'unqualified'),
+        ),
+        gte(businessUnderwritingDecisions.createdAt, lookbackDate),
+      ))
+      .orderBy(desc(businessUnderwritingDecisions.createdAt));
+
+    const enriched = await Promise.all(decisions.map(async (dec) => {
+      const [app] = await db
+        .select()
+        .from(loanApplications)
+        .where(and(
+          eq(loanApplications.email, dec.businessEmail.toLowerCase()),
+          isNull(loanApplications.gigfiStatus),
+        ))
+        .orderBy(desc(loanApplications.createdAt))
+        .limit(1);
+
+      return {
+        ...dec,
+        applicationId: app?.id || undefined,
+        applicationData: app ? {
+          id: app.id,
+          email: app.email,
+          fullName: app.fullName,
+          businessName: app.businessName,
+          legalBusinessName: app.legalBusinessName,
+          phone: app.phone,
+          monthlyRevenue: app.monthlyRevenue,
+          averageMonthlyRevenue: app.averageMonthlyRevenue,
+          requestedAmount: app.requestedAmount,
+          timeInBusiness: app.timeInBusiness,
+          socialSecurityNumber: app.socialSecurityNumber,
+          dateOfBirth: app.dateOfBirth,
+          ownerAddress1: app.ownerAddress1,
+          ownerCity: app.ownerCity,
+          ownerState: app.ownerState,
+          ownerZip: app.ownerZip,
+          businessStreetAddress: app.businessStreetAddress,
+          businessCsz: app.businessCsz,
+          creditScore: app.creditScore,
+        } : undefined,
+      };
+    }));
+
+    return enriched;
   }
 
   // Plaid Statements methods

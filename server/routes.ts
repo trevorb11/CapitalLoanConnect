@@ -10174,6 +10174,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper: validate external API key (Bearer token = ADMIN_PASSWORD)
+  function validateExternalApiKey(req: Request, res: Response): boolean {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    const adminPassword = process.env.ADMIN_PASSWORD || "Tcg1!tcg";
+    if (!token || token !== adminPassword) {
+      res.status(401).json({ error: "Unauthorized — provide a valid Bearer token" });
+      return false;
+    }
+    return true;
+  }
+
+  // GET /api/gigfi/external/pending
+  // Returns declined/unqualified underwriting decisions with linked application data.
+  // Intended for external programs that want to pull new candidates and submit them to GigFi.
+  // Auth: Bearer token = ADMIN_PASSWORD
+  // Query params: lookbackDays (default 30) — how many days back to search
+  app.get("/api/gigfi/external/pending", async (req: Request, res: Response) => {
+    if (!validateExternalApiKey(req, res)) return;
+    const lookbackDays = Math.min(parseInt((req.query.lookbackDays as string) || "30", 10), 365);
+    try {
+      const decisions = await storage.getDeclinedDecisionsForExternalGigFi(lookbackDays);
+      return res.json({
+        count: decisions.length,
+        lookbackDays,
+        decisions,
+      });
+    } catch (err) {
+      console.error("[GIGFI EXTERNAL PENDING]", err);
+      return res.status(500).json({ error: "Failed to fetch pending decisions" });
+    }
+  });
+
+  // POST /api/gigfi/external/record
+  // Records a GigFi submission result from an external program.
+  // Accepts applicationId OR email (will find the most recent unsubmitted application for that email).
+  // On success, the submission appears in the GigFi Submissions page immediately.
+  // Auth: Bearer token = ADMIN_PASSWORD
+  // Body: { applicationId?, email?, status, decisionId?, redirectUrl? }
+  app.post("/api/gigfi/external/record", async (req: Request, res: Response) => {
+    if (!validateExternalApiKey(req, res)) return;
+    const { applicationId, email, status, decisionId, redirectUrl } = req.body;
+
+    if (!status || !["ACCEPTED", "REJECTED", "ERROR"].includes(status.toUpperCase())) {
+      return res.status(400).json({ error: "status is required and must be ACCEPTED, REJECTED, or ERROR" });
+    }
+    if (!applicationId && !email) {
+      return res.status(400).json({ error: "Provide either applicationId or email" });
+    }
+
+    try {
+      const normalizedStatus = status.toUpperCase();
+      if (applicationId) {
+        await storage.saveGigFiResult(applicationId, normalizedStatus, decisionId, redirectUrl);
+        console.log(`[GIGFI EXTERNAL] Recorded result for applicationId=${applicationId} status=${normalizedStatus}`);
+        return res.json({ ok: true, applicationId });
+      } else {
+        const result = await storage.saveGigFiResultByEmail(email, normalizedStatus, decisionId, redirectUrl);
+        if (!result) {
+          return res.status(404).json({
+            error: "No un-submitted application found for that email. It may already have a GigFi result recorded, or may not exist in the database.",
+          });
+        }
+        console.log(`[GIGFI EXTERNAL] Recorded result for email=${email} applicationId=${result.applicationId} status=${normalizedStatus}`);
+        return res.json({ ok: true, applicationId: result.applicationId });
+      }
+    } catch (err) {
+      console.error("[GIGFI EXTERNAL RECORD]", err);
+      return res.status(500).json({ error: "Failed to record GigFi result" });
+    }
+  });
+
   // Internal GigFi applicant search — admin/agent only
   app.get("/api/gigfi/search", async (req: Request, res: Response) => {
     if (!req.session.user || !['admin', 'agent', 'user'].includes(req.session.user.role)) {

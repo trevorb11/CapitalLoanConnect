@@ -294,3 +294,266 @@ The platform wraps this into the full GigFi payload, applies all hardcoded field
 { "status": "ACCEPTED", "decisionId": "...", "redirectUrl": "..." }
 { "status": "REJECTED", "decisionId": "..." }
 ```
+
+---
+
+## External Program Integration — Pull Candidates + Report Results Back
+
+This section is for external programs (scripts, automations, other services) that want to:
+1. **Poll the TCG underwriting database** for newly declined or unqualified applications that are GigFi candidates
+2. **Submit those applications to GigFi directly** (using the payload structure above)
+3. **Report the result back to TCG** so it appears on the GigFi Submissions page
+
+### Authentication
+
+All external endpoints use Bearer token authentication. The token is the TCG admin password:
+
+```
+Authorization: Bearer <ADMIN_PASSWORD>
+```
+
+The admin password is the same one used to log into the TCG admin dashboard. Store it as a secret in your external system — never hardcode it.
+
+---
+
+### Step 1 — Pull Declined/Unqualified Candidates
+
+```
+GET https://app.todaycapitalgroup.com/api/gigfi/external/pending
+Authorization: Bearer <ADMIN_PASSWORD>
+```
+
+**Optional query parameter:**
+
+| Parameter | Default | Max | Description |
+|---|---|---|---|
+| `lookbackDays` | `30` | `365` | How many calendar days back to search for decisions |
+
+**Example:**
+```
+GET /api/gigfi/external/pending?lookbackDays=14
+```
+
+**Response:**
+```json
+{
+  "count": 3,
+  "lookbackDays": 14,
+  "decisions": [
+    {
+      "id": "uuid-of-decision-record",
+      "businessEmail": "owner@example.com",
+      "businessName": "Example LLC",
+      "status": "declined",
+      "declineReason": "Insufficient revenue",
+      "createdAt": "2026-04-15T18:00:00.000Z",
+      "applicationId": "fa56d120-b4b0-4a08-9550-3f2925ae645c",
+      "applicationData": {
+        "id": "fa56d120-b4b0-4a08-9550-3f2925ae645c",
+        "email": "owner@example.com",
+        "fullName": "Jane Smith",
+        "businessName": "Example LLC",
+        "legalBusinessName": "Example LLC DBA",
+        "phone": "5551234567",
+        "monthlyRevenue": "18000.00",
+        "averageMonthlyRevenue": "17500.00",
+        "requestedAmount": "50000.00",
+        "timeInBusiness": "1-2 years",
+        "socialSecurityNumber": "123456789",
+        "dateOfBirth": "1985-03-22",
+        "ownerAddress1": "123 Main St",
+        "ownerCity": "Austin",
+        "ownerState": "TX",
+        "ownerZip": "78701",
+        "businessStreetAddress": null,
+        "businessCsz": null,
+        "creditScore": "550 - 650"
+      }
+    }
+  ]
+}
+```
+
+**Filtering logic:**
+- Only returns decisions with status `"declined"` or `"unqualified"`
+- Only returns entries created within the `lookbackDays` window
+- Only returns entries where the matching loan application has **not already been submitted to GigFi** (no existing `gigfiStatus` on record) — so you will never get duplicates
+- If a decision has no matching loan application (e.g. they never filled out the full form), `applicationId` and `applicationData` will be `null` — skip these or handle separately
+
+---
+
+### Step 2 — Build the GigFi Payload
+
+Use the `applicationData` fields from the response above to construct the GigFi payload per the **Field Mapping** section earlier in this document.
+
+Key mappings from `applicationData`:
+
+| GigFi Field | `applicationData` field |
+|---|---|
+| `RefID` | `"TCG-" + id` |
+| `Firstname` / `Lastname` | Split `fullName` on last space |
+| `SSN` | `socialSecurityNumber` (strip non-digits) |
+| `Email` | `email` |
+| `DOB` | `dateOfBirth` |
+| `CellPhone` | `phone` (strip non-digits) |
+| `Employer` | `legalBusinessName` → `businessName` |
+| `MonthlyIncome` | `averageMonthlyRevenue` → `monthlyRevenue` |
+| `EmploymentLength` | Convert `timeInBusiness` (see conversion table) |
+| `Amount` | `requestedAmount` |
+| `HomeAddress` | `ownerAddress1` → parse from `businessStreetAddress` |
+| `HomeCity` | `ownerCity` → parse from `businessCsz` |
+| `HomeState` | `ownerState` → parse from `businessCsz` |
+| `HomeZip` | `ownerZip` → parse from `businessCsz` |
+
+Always run validation before submitting (SSN = 9 digits, DOB present and valid, age ≥ 18).
+
+---
+
+### Step 3 — Report the Result Back to TCG
+
+After receiving a response from GigFi, call this endpoint to record the result. This makes the submission appear on the **GigFi Submissions** page in the TCG admin dashboard immediately.
+
+```
+POST https://app.todaycapitalgroup.com/api/gigfi/external/record
+Authorization: Bearer <ADMIN_PASSWORD>
+Content-Type: application/json
+```
+
+**Body — by Application ID (preferred if you have it):**
+```json
+{
+  "applicationId": "fa56d120-b4b0-4a08-9550-3f2925ae645c",
+  "status": "ACCEPTED",
+  "decisionId": "019d4f91-036a-73ea-8490-318daa768dc4",
+  "redirectUrl": "https://gigfi.app/apply/..."
+}
+```
+
+**Body — by Email (if you only have the email):**
+```json
+{
+  "email": "owner@example.com",
+  "status": "REJECTED",
+  "decisionId": "019d4f91-036a-73ea-8490-318daa768dc4"
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `applicationId` | Either this or `email` | UUID from Step 1 response. Takes precedence if both provided. |
+| `email` | Either this or `applicationId` | Will find the most recent unsubmitted application for this email |
+| `status` | Yes | Must be `"ACCEPTED"`, `"REJECTED"`, or `"ERROR"` (case-insensitive) |
+| `decisionId` | Recommended | The `decision_id` from the GigFi response metadata |
+| `redirectUrl` | If ACCEPTED | The redirect URL from GigFi for accepted applicants |
+
+**Response (success):**
+```json
+{ "ok": true, "applicationId": "fa56d120-b4b0-4a08-9550-3f2925ae645c" }
+```
+
+**Response (not found):**
+```json
+{
+  "error": "No un-submitted application found for that email. It may already have a GigFi result recorded, or may not exist in the database."
+}
+```
+
+---
+
+### Complete External Workflow (Pseudocode)
+
+```python
+import requests
+
+BASE_URL = "https://app.todaycapitalgroup.com"
+HEADERS = {
+  "Authorization": f"Bearer {ADMIN_PASSWORD}",
+  "Content-Type": "application/json"
+}
+
+# 1. Pull candidates added in the last 14 days
+resp = requests.get(f"{BASE_URL}/api/gigfi/external/pending?lookbackDays=14", headers=HEADERS)
+candidates = resp.json()["decisions"]
+
+for candidate in candidates:
+  app = candidate.get("applicationData")
+  if not app:
+    continue  # No linked application — skip
+
+  # 2. Validate required fields
+  ssn = (app.get("socialSecurityNumber") or "").replace("-", "").replace(" ", "")
+  dob = app.get("dateOfBirth")
+  if len(ssn) != 9 or not dob:
+    continue  # Skip — missing required GigFi fields
+
+  # 3. Build GigFi payload (see Field Mapping section)
+  name_parts = app["fullName"].rsplit(" ", 1)
+  payload = {
+    "data": {
+      "RefID": f"TCG-{app['id']}",
+      "LeadProvider": "TodayCapital",
+      "LeadAffiliate": "TodayCapital",
+      "LeadCost": 0,
+      "Firstname": name_parts[0],
+      "Lastname": name_parts[1] if len(name_parts) > 1 else name_parts[0],
+      "SSN": ssn,
+      "Email": app["email"],
+      "DOB": dob,
+      "Language": "e",
+      "Military": "n",
+      "HomeAddress": app.get("ownerAddress1", ""),
+      "HomeCity": app.get("ownerCity", ""),
+      "HomeState": app.get("ownerState", ""),
+      "HomeZip": app.get("ownerZip", ""),
+      "CellPhone": "".join(filter(str.isdigit, app.get("phone", ""))),
+      "BankInfo": { "AccountToUse": "C" },
+      "EmploymentInfo": {
+        "MonthlyIncome": float(app.get("averageMonthlyRevenue") or app.get("monthlyRevenue") or 0),
+        "PayFrequency": "2",
+        "IncomeType": "5",
+        "PayrollType": "3",
+        "NextPayDay": "05/01/2026",  # next upcoming pay date
+        "Employer": app.get("legalBusinessName") or app.get("businessName") or app["fullName"],
+        "EmploymentLength": 18       # convert timeInBusiness — see conversion table
+      },
+      "LoanInfo": { "Amount": float(app.get("requestedAmount") or 10000) }
+    },
+    "metadata": { "entity_id": f"TCG-{app['id']}" },
+    "control": { "execution_mode": "sync" }
+  }
+
+  # 4. Submit to GigFi
+  gigfi_resp = requests.post(
+    "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/decide",
+    json=payload,
+    headers={"Authorization": f"Bearer {GIGFI_API_KEY}"}
+  )
+  gigfi_data = gigfi_resp.json()
+  gigfi_status = gigfi_data.get("data", {}).get("status", "ERROR")
+  decision_id = gigfi_data.get("metadata", {}).get("decision_id")
+  redirect_url = gigfi_data.get("data", {}).get("redirectUrl")
+
+  # 5. Report result back to TCG (shows up on GigFi Submissions page)
+  requests.post(
+    f"{BASE_URL}/api/gigfi/external/record",
+    json={
+      "applicationId": app["id"],
+      "status": gigfi_status,
+      "decisionId": decision_id,
+      "redirectUrl": redirect_url,
+    },
+    headers=HEADERS
+  )
+```
+
+---
+
+### Status Values Reference
+
+| `status` value in TCG | Meaning |
+|---|---|
+| `"ACCEPTED"` | GigFi approved — `redirectUrl` is available for the applicant |
+| `"REJECTED"` | GigFi declined — log `decisionId` for records |
+| `"ERROR"` | Submission failed or GigFi returned no status |
+
+Once recorded, the result is visible on the **GigFi Submissions** page in the TCG admin dashboard and is deduplicated — submitting the same email again via `/api/gigfi/external/pending` will not return that applicant again.
