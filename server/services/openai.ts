@@ -1,10 +1,17 @@
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
-// Use Replit AI Integrations env vars if available, otherwise fall back to standard OpenAI
+// OpenAI — used for lighter utility parsers (contact search, commands, email parsing)
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
 });
+
+// Anthropic — used for bank statement analysis (deeper financial reasoning)
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+const CLAUDE_MODEL = "claude-opus-4-7-20250415";
 
 // Lender criteria for funding qualification analysis
 const LENDER_CRITERIA = `
@@ -118,7 +125,7 @@ Additional Information Provided:
 `
     : "";
 
-  const prompt = `You are a business funding analyst. Analyze the following bank statement data and provide a funding eligibility assessment.
+  const prompt = `Analyze the following bank statement data and provide a comprehensive financial assessment.
 
 ${LENDER_CRITERIA}
 
@@ -154,12 +161,12 @@ Analyze this bank statement and respond with a JSON object following this exact 
     "maxAmount": <number - estimated max funding amount>,
     "estimatedRates": "<rate range string>",
     "product": "<recommended funding product>",
-    "message": "<2-3 sentence personalized message about their funding prospects>"
+    "message": "<2-3 sentence personalized message about their funding prospects and financial health>"
   },
   "improvementSuggestions": [
-    "<specific actionable suggestion to improve funding chances>"
+    "<specific actionable suggestion to improve their financial position or funding chances>"
   ],
-  "summary": "<3-4 sentence executive summary of the analysis>"
+  "summary": "<3-4 sentence executive summary covering the merchant's overall financial health, cash flow patterns, and outlook>"
 }
 
 Important:
@@ -168,31 +175,39 @@ Important:
 - Extract actual numbers when visible (deposits, balances, fees)
 - Look for patterns across multiple months if visible
 - Consider business type indicators from merchant names
+- Frame observations helpfully — this merchant will see the results on their portal
+- Focus improvement suggestions on actionable steps that could help the merchant's business health
 
 Respond ONLY with the JSON object, no additional text.`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Cost-effective model good at document analysis
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 3000,
+      system: `You are a financial analyst on a business finance brokerage platform called Today Capital Group. The platform brokers SBA loans, MCAs (merchant cash advances), lines of credit, revenue-based financing, and other business funding products.
+
+You are analyzing bank statements for merchants who have been funded through the platform. The analysis powers their merchant portal dashboard, which helps them:
+- Monitor their cash flow, revenue, and expenses
+- Track their financial health over time
+- See how their open funding positions relate to their revenue
+- Understand when they might be ready for a renewal or additional funding
+- Get early warnings if their finances are trending downward
+- See actionable tips to strengthen their business finances
+
+Your analysis should be accurate, conservative, and framed in a way that is helpful and encouraging to the merchant. Avoid harsh underwriting language — this is a tool to help merchants succeed, not to judge them. Always respond with valid JSON only.`,
       messages: [
-        {
-          role: "system",
-          content:
-            "You are a business funding analyst specializing in bank statement analysis. You provide accurate, conservative assessments of funding eligibility based on bank statement data. Always respond with valid JSON only.",
-        },
         {
           role: "user",
           content: prompt,
         },
       ],
-      temperature: 0.3, // Lower temperature for more consistent analysis
-      max_tokens: 2000,
     });
 
-    const content = response.choices[0]?.message?.content;
+    const textBlock = response.content.find((b) => b.type === "text");
+    const content = textBlock?.text;
 
     if (!content) {
-      throw new Error("No response from OpenAI");
+      throw new Error("No response from Claude");
     }
 
     // Strip markdown code blocks if present (```json...```)
@@ -212,9 +227,8 @@ Respond ONLY with the JSON object, no additional text.`;
 
     return analysis;
   } catch (error) {
-    console.error("[OPENAI] Analysis error:", error);
+    console.error("[CLAUDE] Bank statement analysis error:", error);
 
-    // Return a default analysis if parsing fails
     if (error instanceof SyntaxError) {
       throw new Error(
         "Failed to parse AI analysis response. Please try again."
@@ -227,6 +241,10 @@ Respond ONLY with the JSON object, no additional text.`;
 
 export function isOpenAIConfigured(): boolean {
   return !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
+}
+
+export function isAnthropicConfigured(): boolean {
+  return !!process.env.ANTHROPIC_API_KEY;
 }
 
 // ========================================
@@ -297,7 +315,7 @@ Respond ONLY with the JSON object.`;
     });
 
     const content = response.choices[0]?.message?.content;
-    
+
     if (!content) {
       throw new Error("No response from OpenAI");
     }
@@ -315,16 +333,16 @@ Respond ONLY with the JSON object.`;
     cleanContent = cleanContent.trim();
 
     const parsed = JSON.parse(cleanContent) as ParsedContactQuery;
-    
+
     // Ensure reasonable defaults
     if (!parsed.limit || parsed.limit < 1) parsed.limit = 25;
     if (parsed.limit > 100) parsed.limit = 100;
-    
+
     return parsed;
-    
+
   } catch (error) {
     console.error("[OPENAI] Contact query parsing error:", error);
-    
+
     // Return a default search if parsing fails
     return {
       searchType: 'general',
@@ -416,7 +434,7 @@ Respond ONLY with the JSON object.`;
     });
 
     const content = response.choices[0]?.message?.content;
-    
+
     if (!content) {
       throw new Error("No response from OpenAI");
     }
@@ -434,12 +452,12 @@ Respond ONLY with the JSON object.`;
     cleanContent = cleanContent.trim();
 
     const parsed = JSON.parse(cleanContent) as ParsedCommand;
-    
+
     return parsed;
-    
+
   } catch (error) {
     console.error("[OPENAI] Command parsing error:", error);
-    
+
     // Default to search if parsing fails
     return {
       intent: 'search',
@@ -538,7 +556,7 @@ Respond ONLY with the JSON object.`;
     });
 
     const content = response.choices[0]?.message?.content;
-    
+
     if (!content) {
       throw new Error("No response from OpenAI");
     }
@@ -556,10 +574,10 @@ Respond ONLY with the JSON object.`;
     cleanContent = cleanContent.trim();
 
     return JSON.parse(cleanContent) as ParsedApproval;
-    
+
   } catch (error) {
     console.error("[OPENAI] Approval parsing error:", error);
-    
+
     // Return a default non-approval response
     return {
       isApproval: false,
