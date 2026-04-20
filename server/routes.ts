@@ -3168,10 +3168,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // authenticated merchant and stash a stub snapshot so we can look up the
   // request code later by merchant email.
   app.post("/api/merchant/chirp/connect", async (req: Request, res: Response) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
-    const merchantEmail = req.session.user.merchantEmail;
     try {
       // Pull contact info from the business underwriting decision so the merchant doesn't re-enter it.
       const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(merchantEmail);
@@ -3257,11 +3257,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/merchant/banking/insights — pure DB read, called on every portal
   // view. Returns our cached snapshot; never hits Chirp.
   app.get("/api/merchant/banking/insights", async (req: Request, res: Response) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
     try {
-      const snapshot = await storage.getMerchantBankSnapshot(req.session.user.merchantEmail);
+      const snapshot = await storage.getMerchantBankSnapshot(merchantEmail);
       if (!snapshot) {
         return res.json({ connected: false, hasPendingConnection: false });
       }
@@ -3303,10 +3304,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // /refresh (which would bill a bank sync). Server-side cooldown prevents
   // back-to-back calls from racing.
   app.post("/api/merchant/chirp/sync", async (req: Request, res: Response) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
-    const merchantEmail = req.session.user.merchantEmail;
     try {
       const existing = await storage.getMerchantBankSnapshot(merchantEmail);
       if (!existing?.chirpRequestCode) {
@@ -3336,10 +3337,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // for the merchant's existing requestCode. Useful when PUBLIC_BASE_URL was not
   // set at the time the request was created, or after server restart.
   app.post("/api/merchant/chirp/register-webhook", async (req: Request, res: Response) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
-    const merchantEmail = req.session.user.merchantEmail;
     try {
       const snapshot = await storage.getMerchantBankSnapshot(merchantEmail);
       if (!snapshot?.chirpRequestCode) {
@@ -3357,11 +3358,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // snapshot; Chirp side remains subscribed until we call unsubscribeRequest
   // from an admin flow — keeping this scope tight on purpose).
   app.delete("/api/merchant/chirp/connection", async (req: Request, res: Response) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
     try {
-      await storage.deleteMerchantBankSnapshot(req.session.user.merchantEmail);
+      await storage.deleteMerchantBankSnapshot(merchantEmail);
       res.json({ success: true });
     } catch (err: any) {
       console.error("[CHIRP] disconnect error:", err);
@@ -9585,11 +9587,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route 4: Analyze merchant's uploaded PDF bank statements
   app.post("/api/merchant/bank-statements/analyze", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
     try {
-      const email = req.session.user.merchantEmail;
+      const email = merchantEmail;
       const uploads = await storage.getBankStatementUploadsByEmail(email);
 
       if (!uploads || uploads.length === 0) {
