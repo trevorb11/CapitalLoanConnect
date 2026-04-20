@@ -3067,6 +3067,7 @@ interface FinancialInsights {
 
 interface BankingInsights {
   connected: boolean;
+  hasPendingConnection?: boolean;
   status?: string | null;
   institutionName?: string | null;
   connectedAt?: string | null;
@@ -3079,8 +3080,12 @@ interface BankingInsights {
     avgBalance: number;
     currentBalance: number;
     monthsAnalyzed: number;
+    revenueTrend?: "growing" | "stable" | "declining" | null;
+    healthScore?: number;
   };
 }
+
+type DataSource = "chirp" | "statements";
 
 function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken, uploadedStatements }: {
   merchantEmail: string;
@@ -3098,6 +3103,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [showBanks, setShowBanks] = useState(false);
+  const [dataSource, setDataSource] = useState<DataSource>("chirp");
 
   const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
@@ -3208,16 +3214,32 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
     vaultStatements.length > 0 ? vaultStatements : (insights?.statements || []);
   const showStatementsSection = displayStatements.length > 0 || insights?.hasStatements;
 
-  // Prefer live Chirp data when available; fall back to Plaid, then to PDF-parsed statements.
-  const monthlyRevenue = chirpMetrics?.monthlyRevenue || plaid?.monthlyRevenue || pdf?.estimatedMonthlyRevenue || 0;
-  const monthlyExpenses = chirpMetrics?.monthlyExpenses || 0;
-  const netCashFlow = chirpMetrics?.netCashFlow || 0;
-  const avgBalance = chirpMetrics?.avgBalance || plaid?.avgBalance || pdf?.averageDailyBalance || 0;
-  const currentBalance = chirpMetrics?.currentBalance || 0;
-  const revenueTrend = chirpMetrics?.revenueTrend || plaid?.revenueTrend || null;
-  const healthScore = chirpMetrics?.healthScore || 0;
-  const monthsAnalyzed = chirpMetrics?.monthsAnalyzed || 0;
-  const cashFlowHealth = pdf?.cashFlowHealth || (chirpConnected || plaid ? 'moderate' : null);
+  // Determine which data sources are available
+  const hasChirpData = chirpConnected && chirpMetrics && chirpMetrics.monthlyRevenue > 0;
+  const hasPdfData = Boolean(pdf?.estimatedMonthlyRevenue);
+  const hasBothSources = hasChirpData && hasPdfData;
+
+  // Auto-select best source if user hasn't toggled, or if selected source has no data
+  const activeSource = hasBothSources ? dataSource : hasChirpData ? "chirp" : hasPdfData ? "statements" : "chirp";
+
+  // Compute metrics based on active data source
+  const useChirp = activeSource === "chirp" && (hasChirpData || chirpConnected);
+  const monthlyRevenue = useChirp
+    ? (chirpMetrics?.monthlyRevenue || plaid?.monthlyRevenue || 0)
+    : (pdf?.estimatedMonthlyRevenue || plaid?.monthlyRevenue || 0);
+  const monthlyExpenses = useChirp ? (chirpMetrics?.monthlyExpenses || 0) : 0;
+  const netCashFlow = useChirp ? (chirpMetrics?.netCashFlow || 0) : 0;
+  const avgBalance = useChirp
+    ? (chirpMetrics?.avgBalance || plaid?.avgBalance || 0)
+    : (pdf?.averageDailyBalance || plaid?.avgBalance || 0);
+  const currentBalance = useChirp ? (chirpMetrics?.currentBalance || 0) : 0;
+  const revenueTrend = useChirp ? (chirpMetrics?.revenueTrend || plaid?.revenueTrend || null) : (plaid?.revenueTrend || null);
+  const healthScore = useChirp ? (chirpMetrics?.healthScore || 0) : 0;
+  const monthsAnalyzed = useChirp ? (chirpMetrics?.monthsAnalyzed || 0) : 0;
+  const cashFlowHealth = useChirp
+    ? (chirpConnected || plaid ? 'moderate' : null)
+    : (pdf?.cashFlowHealth || null);
+  const dataSourceLabel = useChirp ? "Live Bank Data" : "Statement Analysis";
 
   // Relative time helper for data freshness
   const timeAgoShort = (ts: string | null | undefined) => {
@@ -3434,14 +3456,48 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       {/* ── Financial Insights ── */}
       {hasAnyData ? (
         <>
+          {/* Data Source Toggle — only shown when both Chirp and PDF data exist */}
+          {hasBothSources && (
+            <div className="insight-card" style={{ padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ color: "#94a3b8", fontSize: 13 }}>Data Source</span>
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+                <button
+                  onClick={() => setDataSource("chirp")}
+                  style={{
+                    padding: "6px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                    background: activeSource === "chirp" ? "#2dd4bf" : "transparent",
+                    color: activeSource === "chirp" ? "#0f172a" : "#94a3b8",
+                  }}
+                >
+                  Live Bank Data
+                </button>
+                <button
+                  onClick={() => setDataSource("statements")}
+                  style={{
+                    padding: "6px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                    background: activeSource === "statements" ? "#2dd4bf" : "transparent",
+                    color: activeSource === "statements" ? "#0f172a" : "#94a3b8",
+                  }}
+                >
+                  Statement Analysis
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Financial Health Score + Data Freshness */}
-          {(healthScore > 0 || cashFlowHealth) && (
+          {(healthScore > 0 || cashFlowHealth || monthlyRevenue > 0) && (
             <div className="insight-card">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
                   Financial Health
+                  {hasBothSources && (
+                    <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400, marginLeft: 8 }}>
+                      ({dataSourceLabel})
+                    </span>
+                  )}
                 </h3>
-                {banking?.lastSyncedAt && (
+                {banking?.lastSyncedAt && useChirp && (
                   <span style={{ color: "#64748b", fontSize: 11 }}>
                     Updated {timeAgoShort(banking.lastSyncedAt)}
                     {monthsAnalyzed > 0 && ` \u00B7 ${monthsAnalyzed} mo analyzed`}
