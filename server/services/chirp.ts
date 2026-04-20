@@ -9,144 +9,65 @@
  *   4. Once `Verified`, call `getRequestDetails` / `getSummaryInfoByRequestCode`
  *      to pull accounts, transactions, and pre-computed activity metrics.
  *
- * Unlike Plaid, Chirp does not issue a long-lived access token. The
- * `requestCode` is the sole identifier and all calls are authenticated with the
- * Entity API token via the `Authorization: Bearer` header.
+ * All Chirp API calls are routed through the chirp-middleware proxy, which has
+ * a static IPv4 address whitelisted with Chirp. This eliminates the 403 errors
+ * caused by Replit's rotating IPs and IPv6 addresses.
  *
  * Env vars:
- *   CHIRP_API_TOKEN  - Entity API token (sandbox or production)
- *   CHIRP_BASE_URL   - Optional override. Defaults to https://chirp.digital/api
- *   CHIRP_ENV        - Informational only (sandbox | production). Token determines environment.
+ *   CHIRP_MIDDLEWARE_URL   - URL of the middleware proxy (e.g. https://your-server:3456/chirp)
+ *   CHIRP_MIDDLEWARE_KEY   - API key for authenticating with the middleware
+ *   CHIRP_API_TOKEN        - Fallback: direct Chirp API token (used if middleware not configured)
+ *   CHIRP_BASE_URL         - Fallback: direct Chirp API URL (default: https://chirp.digital/api)
+ *   CHIRP_ENV              - Informational only (sandbox | production)
  */
 
 import axiosLib from "axios";
-import https from "https";
-import { execFile } from "child_process";
 
+// ── Middleware config (preferred) ──────────────────────────────────────────────
+const CHIRP_MIDDLEWARE_URL = process.env.CHIRP_MIDDLEWARE_URL || "";
+const CHIRP_MIDDLEWARE_KEY = process.env.CHIRP_MIDDLEWARE_KEY || "";
+const useMiddleware = !!(CHIRP_MIDDLEWARE_URL && CHIRP_MIDDLEWARE_KEY);
+
+// ── Direct Chirp config (fallback) ────────────────────────────────────────────
 const CHIRP_BASE_URL = process.env.CHIRP_BASE_URL || "https://chirp.digital/api";
 const CHIRP_ENV = process.env.CHIRP_ENV || "production";
-// Use sandbox token in non-production environments so testing works without IP whitelisting
 const IS_PROD = process.env.NODE_ENV === "production";
 const CHIRP_API_TOKEN = !IS_PROD && process.env.CHIRP_SANDBOX_API_TOKEN
   ? process.env.CHIRP_SANDBOX_API_TOKEN
   : process.env.CHIRP_API_TOKEN || "";
-const tokenSet = !!CHIRP_API_TOKEN;
 const tokenHint = CHIRP_API_TOKEN ? `...${CHIRP_API_TOKEN.slice(-4)}` : "NOT SET";
 
-// Portal session cookie — when set, bypasses IP whitelist requirement.
-// Value should be the full cookie string e.g. "id=s%3AaBcD..."
-// Obtain from portal.chirp.digital after logging in (DevTools → Application → Cookies → id).
-const CHIRP_SESSION_COOKIE = process.env.CHIRP_SESSION_COOKIE || "";
-const cookieSet = !!CHIRP_SESSION_COOKIE;
+if (useMiddleware) {
+  console.log(`[CHIRP] Routing through middleware: ${CHIRP_MIDDLEWARE_URL}`);
+} else {
+  console.log(`[CHIRP] Direct mode — token: ${tokenHint} | base: ${CHIRP_BASE_URL}`);
+  if (IS_PROD) {
+    console.warn(`[CHIRP] WARNING: No middleware configured in production. You may hit 403s from Chirp's IP whitelist.`);
+  }
+}
 
-console.log(`[CHIRP] Using ${IS_PROD ? "production" : "sandbox"} token (NODE_ENV=${process.env.NODE_ENV}) | token configured: ${tokenSet} | ends: ${tokenHint} | session cookie: ${cookieSet ? "SET (IP whitelist bypass active)" : "NOT SET"}`);;
+// ── Axios instances ───────────────────────────────────────────────────────────
 
-// Chrome 122 TLS cipher suite order — changes the JA3 fingerprint so Cloudflare
-// WAF does not flag the request as a Node.js/server-side bot.
-const CHROME_CIPHERS = [
-  "TLS_AES_128_GCM_SHA256",
-  "TLS_AES_256_GCM_SHA384",
-  "TLS_CHACHA20_POLY1305_SHA256",
-  "ECDHE-ECDSA-AES128-GCM-SHA256",
-  "ECDHE-RSA-AES128-GCM-SHA256",
-  "ECDHE-ECDSA-AES256-GCM-SHA384",
-  "ECDHE-RSA-AES256-GCM-SHA384",
-  "ECDHE-ECDSA-CHACHA20-POLY1305",
-  "ECDHE-RSA-CHACHA20-POLY1305",
-  "ECDHE-RSA-AES128-SHA",
-  "ECDHE-RSA-AES256-SHA",
-  "AES128-GCM-SHA256",
-  "AES256-GCM-SHA384",
-  "AES128-SHA",
-  "AES256-SHA",
-].join(":");
-
-const chirpHttpsAgent = new https.Agent({
-  family: 4,
-  ciphers: CHROME_CIPHERS,
-  honorCipherOrder: false,
-  minVersion: "TLSv1.2",
-  keepAlive: true,
-});
-
-const chirpAxios = axiosLib.create({
-  baseURL: CHIRP_BASE_URL,
-  timeout: 30000,
-  httpsAgent: chirpHttpsAgent,
+// Middleware client — clean, no WAF workarounds needed
+const middlewareAxios = axiosLib.create({
+  baseURL: CHIRP_MIDDLEWARE_URL,
+  timeout: 35_000,
   headers: {
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
     "Content-Type": "application/json",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "sec-ch-ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "same-origin",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache",
-    "Origin": "https://chirp.digital",
-    "Referer": "https://chirp.digital/",
+    "Accept": "application/json",
+    "X-API-Key": CHIRP_MIDDLEWARE_KEY,
   },
 });
 
-/**
- * Make a Chirp API request using the system curl binary.
- * curl uses libcurl which has a completely different TLS JA3 fingerprint
- * from Node.js/OpenSSL — bypasses Cloudflare bot-detection on production IPs
- * that get flagged when Node.js makes the request directly.
- */
-function curlChirpRequest(
-  url: string,
-  method: string,
-  token: string,
-  body?: object,
-): Promise<{ status: number; data: any }> {
-  return new Promise((resolve, reject) => {
-    const args: string[] = [
-      "-4",
-      "-s",
-      "-X", method.toUpperCase(),
-      url,
-      "-H", `Authorization: ${token}`,
-      "-H", "Content-Type: application/json",
-      "-H", "Accept: application/json",
-      "-H", "Origin: https://chirp.digital",
-      "-H", "Referer: https://chirp.digital/",
-      "-H", "User-Agent: PostmanRuntime/7.49.1",
-      "-H", "sec-fetch-dest: empty",
-      "-H", "sec-fetch-mode: cors",
-      "-H", "sec-fetch-site: same-origin",
-      "--compressed",
-      "-w", "\n__HTTP_STATUS__%{http_code}",
-      "--max-time", "30",
-    ];
-
-    // Include portal session cookie when configured — bypasses IP whitelist
-    if (CHIRP_SESSION_COOKIE) {
-      args.push("-H", `Cookie: ${CHIRP_SESSION_COOKIE}`);
-    }
-
-    if (body) {
-      args.push("-d", JSON.stringify(body));
-    }
-
-    execFile("curl", args, { timeout: 35000 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(`curl failed: ${err.message}`));
-
-      const statusMatch = stdout.match(/__HTTP_STATUS__(\d+)$/);
-      const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
-      const responseBody = stdout.replace(/__HTTP_STATUS__\d+$/, "").trim();
-
-      try {
-        resolve({ status, data: JSON.parse(responseBody) });
-      } catch {
-        resolve({ status, data: responseBody });
-      }
-    });
-  });
-}
+// Direct Chirp client — fallback when middleware is not configured
+const directAxios = axiosLib.create({
+  baseURL: CHIRP_BASE_URL,
+  timeout: 30_000,
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  },
+});
 
 // Shared analysis types - kept compatible with the previous PlaidService so
 // downstream consumers (funding analysis, AI summaries, merchant insights)
@@ -266,15 +187,17 @@ export class ChirpService {
     this.token = token;
   }
 
+  /**
+   * Core request method. Routes through middleware when configured,
+   * falls back to direct Chirp API calls otherwise.
+   */
   private async request<T>(
     path: string,
     init: { method?: string; body?: string; query?: Record<string, string | number | undefined>; headers?: Record<string, string> } = {},
   ): Promise<T> {
-    if (!this.token) {
-      throw new ChirpApiError("CHIRP_API_TOKEN is not configured", 500);
-    }
-
     const { query, headers: extraHeaders, method = "GET", body } = init;
+
+    // Build query string
     let url = path;
     if (query) {
       const qs = Object.entries(query)
@@ -284,65 +207,81 @@ export class ChirpService {
       if (qs) url += `?${qs}`;
     }
 
-    const fullUrl = `${this.baseUrl}${url}`;
     const bodyObj = body ? JSON.parse(body) : undefined;
 
-    // ── Primary: axios with Chrome TLS fingerprint + browser headers ──────────
+    if (useMiddleware) {
+      return this.requestViaMiddleware<T>(url, method, bodyObj, extraHeaders);
+    }
+    return this.requestDirect<T>(url, method, bodyObj, extraHeaders);
+  }
+
+  /**
+   * Route request through the chirp-middleware proxy.
+   * The middleware handles IPv4, Chirp auth, and WAF issues.
+   */
+  private async requestViaMiddleware<T>(
+    url: string,
+    method: string,
+    body?: any,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T> {
     try {
-      const cookieHeader = CHIRP_SESSION_COOKIE ? { Cookie: CHIRP_SESSION_COOKIE } : {};
-      const axiosResponse = await chirpAxios.request<T>({
+      const response = await middlewareAxios.request<T>({
         method: method as any,
         url,
-        baseURL: this.baseUrl,
-        data: bodyObj,
-        headers: { Authorization: this.token, ...cookieHeader, ...extraHeaders },
+        data: body,
+        headers: extraHeaders,
         validateStatus: () => true,
       });
 
-      if (axiosResponse.status === 403) {
-        // Cloudflare is flagging this IP's Node.js TLS fingerprint.
-        // Fall through to curl fallback below.
-        console.warn(`[CHIRP] axios got 403 on ${path}, retrying with curl`);
-        throw Object.assign(new Error("cf_block"), { isCfBlock: true });
+      if (response.status >= 400) {
+        const respBody = response.data;
+        const message = (respBody && typeof respBody === "object" && ((respBody as any).message || (respBody as any).error)) || `Chirp API error ${response.status}`;
+        console.error(`[CHIRP via middleware] ${response.status} ${url}`, typeof respBody === "string" ? respBody.slice(0, 200) : respBody);
+        throw new ChirpApiError(String(message), response.status, respBody);
       }
 
-      if (axiosResponse.status >= 400) {
-        const respBody = axiosResponse.data;
-        const message = (respBody && typeof respBody === "object" && ((respBody as any).message || (respBody as any).error)) || `Chirp API error ${axiosResponse.status}`;
-        console.error(`[CHIRP] ${axiosResponse.status} ${path}`, typeof respBody === "string" ? respBody.slice(0, 200) : respBody);
-        throw new ChirpApiError(String(message), axiosResponse.status, respBody);
-      }
-
-      return axiosResponse.data;
+      return response.data;
     } catch (err: any) {
       if (err instanceof ChirpApiError) throw err;
-      if (!err.isCfBlock) throw new ChirpApiError(err.message || "Network error calling Chirp API", 500);
+      throw new ChirpApiError(err.message || "Network error calling Chirp middleware", 502);
+    }
+  }
+
+  /**
+   * Direct request to Chirp API (fallback when middleware is not configured).
+   */
+  private async requestDirect<T>(
+    url: string,
+    method: string,
+    body?: any,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T> {
+    if (!this.token) {
+      throw new ChirpApiError("CHIRP_API_TOKEN is not configured", 500);
     }
 
-    // ── Fallback: curl subprocess (libcurl TLS fingerprint bypasses CF WAF) ───
     try {
-      console.log(`[CHIRP] Using curl fallback for ${path}`);
-      const curlResult = await curlChirpRequest(fullUrl, method, this.token, bodyObj);
+      const response = await directAxios.request<T>({
+        method: method as any,
+        url,
+        baseURL: this.baseUrl,
+        data: body,
+        headers: { Authorization: this.token, ...extraHeaders },
+        validateStatus: () => true,
+      });
 
-      if (curlResult.status >= 400) {
-        const respBody = curlResult.data;
-        const message = (respBody && typeof respBody === "object" && ((respBody as any).message || (respBody as any).error)) || `Chirp API error ${curlResult.status}`;
-        // Log full body (up to 800 chars) — helps distinguish Cloudflare WAF vs Chirp app-level 403
-        console.error(`[CHIRP curl] ${curlResult.status} ${path}`, typeof respBody === "string" ? respBody.slice(0, 800) : respBody);
-        if (curlResult.status === 403) {
-          // Log the outbound IP so we can confirm what IP Chirp is seeing
-          const { execFile } = await import("child_process");
-          execFile("curl", ["-4", "-s", "https://api.ipify.org", "--max-time", "5"], { timeout: 8000 }, (_e, stdout) => {
-            console.error(`[CHIRP] 403 diagnostic — outbound IPv4: ${stdout?.trim() || "unknown"} | token ends: ${tokenHint} | endpoint: ${fullUrl}`);
-          });
-        }
-        throw new ChirpApiError(String(message), curlResult.status, respBody);
+      if (response.status >= 400) {
+        const respBody = response.data;
+        const message = (respBody && typeof respBody === "object" && ((respBody as any).message || (respBody as any).error)) || `Chirp API error ${response.status}`;
+        console.error(`[CHIRP direct] ${response.status} ${url}`, typeof respBody === "string" ? respBody.slice(0, 200) : respBody);
+        throw new ChirpApiError(String(message), response.status, respBody);
       }
 
-      return curlResult.data as T;
+      return response.data;
     } catch (err: any) {
       if (err instanceof ChirpApiError) throw err;
-      throw new ChirpApiError(err.message || "curl fallback failed for Chirp API", 500);
+      throw new ChirpApiError(err.message || "Network error calling Chirp API", 500);
     }
   }
 
@@ -350,19 +289,12 @@ export class ChirpService {
   // Verification request lifecycle
   // ---------------------------------------------------------------------------
 
-  /**
-   * Create a verification request for a customer. Returns the verification URL
-   * that the customer should be redirected to (or loaded into an iframe via
-   * widgetUrl). Replaces `PlaidService.createLinkToken`.
-   */
   async createVerificationRequest(payload: ChirpCreateRequestPayload): Promise<ChirpCreateRequestResult> {
     const body = await this.request<any>("/createRequest", {
       method: "POST",
       body: JSON.stringify(payload),
     });
 
-    // The Chirp API wraps results inconsistently across endpoints - some
-    // return fields at the top level, some under `response` or `result`.
     const data = body?.response || body?.result || body;
 
     return {
@@ -377,10 +309,6 @@ export class ChirpService {
     };
   }
 
-  /**
-   * Convenience wrapper for creating a merchant-level verification request.
-   * Keeps naming parity with the previous `createMerchantLinkToken`.
-   */
   async createMerchantVerificationRequest(
     merchantEmail: string,
     customer: { firstName: string; lastName: string; phone: string },
@@ -401,11 +329,19 @@ export class ChirpService {
   }
 
   /**
-   * Fetch the current status of a verification request. Use this for polling
-   * if you are not wired up to webhooks.
+   * Fetch the current status of a verification request.
+   * When using middleware, this hits POST /getRequestStatus/:code (the endpoint
+   * pattern Chirp support confirmed works without WAF issues).
    */
   async getRequestStatus(requestCode: string): Promise<ChirpRequestStatus> {
-    const body = await this.request<any>(`/request/${encodeURIComponent(requestCode)}/status`);
+    // Middleware exposes POST /getRequestStatus/:code which maps to the
+    // Chirp POST endpoint that bypasses WAF restrictions on GET.
+    const path = useMiddleware
+      ? `/getRequestStatus/${encodeURIComponent(requestCode)}`
+      : `/request/${encodeURIComponent(requestCode)}/status`;
+    const method = useMiddleware ? "POST" : "GET";
+
+    const body = await this.request<any>(path, { method });
     const data = body?.response || body?.result || body;
     return {
       requestCode: data.RequestCode || requestCode,
@@ -422,16 +358,16 @@ export class ChirpService {
     };
   }
 
-  /**
-   * Fetch full verification details - accounts, transactions, analysis
-   * summaries and institution. Only valid for verified requests.
-   * Equivalent to calling Plaid's transactionsGet + accountsGet + institutionsGetById.
-   */
   async getRequestDetails(
     requestCode: string,
     opts: { numberOfDays?: number; numberOfTransactions?: number; sort?: "ASCENDING" | "DESCENDING" } = {},
   ): Promise<any> {
-    const body = await this.request<any>(`/request/${encodeURIComponent(requestCode)}`, {
+    // Middleware maps /request/:code/details -> Chirp GET /request/:code
+    const path = useMiddleware
+      ? `/request/${encodeURIComponent(requestCode)}/details`
+      : `/request/${encodeURIComponent(requestCode)}`;
+
+    const body = await this.request<any>(path, {
       query: {
         numberOfDays: opts.numberOfDays,
         numberOfTransactions: opts.numberOfTransactions,
@@ -441,12 +377,6 @@ export class ChirpService {
     return body?.response || body?.result || body;
   }
 
-  /**
-   * Pre-computed summary info for a verified request. Includes monthly
-   * activity (avg daily balance, total credit/debit/payroll/net) which Chirp
-   * calculates server-side - saves the custom aggregation we used to do in
-   * PlaidService.analyzeFinancials.
-   */
   async getSummaryInfoByRequestCode(
     requestCode: string,
     accountNumber?: string,
@@ -462,11 +392,6 @@ export class ChirpService {
   // Drop-in compatibility with the old PlaidService shape
   // ---------------------------------------------------------------------------
 
-  /**
-   * Drop-in replacement for `PlaidService.getBankStatements`. Maps the Chirp
-   * `getRequestDetails` response into the existing BankStatement shape so
-   * downstream consumers don't need to change.
-   */
   async getBankStatements(requestCode: string, months: number = 3): Promise<BankStatement> {
     const days = months * 31;
     const details = await this.getRequestDetails(requestCode, { numberOfDays: days, sort: "DESCENDING" });
@@ -495,7 +420,6 @@ export class ChirpService {
       }));
     });
 
-    // Compute date range from the transactions we received
     const dates = transactions.map(t => t.date).filter(Boolean).sort();
     const endDate = dates[dates.length - 1] || new Date().toISOString().split("T")[0];
     const startDate = dates[0] || (() => {
@@ -512,11 +436,6 @@ export class ChirpService {
     };
   }
 
-  /**
-   * Drop-in replacement for `PlaidService.analyzeFinancials`. Prefers Chirp's
-   * pre-computed `activityByMonth` from the summary endpoint instead of
-   * recomputing totals from raw transactions.
-   */
   async analyzeFinancials(requestCode: string, accountNumber?: string): Promise<AnalysisResult> {
     const summary = await this.getSummaryInfoByRequestCode(requestCode, accountNumber);
 
@@ -531,8 +450,6 @@ export class ChirpService {
       return Number.isFinite(n) ? n : 0;
     };
 
-    // Chirp returns totalCredit as the deposit aggregate, which is analogous
-    // to what we previously called "monthly revenue" after dividing by months.
     const perMonthCredits = activityByMonth
       .filter((m: any) => (m.month || "").toLowerCase() !== "all")
       .map((m: any) => parseMoney(m.totalCredit));
@@ -543,9 +460,6 @@ export class ChirpService {
     const avgBalance = parseMoney(overall?.averageDailyBalance ?? overall?.averageMonthlyBalance);
     const currentBalance = parseMoney(summary?.currentBalance);
 
-    // Chirp does not expose negative-day counts in the summary. Fall back to a
-    // conservative heuristic based on current balance until we wire up the
-    // detailed per-day aggregation from `getRequestDetails`.
     const negativeDays = currentBalance < 0 ? 5 : 0;
 
     const recommendations = this.generateRecommendations(monthlyRevenue, avgBalance, negativeDays);
@@ -602,12 +516,6 @@ export class ChirpService {
   // Reports
   // ---------------------------------------------------------------------------
 
-  /**
-   * Request a PDF verification report. Replaces the Plaid asset-report flow
-   * (createAssetReport -> poll getAssetReport -> getAssetReportPdf). Chirp
-   * returns a downloadable link in a single call. Link + file are valid for
-   * 12 hours.
-   */
   async getRequestReportAsPDF(
     requestCode: string,
     account: { accountNumber?: string; chirpAccountId?: string },
@@ -625,10 +533,6 @@ export class ChirpService {
     };
   }
 
-  /**
-   * Fetch the raw PDF bytes. Convenience wrapper that follows the download
-   * link returned by `getRequestReportAsPDF`.
-   */
   async downloadReportPdfBytes(requestCode: string, account: { accountNumber?: string; chirpAccountId?: string }): Promise<Buffer> {
     const { fileDownloadLink } = await this.getRequestReportAsPDF(requestCode, account);
     if (!fileDownloadLink) {
@@ -646,11 +550,6 @@ export class ChirpService {
   // Refresh / lifecycle
   // ---------------------------------------------------------------------------
 
-  /**
-   * Trigger a synchronous refresh of transactions/accounts for a verified
-   * request. Attempts within 3 hours of a prior refresh will 405. `metaInfo`
-   * can carry up to 5 custom key/value pairs for traceability back to the LMS.
-   */
   async refreshRequest(requestCode: string, metaInfo?: Record<string, string>): Promise<{
     status: string;
     aggregatedAt: string;
@@ -669,10 +568,6 @@ export class ChirpService {
     };
   }
 
-  /**
-   * Permanently unsubscribe (subscription) or disconnect (PAYG) a request.
-   * Historical transactions are retained but no further refreshes are allowed.
-   */
   async unsubscribeRequest(requestCode: string): Promise<{ success: boolean; message: string }> {
     const body = await this.request<any>(`/request/${encodeURIComponent(requestCode)}/unsubscribe`, {
       method: "POST",
@@ -683,9 +578,6 @@ export class ChirpService {
     };
   }
 
-  /**
-   * Update request status. Currently Chirp only supports Attempted -> Rejected.
-   */
   async updateRequestStatus(requestCode: string, statusToUpdate: "REJECTED"): Promise<{ success: boolean; message: string }> {
     const body = await this.request<any>(`/request/status/update`, {
       method: "POST",
@@ -697,10 +589,6 @@ export class ChirpService {
     };
   }
 
-  /**
-   * Bulk fetch of request metadata. Use this to hydrate the admin dashboard
-   * instead of per-request lookups. Accepts up to 1000 request codes.
-   */
   async getRequestTrackInfo(requestCodes: string[]): Promise<any[]> {
     const body = await this.request<any>(`/request/trackInfo`, {
       method: "POST",
@@ -716,8 +604,8 @@ export class ChirpService {
   async createCustomerNotification(config: {
     name: string;
     requestCode: string;
-    type: string; // e.g. "DEPOSIT", "REQUEST_STATUS", "REFRESH"
-    rule: string; // e.g. "GREATER_THAN", "LESS_THAN"
+    type: string;
+    rule: string;
     amount?: number;
     webhookUrl?: string[];
     emails?: string[];
@@ -748,19 +636,17 @@ export class ChirpService {
   // ChirpLink widget token
   // ---------------------------------------------------------------------------
 
-  /**
-   * Generate a one-time token for the ChirpLink™ frontend widget.
-   * Must be called after `createVerificationRequest` to obtain a requestCode.
-   * Endpoint: POST /genAuthTokenForChirpLink/chirpLink/<requestCode>
-   * Note: Chirp uses bare token (no "Bearer" prefix) for this specific endpoint.
-   */
   async genAuthTokenForChirpLink(requestCode: string): Promise<{
     success: boolean;
     token: string;
     requestCode: string;
     validUpto: string;
   }> {
-    const path = `/genAuthTokenForChirpLink/chirpLink/${encodeURIComponent(requestCode)}`;
+    // Middleware uses /genAuthTokenForChirpLink/:code
+    // which internally maps to Chirp's /genAuthTokenForChirpLink/chirpLink/:code
+    const path = useMiddleware
+      ? `/genAuthTokenForChirpLink/${encodeURIComponent(requestCode)}`
+      : `/genAuthTokenForChirpLink/chirpLink/${encodeURIComponent(requestCode)}`;
     const body = await this.request<any>(path, { method: "POST", body: JSON.stringify({}) });
     return {
       success: Boolean(body?.success),
@@ -774,7 +660,6 @@ export class ChirpService {
   // Misc helpers
   // ---------------------------------------------------------------------------
 
-  /** Exposes configured environment for logging / health checks. */
   get environment(): string {
     return CHIRP_ENV;
   }

@@ -2797,6 +2797,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/admin/underwriter-snapshot/:email — quick-glance banking data for underwriters
+  app.get("/api/admin/underwriter-snapshot/:email", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant') {
+      return res.status(401).json({ error: "Admin authentication required" });
+    }
+    try {
+      const email = decodeURIComponent(req.params.email);
+      const snapshot = await storage.getMerchantBankSnapshot(email);
+      if (!snapshot) {
+        return res.json({ hasData: false });
+      }
+      const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
+      const metrics = (snapshot.metrics as any) || {};
+      const summary = (snapshot.summaryData as any) || {};
+      const activityByMonth: any[] = summary?.activityByMonth || [];
+
+      res.json({
+        hasData: true,
+        merchantEmail: snapshot.merchantEmail,
+        chirpRequestCode: snapshot.chirpRequestCode,
+        institutionName: snapshot.institutionName,
+        status: snapshot.status,
+        isAccountConnected: Boolean(snapshot.isAccountConnected),
+        connectedAt: snapshot.connectedAt,
+        lastSyncedAt: snapshot.lastSyncedAt,
+        accounts: accounts.map(a => ({
+          name: a.accountName || "Account",
+          type: a.type || "",
+          balance: Number(a.balance) || 0,
+          chirpAccountId: a.chirpAccountId || null,
+        })),
+        metrics: {
+          monthlyRevenue: Number(metrics.monthlyRevenue) || 0,
+          monthlyExpenses: Number(metrics.monthlyExpenses) || 0,
+          netCashFlow: Number(metrics.netCashFlow) || 0,
+          avgBalance: Number(metrics.avgBalance) || 0,
+          currentBalance: Number(metrics.currentBalance) || 0,
+          monthsAnalyzed: Number(metrics.monthsAnalyzed) || 0,
+          revenueTrend: metrics.revenueTrend || null,
+          healthScore: Number(metrics.healthScore) || 0,
+        },
+        // Monthly breakdown for underwriter review
+        activityByMonth: activityByMonth
+          .filter((m: any) => (m.month || "").toLowerCase() !== "all")
+          .map((m: any) => ({
+            month: m.month,
+            totalCredit: m.totalCredit,
+            totalDebit: m.totalDebit,
+            averageDailyBalance: m.averageDailyBalance,
+            net: m.net || m.totalNet,
+          })),
+      });
+    } catch (err: any) {
+      console.error("[ADMIN] underwriter-snapshot error:", err);
+      res.status(500).json({ error: "Failed to load underwriter snapshot" });
+    }
+  });
+
   // GET /api/chirp/request/:code/pdf/download — stream PDF bank statement report
   app.get("/api/chirp/request/:code/pdf/download", async (req: Request, res: Response) => {
     if (!req.session.user?.isAuthenticated) {
@@ -2991,18 +3049,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return Number.isFinite(n) ? n : 0;
       };
 
+      // Primary: use Chirp's pre-aggregated summary when available
       const activityByMonth: any[] = (summary as any)?.activityByMonth || [];
       const perMonth = activityByMonth.filter((m: any) => (m.month || "").toLowerCase() !== "all");
-      const monthlyRevenue = perMonth.length
-        ? perMonth.reduce((s, m) => s + parseMoney(m.totalCredit), 0) / perMonth.length
-        : 0;
-      const monthlyExpenses = perMonth.length
-        ? perMonth.reduce((s, m) => s + parseMoney(m.totalDebit), 0) / perMonth.length
-        : 0;
+      let monthlyRevenue = 0;
+      let monthlyExpenses = 0;
+      let avgBalance = 0;
+      let currentBalance = 0;
+      let monthsAnalyzed = perMonth.length;
+
+      if (perMonth.length > 0) {
+        // Summary endpoint available — use pre-computed aggregates
+        monthlyRevenue = perMonth.reduce((s, m) => s + parseMoney(m.totalCredit), 0) / perMonth.length;
+        monthlyExpenses = perMonth.reduce((s, m) => s + parseMoney(m.totalDebit), 0) / perMonth.length;
+        const overall = activityByMonth.find((m: any) => (m.month || "").toLowerCase() === "all") || activityByMonth[0];
+        avgBalance = parseMoney(overall?.averageDailyBalance ?? overall?.averageMonthlyBalance);
+        currentBalance = parseMoney((summary as any)?.currentBalance);
+      } else if (details) {
+        // Fallback: compute metrics from raw transaction data in details
+        console.log(`[CHIRP] Summary unavailable for ${requestCode}, computing from transaction details`);
+        const txnSummaries: any[] = (details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || [];
+        const allTxns: any[] = txnSummaries.flatMap((s: any) => s.transactions || s.transaction || []);
+
+        // Group transactions by month
+        const byMonth = new Map<string, { credits: number; debits: number }>();
+        for (const txn of allTxns) {
+          const date = txn.date || txn.transacted_at || txn.posted_at || "";
+          const monthKey = date.substring(0, 7); // YYYY-MM
+          if (!monthKey) continue;
+          const entry = byMonth.get(monthKey) || { credits: 0, debits: 0 };
+          const amt = parseMoney(txn.amount);
+          if (amt > 0) entry.credits += amt;
+          else entry.debits += Math.abs(amt);
+          byMonth.set(monthKey, entry);
+        }
+
+        monthsAnalyzed = byMonth.size;
+        if (monthsAnalyzed > 0) {
+          let totalCredits = 0, totalDebits = 0;
+          for (const [, v] of byMonth) {
+            totalCredits += v.credits;
+            totalDebits += v.debits;
+          }
+          monthlyRevenue = totalCredits / monthsAnalyzed;
+          monthlyExpenses = totalDebits / monthsAnalyzed;
+        }
+
+        // Current balance from first account
+        if (accounts.length > 0) {
+          currentBalance = parseMoney(accounts[0].balance ?? accounts[0].available_balance ?? 0);
+          // Average across all accounts
+          const totalBal = accounts.reduce((s: number, a: any) => s + parseMoney(a.balance ?? a.available_balance ?? 0), 0);
+          avgBalance = totalBal / accounts.length;
+        }
+      }
+
       const netCashFlow = monthlyRevenue - monthlyExpenses;
-      const overall = activityByMonth.find((m: any) => (m.month || "").toLowerCase() === "all") || activityByMonth[0];
-      const avgBalance = parseMoney(overall?.averageDailyBalance ?? overall?.averageMonthlyBalance);
-      const currentBalance = parseMoney((summary as any)?.currentBalance);
+
+      // Compute revenue trend from month-over-month data
+      let revenueTrend: "growing" | "stable" | "declining" | null = null;
+      if (perMonth.length >= 2) {
+        // perMonth from summary is typically sorted newest-first; compare recent vs older half
+        const half = Math.floor(perMonth.length / 2);
+        const recentAvg = perMonth.slice(0, half).reduce((s, m) => s + parseMoney(m.totalCredit), 0) / half;
+        const olderAvg = perMonth.slice(half).reduce((s, m) => s + parseMoney(m.totalCredit), 0) / (perMonth.length - half);
+        const changePercent = olderAvg > 0 ? ((recentAvg - olderAvg) / olderAvg) * 100 : 0;
+        revenueTrend = changePercent > 5 ? "growing" : changePercent < -5 ? "declining" : "stable";
+      }
+
+      // Compute financial health score (0-100)
+      // Factors: positive cash flow, balance cushion, revenue consistency
+      const cashFlowRatio = monthlyRevenue > 0 ? netCashFlow / monthlyRevenue : 0;
+      const balanceCushion = monthlyExpenses > 0 ? currentBalance / monthlyExpenses : 0;
+      const cashFlowScore = Math.min(40, Math.max(0, cashFlowRatio * 100)); // 0-40 pts
+      const balanceScore = Math.min(30, Math.max(0, balanceCushion * 10));   // 0-30 pts
+      const trendScore = revenueTrend === "growing" ? 30 : revenueTrend === "stable" ? 20 : 10; // 10-30 pts
+      const healthScore = Math.round(Math.min(100, cashFlowScore + balanceScore + trendScore));
 
       const snapshot = await storage.upsertMerchantBankSnapshot({
         merchantEmail,
@@ -3024,7 +3146,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           netCashFlow: Math.round(netCashFlow * 100) / 100,
           avgBalance: Math.round(avgBalance * 100) / 100,
           currentBalance: Math.round(currentBalance * 100) / 100,
-          monthsAnalyzed: perMonth.length,
+          monthsAnalyzed,
+          revenueTrend,
+          healthScore,
         },
         lastSyncedAt: new Date(),
       });
@@ -3159,6 +3283,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           avgBalance: Number(metrics.avgBalance) || 0,
           currentBalance: Number(metrics.currentBalance) || 0,
           monthsAnalyzed: Number(metrics.monthsAnalyzed) || 0,
+          revenueTrend: metrics.revenueTrend || null,
+          healthScore: Number(metrics.healthScore) || 0,
         },
       });
     } catch (err: any) {

@@ -3213,7 +3213,30 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   const monthlyExpenses = chirpMetrics?.monthlyExpenses || 0;
   const netCashFlow = chirpMetrics?.netCashFlow || 0;
   const avgBalance = chirpMetrics?.avgBalance || plaid?.avgBalance || pdf?.averageDailyBalance || 0;
+  const currentBalance = chirpMetrics?.currentBalance || 0;
+  const revenueTrend = chirpMetrics?.revenueTrend || plaid?.revenueTrend || null;
+  const healthScore = chirpMetrics?.healthScore || 0;
+  const monthsAnalyzed = chirpMetrics?.monthsAnalyzed || 0;
   const cashFlowHealth = pdf?.cashFlowHealth || (chirpConnected || plaid ? 'moderate' : null);
+
+  // Relative time helper for data freshness
+  const timeAgoShort = (ts: string | null | undefined) => {
+    if (!ts) return null;
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  };
+
+  // Health score label
+  const healthLabel = healthScore >= 70 ? "Strong" : healthScore >= 45 ? "Moderate" : healthScore > 0 ? "Needs Attention" : null;
+  const healthColor = healthScore >= 70 ? "#2dd4bf" : healthScore >= 45 ? "#facc15" : "#f87171";
+  const trendIcon = revenueTrend === "growing" ? "\u2197" : revenueTrend === "declining" ? "\u2198" : revenueTrend === "stable" ? "\u2192" : "";
+  const trendColor = revenueTrend === "growing" ? "#2dd4bf" : revenueTrend === "declining" ? "#f87171" : "#94a3b8";
 
   return (
     <div className="financials-section">
@@ -3411,63 +3434,109 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       {/* ── Financial Insights ── */}
       {hasAnyData ? (
         <>
-          {/* Cash Flow Health */}
-          {cashFlowHealth && (
-            <div className="insight-card" style={{ textAlign: "center" }}>
-              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
-                Cash Flow Health
-              </h3>
-              <div className={`health-indicator health-${cashFlowHealth}`} />
-              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 600, marginTop: 8, textTransform: "capitalize" }}>
-                {cashFlowHealth === 'needs-attention' ? 'Needs Attention' : cashFlowHealth}
-              </p>
+          {/* Financial Health Score + Data Freshness */}
+          {(healthScore > 0 || cashFlowHealth) && (
+            <div className="insight-card">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
+                  Financial Health
+                </h3>
+                {banking?.lastSyncedAt && (
+                  <span style={{ color: "#64748b", fontSize: 11 }}>
+                    Updated {timeAgoShort(banking.lastSyncedAt)}
+                    {monthsAnalyzed > 0 && ` \u00B7 ${monthsAnalyzed} mo analyzed`}
+                  </span>
+                )}
+              </div>
+              {healthScore > 0 ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  {/* Score circle */}
+                  <div style={{
+                    width: 72, height: 72, borderRadius: "50%",
+                    border: `3px solid ${healthColor}`,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}>
+                    <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 700, color: healthColor, lineHeight: 1 }}>
+                      {healthScore}
+                    </span>
+                    <span style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>/ 100</span>
+                  </div>
+                  <div>
+                    <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, color: healthColor, marginBottom: 4 }}>
+                      {healthLabel}
+                    </p>
+                    <p style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
+                      {healthScore >= 70
+                        ? "Your cash flow and balances show a healthy financial position."
+                        : healthScore >= 45
+                        ? "Your financials are in a reasonable range with room for improvement."
+                        : "There may be some areas to focus on to strengthen your position."}
+                    </p>
+                    {revenueTrend && (
+                      <p style={{ fontSize: 12, marginTop: 6 }}>
+                        Revenue trend: <span style={{ color: trendColor, fontWeight: 600 }}>{trendIcon} {revenueTrend}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : cashFlowHealth ? (
+                <div style={{ textAlign: "center" }}>
+                  <div className={`health-indicator health-${cashFlowHealth}`} />
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 600, marginTop: 8, textTransform: "capitalize" }}>
+                    {cashFlowHealth === 'needs-attention' ? 'Needs Attention' : cashFlowHealth}
+                  </p>
+                </div>
+              ) : null}
             </div>
           )}
 
-          {/* Revenue & Balance Cards */}
+          {/* Revenue, Expenses, Cash Flow, Balance — 2x2 grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div className="insight-card" style={{ textAlign: "center" }}>
-              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Est. Monthly Revenue</p>
+              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Monthly Revenue</p>
               <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
                 ${monthlyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               </p>
-              {chirpConnected && chirpMetrics?.monthsAnalyzed ? (
-                <p style={{ color: "#4b5568", fontSize: 10, marginTop: 4 }}>
-                  Avg of last {chirpMetrics.monthsAnalyzed} mo
+              {revenueTrend && (
+                <p style={{ color: trendColor, fontSize: 11, fontWeight: 600, marginTop: 4 }}>
+                  {trendIcon} {revenueTrend}
                 </p>
-              ) : null}
+              )}
             </div>
             <div className="insight-card" style={{ textAlign: "center" }}>
-              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Avg. Daily Balance</p>
-              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
-                ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Monthly Expenses</p>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: monthlyExpenses > 0 ? "#e8eaf0" : "#64748b" }}>
+                {monthlyExpenses > 0 ? `$${monthlyExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "\u2014"}
               </p>
             </div>
-          </div>
-
-          {/* Chirp-only: Expense + Cash Flow tiles */}
-          {chirpConnected && chirpMetrics && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-              <div className="insight-card" style={{ textAlign: "center" }}>
-                <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Est. Monthly Expenses</p>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#e8eaf0" }}>
-                  ${monthlyExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-              </div>
-              <div className="insight-card" style={{ textAlign: "center" }}>
-                <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Net Cash Flow</p>
-                <p style={{
-                  fontFamily: "'Syne', sans-serif",
-                  fontSize: 22,
-                  fontWeight: 700,
-                  color: netCashFlow >= 0 ? "#2dd4bf" : "#f87171",
-                }}>
-                  {netCashFlow >= 0 ? "+" : "-"}${Math.abs(netCashFlow).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-                <p style={{ color: "#4b5568", fontSize: 10, marginTop: 4 }}>revenue - expenses / mo</p>
-              </div>
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Net Cash Flow</p>
+              <p style={{
+                fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700,
+                color: netCashFlow > 0 ? "#2dd4bf" : netCashFlow < 0 ? "#f87171" : "#64748b",
+              }}>
+                {netCashFlow !== 0
+                  ? `${netCashFlow >= 0 ? "+" : "-"}$${Math.abs(netCashFlow).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                  : "\u2014"}
+              </p>
+              {netCashFlow !== 0 && <p style={{ color: "#4b5568", fontSize: 10, marginTop: 4 }}>revenue - expenses / mo</p>}
             </div>
-          )}
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Current Balance</p>
+              <p style={{
+                fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700,
+                color: currentBalance > 0 ? "#2dd4bf" : currentBalance < 0 ? "#f87171" : "#64748b",
+              }}>
+                {currentBalance !== 0 ? `$${currentBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "\u2014"}
+              </p>
+              {avgBalance > 0 && (
+                <p style={{ color: "#4b5568", fontSize: 10, marginTop: 4 }}>
+                  avg daily: ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </p>
+              )}
+            </div>
+          </div>
 
           {/* Account Balances (Plaid) */}
           {plaid && plaid.accounts.length > 0 && (
@@ -3486,11 +3555,31 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                   </span>
                 </div>
               ))}
-              {plaid.revenueTrend && (
-                <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>
-                  Revenue trend: <span style={{ color: plaid.revenueTrend === 'growing' ? '#2dd4bf' : plaid.revenueTrend === 'declining' ? '#f87171' : '#94a3b8', fontWeight: 500, textTransform: 'capitalize' }}>{plaid.revenueTrend}</span>
-                </p>
-              )}
+            </div>
+          )}
+
+          {/* Transaction History (scaffold — populates once Chirp details endpoint is unblocked) */}
+          {chirpConnected && (
+            <div className="insight-card">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
+                  Recent Transactions
+                </h3>
+              </div>
+              <div style={{ textAlign: "center", padding: "20px 0", color: "#64748b", fontSize: 13 }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4b5568" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8, display: "block", margin: "0 auto 8px" }}>
+                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                </svg>
+                <p>Transaction details will appear here once your bank data finishes syncing.</p>
+                <button
+                  className="analyze-btn"
+                  onClick={handleSync}
+                  disabled={syncing}
+                  style={{ fontSize: 12, padding: "8px 14px", marginTop: 12 }}
+                >
+                  {syncing ? "Syncing..." : "Sync Now"}
+                </button>
+              </div>
             </div>
           )}
 
@@ -3541,10 +3630,10 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       )}
 
       {/* ── Renewal Nudge ── */}
-      {insights?.renewalNudge?.eligible && (
+      {(insights?.renewalNudge?.eligible || (chirpConnected && monthlyRevenue > 10000 && healthScore >= 60)) && (
         <div className="renewal-nudge" onClick={onSwitchToMessages} role="button" tabIndex={0}>
-          <span>{insights.renewalNudge.message}</span>
-          <span style={{ color: "#2dd4bf", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>Talk to your rep →</span>
+          <span>{insights?.renewalNudge?.message || "Your financials look great! You may qualify for additional funding."}</span>
+          <span style={{ color: "#2dd4bf", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>Talk to your rep &rarr;</span>
         </div>
       )}
     </div>
@@ -3719,6 +3808,30 @@ function PayoffCoverageInsight({ deal }: { deal: Deal }) {
           </div>
         </div>
       </div>
+      {/* Expenses context — show how much revenue is left after both expenses and loan payments */}
+      {banking.metrics.monthlyExpenses > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+          <div>
+            <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+              Operating Expenses
+            </div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, color: "#e8eaf0" }}>
+              {fmt$(banking.metrics.monthlyExpenses)}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+              After Expenses + Payment
+            </div>
+            <div style={{
+              fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700,
+              color: (monthlyRevenue - banking.metrics.monthlyExpenses - monthlyPaymentLoad) >= 0 ? "#2dd4bf" : "#f87171",
+            }}>
+              {fmt$(Math.max(0, monthlyRevenue - banking.metrics.monthlyExpenses - monthlyPaymentLoad))}
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
         Your payments on this position take up about <strong style={{ color: "#e8eaf0" }}>{paymentShareOfRevenue.toFixed(1)}%</strong> of your average monthly revenue. Based on bank data from {banking.institutionName || "your connected bank"}.
       </div>

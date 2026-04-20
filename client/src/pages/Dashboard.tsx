@@ -1139,6 +1139,97 @@ function ReconnectPlaidButton({ plaidItemId, onSuccess }: { plaidItemId: string;
   );
 }
 
+// Underwriter Snapshot — inline financial summary shown on Chirp connection cards
+function UnderwriterSnapshot({ email }: { email: string }) {
+  const [data, setData] = useState<any>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || loaded) return;
+    fetch(`/api/admin/underwriter-snapshot/${encodeURIComponent(email)}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setData(d); })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, [email, expanded, loaded]);
+
+  return (
+    <div className="mt-3">
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="text-xs text-blue-500 hover:text-blue-400 font-medium flex items-center gap-1"
+      >
+        {expanded ? "▾" : "▸"} Financial Snapshot
+      </button>
+      {expanded && (
+        <div className="mt-2 p-3 bg-muted/50 rounded-lg text-sm">
+          {!loaded ? (
+            <p className="text-muted-foreground text-xs">Loading...</p>
+          ) : !data?.hasData ? (
+            <p className="text-muted-foreground text-xs">No banking data available for this merchant.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Monthly Revenue</p>
+                  <p className="font-semibold text-green-500">${Number(data.metrics.monthlyRevenue).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Monthly Expenses</p>
+                  <p className="font-semibold">${Number(data.metrics.monthlyExpenses).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Net Cash Flow</p>
+                  <p className={`font-semibold ${data.metrics.netCashFlow >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {data.metrics.netCashFlow >= 0 ? '+' : '-'}${Math.abs(data.metrics.netCashFlow).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Current Balance</p>
+                  <p className="font-semibold">${Number(data.metrics.currentBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                <span>Avg Balance: ${Number(data.metrics.avgBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                {data.metrics.healthScore > 0 && (
+                  <span>
+                    Health: <span className={data.metrics.healthScore >= 70 ? 'text-green-500' : data.metrics.healthScore >= 45 ? 'text-yellow-500' : 'text-red-500'} style={{ fontWeight: 600 }}>
+                      {data.metrics.healthScore}/100
+                    </span>
+                  </span>
+                )}
+                {data.metrics.revenueTrend && (
+                  <span>Trend: <span className={data.metrics.revenueTrend === 'growing' ? 'text-green-500' : data.metrics.revenueTrend === 'declining' ? 'text-red-500' : ''} style={{ fontWeight: 500, textTransform: 'capitalize' }}>{data.metrics.revenueTrend}</span></span>
+                )}
+                {data.metrics.monthsAnalyzed > 0 && <span>{data.metrics.monthsAnalyzed} months analyzed</span>}
+                {data.institutionName && <span>{data.institutionName}</span>}
+                {data.lastSyncedAt && <span>Last sync: {new Date(data.lastSyncedAt).toLocaleDateString()}</span>}
+              </div>
+              {/* Monthly breakdown */}
+              {data.activityByMonth?.length > 0 && (
+                <div className="mt-3 border-t border-muted pt-2">
+                  <p className="text-xs text-muted-foreground font-medium mb-2">Monthly Breakdown</p>
+                  <div className="grid gap-1 text-xs">
+                    {data.activityByMonth.slice(0, 6).map((m: any, i: number) => (
+                      <div key={i} className="flex justify-between items-center">
+                        <span className="text-muted-foreground w-20">{m.month}</span>
+                        <span className="text-green-500 w-24 text-right">+{m.totalCredit}</span>
+                        <span className="text-red-400 w-24 text-right">-{m.totalDebit}</span>
+                        <span className="w-24 text-right font-medium">{m.averageDailyBalance || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BankStatementsTab() {
   const { toast } = useToast();
   const [expandedBusinesses, setExpandedBusinesses] = useState<Set<string>>(new Set());
@@ -2696,6 +2787,8 @@ function BankStatementsTab() {
                         <User className="w-4 h-4" />
                         {conn.email}
                       </div>
+                      {/* Underwriter Snapshot — inline financial summary */}
+                      <UnderwriterSnapshot email={conn.email} />
                     </div>
                     <div className="flex flex-col gap-2 min-w-[160px]">
                       <Button
