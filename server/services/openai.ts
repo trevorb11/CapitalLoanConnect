@@ -18,7 +18,7 @@ function getAnthropic(): Anthropic {
   }
   return _anthropic;
 }
-const CLAUDE_MODEL = "claude-sonnet-4-6-20250514";
+const CLAUDE_MODEL = "claude-sonnet-4-5-20241022";
 
 // Lender criteria for funding qualification analysis
 const LENDER_CRITERIA = `
