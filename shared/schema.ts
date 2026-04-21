@@ -704,3 +704,70 @@ export const insertMerchantBankSnapshotSchema = createInsertSchema(merchantBankS
 
 export type InsertMerchantBankSnapshot = z.infer<typeof insertMerchantBankSnapshotSchema>;
 export type MerchantBankSnapshot = typeof merchantBankSnapshots.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// LEAD PORTAL — free financial dashboard for prospective merchants
+// ═══════════════════════════════════════════════════════════════
+
+// Lead Portal Accounts — self-signup auth for leads
+export const leadPortalAccounts = pgTable("lead_portal_accounts", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  phone: text("phone"),
+  businessName: text("business_name"),
+  industry: text("industry"),
+  monthlyRevenue: text("monthly_revenue"), // self-reported range
+  timeInBusiness: text("time_in_business"), // self-reported
+  referralSource: text("referral_source"), // how they found us
+  // Qualification signals computed from their data
+  qualificationScore: integer("qualification_score"), // 0-100
+  qualificationTier: text("qualification_tier"), // from analysis
+  isQualified: boolean("is_qualified").default(false),
+  // Admin tracking
+  assignedRep: text("assigned_rep"), // rep email if claimed
+  notes: text("notes"), // internal notes
+  status: text("status").default("active"), // active, converted, inactive
+  lastActiveAt: timestamp("last_active_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLeadPortalAccountSchema = createInsertSchema(leadPortalAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLeadPortalAccount = z.infer<typeof insertLeadPortalAccountSchema>;
+export type LeadPortalAccount = typeof leadPortalAccounts.$inferSelect;
+
+// Lead Positions — self-reported funding positions from other sources
+export const leadPositions = pgTable("lead_positions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadEmail: text("lead_email").notNull(),
+  // Position details
+  funderName: text("funder_name").notNull(),
+  productType: text("product_type"), // MCA, LOC, Term Loan, SBA, etc.
+  fundedAmount: decimal("funded_amount", { precision: 12, scale: 2 }),
+  paybackAmount: decimal("payback_amount", { precision: 12, scale: 2 }),
+  factorRate: text("factor_rate"),
+  paymentAmount: decimal("payment_amount", { precision: 12, scale: 2 }),
+  paymentFrequency: text("payment_frequency"), // daily, weekly, bi-weekly, monthly
+  fundedDate: text("funded_date"), // when they received funding
+  estimatedPayoffDate: text("estimated_payoff_date"),
+  remainingBalance: decimal("remaining_balance", { precision: 12, scale: 2 }),
+  status: text("status").default("active"), // active, paid-off, defaulted
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLeadPositionSchema = createInsertSchema(leadPositions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLeadPosition = z.infer<typeof insertLeadPositionSchema>;
+export type LeadPosition = typeof leadPositions.$inferSelect;

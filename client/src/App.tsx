@@ -58,6 +58,7 @@ import MerchantPortal from "@/pages/MerchantPortal";
 import MerchantActivate from "@/pages/MerchantActivate";
 import MerchantResetPassword from "@/pages/MerchantResetPassword";
 import MerchantProfile from "@/pages/MerchantProfile";
+import LeadPortal from "@/pages/LeadPortal";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -144,6 +145,11 @@ function Router() {
       {/* Admin/Rep Merchant Profile (360° view) */}
       <Route path="/merchant-profile" component={MerchantProfile} />
       <Route path="/merchant-profile/:email" component={MerchantProfile} />
+
+      {/* Lead Portal Routes */}
+      <Route path="/lead" component={LeadPortal} />
+      <Route path="/lead/signup" component={LeadPortal} />
+      <Route path="/lead/login" component={LeadPortal} />
 
       {/* Partner Portal Routes */}
       <Route path="/partners" component={PartnerLanding} />

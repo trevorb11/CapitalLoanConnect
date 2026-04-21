@@ -6177,6 +6177,283 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // LEAD PORTAL ROUTES
+  // ========================================
+
+  // Ensure lead tables exist
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS lead_portal_accounts (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      phone TEXT,
+      business_name TEXT,
+      industry TEXT,
+      monthly_revenue TEXT,
+      time_in_business TEXT,
+      referral_source TEXT,
+      qualification_score INTEGER,
+      qualification_tier TEXT,
+      is_qualified BOOLEAN DEFAULT false,
+      assigned_rep TEXT,
+      notes TEXT,
+      status TEXT DEFAULT 'active',
+      last_active_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS lead_positions (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      lead_email TEXT NOT NULL,
+      funder_name TEXT NOT NULL,
+      product_type TEXT,
+      funded_amount DECIMAL(12,2),
+      payback_amount DECIMAL(12,2),
+      factor_rate TEXT,
+      payment_amount DECIMAL(12,2),
+      payment_frequency TEXT,
+      funded_date TEXT,
+      estimated_payoff_date TEXT,
+      remaining_balance DECIMAL(12,2),
+      status TEXT DEFAULT 'active',
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )`);
+    console.log("[LEAD] Lead portal tables ensured");
+  } catch (err) {
+    console.error("[LEAD] Failed to ensure lead tables:", err);
+  }
+
+  // Helper: get lead email from session
+  function getLeadEmail(req: Request): string | null {
+    if (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail) {
+      return req.session.user.merchantEmail;
+    }
+    return null;
+  }
+
+  // POST /api/lead/signup
+  app.post("/api/lead/signup", async (req: Request, res: Response) => {
+    try {
+      const { email, password, firstName, lastName, phone, businessName } = req.body;
+      if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+      if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Check if account already exists
+      const existing = await db.execute(sql`SELECT id FROM lead_portal_accounts WHERE email = ${normalizedEmail}`);
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ error: "An account with this email already exists. Try signing in." });
+      }
+
+      const passwordHash = hashPassword(password);
+      await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name)
+        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null})`);
+
+      // Auto-login
+      req.session.user = {
+        isAuthenticated: true,
+        role: 'lead',
+        merchantEmail: normalizedEmail,
+        merchantName: [firstName, lastName].filter(Boolean).join(" ") || undefined,
+      };
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[LEAD] signup error:", err);
+      res.status(500).json({ error: "Signup failed. Please try again." });
+    }
+  });
+
+  // POST /api/lead/login
+  app.post("/api/lead/login", async (req: Request, res: Response) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+      const result = await db.execute(sql`SELECT password_hash, first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${normalizedEmail}`);
+      if (result.rows.length === 0) return res.status(401).json({ error: "Invalid email or password" });
+
+      const row = result.rows[0] as any;
+      if (!row.password_hash || !verifyPassword(password, row.password_hash)) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      const name = [row.first_name, row.last_name].filter(Boolean).join(" ");
+      req.session.user = {
+        isAuthenticated: true,
+        role: 'lead',
+        merchantEmail: normalizedEmail,
+        merchantName: name || undefined,
+      };
+
+      // Update last active
+      await db.execute(sql`UPDATE lead_portal_accounts SET last_active_at = NOW() WHERE email = ${normalizedEmail}`);
+
+      res.json({ success: true, name, businessName: row.business_name });
+    } catch (err: any) {
+      console.error("[LEAD] login error:", err);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // GET /api/lead/auth/check
+  app.get("/api/lead/auth/check", async (req: Request, res: Response) => {
+    if (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail) {
+      const result = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
+      const row = result.rows[0] as any;
+      res.json({
+        isAuthenticated: true,
+        email: req.session.user.merchantEmail,
+        name: row ? [row.first_name, row.last_name].filter(Boolean).join(" ") : req.session.user.merchantName,
+        businessName: row?.business_name || "",
+      });
+    } else {
+      res.json({ isAuthenticated: false });
+    }
+  });
+
+  // POST /api/lead/auth/logout
+  app.post("/api/lead/auth/logout", (req: Request, res: Response) => {
+    req.session.destroy(() => {});
+    res.json({ success: true });
+  });
+
+  // ── Lead Positions CRUD ──
+
+  // GET /api/lead/positions
+  app.get("/api/lead/positions", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const result = await db.execute(sql`SELECT * FROM lead_positions WHERE lead_email = ${email} ORDER BY created_at DESC`);
+    res.json(result.rows);
+  });
+
+  // POST /api/lead/positions
+  app.post("/api/lead/positions", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const { funderName, productType, fundedAmount, paybackAmount, factorRate, paymentAmount, paymentFrequency, fundedDate, remainingBalance } = req.body;
+    if (!funderName) return res.status(400).json({ error: "Funder name is required" });
+
+    await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, factor_rate, payment_amount, payment_frequency, funded_date, remaining_balance)
+      VALUES (${email}, ${funderName}, ${productType || null}, ${fundedAmount || null}, ${paybackAmount || null}, ${factorRate || null}, ${paymentAmount || null}, ${paymentFrequency || null}, ${fundedDate || null}, ${remainingBalance || null})`);
+
+    res.json({ success: true });
+  });
+
+  // DELETE /api/lead/positions/:id
+  app.delete("/api/lead/positions/:id", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    await db.execute(sql`DELETE FROM lead_positions WHERE id = ${req.params.id} AND lead_email = ${email}`);
+    res.json({ success: true });
+  });
+
+  // ── Lead Banking (reuses merchant Chirp infrastructure) ──
+
+  // GET /api/lead/banking/insights
+  app.get("/api/lead/banking/insights", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const snapshot = await storage.getMerchantBankSnapshot(email);
+    if (!snapshot) return res.json({ connected: false });
+
+    const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
+    const metrics = (snapshot.metrics as any) || {};
+    res.json({
+      connected: Boolean(snapshot.isAccountConnected),
+      status: snapshot.status,
+      institutionName: snapshot.institutionName,
+      lastSyncedAt: snapshot.lastSyncedAt,
+      accounts: accounts.map(a => ({ name: a.accountName || "Account", type: a.type || "", balance: Number(a.balance) || 0 })),
+      metrics: {
+        monthlyRevenue: Number(metrics.monthlyRevenue) || 0,
+        monthlyExpenses: Number(metrics.monthlyExpenses) || 0,
+        netCashFlow: Number(metrics.netCashFlow) || 0,
+        avgBalance: Number(metrics.avgBalance) || 0,
+        currentBalance: Number(metrics.currentBalance) || 0,
+        monthsAnalyzed: Number(metrics.monthsAnalyzed) || 0,
+        revenueTrend: metrics.revenueTrend || null,
+        healthScore: Number(metrics.healthScore) || 0,
+      },
+    });
+  });
+
+  // POST /api/lead/chirp/connect
+  app.post("/api/lead/chirp/connect", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    try {
+      const leadAccount = await db.execute(sql`SELECT first_name, last_name, phone FROM lead_portal_accounts WHERE email = ${email}`);
+      const lead = leadAccount.rows[0] as any;
+
+      const phone = req.body?.phone || lead?.phone;
+      if (!phone) return res.status(400).json({ error: "A phone number is required to connect your bank. Please update your profile." });
+
+      const result = await chirpService.createVerificationRequest({
+        cusFirstName: lead?.first_name || "Lead",
+        cusLastName: lead?.last_name || "User",
+        cusEmail: email,
+        cusPhone: phone,
+      });
+
+      // Save stub snapshot
+      await storage.upsertMerchantBankSnapshot({
+        merchantEmail: email,
+        chirpRequestCode: result.requestCode,
+        status: "Unverified",
+        isAccountConnected: false,
+        lastSyncedAt: new Date(),
+      });
+
+      res.json({ requestCode: result.requestCode, widgetUrl: result.widgetUrl, verificationUrl: result.verificationUrl });
+    } catch (err: any) {
+      console.error("[LEAD] chirp connect error:", err);
+      res.status(500).json({ error: err.message || "Failed to start bank connection" });
+    }
+  });
+
+  // POST /api/lead/chirp/sync
+  app.post("/api/lead/chirp/sync", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const existing = await storage.getMerchantBankSnapshot(email);
+    if (!existing?.chirpRequestCode) return res.status(400).json({ error: "No bank connection found." });
+
+    const snapshot = await syncMerchantSnapshotFromChirp(email, existing.chirpRequestCode);
+    res.json({ success: true, lastSyncedAt: snapshot?.lastSyncedAt });
+  });
+
+  // GET /api/admin/lead-portal/leads — admin view of all lead portal signups
+  app.get("/api/admin/lead-portal/leads", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`SELECT l.*,
+        (SELECT COUNT(*) FROM lead_positions WHERE lead_email = l.email) as position_count,
+        (SELECT json_agg(json_build_object('funderName', funder_name, 'productType', product_type, 'fundedAmount', funded_amount, 'status', status))
+         FROM lead_positions WHERE lead_email = l.email) as positions
+        FROM lead_portal_accounts l ORDER BY l.created_at DESC`);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[LEAD] admin leads fetch error:", err);
+      res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+
+  // ========================================
   // PARTNER PORTAL ROUTES
   // ========================================
 
