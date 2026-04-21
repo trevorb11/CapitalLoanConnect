@@ -3424,12 +3424,13 @@ function InsightCategories({ pdf }: { pdf: any }) {
   );
 }
 
-function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken, uploadedStatements }: {
+function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken, uploadedStatements, deals = [] }: {
   merchantEmail: string;
   merchantName: string;
   assignedRep: string | null;
   onSwitchToMessages: () => void;
   previewToken?: string | null;
+  deals?: Deal[];
   uploadedStatements?: VaultDocument[];
 }) {
   const [insights, setInsights] = useState<FinancialInsights | null>(null);
@@ -4003,6 +4004,40 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
               </div>
             </div>
           )}
+
+          {/* Debt Service Ratio — shows what % of revenue goes to funding payments */}
+          {(() => {
+            const activeDeals = deals.filter(d => d.status === "active" || d.status === "Active");
+            if (activeDeals.length === 0 || monthlyRevenue <= 0) return null;
+
+            const totalMonthlyDebt = activeDeals.reduce((sum, deal) => {
+              const freq = deal.paymentFrequency;
+              const ppm = freq === "daily" ? 21 : freq === "weekly" ? 4.33 : freq === "bi-weekly" || freq === "biweekly" ? 2.17 : 1;
+              const calc = calcDeal(deal);
+              return sum + (calc.paymentAmount * ppm);
+            }, 0);
+
+            const ratio = (totalMonthlyDebt / monthlyRevenue) * 100;
+            const remaining = monthlyRevenue - totalMonthlyDebt - monthlyExpenses;
+            const ratioColor = ratio <= 15 ? "#2dd4bf" : ratio <= 25 ? "#facc15" : "#f87171";
+            const ratioLabel = ratio <= 15 ? "Healthy" : ratio <= 25 ? "Moderate" : "Heavy";
+
+            return (
+              <div className="insight-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px" }}>
+                <div>
+                  <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 2 }}>Funding Payments vs Revenue</p>
+                  <p style={{ color: "#64748b", fontSize: 11 }}>
+                    {fmt$(totalMonthlyDebt)}/mo across {activeDeals.length} position{activeDeals.length > 1 ? "s" : ""}
+                    {remaining > 0 && ` \u00B7 ${fmt$(remaining)} left after all expenses`}
+                  </p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: ratioColor }}>{ratio.toFixed(0)}%</span>
+                  <p style={{ color: ratioColor, fontSize: 11, fontWeight: 600, marginTop: 2 }}>{ratioLabel}</p>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Account Balances (Plaid) */}
           {plaid && plaid.accounts.length > 0 && (
@@ -5060,6 +5095,7 @@ export default function MerchantPortal() {
                       onSwitchToMessages={() => setActiveTab('messages')}
                       previewToken={adminPreviewToken}
                       uploadedStatements={vaultDocs.filter(d => d.category === 'statements')}
+                      deals={deals}
                     />
                   )}
 
