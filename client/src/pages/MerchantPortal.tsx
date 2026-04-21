@@ -3244,6 +3244,88 @@ interface BankingInsights {
 
 type DataSource = "chirp" | "statements";
 
+// Statement upload drop zone
+function StatementUploadZone({ previewHeaders, onUploadComplete }: { previewHeaders: Record<string, string>; onUploadComplete: () => void }) {
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (file: File) => {
+    if (file.type !== "application/pdf") {
+      setUploadResult({ success: false, message: "Only PDF files are supported." });
+      return;
+    }
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/merchant/bank-statements/upload", {
+        method: "POST", credentials: "include", headers: previewHeaders, body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Upload failed");
+      }
+      setUploadResult({ success: true, message: `${file.name} uploaded successfully. Click "Analyze" to generate insights.` });
+      onUploadComplete();
+    } catch (e: any) {
+      setUploadResult({ success: false, message: e.message || "Upload failed" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleUpload(file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleUpload(file);
+  };
+
+  return (
+    <div
+      className="insight-card"
+      onDragOver={e => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      style={{
+        textAlign: "center", padding: "20px",
+        border: dragging ? "2px dashed #2dd4bf" : "1px solid rgba(255,255,255,0.08)",
+        background: dragging ? "rgba(45,212,191,0.06)" : undefined,
+        transition: "all 0.2s", cursor: "pointer",
+      }}
+      onClick={() => fileInputRef.current?.click()}
+    >
+      <input ref={fileInputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={handleFileSelect} />
+      {uploading ? (
+        <div className="portal-loading" style={{ padding: 12 }}><div className="portal-spinner" /><span>Uploading...</span></div>
+      ) : (
+        <>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 8px", display: "block" }}>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p style={{ color: "#94a3b8", fontSize: 13 }}>
+            {dragging ? "Drop your PDF here" : "Drop a bank statement PDF here, or click to browse"}
+          </p>
+          <p style={{ color: "#4b5568", fontSize: 11, marginTop: 4 }}>PDF files up to 25MB</p>
+        </>
+      )}
+      {uploadResult && (
+        <p style={{ color: uploadResult.success ? "#2dd4bf" : "#f87171", fontSize: 12, marginTop: 8 }}>
+          {uploadResult.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // Categorized insight cards with collapsible sections
 function InsightCategories({ pdf }: { pdf: any }) {
   const [expandedSection, setExpandedSection] = useState<string | null>("summary");
@@ -3649,6 +3731,9 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
         )}
       </div>
 
+      {/* ── Upload Statement Drop Zone ── */}
+      <StatementUploadZone previewHeaders={previewHeaders} onUploadComplete={fetchData} />
+
       {/* ── Uploaded Statements ── */}
       {showStatementsSection && (
         <div className="insight-card">
@@ -3970,12 +4055,11 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           )}
         </>
       ) : (
-        <div className="insight-card" style={{ textAlign: "center", padding: "32px 20px" }}>
-          <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7 }}>
-            {showStatementsSection
-              ? "Click 'Analyze' above to generate insights from your bank statements."
-              : "Upload bank statements or connect your bank to see financial insights."}
-          </p>
+        <div className="portal-empty">
+          <strong>{showStatementsSection ? "Ready to analyze" : "Start with your finances"}</strong>
+          {showStatementsSection
+            ? "You've uploaded statements — click \"Analyze\" above to generate your financial insights."
+            : "Connect your bank for live tracking, or drop a PDF statement above for an instant analysis."}
         </div>
       )}
 
@@ -4633,6 +4717,7 @@ export default function MerchantPortal() {
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [loadingVault, setLoadingVault] = useState(false);
   const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials' | 'resources'>('positions');
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [appStatus, setAppStatus] = useState<{
     hasApplication: boolean;
     applicationId?: number;
@@ -4700,6 +4785,21 @@ export default function MerchantPortal() {
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [loggedIn, isAdminPreview]);
+
+  // Poll unread message count for tab badge
+  useEffect(() => {
+    if (!loggedIn) return;
+    const headers = adminPreviewToken ? { "x-admin-preview-token": adminPreviewToken } : {};
+    const checkUnread = () => {
+      fetch("/api/merchant/messages/unread", { credentials: "include", headers })
+        .then(r => r.ok ? r.json() : { count: 0 })
+        .then(data => setUnreadMessages(data.count || 0))
+        .catch(() => {});
+    };
+    checkUnread();
+    const interval = setInterval(checkUnread, 30000);
+    return () => clearInterval(interval);
+  }, [loggedIn, adminPreviewToken]);
 
   // Fetch deals and statements when logged in (skip in admin preview — data already loaded)
   useEffect(() => {
@@ -4841,9 +4941,12 @@ export default function MerchantPortal() {
                     </button>
                     <button
                       className={`portal-nav-btn ${activeTab === 'messages' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('messages')}
+                      onClick={() => { setActiveTab('messages'); setUnreadMessages(0); }}
                     >
                       Messages
+                      {unreadMessages > 0 && activeTab !== 'messages' && (
+                        <span className="nav-badge">{unreadMessages}</span>
+                      )}
                     </button>
                     <button
                       className={`portal-nav-btn ${activeTab === 'documents' ? 'active' : ''}`}

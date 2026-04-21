@@ -9862,6 +9862,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Route 3b: Merchant/lead portal statement upload
+  app.post("/api/merchant/bank-statements/upload", (req, res, next) => {
+    bankStatementUpload.single("file")(req, res, (err: any) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: "File too large (25MB max)" });
+        if (err.message === 'Only PDF files are allowed') return res.status(400).json({ error: err.message });
+        return res.status(400).json({ error: "Upload error: " + err.message });
+      }
+      next();
+    });
+  }, async (req, res) => {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) return res.status(401).json({ error: "Authentication required" });
+
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+      let storedFileName: string;
+      let storageType = "local";
+
+      if (objectStorage.isConfigured()) {
+        storedFileName = await objectStorage.uploadFile(
+          file.buffer,
+          `bank-statements/${merchantEmail}/${Date.now()}_${file.originalname}`,
+          file.mimetype,
+        );
+        storageType = "object";
+      } else {
+        storedFileName = `${Date.now()}_${file.originalname}`;
+        const localPath = path.join(UPLOAD_DIR, storedFileName);
+        fs.writeFileSync(localPath, file.buffer);
+      }
+
+      const viewToken = randomUUID();
+      await storage.createBankStatementUpload({
+        email: merchantEmail,
+        originalFileName: file.originalname,
+        storedFileName,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        storageType,
+        viewToken,
+      });
+
+      console.log(`[MERCHANT UPLOAD] ${merchantEmail} uploaded ${file.originalname} (${(file.size / 1024).toFixed(0)} KB)`);
+      res.json({ success: true, fileName: file.originalname, fileSize: file.size });
+    } catch (err: any) {
+      console.error("[MERCHANT UPLOAD] error:", err);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
   // Route 4: Analyze merchant's uploaded PDF bank statements
   app.post("/api/merchant/bank-statements/analyze", async (req, res) => {
     const merchantEmail = getMerchantEmailFromRequest(req);
