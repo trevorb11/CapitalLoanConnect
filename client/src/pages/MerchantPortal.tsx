@@ -3091,6 +3091,159 @@ interface BankingInsights {
 
 type DataSource = "chirp" | "statements";
 
+// Categorized insight cards with collapsible sections
+function InsightCategories({ pdf }: { pdf: { positiveIndicators: string[]; concerns: string[]; tips: string[]; summary: string } }) {
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const toggle = (section: string) => setExpandedSection(prev => prev === section ? null : section);
+
+  // Separate short badge-style items from longer detailed observations
+  const shortThreshold = 60; // characters
+  const strengthBadges = pdf.positiveIndicators.filter(s => s.length <= shortThreshold);
+  const strengthDetails = pdf.positiveIndicators.filter(s => s.length > shortThreshold);
+  const concernBadges = pdf.concerns.filter(s => s.length <= shortThreshold);
+  const concernDetails = pdf.concerns.filter(s => s.length > shortThreshold);
+
+  const sections = [
+    {
+      key: "summary",
+      label: "Summary",
+      icon: "\u{1F4CB}",
+      color: "#94a3b8",
+      show: !!pdf.summary,
+      content: (
+        <p style={{ lineHeight: 1.7, fontSize: 13, color: "#94a3b8" }}>{pdf.summary}</p>
+      ),
+    },
+    {
+      key: "strengths",
+      label: "Strengths",
+      icon: "\u2713",
+      color: "#2dd4bf",
+      count: pdf.positiveIndicators.length,
+      show: pdf.positiveIndicators.length > 0,
+      content: (
+        <>
+          {strengthBadges.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: strengthDetails.length > 0 ? 12 : 0 }}>
+              {strengthBadges.map((item, i) => (
+                <span key={i} style={{
+                  background: "rgba(45,212,191,0.12)", color: "#2dd4bf", borderRadius: 20,
+                  padding: "4px 12px", fontSize: 12, fontWeight: 500,
+                }}>{item}</span>
+              ))}
+            </div>
+          )}
+          {strengthDetails.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {strengthDetails.map((item, i) => (
+                <div key={i} style={{
+                  padding: "10px 14px", background: "rgba(45,212,191,0.06)", borderRadius: 8,
+                  borderLeft: "3px solid rgba(45,212,191,0.3)", fontSize: 13, color: "#c8cdd5", lineHeight: 1.6,
+                }}>{item}</div>
+              ))}
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "concerns",
+      label: "Areas to Watch",
+      icon: "\u26A0",
+      color: "#facc15",
+      count: pdf.concerns.length,
+      show: pdf.concerns.length > 0,
+      content: (
+        <>
+          {concernBadges.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: concernDetails.length > 0 ? 12 : 0 }}>
+              {concernBadges.map((item, i) => (
+                <span key={i} style={{
+                  background: "rgba(250,204,21,0.12)", color: "#facc15", borderRadius: 20,
+                  padding: "4px 12px", fontSize: 12, fontWeight: 500,
+                }}>{item}</span>
+              ))}
+            </div>
+          )}
+          {concernDetails.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {concernDetails.map((item, i) => (
+                <div key={i} style={{
+                  padding: "10px 14px", background: "rgba(250,204,21,0.06)", borderRadius: 8,
+                  borderLeft: "3px solid rgba(250,204,21,0.3)", fontSize: 13, color: "#c8cdd5", lineHeight: 1.6,
+                }}>{item}</div>
+              ))}
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "tips",
+      label: "Tips to Improve",
+      icon: "\u{1F4A1}",
+      color: "#60a5fa",
+      count: pdf.tips.length,
+      show: pdf.tips.length > 0,
+      content: (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {pdf.tips.map((tip, i) => (
+            <div key={i} style={{
+              padding: "10px 14px", background: "rgba(96,165,250,0.06)", borderRadius: 8,
+              borderLeft: "3px solid rgba(96,165,250,0.3)", fontSize: 13, color: "#c8cdd5", lineHeight: 1.6,
+              display: "flex", gap: 8, alignItems: "flex-start",
+            }}>
+              <span style={{ color: "#60a5fa", fontWeight: 600, flexShrink: 0 }}>{i + 1}.</span>
+              {tip}
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  ].filter(s => s.show);
+
+  return (
+    <div className="insight-card" style={{ padding: 0 }}>
+      <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, padding: "16px 20px 0" }}>
+        Financial Insights
+      </h3>
+      {sections.map(section => (
+        <div key={section.key} style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={() => toggle(section.key)}
+            style={{
+              width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+              background: "none", border: "none", cursor: "pointer", padding: "14px 20px", textAlign: "left",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 14 }}>{section.icon}</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#e8eaf0" }}>{section.label}</span>
+              {"count" in section && section.count! > 0 && (
+                <span style={{
+                  background: `${section.color}20`, color: section.color, borderRadius: 20,
+                  padding: "1px 8px", fontSize: 11, fontWeight: 600,
+                }}>{section.count}</span>
+              )}
+            </div>
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ transform: expandedSection === section.key ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease", flexShrink: 0 }}
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {expandedSection === section.key && (
+            <div style={{ padding: "0 20px 16px" }}>
+              {section.content}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken, uploadedStatements }: {
   merchantEmail: string;
   merchantName: string;
@@ -3651,40 +3804,9 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
             </div>
           )}
 
-          {/* Key Observations */}
-          {pdf && (pdf.positiveIndicators.length > 0 || pdf.concerns.length > 0) && (
-            <div className="insight-card">
-              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
-                Key Observations
-              </h3>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {pdf.positiveIndicators.map((item, i) => (
-                  <span key={`pos-${i}`} className="observation-badge observation-positive">{item}</span>
-                ))}
-                {pdf.concerns.map((item, i) => (
-                  <span key={`warn-${i}`} className="observation-badge observation-warning">{item}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Tips */}
-          {pdf && pdf.tips.length > 0 && (
-            <div className="insight-card">
-              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
-                Tips to Strengthen Your Position
-              </h3>
-              <ul style={{ paddingLeft: 18, lineHeight: 1.8, color: "#94a3b8", fontSize: 14 }}>
-                {pdf.tips.map((tip, i) => <li key={i}>{tip}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {/* Summary */}
-          {pdf?.summary && (
-            <div className="insight-card">
-              <p style={{ lineHeight: 1.7, fontSize: 14, color: "#94a3b8" }}>{pdf.summary}</p>
-            </div>
+          {/* Insights Summary + Categorized Observations */}
+          {pdf && (pdf.summary || pdf.positiveIndicators.length > 0 || pdf.concerns.length > 0 || pdf.tips.length > 0) && (
+            <InsightCategories pdf={pdf} />
           )}
         </>
       ) : (
