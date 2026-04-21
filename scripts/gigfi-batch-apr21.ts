@@ -72,6 +72,7 @@ function buildPayload(app: any, refId: string) {
   let requestedAmount = parseFloat(app.requested_amount || "0");
   if (requestedAmount < 500 && requestedAmount > 0) requestedAmount *= 1000;
   if (requestedAmount < 1000) requestedAmount = 10000;
+  if (requestedAmount > 10000) requestedAmount = 10000;
 
   return {
     data: {
@@ -170,7 +171,7 @@ const APPS: any[] = [
   { id: "191eeedb-291b-4ce1-a932-75e42aa0810e", email: "lesterwade@hotmail.com", full_name: "Lester Wade", legal_business_name: "Wade construction and remodeling inc", phone: "6178754425", average_monthly_revenue: "50000.00", requested_amount: "25000.00", time_in_business: null, social_security_number: "033662131", date_of_birth: "1981-01-21", owner_address_1: "25 millett ave", owner_city: "Weymouth", owner_state: "MA", owner_zip: "02190", business_csz: "Weymouth , MA 02190", gigfi_status: null },
   { id: "240e33f2-e178-4158-bbb7-1e478fde1677", email: "mcmeninc4@gmail.com", full_name: "Nicholas Mcfall", legal_business_name: "MCMENINC LLC", phone: "3233843584", average_monthly_revenue: "40000.00", requested_amount: "40000.00", time_in_business: null, social_security_number: "499866047", date_of_birth: "1982-08-23", owner_address_1: "5150 CANDLEWOOD ST STE 6A", owner_city: "LAKEWOOD", owner_state: "CA", owner_zip: "90712", business_csz: "LAKEWOOD , CA 90712", gigfi_status: null },
   { id: "5b81a22b-baba-4c54-a7f3-5176a89f5a25", email: "PPEREZ@RP-INVESTIGATION.COM", full_name: "PEDRO PEREZ", legal_business_name: "RIVERSIDE PROTECTIVE INVESTIGATIONS", phone: "2108401455", average_monthly_revenue: "50000.00", requested_amount: "75000.00", time_in_business: null, social_security_number: "463757394", date_of_birth: "1985-11-23", owner_address_1: "1110 CALLE REAL", owner_city: "MESQUITE", owner_state: "TX", owner_zip: "75149", business_csz: "MESQUITE, TX 75149", gigfi_status: null },
-  { id: "859d57b0-0dc3-4934-86f9-6fcf3a7462c6", email: "JOBRYANT.JAB@GMAIL.COM", full_name: "Richard Bryant", legal_business_name: "COMFORT AIR SOLUTIONS LLC", phone: "9857899563", average_monthly_revenue: "100000.00", requested_amount: "10000.00", time_in_business: null, social_security_number: "626038915", date_of_birth: "1978-10-28", owner_address_1: "1907 E COTTONWOOD LN", owner_city: "MOHAVE VALLEY", owner_state: "AZ", owner_zip: "86440", business_csz: "MOHAVE VALLEY, AZ 86440", gigfi_status: null },
+  { id: "859d57b0-0dc3-4934-86f9-6fcf3a7462c6", email: "JOBRYANT.JAB@GMAIL.COM", full_name: "Richard Bryant", legal_business_name: "COMFORT AIR SOLUTIONS LLC", phone: "9857899563", average_monthly_revenue: "100000.00", requested_amount: "10000.00", time_in_business: null, social_security_number: "626038915", date_of_birth: "1978-10-28", owner_address_1: "1907 E COTTONWOOD LN", owner_city: "MOHAVE VALLEY", owner_state: "AZ", owner_zip: "86440", business_csz: "MOHAVE VALLEY, AZ 86440", gigfi_status: "ACCEPTED" },
   { id: "8cbf4cc3-8471-4a4a-964b-2cb3d0164f38", email: "frederickmovingco@gmail.com", full_name: "Robert Lapham", legal_business_name: "Bett'r Way Trucking Two Inc", phone: "3018656116", average_monthly_revenue: "25000.00", requested_amount: "50.00", time_in_business: null, social_security_number: "075640125", date_of_birth: "1963-05-25", owner_address_1: "6307 Danville Court", owner_city: "Frederick", owner_state: "MD", owner_zip: "21701", business_csz: "Frederick , MD 21701", gigfi_status: null },
   { id: "a852097b-7b0f-4192-b337-5b91d1f135de", email: "HOMEBOYHILLS58@GMAIL.COM", full_name: "STEVEN L HILLS", legal_business_name: "Emergency Road Service and Diesel Repair LLC", phone: "5207054927", average_monthly_revenue: "80000.00", requested_amount: "50000.00", time_in_business: null, social_security_number: "509706690", date_of_birth: "1958-03-16", owner_address_1: "1788 West Frontage Road", owner_city: "SAN SIMON", owner_state: "AZ", owner_zip: "85632", business_csz: "SAN SIMON, AZ 85632", gigfi_status: null },
   { id: "92a3d567-445d-4459-9810-ec976ae86845", email: "lastapias502@gmail.com", full_name: "Selvin Ordonez", legal_business_name: "LAS TAPIAS TRUCKING LLC", phone: "3234047212", average_monthly_revenue: "62000.00", requested_amount: "50000.00", time_in_business: null, social_security_number: "602644373", date_of_birth: "1980-11-04", owner_address_1: "10251 Fern Ave", owner_city: "STANTON", owner_state: "CA", owner_zip: "90680", business_csz: "STANTON, CA 90680", gigfi_status: null },
@@ -197,6 +198,12 @@ async function main() {
   const results: any[] = [];
 
   for (const app of APPS) {
+    if (app.gigfi_status === "ACCEPTED") {
+      console.log(`  [SKIP] ${app.full_name} — already ACCEPTED`);
+      results.push({ id: app.id, name: app.full_name, status: "SKIP", reason: "already ACCEPTED" });
+      continue;
+    }
+
     const err = validate(app);
     if (err) {
       console.log(`  [SKIP] ${app.full_name} — ${err}`);
