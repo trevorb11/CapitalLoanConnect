@@ -586,6 +586,7 @@ export class DatabaseStorage implements IStorage {
         gigfiStatus: status,
         gigfiDecisionId: decisionId || null,
         gigfiRedirectUrl: redirectUrl || null,
+        gigfiSubmittedAt: new Date(),
       } as any)
       .where(eq(loanApplications.id, applicationId));
     console.log(`[GIGFI] Saved result status=${status} decisionId=${decisionId} to application ${applicationId}`);
@@ -596,7 +597,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(loanApplications)
       .where(isNotNull(loanApplications.gigfiStatus))
-      .orderBy(desc(loanApplications.updatedAt));
+      .orderBy(sql`gigfi_decision_id DESC NULLS LAST, created_at DESC`);
   }
 
   async saveGigFiResultByEmail(email: string, status: string, decisionId?: string, redirectUrl?: string): Promise<{ applicationId: string } | null> {
@@ -622,6 +623,7 @@ export class DatabaseStorage implements IStorage {
         gigfiStatus: status,
         gigfiDecisionId: decisionId || null,
         gigfiRedirectUrl: redirectUrl || null,
+        gigfiSubmittedAt: new Date(),
       } as any)
       .where(eq(loanApplications.id, app.id));
 

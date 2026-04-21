@@ -106,6 +106,7 @@ export const loanApplications = pgTable("loan_applications", {
   gigfiStatus: text("gigfi_status"), // "ACCEPTED" or "REJECTED"
   gigfiDecisionId: text("gigfi_decision_id"), // Taktile decision ID
   gigfiRedirectUrl: text("gigfi_redirect_url"), // Redirect URL if accepted
+  gigfiSubmittedAt: timestamp("gigfi_submitted_at"), // When the GigFi submission was made
 
   // --- Agent Tracking ---
   agentName: text("agent_name"), // Name of the agent who sent the application
