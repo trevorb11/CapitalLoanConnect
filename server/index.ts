@@ -10,6 +10,8 @@ import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { registerMcpRoutes } from "./mcp";
 import { setupVite, serveStatic, log } from "./vite";
 import { startScheduledTriggers } from "./messaging-triggers";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 const app = express();
 
@@ -151,6 +153,24 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
+    // Run lightweight startup migrations (idempotent — safe to run on every boot)
+    try {
+      await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_submitted_at TIMESTAMP`);
+      console.log('[STARTUP] Migration: gigfi_submitted_at column ensured');
+      // Backfill submitted_at from UUID v7 decision IDs for any rows missing it
+      const backfill = await db.execute(sql`
+        UPDATE loan_applications
+        SET gigfi_submitted_at = to_timestamp(
+          ('x' || left(replace(gigfi_decision_id, '-', ''), 12))::bit(48)::bigint / 1000.0
+        )
+        WHERE gigfi_decision_id IS NOT NULL AND gigfi_submitted_at IS NULL
+      `);
+      const count = (backfill as any).rowCount ?? 0;
+      if (count > 0) console.log(`[STARTUP] Migration: backfilled gigfi_submitted_at for ${count} rows`);
+    } catch (migErr) {
+      console.warn('[STARTUP] Migration warning (non-fatal):', migErr);
+    }
+
     console.log('[STARTUP] Registering routes...');
     const server = await registerRoutes(app);
     registerMcpRoutes(app);
