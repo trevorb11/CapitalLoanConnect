@@ -147,9 +147,9 @@ function Router() {
       <Route path="/merchant-profile/:email" component={MerchantProfile} />
 
       {/* Lead Portal Routes */}
-      <Route path="/lead" component={LeadPortal} />
-      <Route path="/lead/signup" component={LeadPortal} />
-      <Route path="/lead/login" component={LeadPortal} />
+      <Route path="/track" component={LeadPortal} />
+      <Route path="/track/signup" component={LeadPortal} />
+      <Route path="/track/login" component={LeadPortal} />
 
       {/* Partner Portal Routes */}
       <Route path="/partners" component={PartnerLanding} />
