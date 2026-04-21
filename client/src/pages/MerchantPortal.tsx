@@ -1646,6 +1646,125 @@ const CSS = `
     color: #fff;
   }
 
+  /* ── MOBILE: Tab bar scrolls, grids stack ── */
+  @media (max-width: 640px) {
+    .portal-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .portal-nav-btn { flex: none; min-width: 0; padding: 10px 14px; font-size: 12px; white-space: nowrap; }
+    .page-wrap { padding: 20px 16px 60px; }
+    .page-title { font-size: 22px; }
+    .deal-stats-row { grid-template-columns: repeat(2, 1fr); }
+    .header { padding: 14px 16px; }
+    .header-user { display: none; }
+    .financials-section .insight-card { padding: 14px; }
+  }
+
+  /* ── LOADING SPINNER ── */
+  .portal-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+    color: #7b8499;
+    font-size: 14px;
+    gap: 12px;
+  }
+
+  .portal-spinner {
+    width: 28px; height: 28px;
+    border: 3px solid rgba(45,212,191,0.2);
+    border-top-color: #2dd4bf;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── ERROR STATE ── */
+  .portal-error {
+    text-align: center;
+    padding: 32px 20px;
+    background: rgba(239,68,68,0.06);
+    border: 1px solid rgba(239,68,68,0.15);
+    border-radius: 12px;
+    color: #fca5a5;
+    font-size: 14px;
+  }
+
+  .portal-error p { margin-bottom: 12px; }
+
+  .portal-retry-btn {
+    padding: 8px 20px;
+    background: rgba(239,68,68,0.15);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .portal-retry-btn:hover { background: rgba(239,68,68,0.25); }
+
+  /* ── EMPTY STATE ── */
+  .portal-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #4b5568;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .portal-empty strong { color: #94a3b8; display: block; margin-bottom: 6px; font-size: 15px; }
+
+  /* ── STALE DATA WARNING ── */
+  .stale-warning {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(250,204,21,0.08);
+    border: 1px solid rgba(250,204,21,0.2);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #facc15;
+    gap: 12px;
+  }
+
+  .stale-warning button {
+    padding: 5px 14px;
+    background: rgba(250,204,21,0.15);
+    border: 1px solid rgba(250,204,21,0.3);
+    border-radius: 6px;
+    color: #facc15;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ── POPUP BLOCKED FALLBACK ── */
+  .popup-fallback {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: rgba(250,204,21,0.08);
+    border: 1px solid rgba(250,204,21,0.2);
+    border-radius: 8px;
+    font-size: 13px;
+    color: #facc15;
+    text-align: center;
+  }
+
+  .popup-fallback a {
+    color: #2dd4bf;
+    font-weight: 600;
+    text-decoration: underline;
+  }
+
   /* ── OFFER BANNER ── */
   .offer-banner {
     background: linear-gradient(135deg, rgba(20,184,166,0.12) 0%, rgba(168,85,247,0.08) 100%);
@@ -2285,11 +2404,33 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
       </div>
 
       <div className="deal-card-footer">
-        <div>
+        <div style={{ display: "flex", gap: 24 }}>
           {!calc.isComplete ? (
             <>
-              <div className="remaining-label">Est. payoff</div>
-              <div className="remaining-amount">{fmtDate(calc.projectedPayoff)}</div>
+              <div>
+                <div className="remaining-label">Next payment</div>
+                <div className="remaining-amount">{(() => {
+                  const today = new Date();
+                  const freq = deal.paymentFrequency;
+                  const next = new Date(today);
+                  if (freq === "daily") {
+                    // Next business day
+                    next.setDate(next.getDate() + 1);
+                    while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
+                  } else if (freq === "weekly") {
+                    next.setDate(next.getDate() + (7 - next.getDay() + 1) % 7 || 7);
+                  } else if (freq === "bi-weekly" || freq === "biweekly") {
+                    next.setDate(next.getDate() + 14);
+                  } else {
+                    next.setMonth(next.getMonth() + 1, 1);
+                  }
+                  return fmtDate(next);
+                })()}</div>
+              </div>
+              <div>
+                <div className="remaining-label">Est. payoff</div>
+                <div className="remaining-amount">{fmtDate(calc.projectedPayoff)}</div>
+              </div>
             </>
           ) : (
             <div className="remaining-label">Position fully paid off</div>
@@ -2877,6 +3018,7 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank", previewTok
   // Phone capture: shown when server tells us a phone number is needed
   const [needsPhone, setNeedsPhone] = useState(false);
   const [phone, setPhone] = useState("");
+  const [popupBlocked, setPopupBlocked] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
   const popupRef = useRef<Window | null>(null);
   const pvHeaders: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
@@ -2955,10 +3097,11 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank", previewTok
       if (!url) throw new Error("Chirp did not return a connection URL.");
 
       setNeedsPhone(false);
+      setPopupBlocked(null);
       popupRef.current = window.open(url, "chirp-connect", "width=480,height=720,menubar=no,toolbar=no");
-      if (!popupRef.current) {
-        // Popup blocked — fall back to a new tab.
-        window.open(url, "_blank", "noopener,noreferrer");
+      if (!popupRef.current || popupRef.current.closed) {
+        // Popup blocked — show a direct link so they can click through
+        setPopupBlocked(url);
       }
       startPolling();
     } catch (e: any) {
@@ -3023,10 +3166,15 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank", previewTok
       <button className="connect-bank-cta" onClick={handleConnect} disabled={starting || waiting}>
         {starting ? "Initializing..." : waiting ? "Waiting for Chirp..." : label}
       </button>
-      {waiting && (
+      {waiting && !popupBlocked && (
         <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 8 }}>
           Finish connecting in the Chirp window — we'll update this page automatically.
         </p>
+      )}
+      {popupBlocked && (
+        <div className="popup-fallback">
+          Your browser blocked the popup. <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here to connect your bank</a>, then come back to this page.
+        </div>
       )}
       {error && <p style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{error}</p>}
     </div>
@@ -3295,11 +3443,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   if (loading) {
     return (
       <div className="financials-section">
-        <div className="insight-card" style={{ textAlign: "center", padding: 40 }}>
-          <div className="skeleton-line" style={{ width: "60%", margin: "0 auto 12px" }} />
-          <div className="skeleton-line" style={{ width: "40%", margin: "0 auto 12px" }} />
-          <div className="skeleton-line" style={{ width: "50%", margin: "0 auto" }} />
-        </div>
+        <div className="portal-loading"><div className="portal-spinner" /><span>Loading financial data...</span></div>
       </div>
     );
   }
@@ -3571,6 +3715,17 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       {/* ── Financial Insights ── */}
       {hasAnyData ? (
         <>
+          {/* Stale data warning */}
+          {chirpConnected && banking?.lastSyncedAt && (() => {
+            const daysSinceSync = Math.floor((Date.now() - new Date(banking.lastSyncedAt!).getTime()) / (1000 * 60 * 60 * 24));
+            return daysSinceSync >= 7 ? (
+              <div className="stale-warning">
+                <span>Your financial data is {daysSinceSync} days old.</span>
+                <button onClick={handleSync} disabled={syncing}>{syncing ? "Syncing..." : "Update Now"}</button>
+              </div>
+            ) : null;
+          })()}
+
           {/* Data Source Toggle — only shown when both Chirp and PDF data exist */}
           {hasBothSources && (
             <div className="insight-card" style={{ padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -4465,6 +4620,7 @@ function fmtFileSize(bytes: number) {
 export default function MerchantPortal() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [isAdminPreview, setIsAdminPreview] = useState(false);
   const [adminPreviewToken, setAdminPreviewToken] = useState<string | null>(null);
   const [merchantEmail, setMerchantEmail] = useState("");
@@ -4527,6 +4683,23 @@ export default function MerchantPortal() {
       })
       .catch(() => setAuthChecked(true));
   }, []);
+
+  // Session expiry detection — re-check auth every 5 minutes
+  useEffect(() => {
+    if (!loggedIn || isAdminPreview) return;
+    const interval = setInterval(() => {
+      fetch("/api/merchant/auth/check", { credentials: "include" })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.isAuthenticated) {
+            setSessionExpired(true);
+            setLoggedIn(false);
+          }
+        })
+        .catch(() => {});
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loggedIn, isAdminPreview]);
 
   // Fetch deals and statements when logged in (skip in admin preview — data already loaded)
   useEffect(() => {
@@ -4605,7 +4778,14 @@ export default function MerchantPortal() {
 
       <div className="portal-root">
         {!loggedIn ? (
-          <LoginScreen onLogin={handleLogin} />
+          <>
+            {sessionExpired && (
+              <div style={{ background: "rgba(250,204,21,0.1)", border: "1px solid rgba(250,204,21,0.3)", borderRadius: 0, padding: "12px 24px", textAlign: "center", color: "#facc15", fontSize: 14 }}>
+                Your session has expired. Please sign in again.
+              </div>
+            )}
+            <LoginScreen onLogin={handleLogin} />
+          </>
         ) : (
           <>
             {isAdminPreview && (
@@ -4716,12 +4896,13 @@ export default function MerchantPortal() {
                       )}
 
                       {loadingDeals ? (
-                        <div className="loading-wrap" style={{ minHeight: "200px" }}>Loading your positions...</div>
+                        <div className="portal-loading"><div className="portal-spinner" /><span>Loading your positions...</span></div>
                       ) : deals.length === 0 ? (
-                        <div className="no-documents" style={{ marginTop: appStatus?.hasApplication ? "8px" : "0" }}>
+                        <div className="portal-empty" style={{ marginTop: appStatus?.hasApplication ? "8px" : "0" }}>
+                          <strong>{appStatus?.hasApplication ? "Almost there!" : "No positions yet"}</strong>
                           {appStatus?.hasApplication
                             ? "Your funded positions will appear here once your deal closes."
-                            : "No funded deals found for your account yet."}
+                            : "No funded deals found for your account yet. Your positions will show up here once you're funded."}
                         </div>
                       ) : (
                         <>
