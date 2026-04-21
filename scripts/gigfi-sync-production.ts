@@ -10,6 +10,9 @@
  *   GIGFI_API_KEY=<key> GIGFI_ENVIRONMENT=live tsx scripts/gigfi-sync-production.ts
  */
 
+import fs from "fs";
+import path from "path";
+
 const GIGFI_API_KEY = process.env.GIGFI_API_KEY || "";
 const GIGFI_ENVIRONMENT = process.env.GIGFI_ENVIRONMENT || "sandbox";
 const GIGFI_LIVE_URL = "https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/decide";
@@ -255,7 +258,11 @@ async function main() {
 
   if (accepted.length > 0) {
     console.log(`\n  Accepted:`);
-    accepted.forEach(r => console.log(`    ✓ ${(r.name || "").trim()} [${r.batch}]${r.redirectUrl ? " → " + r.redirectUrl : ""}`));
+    accepted.forEach(r => {
+      const url = r.redirectUrl ? ` → ${r.redirectUrl}` : "";
+      const did = r.decisionId ? ` [${r.decisionId}]` : "";
+      console.log(`    ✓ ${(r.name || "").trim()} [${r.batch}]${did}${url}`);
+    });
   }
   if (errors.length > 0) {
     console.log(`\n  Errors:`);
@@ -265,6 +272,25 @@ async function main() {
     console.log(`\n  Skipped:`);
     skipped.forEach(r => console.log(`    - ${(r.name || "").trim()} [${r.batch}]: ${r.reason}`));
   }
+
+  // ── Write results to a persistent log file ────────────────────────────────
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const logDir = path.join(process.cwd(), "scripts", "logs");
+  fs.mkdirSync(logDir, { recursive: true });
+  const logPath = path.join(logDir, `gigfi-run-${timestamp}.json`);
+  const logData = {
+    runAt: new Date().toISOString(),
+    environment: GIGFI_ENVIRONMENT,
+    target: PROD_API,
+    summary: { accepted: accepted.length, rejected: rejected.length, errors: errors.length, skipped: skipped.length },
+    accepted: accepted.map(r => ({ id: r.id, name: r.name, batch: r.batch, decisionId: r.decisionId, redirectUrl: r.redirectUrl })),
+    rejected: rejected.map(r => ({ id: r.id, name: r.name, batch: r.batch, decisionId: r.decisionId })),
+    errors: errors.map(r => ({ id: r.id, name: r.name, batch: r.batch, reason: r.reason || r.error })),
+    skipped: skipped.map(r => ({ id: r.id, name: r.name, batch: r.batch, reason: r.reason })),
+    all: results,
+  };
+  fs.writeFileSync(logPath, JSON.stringify(logData, null, 2));
+  console.log(`\n  Log written → ${logPath}`);
 
   console.log(`\nDone. Check https://app.todaycapitalgroup.com/gigfi-submissions`);
 }
