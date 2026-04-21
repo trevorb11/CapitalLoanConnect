@@ -89,20 +89,30 @@ const LENDER_CRITERIA = `
 
 export interface BankStatementAnalysis {
   overallScore: number; // 0-100
+  scoreExplanation: string; // one-line plain-language explanation of the score
   qualificationTier: string;
   estimatedMonthlyRevenue: number;
   estimatedMonthlyExpenses: number;
   netCashFlow: number;
   averageDailyBalance: number;
   currentBalance: number;
+  revenueConsistency: "very consistent" | "mostly consistent" | "somewhat variable" | "highly variable";
+  cashRunwayDays: number; // estimated days the business can cover expenses from current balance
+  monthlyBreakdown: Array<{
+    month: string; // e.g. "Jan 2026"
+    revenue: number;
+    expenses: number;
+  }>;
   redFlags: Array<{
     issue: string;
     severity: "low" | "medium" | "high";
     details: string;
+    priority: number; // 1 = most urgent
   }>;
   positiveIndicators: Array<{
     indicator: string;
     details: string;
+    priority: number; // 1 = most impactful
   }>;
   fundingRecommendation: {
     eligible: boolean;
@@ -143,47 +153,57 @@ ${extractedText}
 
 Analyze this bank statement and respond with a JSON object following this exact structure:
 {
-  "overallScore": <number 0-100 representing funding readiness>,
+  "overallScore": <number 0-100>,
+  "scoreExplanation": "<one plain-language sentence explaining the score, e.g. 'Solid revenue with room to build up cash reserves'>",
   "qualificationTier": "<one of: Prime Borrower, Growth Capital, Working Capital, Cash Flow Financing, Startup Capital, Foundation Building>",
-  "estimatedMonthlyRevenue": <number - estimated average monthly deposits/revenue>,
-  "estimatedMonthlyExpenses": <number - estimated average monthly debits/expenses/withdrawals>,
-  "netCashFlow": <number - monthly revenue minus monthly expenses>,
-  "averageDailyBalance": <number - estimated average daily balance>,
-  "currentBalance": <number - most recent ending balance visible, or 0 if not visible>,
+  "estimatedMonthlyRevenue": <number>,
+  "estimatedMonthlyExpenses": <number>,
+  "netCashFlow": <number - revenue minus expenses>,
+  "averageDailyBalance": <number>,
+  "currentBalance": <number - most recent ending balance, or 0 if not visible>,
+  "revenueConsistency": "<one of: very consistent, mostly consistent, somewhat variable, highly variable>",
+  "cashRunwayDays": <number - how many days the business could cover expenses from current balance alone>,
+  "monthlyBreakdown": [
+    {"month": "Jan 2026", "revenue": <number>, "expenses": <number>}
+  ],
   "redFlags": [
     {
-      "issue": "<brief issue name>",
+      "issue": "<brief 3-5 word label>",
       "severity": "<low|medium|high>",
-      "details": "<specific details about this red flag>"
+      "details": "<1-2 sentence explanation in plain language — no jargon>",
+      "priority": <number, 1 = most urgent>
     }
   ],
   "positiveIndicators": [
     {
-      "indicator": "<indicator name>",
-      "details": "<specific positive observation>"
+      "indicator": "<brief 3-5 word label>",
+      "details": "<1-2 sentence explanation>",
+      "priority": <number, 1 = most impactful>
     }
   ],
   "fundingRecommendation": {
     "eligible": <boolean>,
-    "maxAmount": <number - estimated max funding amount>,
-    "estimatedRates": "<rate range string>",
-    "product": "<recommended funding product>",
-    "message": "<2-3 sentence personalized message about their funding prospects and financial health>"
+    "maxAmount": <number>,
+    "estimatedRates": "<rate range>",
+    "product": "<recommended product>",
+    "message": "<2-3 sentence personalized message>"
   },
   "improvementSuggestions": [
-    "<specific actionable suggestion to improve their financial position or funding chances>"
+    "<short, specific, actionable tip — one sentence each>"
   ],
-  "summary": "<3-4 sentence executive summary covering the merchant's overall financial health, cash flow patterns, and outlook>"
+  "summary": "<2-3 sentence plain-language summary a business owner would understand>"
 }
 
 Important:
-- Be realistic and conservative in your estimates
-- If the statement quality is poor or unreadable, note this in the summary
-- Extract actual numbers when visible (deposits, balances, fees)
-- Look for patterns across multiple months if visible
-- Consider business type indicators from merchant names
-- Frame observations helpfully — this merchant will see the results on their portal
-- Focus improvement suggestions on actionable steps that could help the merchant's business health
+- Write for a business owner, not an underwriter. Use plain language.
+- Keep labels short (3-5 words). Put details in the details field.
+- Sort redFlags by priority (most urgent first) and positiveIndicators by priority (strongest first).
+- monthlyBreakdown should include each month visible in the statements, most recent first.
+- cashRunwayDays = currentBalance / (estimatedMonthlyExpenses / 30). Round to nearest whole number.
+- revenueConsistency: look at month-to-month variance in deposits.
+- Be realistic and conservative in estimates.
+- If statement quality is poor, note it in summary and lower confidence.
+- improvement suggestions should be things the merchant can actually do, not generic advice.
 
 Respond ONLY with the JSON object, no additional text.`;
 

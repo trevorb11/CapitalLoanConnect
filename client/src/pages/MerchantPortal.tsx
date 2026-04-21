@@ -3047,13 +3047,18 @@ interface FinancialInsights {
   hasPlaidConnection: boolean;
   pdfInsights: {
     cashFlowHealth: 'strong' | 'moderate' | 'needs-attention';
+    overallScore?: number;
+    scoreExplanation?: string;
     estimatedMonthlyRevenue: number;
     estimatedMonthlyExpenses: number;
     netCashFlow: number;
     averageDailyBalance: number;
     currentBalance: number;
-    positiveIndicators: string[];
-    concerns: string[];
+    revenueConsistency?: string | null;
+    cashRunwayDays?: number;
+    monthlyBreakdown?: Array<{ month: string; revenue: number; expenses: number }>;
+    positiveIndicators: Array<string | { label: string; details: string }>;
+    concerns: Array<string | { label: string; details: string; severity: string }>;
     tips: string[];
     summary: string;
     analyzedAt: string;
@@ -3092,109 +3097,58 @@ interface BankingInsights {
 type DataSource = "chirp" | "statements";
 
 // Categorized insight cards with collapsible sections
-function InsightCategories({ pdf }: { pdf: { positiveIndicators: string[]; concerns: string[]; tips: string[]; summary: string } }) {
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+function InsightCategories({ pdf }: { pdf: any }) {
+  const [expandedSection, setExpandedSection] = useState<string | null>("summary");
   const toggle = (section: string) => setExpandedSection(prev => prev === section ? null : section);
 
-  // Separate short badge-style items from longer detailed observations
-  const shortThreshold = 60; // characters
-  const strengthBadges = pdf.positiveIndicators.filter(s => s.length <= shortThreshold);
-  const strengthDetails = pdf.positiveIndicators.filter(s => s.length > shortThreshold);
-  const concernBadges = pdf.concerns.filter(s => s.length <= shortThreshold);
-  const concernDetails = pdf.concerns.filter(s => s.length > shortThreshold);
+  // Normalize items — handle both old string format and new {label, details} format
+  const normalizeItems = (items: any[]): Array<{ label: string; details: string }> =>
+    (items || []).map((item: any) => typeof item === "string"
+      ? { label: item.length <= 50 ? item : item.substring(0, 50) + "...", details: item.length > 50 ? item : "" }
+      : { label: item.label || item.indicator || item.issue || "", details: item.details || "" });
+
+  const strengths = normalizeItems(pdf.positiveIndicators);
+  const concerns = normalizeItems(pdf.concerns);
+
+  const renderItems = (items: Array<{ label: string; details: string }>, color: string) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {items.map((item, i) => (
+        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <span style={{ color, fontSize: 16, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>{color === "#2dd4bf" ? "\u2713" : "\u2022"}</span>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: 13, color: "#e8eaf0" }}>{item.label}</span>
+            {item.details && <p style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5, marginTop: 2 }}>{item.details}</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   const sections = [
     {
-      key: "summary",
-      label: "Summary",
-      icon: "\u{1F4CB}",
-      color: "#94a3b8",
+      key: "summary", label: "Overview", color: "#94a3b8",
       show: !!pdf.summary,
-      content: (
-        <p style={{ lineHeight: 1.7, fontSize: 13, color: "#94a3b8" }}>{pdf.summary}</p>
-      ),
+      content: <p style={{ lineHeight: 1.7, fontSize: 13, color: "#94a3b8" }}>{pdf.summary}</p>,
     },
     {
-      key: "strengths",
-      label: "Strengths",
-      icon: "\u2713",
-      color: "#2dd4bf",
-      count: pdf.positiveIndicators.length,
-      show: pdf.positiveIndicators.length > 0,
-      content: (
-        <>
-          {strengthBadges.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: strengthDetails.length > 0 ? 12 : 0 }}>
-              {strengthBadges.map((item, i) => (
-                <span key={i} style={{
-                  background: "rgba(45,212,191,0.12)", color: "#2dd4bf", borderRadius: 20,
-                  padding: "4px 12px", fontSize: 12, fontWeight: 500,
-                }}>{item}</span>
-              ))}
-            </div>
-          )}
-          {strengthDetails.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {strengthDetails.map((item, i) => (
-                <div key={i} style={{
-                  padding: "10px 14px", background: "rgba(45,212,191,0.06)", borderRadius: 8,
-                  borderLeft: "3px solid rgba(45,212,191,0.3)", fontSize: 13, color: "#c8cdd5", lineHeight: 1.6,
-                }}>{item}</div>
-              ))}
-            </div>
-          )}
-        </>
-      ),
+      key: "strengths", label: "What\u2019s Working", color: "#2dd4bf",
+      count: strengths.length, show: strengths.length > 0,
+      content: renderItems(strengths, "#2dd4bf"),
     },
     {
-      key: "concerns",
-      label: "Areas to Watch",
-      icon: "\u26A0",
-      color: "#facc15",
-      count: pdf.concerns.length,
-      show: pdf.concerns.length > 0,
-      content: (
-        <>
-          {concernBadges.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: concernDetails.length > 0 ? 12 : 0 }}>
-              {concernBadges.map((item, i) => (
-                <span key={i} style={{
-                  background: "rgba(250,204,21,0.12)", color: "#facc15", borderRadius: 20,
-                  padding: "4px 12px", fontSize: 12, fontWeight: 500,
-                }}>{item}</span>
-              ))}
-            </div>
-          )}
-          {concernDetails.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {concernDetails.map((item, i) => (
-                <div key={i} style={{
-                  padding: "10px 14px", background: "rgba(250,204,21,0.06)", borderRadius: 8,
-                  borderLeft: "3px solid rgba(250,204,21,0.3)", fontSize: 13, color: "#c8cdd5", lineHeight: 1.6,
-                }}>{item}</div>
-              ))}
-            </div>
-          )}
-        </>
-      ),
+      key: "concerns", label: "Keep an Eye On", color: "#facc15",
+      count: concerns.length, show: concerns.length > 0,
+      content: renderItems(concerns, "#facc15"),
     },
     {
-      key: "tips",
-      label: "Tips to Improve",
-      icon: "\u{1F4A1}",
-      color: "#60a5fa",
-      count: pdf.tips.length,
-      show: pdf.tips.length > 0,
+      key: "tips", label: "Ways to Improve", color: "#60a5fa",
+      count: (pdf.tips || []).length, show: (pdf.tips || []).length > 0,
       content: (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {pdf.tips.map((tip, i) => (
-            <div key={i} style={{
-              padding: "10px 14px", background: "rgba(96,165,250,0.06)", borderRadius: 8,
-              borderLeft: "3px solid rgba(96,165,250,0.3)", fontSize: 13, color: "#c8cdd5", lineHeight: 1.6,
-              display: "flex", gap: 8, alignItems: "flex-start",
-            }}>
-              <span style={{ color: "#60a5fa", fontWeight: 600, flexShrink: 0 }}>{i + 1}.</span>
-              {tip}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {(pdf.tips || []).map((tip: string, i: number) => (
+            <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13, flexShrink: 0, minWidth: 18 }}>{i + 1}.</span>
+              <span style={{ fontSize: 13, color: "#c8cdd5", lineHeight: 1.5 }}>{tip}</span>
             </div>
           ))}
         </div>
@@ -3204,7 +3158,7 @@ function InsightCategories({ pdf }: { pdf: { positiveIndicators: string[]; conce
 
   return (
     <div className="insight-card" style={{ padding: 0 }}>
-      <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, padding: "16px 20px 0" }}>
+      <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, padding: "16px 20px 8px" }}>
         Financial Insights
       </h3>
       {sections.map(section => (
@@ -3213,30 +3167,26 @@ function InsightCategories({ pdf }: { pdf: { positiveIndicators: string[]; conce
             onClick={() => toggle(section.key)}
             style={{
               width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-              background: "none", border: "none", cursor: "pointer", padding: "14px 20px", textAlign: "left",
+              background: expandedSection === section.key ? "rgba(255,255,255,0.02)" : "none",
+              border: "none", cursor: "pointer", padding: "12px 20px", textAlign: "left",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 14 }}>{section.icon}</span>
               <span style={{ fontWeight: 600, fontSize: 14, color: "#e8eaf0" }}>{section.label}</span>
-              {"count" in section && section.count! > 0 && (
+              {"count" in section && (section as any).count > 0 && (
                 <span style={{
                   background: `${section.color}20`, color: section.color, borderRadius: 20,
                   padding: "1px 8px", fontSize: 11, fontWeight: 600,
-                }}>{section.count}</span>
+                }}>{(section as any).count}</span>
               )}
             </div>
-            <svg
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              style={{ transform: expandedSection === section.key ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease", flexShrink: 0 }}
-            >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ transform: expandedSection === section.key ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
           {expandedSection === section.key && (
-            <div style={{ padding: "0 20px 16px" }}>
-              {section.content}
-            </div>
+            <div style={{ padding: "0 20px 16px" }}>{section.content}</div>
           )}
         </div>
       ))}
@@ -3688,11 +3638,11 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                       {healthLabel}
                     </p>
                     <p style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
-                      {healthScore >= 70
+                      {pdf?.scoreExplanation || (healthScore >= 70
                         ? "Your cash flow and balances show a healthy financial position."
                         : healthScore >= 45
                         ? "Your financials are in a reasonable range with room for improvement."
-                        : "There may be some areas to focus on to strengthen your position."}
+                        : "There may be some areas to focus on to strengthen your position.")}
                     </p>
                     {revenueTrend && (
                       <p style={{ fontSize: 12, marginTop: 6 }}>
@@ -3712,52 +3662,107 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
             </div>
           )}
 
-          {/* Revenue, Expenses, Cash Flow, Balance — 2x2 grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div className="insight-card" style={{ textAlign: "center" }}>
-              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Monthly Revenue</p>
-              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
-                ${monthlyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
+          {/* Hero: Monthly Revenue */}
+          <div className="insight-card" style={{ textAlign: "center" }}>
+            <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 4 }}>What You're Bringing In</p>
+            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 32, fontWeight: 700, color: "#2dd4bf" }}>
+              ${monthlyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+            <p style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>per month</p>
+            <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 10 }}>
               {revenueTrend && (
-                <p style={{ color: trendColor, fontSize: 11, fontWeight: 600, marginTop: 4 }}>
-                  {trendIcon} {revenueTrend}
-                </p>
+                <span style={{ color: trendColor, fontSize: 12, fontWeight: 600 }}>{trendIcon} {revenueTrend}</span>
+              )}
+              {pdf?.revenueConsistency && (
+                <span style={{ color: "#94a3b8", fontSize: 12 }}>{pdf.revenueConsistency}</span>
               )}
             </div>
+          </div>
+
+          {/* Supporting metrics: 3-column */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <div className="insight-card" style={{ textAlign: "center" }}>
-              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Monthly Expenses</p>
-              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: monthlyExpenses > 0 ? "#e8eaf0" : "#64748b" }}>
+              <p style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Going Out</p>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: monthlyExpenses > 0 ? "#e8eaf0" : "#64748b" }}>
                 {monthlyExpenses > 0 ? `$${monthlyExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "\u2014"}
               </p>
+              <p style={{ color: "#4b5568", fontSize: 10, marginTop: 2 }}>expenses / mo</p>
             </div>
             <div className="insight-card" style={{ textAlign: "center" }}>
-              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Net Cash Flow</p>
+              <p style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>What's Left</p>
               <p style={{
-                fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700,
+                fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700,
                 color: netCashFlow > 0 ? "#2dd4bf" : netCashFlow < 0 ? "#f87171" : "#64748b",
               }}>
                 {netCashFlow !== 0
                   ? `${netCashFlow >= 0 ? "+" : "-"}$${Math.abs(netCashFlow).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                   : "\u2014"}
               </p>
-              {netCashFlow !== 0 && <p style={{ color: "#4b5568", fontSize: 10, marginTop: 4 }}>revenue - expenses / mo</p>}
+              <p style={{ color: "#4b5568", fontSize: 10, marginTop: 2 }}>after expenses</p>
             </div>
             <div className="insight-card" style={{ textAlign: "center" }}>
-              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Current Balance</p>
+              <p style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>In the Bank</p>
               <p style={{
-                fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700,
+                fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700,
                 color: currentBalance > 0 ? "#2dd4bf" : currentBalance < 0 ? "#f87171" : "#64748b",
               }}>
                 {currentBalance !== 0 ? `$${currentBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "\u2014"}
               </p>
-              {avgBalance > 0 && (
-                <p style={{ color: "#4b5568", fontSize: 10, marginTop: 4 }}>
-                  avg daily: ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </p>
-              )}
+              {avgBalance > 0 && <p style={{ color: "#4b5568", fontSize: 10, marginTop: 2 }}>avg: ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>}
             </div>
           </div>
+
+          {/* Cash Runway */}
+          {(() => {
+            const runway = pdf?.cashRunwayDays || (monthlyExpenses > 0 ? Math.round(currentBalance / (monthlyExpenses / 30)) : 0);
+            if (runway <= 0 && currentBalance <= 0) return null;
+            const runwayColor = runway >= 60 ? "#2dd4bf" : runway >= 30 ? "#facc15" : "#f87171";
+            const runwayLabel = runway >= 90 ? "Healthy cushion" : runway >= 60 ? "Solid buffer" : runway >= 30 ? "Getting tight" : "Very thin";
+            return (
+              <div className="insight-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px" }}>
+                <div>
+                  <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 2 }}>Cash Runway</p>
+                  <p style={{ color: "#64748b", fontSize: 11 }}>How long your balance covers expenses</p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: runwayColor }}>{runway}</span>
+                  <span style={{ color: "#94a3b8", fontSize: 12, marginLeft: 4 }}>days</span>
+                  <p style={{ color: runwayColor, fontSize: 11, fontWeight: 600, marginTop: 2 }}>{runwayLabel}</p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Month-over-Month Breakdown (from PDF analysis) */}
+          {pdf?.monthlyBreakdown && pdf.monthlyBreakdown.length >= 2 && (
+            <div className="insight-card">
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Month by Month</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {pdf.monthlyBreakdown.slice(0, 6).map((m: any, i: number) => {
+                  const net = (m.revenue || 0) - (m.expenses || 0);
+                  const prev = pdf.monthlyBreakdown[i + 1];
+                  const delta = prev ? ((m.revenue - prev.revenue) / (prev.revenue || 1)) * 100 : null;
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: i < pdf.monthlyBreakdown.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+                      <span style={{ color: "#94a3b8", fontSize: 13, minWidth: 80 }}>{m.month}</span>
+                      <div style={{ display: "flex", gap: 16, alignItems: "center", fontSize: 13 }}>
+                        <span style={{ color: "#2dd4bf" }}>+${(m.revenue || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                        <span style={{ color: "#94a3b8" }}>-${(m.expenses || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                        <span style={{ color: net >= 0 ? "#2dd4bf" : "#f87171", fontWeight: 600, minWidth: 70, textAlign: "right" }}>
+                          {net >= 0 ? "+" : "-"}${Math.abs(net).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                        {delta !== null && (
+                          <span style={{ color: delta >= 0 ? "#2dd4bf" : "#f87171", fontSize: 11, minWidth: 45, textAlign: "right" }}>
+                            {delta >= 0 ? "\u2191" : "\u2193"}{Math.abs(delta).toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Account Balances (Plaid) */}
           {plaid && plaid.accounts.length > 0 && (

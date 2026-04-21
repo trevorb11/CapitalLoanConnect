@@ -9974,21 +9974,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         pdfInsights = {
           cashFlowHealth,
+          overallScore: score,
+          scoreExplanation: pdfData.scoreExplanation || "",
           estimatedMonthlyRevenue: pdfData.estimatedMonthlyRevenue || 0,
           estimatedMonthlyExpenses: pdfData.estimatedMonthlyExpenses || 0,
           netCashFlow: pdfData.netCashFlow || 0,
           averageDailyBalance: pdfData.averageDailyBalance || 0,
           currentBalance: pdfData.currentBalance || 0,
-          positiveIndicators: (pdfData.positiveIndicators || []).map((p: any) =>
-            typeof p === 'string' ? p : p.indicator || p.details || ''
-          ),
-          concerns: (pdfData.redFlags || []).map((f: any) => {
-            const issue = typeof f === 'string' ? f : f.issue || '';
-            // Reword underwriting jargon
-            if (issue.toLowerCase().includes('nsf')) return 'Some transactions were returned — consider maintaining a higher buffer';
-            if (issue.toLowerCase().includes('negative')) return 'Account balance dipped below zero on some days — try to keep a cushion';
-            return typeof f === 'string' ? f : f.details || f.issue || '';
-          }),
+          revenueConsistency: pdfData.revenueConsistency || null,
+          cashRunwayDays: pdfData.cashRunwayDays || 0,
+          monthlyBreakdown: pdfData.monthlyBreakdown || [],
+          positiveIndicators: (pdfData.positiveIndicators || [])
+            .sort((a: any, b: any) => (a.priority || 99) - (b.priority || 99))
+            .map((p: any) => ({
+              label: typeof p === 'string' ? p : p.indicator || "",
+              details: typeof p === 'string' ? "" : p.details || "",
+            })),
+          concerns: (pdfData.redFlags || [])
+            .sort((a: any, b: any) => (a.priority || 99) - (b.priority || 99))
+            .map((f: any) => ({
+              label: typeof f === 'string' ? f : f.issue || "",
+              details: typeof f === 'string' ? "" : f.details || "",
+              severity: typeof f === 'string' ? "medium" : f.severity || "medium",
+            })),
           tips: pdfData.improvementSuggestions || [],
           summary: pdfData.summary || '',
           analyzedAt: pdfCache?.generatedAt?.toISOString() || new Date().toISOString(),
