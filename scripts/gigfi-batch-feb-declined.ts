@@ -79,8 +79,8 @@ function buildPayload(app: any) {
   let amount = parseFloat(app.requested_amount || "0");
   if (amount < 500 && amount > 0) amount *= 1000;
   if (amount < 1000) amount = 10000;
-  // Cap at $50k for GigFi (their typical max for personal loans)
-  if (amount > 50000) amount = 50000;
+  // Cap at $10k per user request
+  if (amount > 10000) amount = 10000;
 
   return {
     data: {
