@@ -597,7 +597,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(loanApplications)
       .where(isNotNull(loanApplications.gigfiStatus))
-      .orderBy(sql`gigfi_decision_id DESC NULLS LAST, created_at DESC`);
+      .orderBy(sql`gigfi_submitted_at DESC NULLS LAST, gigfi_decision_id DESC NULLS LAST, created_at DESC`);
   }
 
   async saveGigFiResultByEmail(email: string, status: string, decisionId?: string, redirectUrl?: string): Promise<{ applicationId: string } | null> {

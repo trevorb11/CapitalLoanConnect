@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   CheckCircle2,
@@ -26,6 +27,7 @@ interface Submission {
   gigfiStatus: string | null;
   gigfiDecisionId: string | null;
   gigfiRedirectUrl: string | null;
+  gigfiSubmittedAt: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -241,10 +243,12 @@ export default function GigFiSubmissions() {
                             </a>
                           </Button>
                         )}
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          {sub.createdAt
-                            ? new Date(sub.createdAt).toLocaleDateString()
-                            : ""}
+                        <span className="text-xs text-muted-foreground whitespace-nowrap" title={sub.gigfiSubmittedAt ? `Submitted ${new Date(sub.gigfiSubmittedAt).toLocaleString()}` : "Submission date unknown"}>
+                          {sub.gigfiSubmittedAt
+                            ? new Date(sub.gigfiSubmittedAt).toLocaleDateString()
+                            : sub.createdAt
+                              ? new Date(sub.createdAt).toLocaleDateString()
+                              : ""}
                         </span>
                       </div>
 
