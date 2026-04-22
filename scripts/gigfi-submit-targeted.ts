@@ -146,7 +146,7 @@ async function submitToGigFi(app: any, appId: string): Promise<{ status: string;
   try { data = JSON.parse(text); } catch { return { status: "ERROR", error: `Non-JSON: ${text.slice(0, 200)}` }; }
   if (!res.ok) return { status: "ERROR", error: `HTTP ${res.status}: ${text.slice(0, 200)}` };
 
-  const decisionId = data?.id ?? data?.decision_id ?? undefined;
+  const decisionId = data?.metadata?.decision_id ?? data?.id ?? data?.decision_id ?? undefined;
   const dataStatus = data?.data?.status;
   if (dataStatus === "ACCEPTED") return { status: "ACCEPTED", decisionId, redirectUrl: data?.data?.redirect_url };
   if (dataStatus === "REJECTED") return { status: "REJECTED", decisionId };
