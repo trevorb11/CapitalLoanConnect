@@ -3811,7 +3811,9 @@ export default function Dashboard() {
 
           // Agent filter (admin only feature)
           const matchesAgentFilter =
-            selectedAgentFilter === "all" || app.agentName === selectedAgentFilter;
+            selectedAgentFilter === "all" ||
+            (selectedAgentFilter === "unassigned" && !app.agentName) ||
+            app.agentName === selectedAgentFilter;
 
           return matchesFilter && matchesAgentFilter;
         })
@@ -4225,6 +4227,7 @@ export default function Dashboard() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Agents</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
                     {uniqueAgentNames.map((agentName) => (
                       <SelectItem key={agentName} value={agentName || ""}>
                         {agentName}
