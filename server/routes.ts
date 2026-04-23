@@ -1522,6 +1522,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Keep businessAddress and businessStreetAddress in sync — both columns store
+      // the same value but different parts of the codebase read different fields.
+      // Whichever is updated, mirror it to the other so edits are always visible.
+      if (updates.businessAddress && !updates.businessStreetAddress) {
+        updates.businessStreetAddress = updates.businessAddress;
+      } else if (updates.businessStreetAddress && !updates.businessAddress) {
+        updates.businessAddress = updates.businessStreetAddress;
+      }
+
+      // Keep ficoScoreExact and personalCreditScoreRange in sync — the edit form
+      // writes ficoScoreExact but many display areas read personalCreditScoreRange.
+      if (updates.ficoScoreExact && !updates.personalCreditScoreRange) {
+        updates.personalCreditScoreRange = updates.ficoScoreExact;
+      } else if (updates.personalCreditScoreRange && !updates.ficoScoreExact) {
+        updates.ficoScoreExact = updates.personalCreditScoreRange;
+      }
+
       // Check if application was already completed BEFORE applying updates
       const appBeforeUpdate = await storage.getLoanApplication(id);
       const wasAlreadyCompleted = appBeforeUpdate?.isFullApplicationCompleted === true;
