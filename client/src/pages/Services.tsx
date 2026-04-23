@@ -90,15 +90,38 @@ const CSS = `
     background: rgba(20,184,166,0.08);
   }
 
-  .services-page .card.selected::after {
-    content: '';
+  .services-page .select-circle {
     position: absolute;
-    top: 12px; right: 12px;
-    width: 24px; height: 24px;
-    background: #14B8A6;
+    top: 16px; right: 16px;
+    width: 26px; height: 26px;
     border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.15);
     display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+    font-size: 14px;
+    color: transparent;
   }
+
+  .services-page .card:hover .select-circle {
+    border-color: rgba(45,212,191,0.5);
+  }
+
+  .services-page .card.selected .select-circle {
+    background: #14B8A6;
+    border-color: #14B8A6;
+    color: #080d18;
+  }
+
+  .services-page .click-hint {
+    font-size: 11px;
+    color: #4b5568;
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .services-page .card.selected .click-hint { display: none; }
 
   .services-page .card-icon {
     font-size: 28px;
@@ -418,12 +441,14 @@ export default function Services() {
                   className={`card ${selected.has(svc.id) ? "selected" : ""}`}
                   onClick={() => toggleService(svc.id)}
                 >
+                  <div className="select-circle">{selected.has(svc.id) ? "\u2713" : ""}</div>
                   <div className="card-icon">{svc.icon}</div>
                   <div className="card-title">{svc.title}</div>
                   <div className="card-desc">{svc.desc}</div>
                   <ul className="card-bullets">
                     {svc.bullets.map((b, i) => <li key={i}>{b}</li>)}
                   </ul>
+                  <div className="click-hint">Click to select</div>
                 </div>
               ))}
 
@@ -432,6 +457,7 @@ export default function Services() {
                 className={`card other-card ${selected.has("other") ? "selected" : ""}`}
                 onClick={() => toggleService("other")}
               >
+                <div className="select-circle">{selected.has("other") ? "\u2713" : ""}</div>
                 <div className="card-icon">{"\uD83D\uDCA1"}</div>
                 <div className="card-title">Something Else</div>
                 <div className="card-desc">None of the above, but there's something your business needs. Tell us what it is.</div>
