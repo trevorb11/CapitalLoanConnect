@@ -6177,6 +6177,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // SERVICES INTEREST TRACKING
+  // ========================================
+
+  // Ensure table exists
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS service_interests (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
+      phone TEXT,
+      business_name TEXT,
+      service TEXT NOT NULL,
+      other_details TEXT,
+      source TEXT,
+      utm_campaign TEXT,
+      utm_source TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+  } catch (err) {
+    console.error("[SERVICES] Failed to ensure table:", err);
+  }
+
+  // POST /api/services/interest — record a service interest click (no auth required)
+  app.post("/api/services/interest", async (req: Request, res: Response) => {
+    try {
+      const { email, firstName, lastName, phone, businessName, service, otherDetails, source, utmCampaign, utmSource } = req.body;
+      if (!email || !service) return res.status(400).json({ error: "Email and service are required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Check for duplicate click (same email + service in last 24 hours)
+      const existing = await db.execute(sql`SELECT id FROM service_interests WHERE email = ${normalizedEmail} AND service = ${service} AND created_at >= NOW() - INTERVAL '24 hours'`);
+      if (existing.rows.length > 0) {
+        return res.json({ success: true, message: "Already recorded" });
+      }
+
+      await db.execute(sql`INSERT INTO service_interests (email, first_name, last_name, phone, business_name, service, other_details, source, utm_campaign, utm_source)
+        VALUES (${normalizedEmail}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${service}, ${otherDetails || null}, ${source || 'direct'}, ${utmCampaign || null}, ${utmSource || null})`);
+
+      console.log(`[SERVICES] Interest recorded: ${normalizedEmail} -> ${service}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[SERVICES] interest error:", err);
+      res.status(500).json({ error: "Failed to record interest" });
+    }
+  });
+
+  // GET /api/services/interests — admin view of all interest clicks
+  app.get("/api/services/interests", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT service, COUNT(*) as clicks, COUNT(DISTINCT email) as unique_contacts,
+          array_agg(DISTINCT email ORDER BY email) as emails
+        FROM service_interests
+        GROUP BY service
+        ORDER BY clicks DESC
+      `);
+      const recent = await db.execute(sql`SELECT * FROM service_interests ORDER BY created_at DESC LIMIT 50`);
+      res.json({ summary: result.rows, recent: recent.rows });
+    } catch (err: any) {
+      console.error("[SERVICES] interests fetch error:", err);
+      res.status(500).json({ error: "Failed to fetch interests" });
+    }
+  });
+
+  // GET /api/services/lookup — lookup contact info from loan_applications by email (for pre-filling)
+  app.get("/api/services/lookup", async (req: Request, res: Response) => {
+    const email = (req.query.email as string || "").toLowerCase().trim();
+    if (!email) return res.json({});
+    try {
+      const result = await db.execute(sql`SELECT full_name, phone, business_name FROM loan_applications WHERE email = ${email} ORDER BY created_at DESC LIMIT 1`);
+      if (result.rows.length > 0) {
+        const r = result.rows[0] as any;
+        const parts = (r.full_name || "").trim().split(/\s+/);
+        res.json({ firstName: parts[0] || "", lastName: parts.slice(1).join(" ") || "", phone: r.phone || "", businessName: r.business_name || "" });
+      } else {
+        res.json({});
+      }
+    } catch (_) {
+      res.json({});
+    }
+  });
+
+  // ========================================
   // ANALYTICS DASHBOARD API
   // ========================================
 

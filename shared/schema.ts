@@ -772,3 +772,24 @@ export const insertLeadPositionSchema = createInsertSchema(leadPositions).omit({
 
 export type InsertLeadPosition = z.infer<typeof insertLeadPositionSchema>;
 export type LeadPosition = typeof leadPositions.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// SERVICES INTEREST TRACKING
+// ═══════════════════════════════════════════════════════════════
+
+export const serviceInterests = pgTable("service_interests", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  phone: text("phone"),
+  businessName: text("business_name"),
+  service: text("service").notNull(), // payments, website, crm, other
+  otherDetails: text("other_details"), // free text if "other"
+  source: text("source"), // email, direct, etc.
+  utmCampaign: text("utm_campaign"),
+  utmSource: text("utm_source"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type ServiceInterest = typeof serviceInterests.$inferSelect;
