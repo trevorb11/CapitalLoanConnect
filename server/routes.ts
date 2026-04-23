@@ -1510,15 +1510,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.agentViewUrl = generateApplicationUrl(req, id);
       }
 
-      // Keep ownerCsz in sync whenever individual owner address fields are updated,
-      // so the application view always reads the correct zip/city/state.
-      if (updates.ownerCity || updates.ownerState || updates.ownerZip) {
+      // Keep ownerCsz and businessCsz in sync whenever individual address fields are
+      // updated — the display reads the combined CSZ field first, so it must stay current.
+      const needsAddressSync = updates.ownerCity || updates.ownerState || updates.ownerZip
+                            || updates.city || updates.state || updates.zipCode;
+      if (needsAddressSync) {
         const existingApp2 = await storage.getLoanApplication(id);
-        const city  = updates.ownerCity  ?? existingApp2?.ownerCity  ?? '';
-        const state = updates.ownerState ?? existingApp2?.ownerState ?? '';
-        const zip   = updates.ownerZip   ?? existingApp2?.ownerZip   ?? '';
-        if (city || state || zip) {
-          updates.ownerCsz = `${city}, ${state} ${zip}`.trim();
+
+        if (updates.ownerCity || updates.ownerState || updates.ownerZip) {
+          const city  = updates.ownerCity  ?? existingApp2?.ownerCity  ?? '';
+          const state = updates.ownerState ?? existingApp2?.ownerState ?? '';
+          const zip   = updates.ownerZip   ?? existingApp2?.ownerZip   ?? '';
+          if (city || state || zip) {
+            updates.ownerCsz = `${city}, ${state} ${zip}`.trim();
+          }
+        }
+
+        if (updates.city || updates.state || updates.zipCode) {
+          const city  = updates.city     ?? existingApp2?.city     ?? '';
+          const state = updates.state    ?? existingApp2?.state    ?? '';
+          const zip   = updates.zipCode  ?? existingApp2?.zipCode  ?? '';
+          if (city || state || zip) {
+            updates.businessCsz = `${city}, ${state} ${zip}`.trim();
+          }
         }
       }
 
@@ -1537,6 +1551,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.personalCreditScoreRange = updates.ficoScoreExact;
       } else if (updates.personalCreditScoreRange && !updates.ficoScoreExact) {
         updates.ficoScoreExact = updates.personalCreditScoreRange;
+      }
+
+      // Keep legalBusinessName and businessName in sync — the admin edit form saves
+      // legalBusinessName but some downstream endpoints (merchant portal, GHL, etc.)
+      // read businessName directly.
+      if (updates.legalBusinessName && !updates.businessName) {
+        updates.businessName = updates.legalBusinessName;
+      } else if (updates.businessName && !updates.legalBusinessName) {
+        updates.legalBusinessName = updates.businessName;
       }
 
       // Check if application was already completed BEFORE applying updates
