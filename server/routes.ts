@@ -21,7 +21,7 @@ import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongr
 import { createRequire } from "module";
 import { pool, neonPool, db } from "./db";
 import { loanApplications } from "@shared/schema";
-import { ilike, or, desc } from "drizzle-orm";
+import { ilike, or, desc, sql } from "drizzle-orm";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
