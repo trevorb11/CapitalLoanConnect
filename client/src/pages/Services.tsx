@@ -63,7 +63,7 @@ const CSS = `
 
   .services-page .cards {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 16px;
     margin-bottom: 32px;
   }
@@ -142,7 +142,7 @@ const CSS = `
   }
 
   .services-page .other-card {
-    grid-column: 1 / -1;
+    /* same width as other cards in single-column layout */
   }
 
   .services-page .other-input {
@@ -236,8 +236,6 @@ const CSS = `
   }
 
   @media (max-width: 640px) {
-    .services-page .cards { grid-template-columns: 1fr; }
-    .services-page .other-card { grid-column: auto; }
     .services-page h1 { font-size: 24px; }
     .services-page .wrap { padding: 40px 16px 60px; }
   }
