@@ -6177,6 +6177,147 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // ANALYTICS DASHBOARD API
+  // ========================================
+
+  // GET /api/analytics/overview — top-level KPIs
+  app.get("/api/analytics/overview", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const [apps, decisions, statements, funded] = await Promise.all([
+        db.execute(sql`SELECT COUNT(*) as total, COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as week, COUNT(CASE WHEN created_at >= NOW() - INTERVAL '30 days' THEN 1 END) as month FROM loan_applications`),
+        db.execute(sql`SELECT status, COUNT(*) as c, COALESCE(SUM(advance_amount::numeric), 0) as total_value FROM business_underwriting_decisions GROUP BY status`),
+        db.execute(sql`SELECT COUNT(*) as total, COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as week FROM bank_statement_uploads`),
+        db.execute(sql`SELECT COALESCE(SUM(advance_amount::numeric), 0) as total_funded, COUNT(*) as count, COALESCE(AVG(advance_amount::numeric), 0) as avg_deal FROM business_underwriting_decisions WHERE status = 'funded'`),
+      ]);
+
+      const statusMap: Record<string, { count: number; value: number }> = {};
+      for (const r of decisions.rows as any[]) {
+        statusMap[r.status] = { count: Number(r.c), value: Number(r.total_value) };
+      }
+
+      const appRow = apps.rows[0] as any;
+      const fundedRow = funded.rows[0] as any;
+      const stmtRow = statements.rows[0] as any;
+
+      res.json({
+        applications: { total: Number(appRow.total), thisWeek: Number(appRow.week), thisMonth: Number(appRow.month) },
+        pipeline: {
+          approved: statusMap.approved || { count: 0, value: 0 },
+          funded: statusMap.funded || { count: 0, value: 0 },
+          declined: statusMap.declined || { count: 0, value: 0 },
+          unqualified: statusMap.unqualified || { count: 0, value: 0 },
+        },
+        statements: { total: Number(stmtRow.total), thisWeek: Number(stmtRow.week) },
+        funding: { totalFunded: Number(fundedRow.total_funded), dealCount: Number(fundedRow.count), avgDeal: Number(fundedRow.avg_deal) },
+      });
+    } catch (err: any) {
+      console.error("[ANALYTICS] overview error:", err);
+      res.status(500).json({ error: "Failed to load analytics" });
+    }
+  });
+
+  // GET /api/analytics/timeline — weekly/monthly deal flow over time
+  app.get("/api/analytics/timeline", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const [appsByWeek, decisionsByWeek, fundedByWeek] = await Promise.all([
+        db.execute(sql`SELECT DATE_TRUNC('week', created_at) as week, COUNT(*) as c FROM loan_applications WHERE created_at >= NOW() - INTERVAL '6 months' GROUP BY week ORDER BY week`),
+        db.execute(sql`SELECT DATE_TRUNC('week', created_at) as week, status, COUNT(*) as c, COALESCE(SUM(advance_amount::numeric), 0) as value FROM business_underwriting_decisions WHERE created_at >= NOW() - INTERVAL '6 months' GROUP BY week, status ORDER BY week`),
+        db.execute(sql`SELECT DATE_TRUNC('month', COALESCE(funded_date::timestamp, created_at)) as month, COUNT(*) as c, COALESCE(SUM(advance_amount::numeric), 0) as value FROM business_underwriting_decisions WHERE status = 'funded' AND created_at >= NOW() - INTERVAL '12 months' GROUP BY month ORDER BY month`),
+      ]);
+
+      res.json({
+        applicationsByWeek: appsByWeek.rows,
+        decisionsByWeek: decisionsByWeek.rows,
+        fundedByMonth: fundedByWeek.rows,
+      });
+    } catch (err: any) {
+      console.error("[ANALYTICS] timeline error:", err);
+      res.status(500).json({ error: "Failed to load timeline" });
+    }
+  });
+
+  // GET /api/analytics/reps — rep performance comparison
+  app.get("/api/analytics/reps", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          COALESCE(assigned_rep, 'Unassigned') as rep,
+          COUNT(*) as total_deals,
+          COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved,
+          COUNT(CASE WHEN status = 'funded' THEN 1 END) as funded,
+          COUNT(CASE WHEN status = 'declined' THEN 1 END) as declined,
+          COUNT(CASE WHEN status = 'unqualified' THEN 1 END) as unqualified,
+          COALESCE(SUM(CASE WHEN status = 'funded' THEN advance_amount::numeric END), 0) as funded_value,
+          COALESCE(SUM(CASE WHEN status = 'approved' THEN advance_amount::numeric END), 0) as approved_value,
+          COALESCE(AVG(CASE WHEN status = 'funded' THEN advance_amount::numeric END), 0) as avg_funded_deal,
+          ROUND(COUNT(CASE WHEN status = 'funded' THEN 1 END)::numeric / NULLIF(COUNT(*)::numeric, 0) * 100, 1) as close_rate
+        FROM business_underwriting_decisions
+        GROUP BY assigned_rep
+        ORDER BY funded_value DESC
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[ANALYTICS] reps error:", err);
+      res.status(500).json({ error: "Failed to load rep data" });
+    }
+  });
+
+  // GET /api/analytics/lenders — lender breakdown
+  app.get("/api/analytics/lenders", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          COALESCE(lender, 'Unknown') as lender,
+          COUNT(*) as total,
+          COUNT(CASE WHEN status = 'funded' THEN 1 END) as funded,
+          COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved,
+          COALESCE(SUM(CASE WHEN status = 'funded' THEN advance_amount::numeric END), 0) as funded_value,
+          COALESCE(SUM(CASE WHEN status = 'approved' THEN advance_amount::numeric END), 0) as approved_value
+        FROM business_underwriting_decisions
+        WHERE lender IS NOT NULL AND lender != ''
+        GROUP BY lender
+        ORDER BY funded_value DESC
+        LIMIT 20
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[ANALYTICS] lenders error:", err);
+      res.status(500).json({ error: "Failed to load lender data" });
+    }
+  });
+
+  // GET /api/analytics/recent — recent activity feed
+  app.get("/api/analytics/recent", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT id, business_name, business_email, status, advance_amount, lender, assigned_rep, created_at, funded_date
+        FROM business_underwriting_decisions
+        ORDER BY created_at DESC
+        LIMIT 25
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[ANALYTICS] recent error:", err);
+      res.status(500).json({ error: "Failed to load recent activity" });
+    }
+  });
+
+  // ========================================
   // LEAD PORTAL ROUTES
   // ========================================
 

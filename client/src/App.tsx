@@ -42,6 +42,7 @@ import Unqualified from "@/pages/Unqualified";
 import Funded from "@/pages/Funded";
 import RepConsole from "@/pages/RepConsole";
 import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
+import Analytics from "@/pages/Analytics";
 import ApprovalLetter from "@/pages/ApprovalLetter";
 import InternalStatementsUpload from "@/pages/InternalStatementsUpload";
 import SBALanding from "@/pages/SBALanding";
@@ -131,8 +132,9 @@ function Router() {
       <Route path="/rep-console" component={RepConsole} />
       <Route path="/rep-console/:contactId" component={RepConsole} />
       
-      {/* Lead Source Analytics - Admin Only */}
+      {/* Analytics Dashboards - Admin Only */}
       <Route path="/lead-sources" component={LeadSourceAnalytics} />
+      <Route path="/analytics" component={Analytics} />
 
       {/* Approval Letter - Public page for approved businesses */}
       <Route path="/approved/:slug" component={ApprovalLetter} />
