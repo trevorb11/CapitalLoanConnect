@@ -1,17 +1,98 @@
 /**
  * Salesforce Sync — creates/updates SF records when a new application is saved.
  *
- * Auth: uses shared sfTokenManager for OAuth2 token refresh.
+ * Auth: uses SF_REFRESH_TOKEN to auto-refresh the access token via OAuth2.
+ * Falls back to SF_ACCESS_TOKEN if refresh token is not configured.
  * Tokens are cached in memory and refreshed on 401 or expiry.
  */
 
-import {
-  isSalesforceConfigured,
-  sfApi,
-  sfQuery,
-  SF_INSTANCE_URL,
-  SF_REFRESH_TOKEN,
-} from "./sfTokenManager";
+const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
+const SF_REFRESH_TOKEN = process.env.SF_REFRESH_TOKEN;
+const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://test.salesforce.com";
+
+let cachedAccessToken = process.env.SF_ACCESS_TOKEN || "";
+let tokenExpiresAt = 0;
+
+async function refreshAccessToken(): Promise<string> {
+  if (!SF_REFRESH_TOKEN) return cachedAccessToken;
+  try {
+    const res = await fetch(`${SF_LOGIN_URL}/services/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: SF_REFRESH_TOKEN,
+        client_id: "PlatformCLI",
+      }),
+    });
+    const data = await res.json() as any;
+    if (data.access_token) {
+      cachedAccessToken = data.access_token;
+      tokenExpiresAt = Date.now() + 90 * 60 * 1000;
+      console.log("[SF Auth] Token refreshed successfully");
+      return cachedAccessToken;
+    }
+    console.error("[SF Auth] Refresh failed:", data.error, data.error_description);
+    return cachedAccessToken;
+  } catch (err: any) {
+    console.error("[SF Auth] Refresh error:", err.message);
+    return cachedAccessToken;
+  }
+}
+
+export async function getAccessToken(): Promise<string> {
+  if (!cachedAccessToken || Date.now() > tokenExpiresAt) {
+    return refreshAccessToken();
+  }
+  return cachedAccessToken;
+}
+
+function sfHeaders(token: string) {
+  return { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+}
+
+async function sfApi(method: string, path: string, body?: object): Promise<{ success: boolean; id?: string; data?: any; error?: string }> {
+  try {
+    let token = await getAccessToken();
+    let res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
+      method, headers: sfHeaders(token), body: body ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 401 && SF_REFRESH_TOKEN) {
+      tokenExpiresAt = 0;
+      token = await refreshAccessToken();
+      res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
+        method, headers: sfHeaders(token), body: body ? JSON.stringify(body) : undefined,
+      });
+    }
+    if (res.status === 204) return { success: true };
+    const data = await res.json();
+    if (res.ok) return { success: true, id: data.id, data };
+    const msg = Array.isArray(data) ? data.map((e: any) => e.message).join("; ") : data.message || JSON.stringify(data);
+    return { success: false, error: msg };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function sfQuery(soql: string): Promise<any[]> {
+  try {
+    const token = await getAccessToken();
+    const res = await fetch(
+      `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
+      { headers: sfHeaders(token) }
+    );
+    if (res.status === 401 && SF_REFRESH_TOKEN) {
+      tokenExpiresAt = 0;
+      const fresh = await refreshAccessToken();
+      const retry = await fetch(
+        `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
+        { headers: sfHeaders(fresh) }
+      );
+      return ((await retry.json()) as any).records || [];
+    }
+    return ((await res.json()) as any).records || [];
+  } catch { return []; }
+}
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS",
@@ -108,7 +189,7 @@ export function computePipelineBucket(stage: string, hasApproval?: boolean): str
  * updates them with application data. Does NOT create new records.
  */
 export async function syncApplicationToSalesforce(app: Record<string, any>): Promise<{ synced: boolean; action?: string; accountId?: string; contactId?: string; oppId?: string; leadId?: string; reason?: string; error?: string }> {
-  if (!isSalesforceConfigured()) {
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) {
     console.log("[SF Sync] Skipped — no SF credentials configured");
     return { synced: false, reason: "no credentials" };
   }
@@ -413,7 +494,7 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
  * If no SF Opportunity exists yet, attempts to find one via email/phone.
  */
 export async function syncDecisionToSalesforce(decision: Record<string, any>, app?: Record<string, any>): Promise<{ synced: boolean; action?: string; oppId?: string; error?: string }> {
-  if (!isSalesforceConfigured()) {
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) {
     return { synced: false, error: "no credentials" };
   }
 
