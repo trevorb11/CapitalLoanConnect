@@ -1,126 +1,23 @@
 /**
  * Salesforce Sync — creates/updates SF records when a new application is saved.
  *
- * Auth: uses SF_REFRESH_TOKEN to auto-refresh the access token via OAuth2.
- * Falls back to SF_ACCESS_TOKEN if refresh token is not configured.
+ * Auth: uses shared sfTokenManager for OAuth2 token refresh.
  * Tokens are cached in memory and refreshed on 401 or expiry.
  */
 
-const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
-const SF_REFRESH_TOKEN = process.env.SF_REFRESH_TOKEN;
-const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://test.salesforce.com"; // test.salesforce.com for sandbox
-
-let cachedAccessToken = process.env.SF_ACCESS_TOKEN || "";
-let tokenExpiresAt = 0; // epoch ms — 0 = needs refresh on first call
+import {
+  isSalesforceConfigured,
+  sfApi,
+  sfQuery,
+  SF_INSTANCE_URL,
+  SF_REFRESH_TOKEN,
+} from "./sfTokenManager";
 
 const US_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS",
   "KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY",
   "NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"
 ]);
-
-// ---------------------------------------------------------------------------
-// Token management — auto-refresh via OAuth2 refresh_token grant
-// ---------------------------------------------------------------------------
-async function refreshAccessToken(): Promise<string> {
-  if (!SF_REFRESH_TOKEN) {
-    return cachedAccessToken;
-  }
-  try {
-    const res = await fetch(`${SF_LOGIN_URL}/services/oauth2/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: SF_REFRESH_TOKEN,
-        client_id: "PlatformCLI",
-      }),
-    });
-    const data = await res.json() as any;
-    if (data.access_token) {
-      cachedAccessToken = data.access_token;
-      tokenExpiresAt = Date.now() + 90 * 60 * 1000; // refresh at 90min
-      console.log("[SF Auth] Token refreshed successfully");
-      return cachedAccessToken;
-    }
-    console.error("[SF Auth] Refresh failed:", data.error, data.error_description);
-    return cachedAccessToken;
-  } catch (err: any) {
-    console.error("[SF Auth] Refresh error:", err.message);
-    return cachedAccessToken;
-  }
-}
-
-async function getAccessToken(): Promise<string> {
-  if (!cachedAccessToken || Date.now() > tokenExpiresAt) {
-    return refreshAccessToken();
-  }
-  return cachedAccessToken;
-}
-
-function sfHeaders(token: string) {
-  return {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-}
-
-async function sfApi(method: string, path: string, body?: object): Promise<{ success: boolean; id?: string; data?: any; error?: string }> {
-  try {
-    let token = await getAccessToken();
-    let res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
-      method,
-      headers: sfHeaders(token),
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    // Auto-retry on 401 with a fresh token
-    if (res.status === 401 && SF_REFRESH_TOKEN) {
-      console.log("[SF API] 401 — refreshing token and retrying...");
-      tokenExpiresAt = 0;
-      token = await refreshAccessToken();
-      res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
-        method,
-        headers: sfHeaders(token),
-        body: body ? JSON.stringify(body) : undefined,
-      });
-    }
-
-    if (res.status === 204) return { success: true };
-    const data = await res.json();
-    if (res.ok) return { success: true, id: data.id, data };
-    const msg = Array.isArray(data) ? data.map((e: any) => e.message).join("; ") : data.message || JSON.stringify(data);
-    return { success: false, error: msg };
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-}
-
-async function sfQuery(soql: string): Promise<any[]> {
-  try {
-    const token = await getAccessToken();
-    const res = await fetch(
-      `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
-      { headers: sfHeaders(token) }
-    );
-
-    if (res.status === 401 && SF_REFRESH_TOKEN) {
-      tokenExpiresAt = 0;
-      const freshToken = await refreshAccessToken();
-      const retry = await fetch(
-        `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
-        { headers: sfHeaders(freshToken) }
-      );
-      const data = await retry.json();
-      return data.records || [];
-    }
-
-    const data = await res.json();
-    return data.records || [];
-  } catch {
-    return [];
-  }
-}
 
 function parseNum(v: any): number | null {
   if (v === null || v === undefined) return null;
@@ -211,7 +108,7 @@ export function computePipelineBucket(stage: string, hasApproval?: boolean): str
  * updates them with application data. Does NOT create new records.
  */
 export async function syncApplicationToSalesforce(app: Record<string, any>): Promise<{ synced: boolean; action?: string; accountId?: string; contactId?: string; oppId?: string; leadId?: string; reason?: string; error?: string }> {
-  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) {
+  if (!isSalesforceConfigured()) {
     console.log("[SF Sync] Skipped — no SF credentials configured");
     return { synced: false, reason: "no credentials" };
   }
@@ -360,9 +257,149 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       };
     }
 
-    // No existing Lead or Opportunity found — skip (update-only mode)
-    console.log(`[SF Sync] No existing Lead or Opportunity found for ${email || phone} — skipping (update-only mode)`);
-    return { synced: false, reason: "no existing SF record to update" };
+    // --- Auto-create for Dillon's apps only ---
+    const agentName = (app.agentName || app.agent_name || "").toLowerCase();
+    const agentEmail = (app.agentEmail || app.agent_email || "").toLowerCase();
+    const isDillon = agentName.includes("dillon") || agentEmail.includes("dillon");
+
+    if (!isDillon) {
+      console.log(`[SF Sync] No existing Lead or Opportunity found for ${email || phone} — skipping (update-only, not Dillon's)`);
+      return { synced: false, reason: "no existing SF record to update" };
+    }
+
+    console.log(`[SF Sync] Dillon's app — auto-creating SF records for ${businessName || email}`);
+
+    // If we found a Lead earlier, convert it first
+    if (existingLead) {
+      try {
+        const token = await getAccessToken();
+        // Convert Lead via SOAP API
+        const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+          <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sf="urn:partner.soap.sforce.com">
+            <soapenv:Header><sf:SessionHeader><sf:sessionId>${token}</sf:sessionId></sf:SessionHeader></soapenv:Header>
+            <soapenv:Body>
+              <sf:convertLead><sf:leadConverts>
+                <sf:leadId>${existingLead.Id}</sf:leadId>
+                <sf:convertedStatus>Qualified</sf:convertedStatus>
+                <sf:doNotCreateOpportunity>false</sf:doNotCreateOpportunity>
+              </sf:leadConverts></sf:convertLead>
+            </soapenv:Body>
+          </soapenv:Envelope>`;
+
+        const convRes = await fetch(`${SF_INSTANCE_URL}/services/Soap/u/66.0`, {
+          method: "POST",
+          headers: { "Content-Type": "text/xml", "SOAPAction": "convertLead" },
+          body: soapBody,
+        });
+        const convText = await convRes.text();
+
+        // Parse SOAP response for IDs
+        const getTag = (tag: string) => {
+          const m = convText.match(new RegExp(`<${tag}>(.*?)</${tag}>`));
+          return m ? m[1] : null;
+        };
+
+        const convOppId = getTag("opportunityId");
+        const convAcctId = getTag("accountId");
+        const convCtId = getTag("contactId");
+        const convSuccess = getTag("success") === "true";
+
+        if (convSuccess && convOppId) {
+          console.log(`[SF Sync] Converted Lead ${existingLead.Id} → Opp ${convOppId}`);
+          return {
+            synced: true,
+            action: "lead-converted",
+            leadId: existingLead.Id,
+            oppId: convOppId,
+            accountId: convAcctId || undefined,
+            contactId: convCtId || undefined,
+          };
+        } else {
+          console.log(`[SF Sync] Lead conversion failed, falling through to create`);
+        }
+      } catch (convErr: any) {
+        console.error(`[SF Sync] Lead conversion error: ${convErr.message}`);
+      }
+    }
+
+    // No Lead to convert — create new Account + Contact + Opportunity
+    const rts = await sfQuery(
+      "SELECT Id FROM RecordType WHERE SObjectType='Account' AND Name='Merchant' AND IsActive=true"
+    );
+    const merchantRtId = rts[0]?.Id;
+
+    const accountName = (businessName || fullName || email || "Unknown").slice(0, 255);
+    const nameParts = fullName.split(/\s+/);
+    const today = new Date();
+    const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
+
+    const account = clean({
+      Name: accountName,
+      ...(merchantRtId ? { RecordTypeId: merchantRtId } : {}),
+      Company_Name__c: businessName || null,
+      Doing_Business_As__c: app.doingBusinessAs || app.doing_business_as || null,
+      EIN__c: app.ein || null,
+      Industry: mapIndustry(app.industry),
+      Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue),
+      Primary_Business_Bank__c: app.bankName || app.bank_name || null,
+      Phone: phone || null,
+      Website: app.companyWebsite || app.company_website || null,
+      BillingCity: app.city || null,
+      ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
+      BillingPostalCode: app.zipCode || app.zip_code || null,
+      ...((state || app.city) ? { BillingCountryCode: "US" } : {}),
+      Account_Status__c: "Pending",
+    });
+
+    const acctRes = await sfApi("POST", "/sobjects/Account", account);
+    if (!acctRes.success) {
+      console.log(`[SF Sync] Account creation failed: ${acctRes.error}`);
+      return { synced: false, error: `Account: ${acctRes.error}` };
+    }
+
+    const contact = clean({
+      AccountId: acctRes.id,
+      FirstName: nameParts[0] || null,
+      LastName: nameParts.slice(1).join(" ") || email || "Unknown",
+      Email: email || null,
+      Phone: phone || null,
+      Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score),
+      Scrubbed__c: false,
+      Opted_In_for_AI_Calls__c: false,
+      Do_Not_Contact__c: false,
+      Consent_to_Text__c: false,
+      MailingCity: app.city || null,
+      ...(US_STATES.has(state) ? { MailingStateCode: state } : {}),
+      ...((state || app.city) ? { MailingCountryCode: "US" } : {}),
+    });
+
+    const ctRes = await sfApi("POST", "/sobjects/Contact", contact);
+
+    const closeDate = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+    const opportunity = clean({
+      AccountId: acctRes.id,
+      Primary_Contact__c: ctRes.success ? ctRes.id : null,
+      Name: `${accountName} - ${dateStr}`.slice(0, 120),
+      StageName: "Application & Docs",
+      CloseDate: closeDate,
+      ...appFields,
+      ...oppOnlyFields,
+      LeadSource: app.referralSource || app.referral_source || "Website",
+      Revenue_Verified__c: false,
+      Bank_Statement_Tampering_Flag__c: false,
+      Engagement_Status__c: "Working",
+    });
+
+    const oppRes = await sfApi("POST", "/sobjects/Opportunity", opportunity);
+
+    console.log(`[SF Sync] Created (Dillon): Account=${acctRes.id}, Contact=${ctRes.id || "failed"}, Opp=${oppRes.id || "failed"}`);
+    return {
+      synced: true,
+      action: "created",
+      accountId: acctRes.id,
+      contactId: ctRes.id,
+      oppId: oppRes.id,
+    };
 
   } catch (err: any) {
     console.error(`[SF Sync] Error: ${err.message}`);
@@ -376,7 +413,7 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
  * If no SF Opportunity exists yet, attempts to find one via email/phone.
  */
 export async function syncDecisionToSalesforce(decision: Record<string, any>, app?: Record<string, any>): Promise<{ synced: boolean; action?: string; oppId?: string; error?: string }> {
-  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) {
+  if (!isSalesforceConfigured()) {
     return { synced: false, error: "no credentials" };
   }
 
