@@ -188,10 +188,11 @@ function App() {
   useEffect(() => {
     initUTMTracking();
     
-    // Track visits from URL parameters (email or phone)
+    // Track visits from URL parameters (email, phone, interest)
     const params = new URLSearchParams(window.location.search);
     const email = params.get('email');
     const phone = params.get('phone');
+    const interest = params.get('interest');
     
     if (email || phone) {
       fetch('/api/analytics/track-visit', {
@@ -200,9 +201,13 @@ function App() {
         body: JSON.stringify({
           email,
           phone,
+          interest,
           pagePath: window.location.pathname,
           fullUrl: window.location.href,
-          referrer: document.referrer
+          referrer: document.referrer,
+          utmSource: params.get('utm_source'),
+          utmCampaign: params.get('utm_campaign'),
+          utmMedium: params.get('utm_medium'),
         })
       }).catch(err => console.error('Failed to track visit:', err));
     }

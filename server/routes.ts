@@ -20,7 +20,7 @@ import { fireSmsStageEvent } from "./sms-middleware";
 import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
 import { pool, neonPool, db } from "./db";
-import { loanApplications } from "@shared/schema";
+import { loanApplications, pageVisits } from "@shared/schema";
 import { ilike, or, desc, sql } from "drizzle-orm";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
@@ -666,6 +666,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ═══════════════════════════════════════════════════════════════
+
+  // ========================================
+  // PAGE VISIT TRACKER (email-link click-throughs)
+  // ========================================
+
+  app.post("/api/analytics/track-visit", async (req: Request, res: Response) => {
+    try {
+      const { email, phone, interest, pagePath, fullUrl, referrer, utmSource, utmCampaign, utmMedium } = req.body;
+
+      // Must have at least email or phone to be worth tracking
+      if (!email && !phone) {
+        return res.status(400).json({ error: "email or phone required" });
+      }
+
+      await db.insert(pageVisits).values({
+        email: email?.toLowerCase()?.trim() || null,
+        phone: phone?.trim() || null,
+        interest: interest?.trim() || null,
+        pagePath: pagePath || null,
+        fullUrl: fullUrl || null,
+        referrer: referrer || null,
+        utmSource: utmSource || null,
+        utmCampaign: utmCampaign || null,
+        utmMedium: utmMedium || null,
+      });
+
+      console.log(`[VISIT] Tracked: ${email || phone} → ${pagePath}${interest ? ` (interest: ${interest})` : ""}`);
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[VISIT] Error tracking visit:", err.message);
+      return res.status(500).json({ error: "Failed to track visit" });
+    }
+  });
+
+  // GET /api/analytics/page-visits — admin view of tracked visits
+  app.get("/api/analytics/page-visits", async (req: Request, res: Response) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== "admin") {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+      const visits = await db.select().from(pageVisits).orderBy(sql`created_at DESC`).limit(500);
+      return res.json({ visits });
+    } catch (err: any) {
+      console.error("[VISIT] Error fetching visits:", err.message);
+      return res.status(500).json({ error: "Failed to fetch visits" });
+    }
+  });
 
   // ========================================
   // LEAD SOURCE ANALYTICS ENDPOINT

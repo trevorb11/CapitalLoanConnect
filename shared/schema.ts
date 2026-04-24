@@ -795,3 +795,23 @@ export const serviceInterests = pgTable("service_interests", {
 });
 
 export type ServiceInterest = typeof serviceInterests.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// PAGE VISIT TRACKING (email-link click-throughs)
+// ═══════════════════════════════════════════════════════════════
+
+export const pageVisits = pgTable("page_visits", {
+  id: serial("id").primaryKey(),
+  email: text("email"),
+  phone: text("phone"),
+  interest: text("interest"),          // e.g. "payments", "website" from ?interest= param
+  pagePath: text("page_path"),         // e.g. "/services"
+  fullUrl: text("full_url"),           // full URL with all query params
+  referrer: text("referrer"),
+  utmSource: text("utm_source"),
+  utmCampaign: text("utm_campaign"),
+  utmMedium: text("utm_medium"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PageVisit = typeof pageVisits.$inferSelect;
