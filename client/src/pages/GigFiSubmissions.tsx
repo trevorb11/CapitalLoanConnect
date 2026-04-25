@@ -28,6 +28,8 @@ interface Submission {
   gigfiDecisionId: string | null;
   gigfiRedirectUrl: string | null;
   gigfiSubmittedAt: string | null;
+  gigfiBankConnectedAt: string | null;
+  gigfiApprovedAt: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -186,6 +188,22 @@ export default function GigFiSubmissions() {
                           {!isAccepted && !isRejected && sub.gigfiStatus && (
                             <Badge variant="secondary" data-testid={`status-other-${sub.id}`}>
                               {sub.gigfiStatus}
+                            </Badge>
+                          )}
+                          {sub.gigfiBankConnectedAt && (
+                            <Badge
+                              className="bg-blue-500/15 text-blue-600 dark:text-blue-400 border-0"
+                              title={`Bank connected ${new Date(sub.gigfiBankConnectedAt).toLocaleString()}`}
+                            >
+                              Bank Connected {new Date(sub.gigfiBankConnectedAt).toLocaleDateString()}
+                            </Badge>
+                          )}
+                          {sub.gigfiApprovedAt && (
+                            <Badge
+                              className="bg-purple-500/15 text-purple-600 dark:text-purple-400 border-0"
+                              title={`Approved ${new Date(sub.gigfiApprovedAt).toLocaleString()}`}
+                            >
+                              Approved {new Date(sub.gigfiApprovedAt).toLocaleDateString()}
                             </Badge>
                           )}
                         </div>

@@ -156,7 +156,9 @@ app.use((req, res, next) => {
     // Run lightweight startup migrations (idempotent — safe to run on every boot)
     try {
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_submitted_at TIMESTAMP`);
-      console.log('[STARTUP] Migration: gigfi_submitted_at column ensured');
+      await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_bank_connected_at TIMESTAMP`);
+      await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_approved_at TIMESTAMP`);
+      console.log('[STARTUP] Migration: gigfi columns ensured');
       // Backfill submitted_at from UUID v7 decision IDs for any rows missing it
       const backfill = await db.execute(sql`
         UPDATE loan_applications
