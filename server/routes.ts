@@ -5050,7 +5050,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fire GHL webhook in background (don't block the redirect)
       if (decision) {
         const GHL_ACCEPT_WEBHOOK_URL =
-          "https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35";
+          "https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/52ad2d89-b393-4f32-a102-5b835e7f6db7";
 
         const payload = {
           event: "accept_offer_clicked",
