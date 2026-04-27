@@ -1196,11 +1196,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Send webhook only (GHL API sync disabled for now)
         // Only send intake webhook when explicitly completed
         if (applicationData.isCompleted && updatedApp) {
-          ghlService.sendIntakeWebhook(updatedApp).catch(err => 
+          ghlService.sendIntakeWebhook(updatedApp).catch(err =>
             console.error("Intake webhook error (non-blocking):", err)
           );
         }
-        
+
+        // Guide Funding Group: fire webhooks on update if GFG submission
+        const updatedOrExisting = updatedApp || existingApp;
+        const isGFGUpdate = (updatedOrExisting as any).agentName === 'Guide Funding Group';
+        if (isGFGUpdate && !applicationData.isCompleted && updatedApp) {
+          console.log(`[GFG] Guide Funding Group update detected — firing intake webhook for ${updatedApp.email}`);
+          ghlService.sendIntakeWebhook(updatedApp).catch(err =>
+            console.error("[GFG] Intake webhook error (non-blocking):", err)
+          );
+
+          const hasFullAppData = !!(updatedApp as any).socialSecurityNumber && !!(updatedApp as any).dateOfBirth;
+          if (hasFullAppData) {
+            console.log(`[GFG] Full application data detected on update — firing full application webhook for ${updatedApp.email}`);
+            ghlService.sendWebhook(updatedApp).catch(err =>
+              console.error("[GFG] Full application webhook error (non-blocking):", err)
+            );
+          }
+        }
+
         // Return with validation errors if any (data was still saved)
         if (postStepValidationErrors.length > 0) {
           return res.json({
@@ -1284,6 +1302,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
             triggerKey: 'trigger.portal_after_intake',
             sendLink: true,
           });
+        }
+      }
+
+      // Guide Funding Group: always fire intake webhook when a GFG submission arrives,
+      // even if isCompleted isn't set (GFG sends data without completion flags)
+      const finalApp = updatedApp || application;
+      const isGFG = (finalApp as any).agentName === 'Guide Funding Group' || applicationData.agentName === 'Guide Funding Group';
+      if (isGFG && !applicationData.isCompleted) {
+        console.log(`[GFG] Guide Funding Group submission detected — firing intake webhook for ${finalApp.email}`);
+        ghlService.sendIntakeWebhook(finalApp).catch(err =>
+          console.error("[GFG] Intake webhook error (non-blocking):", err)
+        );
+
+        // If GFG submission has full application data (SSN, DOB, address present), also fire the full application webhook
+        const hasFullAppData = !!(finalApp as any).socialSecurityNumber && !!(finalApp as any).dateOfBirth;
+        if (hasFullAppData) {
+          console.log(`[GFG] Full application data detected — firing full application webhook for ${finalApp.email}`);
+          ghlService.sendWebhook(finalApp).catch(err =>
+            console.error("[GFG] Full application webhook error (non-blocking):", err)
+          );
         }
       }
 
