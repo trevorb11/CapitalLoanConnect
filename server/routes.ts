@@ -5033,6 +5033,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return 'weekly';
   }
 
+  // Accept Offer click tracking — fires GHL webhook then redirects to /congratulations
+  app.get("/api/approval-letter/:slug/accept", async (req, res) => {
+    const { slug } = req.params;
+
+    try {
+      const decision = await storage.getBusinessUnderwritingDecisionBySlug(slug);
+
+      // Build /congratulations redirect params from whatever we have
+      const params = new URLSearchParams();
+      if (decision?.businessEmail) params.set("email", decision.businessEmail);
+      if (decision?.businessName) params.set("businessName", decision.businessName);
+      if (decision?.businessPhone) params.set("phone", decision.businessPhone);
+      if (decision?.ghlOpportunityId) params.set("opportunityId", decision.ghlOpportunityId);
+
+      // Fire GHL webhook in background (don't block the redirect)
+      if (decision) {
+        const GHL_ACCEPT_WEBHOOK_URL =
+          "https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35";
+
+        const payload = {
+          event: "accept_offer_clicked",
+          email: decision.businessEmail,
+          businessName: decision.businessName || null,
+          phone: decision.businessPhone || null,
+          lender: decision.lender || null,
+          advanceAmount: decision.advanceAmount ? String(decision.advanceAmount) : null,
+          term: decision.term || null,
+          ghlOpportunityId: decision.ghlOpportunityId || null,
+          slug,
+          clickedAt: new Date().toISOString(),
+        };
+
+        console.log(`[ACCEPT OFFER] Firing GHL webhook for ${decision.businessEmail}`, payload);
+
+        fetch(GHL_ACCEPT_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then((r) => {
+            if (!r.ok) r.text().then((t) => console.error(`[ACCEPT OFFER] GHL webhook failed (${r.status}): ${t}`));
+            else console.log(`[ACCEPT OFFER] GHL webhook sent for ${decision.businessEmail}`);
+          })
+          .catch((e) => console.error("[ACCEPT OFFER] GHL webhook error:", e));
+      }
+
+      res.redirect(302, `/congratulations${params.toString() ? `?${params.toString()}` : ""}`);
+    } catch (error) {
+      console.error("[ACCEPT OFFER] Error:", error);
+      res.redirect(302, "/congratulations");
+    }
+  });
+
   // Get approval letter by slug (public route for approved businesses)
   app.get("/api/approval-letter/:slug", async (req, res) => {
     const { slug } = req.params;
