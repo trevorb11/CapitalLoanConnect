@@ -596,7 +596,7 @@ export default function AchForm() {
           <div className="field-row">
             <div className="field-group">
               <label>Debit Date (on or after) <span className="required">*</span></label>
-              <input type="date" value={form.debitDate} onChange={set("debitDate")} required />
+              <input type="text" value={form.debitDate} onChange={set("debitDate")} required />
             </div>
             <div className="field-group">
               <label>Amount <span className="required">*</span></label>
@@ -604,6 +604,30 @@ export default function AchForm() {
                 <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#6b7280", fontSize: 15 }}>$</span>
                 <input value={form.amount} onChange={set("amount")} placeholder="0.00" required style={{ paddingLeft: 28 }} />
               </div>
+            </div>
+          </div>
+
+          {/* Signature */}
+          <div className="section-label">Signature</div>
+
+          <div className="sig-area">
+            <label>Account Holder's Signature <span className="required">*</span></label>
+            <canvas
+              ref={canvasRef}
+              className="sig-canvas"
+              width={640}
+              height={120}
+              onMouseDown={startDraw}
+              onMouseMove={draw}
+              onMouseUp={stopDraw}
+              onMouseLeave={stopDraw}
+              onTouchStart={startDraw}
+              onTouchMove={draw}
+              onTouchEnd={stopDraw}
+            />
+            <div className="sig-actions">
+              <span className="sig-hint">{hasSigned ? "Signature captured" : "Draw your signature above"}</span>
+              <button type="button" className="clear-btn" onClick={clearSig}>Clear</button>
             </div>
           </div>
 
@@ -649,30 +673,6 @@ export default function AchForm() {
             <div className="field-group">
               <label>Phone</label>
               <input type="tel" value={form.contactPhone} onChange={set("contactPhone")} placeholder="(555) 555-5555" />
-            </div>
-          </div>
-
-          {/* Signature */}
-          <div className="section-label">Signature</div>
-
-          <div className="sig-area">
-            <label>Account Holder's Signature <span className="required">*</span></label>
-            <canvas
-              ref={canvasRef}
-              className="sig-canvas"
-              width={640}
-              height={120}
-              onMouseDown={startDraw}
-              onMouseMove={draw}
-              onMouseUp={stopDraw}
-              onMouseLeave={stopDraw}
-              onTouchStart={startDraw}
-              onTouchMove={draw}
-              onTouchEnd={stopDraw}
-            />
-            <div className="sig-actions">
-              <span className="sig-hint">{hasSigned ? "Signature captured" : "Draw your signature above"}</span>
-              <button type="button" className="clear-btn" onClick={clearSig}>Clear</button>
             </div>
           </div>
 
