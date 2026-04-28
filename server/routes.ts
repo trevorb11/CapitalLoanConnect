@@ -11815,6 +11815,145 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // POST /api/admin/gigfi-csv-submit — submit a list of leads from CSV (App ID used to pull SSN from DB)
+  app.post("/api/admin/gigfi-csv-submit", async (req: Request, res: Response) => {
+    if (!req.session.user || req.session.user.role !== "admin") {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    if (!isGigFiConfigured()) {
+      return res.status(503).json({ error: "GigFi not configured" });
+    }
+
+    // Each lead: { appId, firstName, lastName, email, phone, businessName, dob, address, city, state, zip, revenue?, businessAge? }
+    const leads: Array<{
+      appId: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      businessName: string;
+      dob: string;
+      address: string;
+      city: string;
+      state: string;
+      zip: string;
+      revenue?: number;
+      businessAge?: string;
+    }> = req.body.leads;
+
+    if (!Array.isArray(leads) || leads.length === 0) {
+      return res.status(400).json({ error: "leads array required" });
+    }
+
+    function normalizePhone(p: string): string { return (p || "").replace(/\D/g, "").slice(0, 10); }
+    function isValidPhone(p: string): boolean { return normalizePhone(p).length === 10; }
+
+    const results: Array<{
+      appId: string;
+      name: string;
+      email: string;
+      status: string;
+      gigfiStatus?: string;
+      redirectUrl?: string;
+      decisionId?: string;
+      skippedReason?: string;
+    }> = [];
+
+    for (const lead of leads) {
+      const fullName = `${lead.firstName} ${lead.lastName}`.trim();
+      try {
+        // Look up SSN from DB by App ID
+        const app = await storage.getLoanApplication(lead.appId);
+        if (!app) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: "App ID not found in DB" });
+          continue;
+        }
+
+        const ssn = (app.socialSecurityNumber || "").replace(/\D/g, "");
+        if (ssn.length !== 9) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `SSN missing or invalid (found: "${app.socialSecurityNumber || "none"}")` });
+          continue;
+        }
+
+        // Validate phone
+        const phone = isValidPhone(lead.phone) ? lead.phone : "";
+        if (!phone) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `Invalid phone: "${lead.phone}"` });
+          continue;
+        }
+
+        // Validate address
+        const zip = (lead.zip || "").replace(/\D/g, "").slice(0, 5);
+        const state = (lead.state || "").toUpperCase().slice(0, 2);
+        if (!lead.address || !lead.city || state.length !== 2 || zip.length !== 5) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `Incomplete address (addr="${lead.address}" city="${lead.city}" state="${state}" zip="${zip}")` });
+          continue;
+        }
+
+        // Validate DOB
+        if (!lead.dob) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: "DOB missing" });
+          continue;
+        }
+
+        // Sanity-check DOB year (must be 1900–2010 for an adult applicant)
+        const dobYear = parseInt((lead.dob || "").slice(0, 4), 10);
+        if (isNaN(dobYear) || dobYear < 1900 || dobYear > 2010) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `DOB year looks invalid: "${lead.dob}"` });
+          continue;
+        }
+
+        const leadData: GigFiLeadData = {
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          email: lead.email,
+          phone,
+          businessName: lead.businessName,
+          monthlyRevenue: lead.revenue || 3000,
+          financingAmount: 10000,
+          businessAge: lead.businessAge,
+          ssn,
+          dob: lead.dob,
+          homeAddress: lead.address,
+          homeCity: lead.city,
+          homeState: state,
+          homeZip: zip,
+          payFrequency: "4",         // Monthly
+          nextPayDay: "05/01/2026",
+          cellPhone: phone,
+        };
+
+        const gigfiResult = await submitToGigFi(leadData, lead.appId);
+
+        storage.saveGigFiResult(lead.appId, gigfiResult.status, gigfiResult.decisionId, gigfiResult.redirectUrl)
+          .catch(err => console.error("[GIGFI-CSV] Failed to save result:", err));
+
+        results.push({
+          appId: lead.appId,
+          name: fullName,
+          email: lead.email,
+          status: "SUBMITTED",
+          gigfiStatus: gigfiResult.status,
+          redirectUrl: gigfiResult.redirectUrl,
+          decisionId: gigfiResult.decisionId,
+          skippedReason: gigfiResult.errorMessage,
+        });
+      } catch (err: any) {
+        results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "ERROR", skippedReason: err.message });
+      }
+    }
+
+    const submitted = results.filter(r => r.status === "SUBMITTED");
+    const accepted = submitted.filter(r => r.gigfiStatus === "ACCEPTED");
+    const rejected = submitted.filter(r => r.gigfiStatus === "REJECTED");
+    const skipped = results.filter(r => r.status !== "SUBMITTED");
+
+    res.json({
+      summary: { total: leads.length, submitted: submitted.length, accepted: accepted.length, rejected: rejected.length, skipped: skipped.length },
+      results,
+    });
+  });
+
   // Legacy: outbound IP only
   app.get("/api/debug/outbound-ip", async (req: Request, res: Response) => {
     if (!req.session.user || req.session.user.role !== "admin") {
