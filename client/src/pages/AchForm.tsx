@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import tcgLogo from "@assets/image_1777403094091.png";
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -30,22 +31,11 @@ const CSS = `
     margin-bottom: 32px;
   }
 
-  .ach-form .logo-mark {
-    flex-shrink: 0;
-    width: 44px; height: 44px;
-    background: linear-gradient(135deg, #14B8A6, #0d9488);
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 16px; color: #fff;
-    overflow: visible;
-  }
-
-  .ach-form .logo-text {
-    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; color: #1a1a2e;
-  }
-
   .ach-form .logo-sub {
-    font-size: 11px; color: #14B8A6; text-transform: uppercase; letter-spacing: 0.06em;
+    font-size: 11px; color: #14B8A6; text-transform: uppercase; letter-spacing: 0.08em;
+    font-family: 'DM Sans', sans-serif; font-weight: 500;
+    align-self: flex-end;
+    padding-bottom: 2px;
   }
 
   .ach-form h1 {
@@ -404,11 +394,8 @@ export default function AchForm() {
       <div className="ach-wrapper">
         {/* Logo */}
         <div className="logo-row">
-          <div className="logo-mark">TCG</div>
-          <div>
-            <div className="logo-text">Today Capital Group</div>
-            <div className="logo-sub">ACH Authorization</div>
-          </div>
+          <img src={tcgLogo} alt="Today Capital Group" style={{ height: 48, width: "auto" }} />
+          <div className="logo-sub">ACH Authorization</div>
         </div>
 
         <h1>ACH Debit Authorization Form</h1>
