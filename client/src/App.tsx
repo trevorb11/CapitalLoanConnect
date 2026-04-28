@@ -44,6 +44,7 @@ import RepConsole from "@/pages/RepConsole";
 import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
 import Analytics from "@/pages/Analytics";
 import Services from "@/pages/Services";
+import AchForm from "@/pages/AchForm";
 import ApprovalLetter from "@/pages/ApprovalLetter";
 import InternalStatementsUpload from "@/pages/InternalStatementsUpload";
 import SBALanding from "@/pages/SBALanding";
@@ -139,6 +140,9 @@ function Router() {
 
       {/* Services Interest Page - Public */}
       <Route path="/services" component={Services} />
+
+      {/* ACH Authorization Form - Public */}
+      <Route path="/ach" component={AchForm} />
 
       {/* Approval Letter - Public page for approved businesses */}
       <Route path="/approved/:slug" component={ApprovalLetter} />

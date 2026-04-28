@@ -6255,6 +6255,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // ACH AUTHORIZATION FORM
+  // ========================================
+
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS ach_authorizations (
+      id SERIAL PRIMARY KEY,
+      bank_name TEXT NOT NULL,
+      bank_address TEXT,
+      bank_city TEXT,
+      bank_state TEXT,
+      bank_zip TEXT,
+      account_type TEXT DEFAULT 'checking',
+      routing_number TEXT NOT NULL,
+      account_number TEXT NOT NULL,
+      debit_date TEXT,
+      amount TEXT,
+      business_name TEXT NOT NULL,
+      business_address TEXT,
+      business_city TEXT,
+      business_state TEXT,
+      business_zip TEXT,
+      contact_name TEXT,
+      contact_email TEXT,
+      contact_phone TEXT,
+      signature_data TEXT,
+      signed_at TIMESTAMP,
+      ip_address TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+  } catch (err) {
+    console.error("[ACH] Failed to ensure table:", err);
+  }
+
+  // POST /api/ach-form/submit — public endpoint for ACH form submission
+  app.post("/api/ach-form/submit", async (req: Request, res: Response) => {
+    try {
+      const {
+        bankName, bankAddress, bankCity, bankState, bankZip,
+        accountType, routingNumber, accountNumber,
+        debitDate, amount,
+        businessName, businessAddress, businessCity, businessState, businessZip,
+        contactName, contactEmail, contactPhone,
+        signatureData, signedAt,
+      } = req.body;
+
+      if (!bankName || !routingNumber || !accountNumber || !businessName) {
+        return res.status(400).json({ error: "Bank name, routing number, account number, and business name are required" });
+      }
+
+      if (routingNumber.length !== 9) {
+        return res.status(400).json({ error: "Routing number must be 9 digits" });
+      }
+
+      const ipAddress = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
+
+      await db.execute(sql`INSERT INTO ach_authorizations (
+        bank_name, bank_address, bank_city, bank_state, bank_zip,
+        account_type, routing_number, account_number,
+        debit_date, amount,
+        business_name, business_address, business_city, business_state, business_zip,
+        contact_name, contact_email, contact_phone,
+        signature_data, signed_at, ip_address
+      ) VALUES (
+        ${bankName}, ${bankAddress || null}, ${bankCity || null}, ${bankState || null}, ${bankZip || null},
+        ${accountType || 'checking'}, ${routingNumber}, ${accountNumber},
+        ${debitDate || null}, ${amount || null},
+        ${businessName}, ${businessAddress || null}, ${businessCity || null}, ${businessState || null}, ${businessZip || null},
+        ${contactName || null}, ${contactEmail || null}, ${contactPhone || null},
+        ${signatureData || null}, ${signedAt ? new Date(signedAt) : new Date()}, ${String(ipAddress)}
+      )`);
+
+      console.log(`[ACH] Authorization submitted: ${businessName} | ${contactEmail || bankName} | $${amount || '?'}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[ACH] Submit error:", err);
+      res.status(500).json({ error: "Failed to submit authorization" });
+    }
+  });
+
+  // GET /api/ach-form/submissions — admin view
+  app.get("/api/ach-form/submissions", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`SELECT id, bank_name, account_type, routing_number, account_number, debit_date, amount, business_name, contact_name, contact_email, contact_phone, signed_at, ip_address, created_at FROM ach_authorizations ORDER BY created_at DESC`);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[ACH] Fetch error:", err);
+      res.status(500).json({ error: "Failed to fetch submissions" });
+    }
+  });
+
+  // ========================================
   // SERVICES INTEREST TRACKING
   // ========================================
 
