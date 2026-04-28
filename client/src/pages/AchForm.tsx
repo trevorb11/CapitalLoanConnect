@@ -11,7 +11,7 @@ const CSS = `
     background: #f8f9fb;
     color: #1a1a2e;
     min-height: 100vh;
-    padding: 40px 24px 80px;
+    padding: 20px 24px 40px;
   }
 
   .ach-form .ach-wrapper {
@@ -20,7 +20,7 @@ const CSS = `
     background: #fff;
     border-radius: 16px;
     box-shadow: 0 4px 24px rgba(0,0,0,0.06);
-    padding: 48px 40px;
+    padding: 28px 36px 32px;
     overflow: visible;
   }
 
@@ -28,30 +28,30 @@ const CSS = `
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
-    margin-bottom: 32px;
+    gap: 4px;
+    margin-bottom: 16px;
   }
 
   .ach-form .logo-sub {
-    font-size: 11px; color: #14B8A6; text-transform: uppercase; letter-spacing: 0.08em;
+    font-size: 10px; color: #14B8A6; text-transform: uppercase; letter-spacing: 0.08em;
     font-family: 'DM Sans', sans-serif; font-weight: 500;
   }
 
   .ach-form h1 {
     font-family: 'Syne', sans-serif;
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 700;
     text-align: center;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     color: #1a1a2e;
   }
 
   .ach-form .subtitle {
     text-align: center;
     color: #6b7280;
-    font-size: 14px;
-    line-height: 1.6;
-    margin-bottom: 32px;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 18px;
     max-width: 560px;
     margin-left: auto;
     margin-right: auto;
@@ -59,39 +59,39 @@ const CSS = `
 
   .ach-form .section-label {
     font-family: 'Syne', sans-serif;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: #14B8A6;
-    margin-bottom: 16px;
-    margin-top: 32px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #e5e7eb;
+    margin-bottom: 10px;
+    margin-top: 18px;
+    padding-bottom: 6px;
+    border-bottom: 1.5px solid #e5e7eb;
   }
 
   .ach-form .field-group {
-    margin-bottom: 16px;
+    margin-bottom: 10px;
   }
 
   .ach-form .field-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    gap: 12px;
   }
 
   .ach-form .field-row-3 {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 16px;
+    gap: 12px;
   }
 
   .ach-form label {
     display: block;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     color: #374151;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
 
   .ach-form label .required {
@@ -101,10 +101,10 @@ const CSS = `
 
   .ach-form input, .ach-form select {
     width: 100%;
-    padding: 12px 14px;
+    padding: 8px 11px;
     border: 1px solid #d1d5db;
-    border-radius: 8px;
-    font-size: 15px;
+    border-radius: 6px;
+    font-size: 13px;
     font-family: 'DM Sans', sans-serif;
     color: #1a1a2e;
     background: #fff;
@@ -193,16 +193,16 @@ const CSS = `
 
   .ach-form .submit-btn {
     width: 100%;
-    padding: 16px;
+    padding: 12px;
     background: linear-gradient(135deg, #14B8A6, #0d9488);
     border: none;
-    border-radius: 10px;
+    border-radius: 8px;
     color: #fff;
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 16px;
+    font-size: 14px;
     cursor: pointer;
-    margin-top: 32px;
+    margin-top: 16px;
     transition: opacity 0.2s, transform 0.1s;
   }
 
@@ -210,14 +210,14 @@ const CSS = `
   .ach-form .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
   .ach-form .disclaimer {
-    margin-top: 24px;
-    padding: 16px;
+    margin-top: 14px;
+    padding: 10px 12px;
     background: #f9fafb;
     border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 12px;
+    border-radius: 6px;
+    font-size: 11px;
     color: #6b7280;
-    line-height: 1.7;
+    line-height: 1.6;
   }
 
   .ach-form .success-card {
@@ -470,7 +470,7 @@ export default function AchForm() {
       <div className="ach-wrapper">
         {/* Logo */}
         <div className="logo-row">
-          <img src={tcgLogo} alt="Today Capital Group" style={{ height: 48, width: "auto" }} />
+          <img src={tcgLogo} alt="Today Capital Group" style={{ height: 36, width: "auto" }} />
           <div className="logo-sub">ACH Authorization</div>
         </div>
 
