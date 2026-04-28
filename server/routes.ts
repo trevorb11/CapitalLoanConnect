@@ -321,9 +321,17 @@ function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: 
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // ── INDUSTRY PAGE REDIRECTS ────────────────────────────────────────────
-  app.get("/industries/construction", (_req: Request, res: Response) => {
-    res.redirect(301, "https://fund.todaycapitalgroup.com/industries/construction");
-  });
+  const industryRedirects = [
+    "construction",
+    "restaurant",
+    "trucking",
+    "auto-repair",
+  ];
+  for (const slug of industryRedirects) {
+    app.get(`/industries/${slug}`, (_req: Request, res: Response) => {
+      res.redirect(301, `https://fund.todaycapitalgroup.com/industries/${slug}`);
+    });
+  }
 
   // ── ADMIN PORTAL PREVIEW TOKEN STORE (in-memory, 30-min TTL) ──────────
   const adminPreviewTokens = new Map<string, { email: string; name: string; businessName: string; expiresAt: number }>();
