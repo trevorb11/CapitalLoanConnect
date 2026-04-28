@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import tcgLogo from "@assets/image_1777403094091.png";
 
 const CSS = `
@@ -143,47 +143,53 @@ const CSS = `
   }
 
   .ach-form .sig-area {
-    margin-top: 24px;
-    padding: 24px;
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-  }
-
-  .ach-form .sig-canvas {
-    width: 100%;
-    height: 120px;
-    border: 2px dashed #d1d5db;
-    border-radius: 8px;
-    cursor: crosshair;
-    background: #fff;
-    touch-action: none;
-  }
-
-  .ach-form .sig-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     margin-top: 8px;
   }
 
-  .ach-form .sig-hint {
-    font-size: 12px;
-    color: #9ca3af;
+  .ach-form .sig-line-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    margin-top: 6px;
   }
 
-  .ach-form .clear-btn {
-    padding: 6px 14px;
-    background: none;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 12px;
-    color: #6b7280;
-    cursor: pointer;
+  .ach-form .sig-line-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ach-form .sig-date-wrap {
+    width: 160px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ach-form .sig-input {
+    width: 100%;
+    border: none !important;
+    border-bottom: 1.5px solid #1a1a2e !important;
+    border-radius: 0 !important;
+    padding: 4px 0 !important;
+    font-size: 15px;
     font-family: 'DM Sans', sans-serif;
+    color: #1a1a2e;
+    background: transparent;
+    box-shadow: none !important;
+    outline: none;
   }
 
-  .ach-form .clear-btn:hover { background: #f3f4f6; }
+  .ach-form .sig-input:focus {
+    border-bottom-color: #14B8A6 !important;
+  }
+
+  .ach-form .sig-sub-label {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 4px;
+    letter-spacing: 0.02em;
+  }
 
   .ach-form .submit-btn {
     width: 100%;
@@ -282,7 +288,6 @@ const CSS = `
 
     .ach-form .top-bar { display: none !important; }
     .ach-form .submit-btn { display: none !important; }
-    .ach-form .sig-actions { display: none !important; }
 
     .ach-form .ach-wrapper {
       box-shadow: none !important;
@@ -331,15 +336,14 @@ const CSS = `
     .ach-form .radio-group { gap: 16px !important; margin-top: 3px !important; }
     .ach-form .radio-option { font-size: 12px !important; }
 
-    .ach-form .sig-area {
-      background: transparent !important;
-      border: 1px solid #ccc !important;
-      padding: 12px !important;
+    .ach-form .sig-input {
+      border-bottom: 1px solid #aaa !important;
+      font-size: 14px !important;
     }
 
-    .ach-form .sig-canvas {
-      border: 1px solid #ccc !important;
-      height: 80px !important;
+    .ach-form .sig-sub-label {
+      font-size: 10px !important;
+      color: #888 !important;
     }
 
     .ach-form .disclaimer {
@@ -372,66 +376,15 @@ export default function AchForm() {
     contactName: "",
     contactEmail: "",
     contactPhone: "",
+    signature: "",
   });
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Signature canvas
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [hasSigned, setHasSigned] = useState(false);
-
   const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(prev => ({ ...prev, [field]: e.target.value }));
-
-  // Canvas drawing
-  const getPos = (e: React.MouseEvent | React.TouchEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    if ("touches" in e) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-    }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!ctx) return;
-    setIsDrawing(true);
-    setHasSigned(true);
-    const { x, y } = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-  };
-
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return;
-    e.preventDefault();
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
-    const { x, y } = getPos(e);
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = "#1a1a2e";
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
-
-  const stopDraw = () => setIsDrawing(false);
-
-  const clearSig = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (ctx && canvas) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      setHasSigned(false);
-    }
-  };
 
   // Pre-fill from URL params
   useState(() => {
@@ -449,7 +402,7 @@ export default function AchForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hasSigned) {
+    if (!form.signature.trim()) {
       setError("Please sign the form before submitting.");
       return;
     }
@@ -457,12 +410,9 @@ export default function AchForm() {
     setError(null);
 
     try {
-      // Get signature as data URL
-      const sigData = canvasRef.current?.toDataURL("image/png") || "";
-
       const payload = {
         ...form,
-        signatureData: sigData,
+        signatureData: form.signature,
         signedAt: new Date().toISOString(),
       };
 
@@ -607,30 +557,6 @@ export default function AchForm() {
             </div>
           </div>
 
-          {/* Signature */}
-          <div className="section-label">Signature</div>
-
-          <div className="sig-area">
-            <label>Account Holder's Signature <span className="required">*</span></label>
-            <canvas
-              ref={canvasRef}
-              className="sig-canvas"
-              width={640}
-              height={120}
-              onMouseDown={startDraw}
-              onMouseMove={draw}
-              onMouseUp={stopDraw}
-              onMouseLeave={stopDraw}
-              onTouchStart={startDraw}
-              onTouchMove={draw}
-              onTouchEnd={stopDraw}
-            />
-            <div className="sig-actions">
-              <span className="sig-hint">{hasSigned ? "Signature captured" : "Draw your signature above"}</span>
-              <button type="button" className="clear-btn" onClick={clearSig}>Clear</button>
-            </div>
-          </div>
-
           {/* Business / Consumer Info */}
           <div className="section-label">Business / Consumer Information</div>
 
@@ -673,6 +599,37 @@ export default function AchForm() {
             <div className="field-group">
               <label>Phone</label>
               <input type="tel" value={form.contactPhone} onChange={set("contactPhone")} placeholder="(555) 555-5555" />
+            </div>
+          </div>
+
+          {/* Signature */}
+          <div className="section-label">Authorization &amp; Signature</div>
+
+          <div className="sig-area">
+            <div className="sig-line-row">
+              <div className="sig-line-wrap">
+                <input
+                  className="sig-input"
+                  type="text"
+                  value={form.signature}
+                  onChange={set("signature")}
+                  placeholder=" "
+                  required
+                  data-testid="input-signature"
+                />
+                <span className="sig-sub-label">Authorized Signature <span style={{ color: "#ef4444" }}>*</span></span>
+              </div>
+              <div className="sig-date-wrap">
+                <input
+                  className="sig-input"
+                  type="text"
+                  value={form.debitDate}
+                  readOnly
+                  placeholder=" "
+                  tabIndex={-1}
+                />
+                <span className="sig-sub-label">Date</span>
+              </div>
             </div>
           </div>
 
