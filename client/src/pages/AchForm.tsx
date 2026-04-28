@@ -277,13 +277,14 @@ const CSS = `
   }
 
   @media print {
-    @page { margin: 18mm 16mm; size: A4; }
+    @page { margin: 8mm 10mm; size: letter portrait; }
 
     body, html { background: #fff !important; }
 
     .ach-form {
       background: #fff !important;
       padding: 0 !important;
+      min-height: unset !important;
     }
 
     .ach-form .top-bar { display: none !important; }
@@ -296,36 +297,43 @@ const CSS = `
       max-width: 100% !important;
     }
 
-    .ach-form .logo-row { margin-bottom: 20px; }
+    .ach-form .logo-row { margin-bottom: 8px !important; gap: 2px !important; }
+    .ach-form .logo-row img { height: 28px !important; }
+    .ach-form .logo-sub { font-size: 8px !important; }
 
-    .ach-form h1 { font-size: 20px !important; margin-bottom: 6px !important; }
-    .ach-form .subtitle { font-size: 12px !important; margin-bottom: 20px !important; }
+    .ach-form h1 { font-size: 15px !important; margin-bottom: 3px !important; }
+    .ach-form .subtitle { font-size: 10px !important; line-height: 1.4 !important; margin-bottom: 10px !important; }
 
     .ach-form .section-label {
-      font-size: 11px !important;
-      margin-top: 18px !important;
-      margin-bottom: 10px !important;
-      padding-bottom: 5px !important;
+      font-size: 9px !important;
+      margin-top: 10px !important;
+      margin-bottom: 5px !important;
+      padding-bottom: 3px !important;
+      border-bottom-width: 1px !important;
     }
 
-    .ach-form .field-group { margin-bottom: 10px !important; }
+    .ach-form .field-group { margin-bottom: 6px !important; }
+
+    .ach-form .field-row,
+    .ach-form .field-row-3 { gap: 8px !important; }
 
     .ach-form label {
-      font-size: 11px !important;
-      margin-bottom: 3px !important;
-      color: #555 !important;
+      font-size: 9px !important;
+      margin-bottom: 2px !important;
+      color: #444 !important;
     }
 
     .ach-form input,
     .ach-form select {
       border: none !important;
-      border-bottom: 1px solid #aaa !important;
+      border-bottom: 1px solid #999 !important;
       border-radius: 0 !important;
-      padding: 3px 0 !important;
-      font-size: 13px !important;
+      padding: 2px 0 !important;
+      font-size: 11px !important;
       box-shadow: none !important;
       background: transparent !important;
       color: #000 !important;
+      height: auto !important;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -333,23 +341,26 @@ const CSS = `
     .ach-form input::placeholder,
     .ach-form select option[value=""] { color: transparent !important; }
 
-    .ach-form .radio-group { gap: 16px !important; margin-top: 3px !important; }
-    .ach-form .radio-option { font-size: 12px !important; }
+    .ach-form .radio-group { gap: 12px !important; margin-top: 2px !important; }
+    .ach-form .radio-option { font-size: 10px !important; }
+    .ach-form .radio-option input[type="radio"] { width: 12px !important; height: 12px !important; margin-right: 4px !important; }
 
+    .ach-form .sig-area { margin-top: 4px !important; }
+    .ach-form .sig-line-row { gap: 16px !important; margin-top: 3px !important; }
     .ach-form .sig-input {
-      border-bottom: 1px solid #aaa !important;
-      font-size: 14px !important;
+      border-bottom: 1px solid #999 !important;
+      font-size: 11px !important;
+      padding: 2px 0 !important;
     }
-
-    .ach-form .sig-sub-label {
-      font-size: 10px !important;
-      color: #888 !important;
-    }
+    .ach-form .sig-sub-label { font-size: 8px !important; color: #888 !important; margin-top: 2px !important; }
 
     .ach-form .disclaimer {
-      font-size: 10px !important;
-      padding: 10px !important;
+      font-size: 8.5px !important;
+      padding: 6px 8px !important;
+      margin-top: 8px !important;
+      line-height: 1.45 !important;
       background: #f9f9f9 !important;
+      border: 1px solid #ddd !important;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
