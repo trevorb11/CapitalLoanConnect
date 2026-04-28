@@ -26,16 +26,15 @@ const CSS = `
 
   .ach-form .logo-row {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
     margin-bottom: 32px;
   }
 
   .ach-form .logo-sub {
     font-size: 11px; color: #14B8A6; text-transform: uppercase; letter-spacing: 0.08em;
     font-family: 'DM Sans', sans-serif; font-weight: 500;
-    align-self: flex-end;
-    padding-bottom: 2px;
   }
 
   .ach-form h1 {
