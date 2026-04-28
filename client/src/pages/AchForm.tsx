@@ -483,9 +483,15 @@ export default function AchForm() {
           {/* Business / Consumer Info */}
           <div className="section-label">Business / Consumer Information</div>
 
-          <div className="field-group">
-            <label>Business / Consumer Name <span className="required">*</span></label>
-            <input value={form.businessName} onChange={set("businessName")} placeholder="Legal business name or your full name" required />
+          <div className="field-row">
+            <div className="field-group">
+              <label>Business Name <span className="required">*</span></label>
+              <input value={form.businessName} onChange={set("businessName")} placeholder="Legal business name" required />
+            </div>
+            <div className="field-group">
+              <label>Contact Name</label>
+              <input value={form.contactName} onChange={set("contactName")} placeholder="Full name" />
+            </div>
           </div>
 
           <div className="field-group">
@@ -508,11 +514,7 @@ export default function AchForm() {
             </div>
           </div>
 
-          <div className="field-row-3">
-            <div className="field-group">
-              <label>Contact Name</label>
-              <input value={form.contactName} onChange={set("contactName")} placeholder="Full name" />
-            </div>
+          <div className="field-row">
             <div className="field-group">
               <label>Email</label>
               <input type="email" value={form.contactEmail} onChange={set("contactEmail")} placeholder="email@example.com" />
