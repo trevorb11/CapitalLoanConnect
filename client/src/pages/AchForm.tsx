@@ -13,13 +13,14 @@ const CSS = `
     padding: 40px 24px 80px;
   }
 
-  .ach-form .container {
+  .ach-form .ach-wrapper {
     max-width: 720px;
     margin: 0 auto;
     background: #fff;
     border-radius: 16px;
     box-shadow: 0 4px 24px rgba(0,0,0,0.06);
     padding: 48px 40px;
+    overflow: visible;
   }
 
   .ach-form .logo-row {
@@ -30,11 +31,13 @@ const CSS = `
   }
 
   .ach-form .logo-mark {
-    width: 40px; height: 40px;
+    flex-shrink: 0;
+    width: 44px; height: 44px;
     background: linear-gradient(135deg, #14B8A6, #0d9488);
     border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
     font-family: 'Syne', sans-serif; font-weight: 800; font-size: 16px; color: #fff;
+    overflow: visible;
   }
 
   .ach-form .logo-text {
@@ -381,7 +384,7 @@ export default function AchForm() {
     return (
       <div className="ach-form">
         <style>{CSS}</style>
-        <div className="container">
+        <div className="ach-wrapper">
           <div className="success-card">
             <div className="success-icon">{"\u2713"}</div>
             <h1>ACH Authorization Received</h1>
@@ -398,7 +401,7 @@ export default function AchForm() {
   return (
     <div className="ach-form">
       <style>{CSS}</style>
-      <div className="container">
+      <div className="ach-wrapper">
         {/* Logo */}
         <div className="logo-row">
           <div className="logo-mark">TCG</div>
