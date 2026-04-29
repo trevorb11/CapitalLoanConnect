@@ -306,9 +306,9 @@ const CSS = `
 
     .ach-form .section-label {
       font-size: 9px !important;
-      margin-top: 10px !important;
-      margin-bottom: 5px !important;
-      padding-bottom: 3px !important;
+      margin-top: 20px !important;
+      margin-bottom: 8px !important;
+      padding-bottom: 4px !important;
       border-bottom-width: 1px !important;
     }
 
