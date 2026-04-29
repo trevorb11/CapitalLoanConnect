@@ -319,7 +319,7 @@ const CSS = `
       align-items: flex-end !important;
       flex-wrap: nowrap !important;
       gap: 3px !important;
-      margin-bottom: 10px !important;
+      margin-bottom: 16px !important;
     }
 
     .ach-form .field-row,
