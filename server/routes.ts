@@ -12,7 +12,7 @@ import { plaidService } from "./services/plaid";
 import { chirpService, ChirpApiError } from "./services/chirp";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, extractPositionTerms } from "./services/openai";
+import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, extractPositionTerms, extractPositionTermsFromPdfBuffer } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { notifyMerchantNewMessage } from "./services/twilio";
@@ -6882,22 +6882,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!isOpenAIConfigured()) return res.status(503).json({ error: "AI extraction is not configured." });
 
       try {
-        let text: string = req.body?.text || "";
+        const pdfBuffer: Buffer | null = req.file?.buffer || null;
+        const text: string = req.body?.text || "";
 
-        if (req.file) {
-          // Extract text from uploaded PDF using pdf-parse
-          const pdfParse = (await import("pdf-parse")).default;
-          try {
-            const parsed = await pdfParse(req.file.buffer);
-            text = parsed.text || "";
-          } catch (pdfErr) {
-            console.error("[EXTRACT] pdf-parse error:", pdfErr);
-            return res.status(400).json({ error: "Could not read the uploaded PDF. Make sure it is a valid PDF file." });
-          }
+        if (pdfBuffer) {
+          // For any PDF upload (text-based or image-based), send directly to GPT-4o
+          // which can read both text-layer PDFs and scanned/image PDFs natively
+          console.log(`[EXTRACT] PDF upload (${pdfBuffer.length} bytes), sending to GPT-4o`);
+          const terms = await extractPositionTermsFromPdfBuffer(pdfBuffer);
+          return res.json(terms);
         }
 
-        if (!text || text.trim().length < 20) {
-          return res.status(400).json({ error: "Not enough text found to extract terms. Please paste more detail or upload a different document." });
+        // Pasted text path
+        if (!text || text.trim().length < 10) {
+          return res.status(400).json({ error: "No content to analyze. Please paste some text or upload a PDF." });
         }
 
         const terms = await extractPositionTerms(text);

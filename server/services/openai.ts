@@ -647,59 +647,85 @@ export interface ExtractedPositionTerms {
   notes: string | null;
 }
 
+const POSITION_SYSTEM_PROMPT = `You are a financial document parser that extracts MCA/business loan position details.
+Return ONLY valid JSON, no markdown fences:
+{
+  "funderName": string or null,
+  "productType": one of "MCA"|"LOC"|"Term Loan"|"SBA"|"Revenue Based"|"Other" or null,
+  "fundedAmount": number (no commas/symbols) or null,
+  "paybackAmount": number or null,
+  "factorRate": string e.g. "1.30" or null,
+  "paymentAmount": number or null,
+  "paymentFrequency": one of "daily"|"weekly"|"bi-weekly"|"monthly" or null,
+  "remainingBalance": number or null,
+  "fundedDate": "YYYY-MM-DD" or null,
+  "confidence": "high"|"medium"|"low",
+  "notes": string or null
+}
+Rules: strip $ and commas from numbers; "advance amount"/"funded amount" = fundedAmount; "payback"/"total remittance" = paybackAmount; "RTR"/"daily ACH" = daily frequency; for bank statements look for recurring ACH debits; confidence "high" if 5+ fields extracted, "medium" if 3-4, "low" otherwise.`;
+
+function parsePositionJson(raw: string): ExtractedPositionTerms {
+  let clean = raw.trim();
+  if (clean.startsWith("```json")) clean = clean.slice(7);
+  else if (clean.startsWith("```")) clean = clean.slice(3);
+  if (clean.endsWith("```")) clean = clean.slice(0, -3);
+  return JSON.parse(clean.trim()) as ExtractedPositionTerms;
+}
+
+const POSITION_EMPTY: ExtractedPositionTerms = {
+  funderName: null, productType: null, fundedAmount: null, paybackAmount: null,
+  factorRate: null, paymentAmount: null, paymentFrequency: null, remainingBalance: null,
+  fundedDate: null, confidence: "low", notes: "Could not parse document."
+};
+
 export async function extractPositionTerms(text: string): Promise<ExtractedPositionTerms> {
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
-        {
-          role: "system",
-          content: `You are a financial document parser that extracts MCA/business loan position details from raw text.
-Extract the following fields and return ONLY valid JSON, no markdown fences:
-{
-  "funderName": string or null — the lender/funder company name,
-  "productType": one of "MCA" | "LOC" | "Term Loan" | "SBA" | "Revenue Based" | "Other" or null,
-  "fundedAmount": number (dollars, no commas/symbols) or null — the advance/funded amount,
-  "paybackAmount": number or null — total payback/remittance amount,
-  "factorRate": string (e.g. "1.30") or null — the factor rate or buyrate,
-  "paymentAmount": number or null — the individual payment/remittance amount,
-  "paymentFrequency": one of "daily" | "weekly" | "bi-weekly" | "monthly" or null,
-  "remainingBalance": number or null — remaining amount to pay back (if mentioned),
-  "fundedDate": string in "YYYY-MM-DD" format or null — the date funded/originated,
-  "confidence": "high" | "medium" | "low" — how complete the extracted data is,
-  "notes": string or null — any important notes, conditions, or caveats from the document
-}
-
-Rules:
-- If a field isn't mentioned or can't be reliably inferred, return null
-- Strip dollar signs and commas from numeric values
-- If you see "advance amount" or "funded amount" treat it as fundedAmount
-- If you see "payback" or "total remittance" treat it as paybackAmount
-- "RTR" or "daily ACH" implies daily frequency
-- For bank statements, look for recurring ACH debits to identify payment amounts/frequencies
-- confidence = "high" if you extracted 5+ fields, "medium" if 3-4, "low" if fewer than 3`
-        },
-        {
-          role: "user",
-          content: `Extract funding position terms from this document text:\n\n${text.slice(0, 12000)}`
-        }
+        { role: "system", content: POSITION_SYSTEM_PROMPT },
+        { role: "user", content: `Extract funding position terms from this document:\n\n${text.slice(0, 12000)}` }
       ],
       temperature: 0.1,
       max_tokens: 600
     });
-
-    const raw = response.choices[0]?.message?.content?.trim() || "{}";
-    let clean = raw;
-    if (clean.startsWith("```json")) clean = clean.slice(7);
-    else if (clean.startsWith("```")) clean = clean.slice(3);
-    if (clean.endsWith("```")) clean = clean.slice(0, -3);
-    return JSON.parse(clean.trim()) as ExtractedPositionTerms;
+    return parsePositionJson(response.choices[0]?.message?.content || "{}");
   } catch (err) {
     console.error("[OPENAI] extractPositionTerms error:", err);
-    return {
-      funderName: null, productType: null, fundedAmount: null, paybackAmount: null,
-      factorRate: null, paymentAmount: null, paymentFrequency: null, remainingBalance: null,
-      fundedDate: null, confidence: "low", notes: "Could not parse document."
-    };
+    return POSITION_EMPTY;
+  }
+}
+
+// Send raw PDF buffer to GPT-4o via the Responses API (supports input_file natively)
+export async function extractPositionTermsFromPdfBuffer(pdfBuffer: Buffer): Promise<ExtractedPositionTerms> {
+  try {
+    const base64Pdf = pdfBuffer.toString("base64");
+    const response = await (openai as any).responses.create({
+      model: "gpt-4o",
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_file",
+              filename: "document.pdf",
+              file_data: `data:application/pdf;base64,${base64Pdf}`,
+            },
+            {
+              type: "input_text",
+              text: `${POSITION_SYSTEM_PROMPT}\n\nExtract all funding/loan position terms from this document and return ONLY the JSON:`
+            }
+          ]
+        }
+      ],
+      temperature: 0.1,
+      max_output_tokens: 600,
+    });
+    // Responses API returns output differently
+    const content = response.output_text || response.output?.[0]?.content?.[0]?.text || "{}";
+    return parsePositionJson(content);
+  } catch (err) {
+    console.error("[OPENAI] extractPositionTermsFromPdfBuffer error:", err);
+    return { ...POSITION_EMPTY, notes: "Could not read this PDF. Try pasting the text instead." };
   }
 }
