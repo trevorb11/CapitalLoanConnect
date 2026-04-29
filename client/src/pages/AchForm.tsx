@@ -312,23 +312,43 @@ const CSS = `
       border-bottom-width: 1px !important;
     }
 
-    .ach-form .field-group { margin-bottom: 6px !important; }
+    /* Flip label below the input line — classic paper-form style */
+    .ach-form .field-group {
+      display: flex !important;
+      flex-direction: column-reverse !important;
+      margin-bottom: 8px !important;
+    }
 
     .ach-form .field-row,
     .ach-form .field-row-3 { gap: 8px !important; }
 
     .ach-form label {
+      font-size: 8px !important;
+      margin-bottom: 0 !important;
+      margin-top: 2px !important;
+      color: #666 !important;
+      font-style: italic !important;
+      letter-spacing: 0.02em !important;
+    }
+
+    /* Radio-group field: keep label on top since radios are self-labelling */
+    .ach-form .field-group:has(.radio-group) {
+      flex-direction: column !important;
+    }
+    .ach-form .field-group:has(.radio-group) > label {
+      margin-bottom: 3px !important;
+      margin-top: 0 !important;
+      font-style: normal !important;
       font-size: 9px !important;
-      margin-bottom: 2px !important;
       color: #444 !important;
     }
 
     .ach-form input,
     .ach-form select {
       border: none !important;
-      border-bottom: 1px solid #999 !important;
+      border-bottom: 1.5px solid #555 !important;
       border-radius: 0 !important;
-      padding: 2px 0 !important;
+      padding: 10px 0 2px !important;
       font-size: 11px !important;
       box-shadow: none !important;
       background: transparent !important;
