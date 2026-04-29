@@ -12,7 +12,7 @@ import { plaidService } from "./services/plaid";
 import { chirpService, ChirpApiError } from "./services/chirp";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand } from "./services/openai";
+import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, extractPositionTerms } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { notifyMerchantNewMessage } from "./services/twilio";
@@ -6870,6 +6870,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await db.execute(sql`DELETE FROM lead_positions WHERE id = ${req.params.id} AND lead_email = ${email}`);
     res.json({ success: true });
   });
+
+  // POST /api/lead/positions/extract — AI-powered term extraction from text or PDF
+  {
+    const multerMemory = (await import("multer")).default({ storage: (await import("multer")).default.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+    app.post("/api/lead/positions/extract", (req, res, next) => {
+      multerMemory.single("file")(req, res, next);
+    }, async (req: Request, res: Response) => {
+      const email = getLeadEmail(req);
+      if (!email) return res.status(401).json({ error: "Authentication required" });
+      if (!isOpenAIConfigured()) return res.status(503).json({ error: "AI extraction is not configured." });
+
+      try {
+        let text: string = req.body?.text || "";
+
+        if (req.file) {
+          // Extract text from uploaded PDF using pdf-parse
+          const pdfParse = (await import("pdf-parse")).default;
+          try {
+            const parsed = await pdfParse(req.file.buffer);
+            text = parsed.text || "";
+          } catch (pdfErr) {
+            console.error("[EXTRACT] pdf-parse error:", pdfErr);
+            return res.status(400).json({ error: "Could not read the uploaded PDF. Make sure it is a valid PDF file." });
+          }
+        }
+
+        if (!text || text.trim().length < 20) {
+          return res.status(400).json({ error: "Not enough text found to extract terms. Please paste more detail or upload a different document." });
+        }
+
+        const terms = await extractPositionTerms(text);
+        res.json(terms);
+      } catch (err: any) {
+        console.error("[EXTRACT] extraction error:", err);
+        res.status(500).json({ error: err.message || "Extraction failed" });
+      }
+    });
+  }
 
   // ── Lead Banking (reuses merchant Chirp infrastructure) ──
 

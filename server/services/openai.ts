@@ -631,3 +631,75 @@ Respond ONLY with the JSON object.`;
     };
   }
 }
+
+// ── Extract funding position terms from text (term sheet, bank statement, pasted copy) ──
+export interface ExtractedPositionTerms {
+  funderName: string | null;
+  productType: string | null;
+  fundedAmount: number | null;
+  paybackAmount: number | null;
+  factorRate: string | null;
+  paymentAmount: number | null;
+  paymentFrequency: string | null;
+  remainingBalance: number | null;
+  fundedDate: string | null;
+  confidence: "high" | "medium" | "low";
+  notes: string | null;
+}
+
+export async function extractPositionTerms(text: string): Promise<ExtractedPositionTerms> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are a financial document parser that extracts MCA/business loan position details from raw text.
+Extract the following fields and return ONLY valid JSON, no markdown fences:
+{
+  "funderName": string or null — the lender/funder company name,
+  "productType": one of "MCA" | "LOC" | "Term Loan" | "SBA" | "Revenue Based" | "Other" or null,
+  "fundedAmount": number (dollars, no commas/symbols) or null — the advance/funded amount,
+  "paybackAmount": number or null — total payback/remittance amount,
+  "factorRate": string (e.g. "1.30") or null — the factor rate or buyrate,
+  "paymentAmount": number or null — the individual payment/remittance amount,
+  "paymentFrequency": one of "daily" | "weekly" | "bi-weekly" | "monthly" or null,
+  "remainingBalance": number or null — remaining amount to pay back (if mentioned),
+  "fundedDate": string in "YYYY-MM-DD" format or null — the date funded/originated,
+  "confidence": "high" | "medium" | "low" — how complete the extracted data is,
+  "notes": string or null — any important notes, conditions, or caveats from the document
+}
+
+Rules:
+- If a field isn't mentioned or can't be reliably inferred, return null
+- Strip dollar signs and commas from numeric values
+- If you see "advance amount" or "funded amount" treat it as fundedAmount
+- If you see "payback" or "total remittance" treat it as paybackAmount
+- "RTR" or "daily ACH" implies daily frequency
+- For bank statements, look for recurring ACH debits to identify payment amounts/frequencies
+- confidence = "high" if you extracted 5+ fields, "medium" if 3-4, "low" if fewer than 3`
+        },
+        {
+          role: "user",
+          content: `Extract funding position terms from this document text:\n\n${text.slice(0, 12000)}`
+        }
+      ],
+      temperature: 0.1,
+      max_tokens: 600
+    });
+
+    const raw = response.choices[0]?.message?.content?.trim() || "{}";
+    let clean = raw;
+    if (clean.startsWith("```json")) clean = clean.slice(7);
+    else if (clean.startsWith("```")) clean = clean.slice(3);
+    if (clean.endsWith("```")) clean = clean.slice(0, -3);
+    return JSON.parse(clean.trim()) as ExtractedPositionTerms;
+  } catch (err) {
+    console.error("[OPENAI] extractPositionTerms error:", err);
+    return {
+      funderName: null, productType: null, fundedAmount: null, paybackAmount: null,
+      factorRate: null, paymentAmount: null, paymentFrequency: null, remainingBalance: null,
+      fundedDate: null, confidence: "low", notes: "Could not parse document."
+    };
+  }
+}

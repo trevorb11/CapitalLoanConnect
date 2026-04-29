@@ -279,10 +279,54 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
 
 // ── ADD POSITION FORM ────────────────────────────────────────────────────
 function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) {
+  const [mode, setMode] = useState<"choose" | "extract" | "manual">("choose");
+  const [extractTab, setExtractTab] = useState<"paste" | "termsheet" | "statement">("paste");
+  const [pasteText, setPasteText] = useState("");
+  const [extractFile, setExtractFile] = useState<File | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [extractNotes, setExtractNotes] = useState<string | null>(null);
+  const [wasExtracted, setWasExtracted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ funderName: "", productType: "MCA", fundedAmount: "", paybackAmount: "", factorRate: "", paymentAmount: "", paymentFrequency: "daily", fundedDate: "", remainingBalance: "" });
-  const set = (f: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm(p => ({ ...p, [f]: e.target.value }));
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [form, setForm] = useState({
+    funderName: "", productType: "MCA", fundedAmount: "", paybackAmount: "",
+    factorRate: "", paymentAmount: "", paymentFrequency: "daily", fundedDate: "", remainingBalance: ""
+  });
+  const set = (f: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm(p => ({ ...p, [f]: e.target.value }));
+
+  const handleExtract = async () => {
+    setExtracting(true); setExtractError(null); setExtractNotes(null);
+    try {
+      const fd = new FormData();
+      if ((extractTab === "termsheet" || extractTab === "statement") && extractFile) {
+        fd.append("file", extractFile);
+      } else {
+        fd.append("text", pasteText);
+      }
+      const res = await fetch("/api/lead/positions/extract", { method: "POST", credentials: "include", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Extraction failed");
+      // Populate form with extracted values
+      setForm({
+        funderName: data.funderName || "",
+        productType: data.productType || "MCA",
+        fundedAmount: data.fundedAmount != null ? String(data.fundedAmount) : "",
+        paybackAmount: data.paybackAmount != null ? String(data.paybackAmount) : "",
+        factorRate: data.factorRate || "",
+        paymentAmount: data.paymentAmount != null ? String(data.paymentAmount) : "",
+        paymentFrequency: data.paymentFrequency || "daily",
+        fundedDate: data.fundedDate || "",
+        remainingBalance: data.remainingBalance != null ? String(data.remainingBalance) : "",
+      });
+      if (data.notes) setExtractNotes(data.notes);
+      setWasExtracted(true);
+      setMode("manual");
+    } catch (e: any) { setExtractError(e.message); } finally { setExtracting(false); }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -294,37 +338,156 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
     } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
+  // ── Choose mode ────────────────────────────────────────────────────────
+  if (mode === "choose") return (
+    <div className="card">
+      <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Add Funding Position</h3>
+      <p style={{ color: "#7b8499", fontSize: 13, marginBottom: 20 }}>How would you like to add this position?</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+        <button type="button" onClick={() => setMode("extract")} style={{
+          background: "rgba(45,212,191,0.07)", border: "1.5px solid rgba(45,212,191,0.3)", borderRadius: 10,
+          padding: "20px 16px", cursor: "pointer", textAlign: "center", color: "inherit"
+        }} data-testid="btn-use-document">
+          <div style={{ fontSize: 22, marginBottom: 8 }}>✦</div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#2dd4bf" }}>Smart Extract</div>
+          <div style={{ color: "#7b8499", fontSize: 12, lineHeight: 1.5 }}>Upload a term sheet, bank statement, or paste copied terms &mdash; AI fills in the details</div>
+        </button>
+        <button type="button" onClick={() => setMode("manual")} style={{
+          background: "rgba(255,255,255,0.03)", border: "1.5px solid rgba(255,255,255,0.08)", borderRadius: 10,
+          padding: "20px 16px", cursor: "pointer", textAlign: "center", color: "inherit"
+        }} data-testid="btn-manual-entry">
+          <div style={{ fontSize: 22, marginBottom: 8 }}>&#9998;</div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: "#e8eaf0" }}>Enter Manually</div>
+          <div style={{ color: "#7b8499", fontSize: 12, lineHeight: 1.5 }}>Fill in the funding details yourself</div>
+        </button>
+      </div>
+      <button type="button" onClick={onCancel} className="btn-secondary" style={{ width: "100%" }}>Cancel</button>
+    </div>
+  );
+
+  // ── Extract mode ───────────────────────────────────────────────────────
+  if (mode === "extract") return (
+    <div className="card">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <button type="button" onClick={() => setMode("choose")} style={{ background: "none", border: "none", color: "#7b8499", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>&#8592;</button>
+        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600 }}>Smart Extract</h3>
+      </div>
+
+      {/* Source tabs */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "rgba(15,23,41,0.7)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: 4 }}>
+        {([["paste", "Paste Text"], ["termsheet", "Term Sheet PDF"], ["statement", "Bank Statement PDF"]] as const).map(([key, label]) => (
+          <button key={key} type="button" onClick={() => { setExtractTab(key); setExtractFile(null); setExtractError(null); }}
+            style={{ flex: 1, padding: "8px 4px", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 12, fontWeight: extractTab === key ? 600 : 400,
+              background: extractTab === key ? "rgba(45,212,191,0.1)" : "none", color: extractTab === key ? "#2dd4bf" : "#7b8499" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Paste text */}
+      {extractTab === "paste" && (
+        <div>
+          <label className="field-label">Paste your term sheet text, approval email, or loan details below</label>
+          <textarea
+            className="field-input"
+            value={pasteText}
+            onChange={e => setPasteText(e.target.value)}
+            rows={8}
+            placeholder={"Funder: ABC Capital\nAdvance Amount: $50,000\nPayback Amount: $65,000\nFactor Rate: 1.30\nDaily Payment: $595\nStart Date: Jan 15, 2025\n..."}
+            style={{ resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+            data-testid="textarea-paste-terms"
+          />
+        </div>
+      )}
+
+      {/* PDF upload (term sheet or bank statement) */}
+      {(extractTab === "termsheet" || extractTab === "statement") && (
+        <div>
+          <input ref={fileInputRef} type="file" accept=".pdf" style={{ display: "none" }}
+            onChange={e => { setExtractFile(e.target.files?.[0] || null); setExtractError(null); }} />
+          <div
+            className={`upload-zone${extractFile ? " dragging" : ""}`}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f?.type === "application/pdf") { setExtractFile(f); setExtractError(null); } }}
+            data-testid={`upload-zone-${extractTab}`}
+          >
+            {extractFile ? (
+              <><strong style={{ color: "#2dd4bf" }}>{extractFile.name}</strong><p>Click to change file</p></>
+            ) : (
+              <><strong>{extractTab === "termsheet" ? "Drop your term sheet PDF here" : "Drop a bank statement PDF here"}</strong><p>PDF files only &mdash; up to 25 MB</p></>
+            )}
+          </div>
+          {extractTab === "statement" && (
+            <p style={{ color: "#64748b", fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>
+              The AI will look for recurring ACH debits that match MCA payment patterns and extract the funder details from transaction descriptions.
+            </p>
+          )}
+        </div>
+      )}
+
+      {extractError && <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, color: "#f87171", fontSize: 13 }}>{extractError}</div>}
+
+      <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+        <button
+          type="button"
+          className="btn-primary"
+          style={{ flex: 1 }}
+          disabled={extracting || (extractTab === "paste" ? pasteText.trim().length < 10 : !extractFile)}
+          onClick={handleExtract}
+          data-testid="btn-extract-terms"
+        >
+          {extracting ? "Extracting…" : "Extract & Fill Form"}
+        </button>
+        <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
+      </div>
+    </div>
+  );
+
+  // ── Manual / Review form ───────────────────────────────────────────────
   return (
     <div className="card">
-      <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Add Funding Position</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: extractNotes ? 12 : 16 }}>
+        <button type="button" onClick={() => setMode("choose")} style={{ background: "none", border: "none", color: "#7b8499", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>&#8592;</button>
+        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600 }}>
+          {wasExtracted ? "Review Extracted Terms" : "Add Funding Position"}
+        </h3>
+      </div>
+
+      {extractNotes && (
+        <div style={{ marginBottom: 14, padding: "10px 14px", background: "rgba(45,212,191,0.06)", border: "1px solid rgba(45,212,191,0.2)", borderRadius: 8, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
+          <span style={{ color: "#2dd4bf", fontWeight: 600 }}>AI note: </span>{extractNotes}
+        </div>
+      )}
+
       {error && <p style={{ color: "#f87171", fontSize: 13, marginBottom: 12 }}>{error}</p>}
       <form onSubmit={handleSubmit}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-          <div><label className="field-label">Funder Name *</label><input className="field-input" value={form.funderName} onChange={set("funderName")} required /></div>
+          <div><label className="field-label">Funder Name *</label><input className="field-input" value={form.funderName} onChange={set("funderName")} required data-testid="input-funder-name" /></div>
           <div><label className="field-label">Product Type</label>
-            <select className="field-input" value={form.productType} onChange={set("productType")}>
+            <select className="field-input" value={form.productType} onChange={set("productType")} data-testid="select-product-type">
               <option value="MCA">MCA</option><option value="LOC">Line of Credit</option><option value="Term Loan">Term Loan</option>
               <option value="SBA">SBA Loan</option><option value="Revenue Based">Revenue Based</option><option value="Other">Other</option>
             </select>
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
-          <div><label className="field-label">Funded Amount</label><input className="field-input" type="number" value={form.fundedAmount} onChange={set("fundedAmount")} placeholder="50000" /></div>
-          <div><label className="field-label">Payback Amount</label><input className="field-input" type="number" value={form.paybackAmount} onChange={set("paybackAmount")} placeholder="65000" /></div>
-          <div><label className="field-label">Factor Rate</label><input className="field-input" value={form.factorRate} onChange={set("factorRate")} placeholder="1.30" /></div>
+          <div><label className="field-label">Funded Amount</label><input className="field-input" type="number" value={form.fundedAmount} onChange={set("fundedAmount")} placeholder="50000" data-testid="input-funded-amount" /></div>
+          <div><label className="field-label">Payback Amount</label><input className="field-input" type="number" value={form.paybackAmount} onChange={set("paybackAmount")} placeholder="65000" data-testid="input-payback-amount" /></div>
+          <div><label className="field-label">Factor Rate</label><input className="field-input" value={form.factorRate} onChange={set("factorRate")} placeholder="1.30" data-testid="input-factor-rate" /></div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
-          <div><label className="field-label">Payment Amount</label><input className="field-input" type="number" value={form.paymentAmount} onChange={set("paymentAmount")} placeholder="500" /></div>
+          <div><label className="field-label">Payment Amount</label><input className="field-input" type="number" value={form.paymentAmount} onChange={set("paymentAmount")} placeholder="500" data-testid="input-payment-amount" /></div>
           <div><label className="field-label">Frequency</label>
-            <select className="field-input" value={form.paymentFrequency} onChange={set("paymentFrequency")}>
+            <select className="field-input" value={form.paymentFrequency} onChange={set("paymentFrequency")} data-testid="select-payment-frequency">
               <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="bi-weekly">Bi-Weekly</option><option value="monthly">Monthly</option>
             </select>
           </div>
-          <div><label className="field-label">Remaining Balance</label><input className="field-input" type="number" value={form.remainingBalance} onChange={set("remainingBalance")} placeholder="32000" /></div>
+          <div><label className="field-label">Remaining Balance</label><input className="field-input" type="number" value={form.remainingBalance} onChange={set("remainingBalance")} placeholder="32000" data-testid="input-remaining-balance" /></div>
         </div>
-        <div style={{ marginBottom: 16 }}><label className="field-label">Funded Date</label><input className="field-input" type="date" value={form.fundedDate} onChange={set("fundedDate")} style={{ maxWidth: 200 }} /></div>
+        <div style={{ marginBottom: 16 }}><label className="field-label">Funded Date</label><input className="field-input" type="date" value={form.fundedDate} onChange={set("fundedDate")} style={{ maxWidth: 200 }} data-testid="input-funded-date" /></div>
         <div style={{ display: "flex", gap: 12 }}>
-          <button className="btn-primary" type="submit" disabled={saving} style={{ flex: 1 }}>{saving ? "Saving..." : "Save Position"}</button>
+          <button className="btn-primary" type="submit" disabled={saving} style={{ flex: 1 }} data-testid="btn-save-position">{saving ? "Saving..." : "Save Position"}</button>
           <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
         </div>
       </form>
