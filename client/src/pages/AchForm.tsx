@@ -312,43 +312,59 @@ const CSS = `
       border-bottom-width: 1px !important;
     }
 
-    /* Flip label below the input line — classic paper-form style */
+    /* Inline label + colon on the write line: "Business Name: ___________" */
     .ach-form .field-group {
       display: flex !important;
-      flex-direction: column-reverse !important;
-      margin-bottom: 8px !important;
+      flex-direction: row !important;
+      align-items: flex-end !important;
+      flex-wrap: nowrap !important;
+      gap: 3px !important;
+      margin-bottom: 10px !important;
     }
 
     .ach-form .field-row,
-    .ach-form .field-row-3 { gap: 8px !important; }
+    .ach-form .field-row-3 { gap: 10px !important; }
 
-    .ach-form label {
-      font-size: 8px !important;
-      margin-bottom: 0 !important;
-      margin-top: 2px !important;
-      color: #666 !important;
-      font-style: italic !important;
-      letter-spacing: 0.02em !important;
+    /* Label sits inline at the start of the underline */
+    .ach-form .field-group > label {
+      flex-shrink: 0 !important;
+      white-space: nowrap !important;
+      font-size: 9px !important;
+      font-weight: 700 !important;
+      font-style: normal !important;
+      color: #222 !important;
+      margin: 0 !important;
+      padding-bottom: 3px !important;
+      letter-spacing: 0 !important;
+      line-height: 1 !important;
     }
 
-    /* Radio-group field: keep label on top since radios are self-labelling */
+    /* Add the colon automatically */
+    .ach-form .field-group > label::after { content: ":" !important; }
+
+    /* Hide the red asterisk in print — not needed on a paper form */
+    .ach-form label .required { display: none !important; }
+
+    /* Input / select fills remaining width as the write line */
+    .ach-form .field-group > input,
+    .ach-form .field-group > select,
+    .ach-form .field-group > div { flex: 1 !important; min-width: 0 !important; }
+
+    /* Radio group: keep vertical layout — radios are already self-labelled */
     .ach-form .field-group:has(.radio-group) {
       flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 0 !important;
     }
-    .ach-form .field-group:has(.radio-group) > label {
-      margin-bottom: 3px !important;
-      margin-top: 0 !important;
-      font-style: normal !important;
-      font-size: 9px !important;
-      color: #444 !important;
-    }
+    .ach-form .field-group:has(.radio-group) > label::after { content: "" !important; }
+    .ach-form .field-group:has(.radio-group) > label { padding-bottom: 2px !important; }
 
     .ach-form input,
     .ach-form select {
       border: none !important;
-      border-bottom: 1.5px solid #555 !important;
+      border-bottom: 1.5px solid #444 !important;
       border-radius: 0 !important;
-      padding: 10px 0 2px !important;
+      padding: 0 0 3px !important;
       font-size: 11px !important;
       box-shadow: none !important;
       background: transparent !important;
