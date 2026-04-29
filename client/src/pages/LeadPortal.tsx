@@ -124,6 +124,34 @@ const LEAD_CSS = `
     border-radius: 6px; transition: width 0.5s ease;
   }
 
+  .lead-portal .upload-zone {
+    border: 1.5px dashed rgba(45,212,191,0.3);
+    border-radius: 10px;
+    padding: 24px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: rgba(45,212,191,0.03);
+  }
+  .lead-portal .upload-zone:hover, .lead-portal .upload-zone.dragging {
+    border-color: rgba(45,212,191,0.6);
+    background: rgba(45,212,191,0.06);
+  }
+  .lead-portal .upload-zone p { color: #7b8499; font-size: 13px; margin-top: 6px; line-height: 1.5; }
+  .lead-portal .upload-zone strong { color: #94a3b8; font-size: 14px; }
+
+  .lead-portal .upload-list { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .lead-portal .upload-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; border-radius: 8px;
+    background: rgba(45,212,191,0.06); border: 1px solid rgba(45,212,191,0.15);
+    font-size: 13px;
+  }
+  .lead-portal .upload-item .file-name { color: #e8eaf0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lead-portal .upload-item .file-status { color: #2dd4bf; font-size: 11px; flex-shrink: 0; margin-left: 8px; }
+  .lead-portal .upload-item.error { background: rgba(248,113,113,0.06); border-color: rgba(248,113,113,0.2); }
+  .lead-portal .upload-item.error .file-status { color: #f87171; }
+
   @media (max-width: 640px) {
     .lead-portal .tab-btn { flex: none; padding: 10px 14px; font-size: 12px; }
     .lead-portal .card { padding: 16px; }
@@ -385,8 +413,68 @@ function PositionsTab() {
   );
 }
 
+// ── STATEMENT UPLOAD ZONE (for LeadFinancialsTab) ────────────────────────
+interface UploadEntry { name: string; status: "uploading" | "done" | "error"; message?: string; }
+
+function LeadUploadZone({ email, businessName }: { email: string; businessName: string }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploads, setUploads] = useState<UploadEntry[]>([]);
+
+  const uploadFile = async (file: File) => {
+    const entry: UploadEntry = { name: file.name, status: "uploading" };
+    setUploads(prev => [...prev, entry]);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("email", email);
+      fd.append("businessName", businessName);
+      const res = await fetch("/api/bank-statements/upload", { method: "POST", credentials: "include", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setUploads(prev => prev.map(u => u.name === file.name && u.status === "uploading" ? { ...u, status: "done" } : u));
+    } catch (e: any) {
+      setUploads(prev => prev.map(u => u.name === file.name && u.status === "uploading" ? { ...u, status: "error", message: e.message } : u));
+    }
+  };
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return;
+    Array.from(files).forEach(f => { if (f.type === "application/pdf") uploadFile(f); });
+  };
+
+  return (
+    <div>
+      <div
+        className={`upload-zone${dragging ? " dragging" : ""}`}
+        onClick={() => inputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
+        data-testid="upload-zone-statements"
+      >
+        <input ref={inputRef} type="file" accept=".pdf" multiple style={{ display: "none" }} onChange={e => handleFiles(e.target.files)} />
+        <strong>Drop PDF statements here, or click to browse</strong>
+        <p>Last 3 months of business bank statements &mdash; PDF format only</p>
+      </div>
+      {uploads.length > 0 && (
+        <div className="upload-list">
+          {uploads.map((u, i) => (
+            <div key={i} className={`upload-item${u.status === "error" ? " error" : ""}`}>
+              <span className="file-name">{u.name}</span>
+              <span className="file-status">
+                {u.status === "uploading" ? "Uploading…" : u.status === "done" ? "✓ Uploaded" : u.message || "Error"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── FINANCIALS TAB ───────────────────────────────────────────────────────
-function LeadFinancialsTab() {
+function LeadFinancialsTab({ email, businessName }: { email: string; businessName: string }) {
   const [banking, setBanking] = useState<BankingInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -479,9 +567,14 @@ function LeadFinancialsTab() {
         </>
       )}
 
-      {!banking?.connected && (
-        <div className="empty" style={{ marginTop: 4 }}><strong>Or upload bank statements</strong>PDF bank statements from the last 3 months work best for an instant financial analysis.</div>
-      )}
+      {/* Statement upload — shown whether bank is connected or not */}
+      <div className="card" style={{ marginTop: 4 }}>
+        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Upload Bank Statements</h3>
+        <p style={{ color: "#7b8499", fontSize: 13, marginBottom: 14 }}>
+          {banking?.connected ? "Supplement your live data with PDF statements if needed." : "No bank connection? Upload your last 3 months of statements instead."}
+        </p>
+        <LeadUploadZone email={email} businessName={businessName} />
+      </div>
     </div>
   );
 }
@@ -554,6 +647,7 @@ export default function LeadPortal() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [leadName, setLeadName] = useState("");
+  const [leadEmail, setLeadEmail] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [activeTab, setActiveTab] = useState<"positions" | "financials" | "qualify">("positions");
 
@@ -562,7 +656,7 @@ export default function LeadPortal() {
       const res = await fetch("/api/lead/auth/check", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
-        if (data.isAuthenticated) { setLoggedIn(true); setLeadName(data.name || ""); setBusinessName(data.businessName || ""); }
+        if (data.isAuthenticated) { setLoggedIn(true); setLeadName(data.name || ""); setLeadEmail(data.email || ""); setBusinessName(data.businessName || ""); }
       }
     } catch (_) {}
     setAuthChecked(true);
@@ -594,7 +688,7 @@ export default function LeadPortal() {
         </div>
 
         {activeTab === "positions" && <PositionsTab />}
-        {activeTab === "financials" && <LeadFinancialsTab />}
+        {activeTab === "financials" && <LeadFinancialsTab email={leadEmail} businessName={businessName} />}
         {activeTab === "qualify" && <QualifyTab />}
       </div>
     </div>
