@@ -62,6 +62,7 @@ import MerchantActivate from "@/pages/MerchantActivate";
 import MerchantResetPassword from "@/pages/MerchantResetPassword";
 import MerchantProfile from "@/pages/MerchantProfile";
 import LeadPortal from "@/pages/LeadPortal";
+import AdsConsultation from "@/pages/AdsConsultation";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -155,6 +156,9 @@ function Router() {
       {/* Admin/Rep Merchant Profile (360° view) */}
       <Route path="/merchant-profile" component={MerchantProfile} />
       <Route path="/merchant-profile/:email" component={MerchantProfile} />
+
+      {/* Ads Consultation — AdBlend Partnership */}
+      <Route path="/ads" component={AdsConsultation} />
 
       {/* Lead Portal Routes */}
       <Route path="/track" component={LeadPortal} />
