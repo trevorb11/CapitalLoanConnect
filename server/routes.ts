@@ -20,7 +20,7 @@ import { fireSmsStageEvent } from "./sms-middleware";
 import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
 import { pool, neonPool, db } from "./db";
-import { loanApplications, pageVisits } from "@shared/schema";
+import { loanApplications, pageVisits, serviceInterests } from "@shared/schema";
 import { ilike, or, desc, sql } from "drizzle-orm";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
@@ -724,6 +724,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[VISIT] Error fetching visits:", err.message);
       return res.status(500).json({ error: "Failed to fetch visits" });
+    }
+  });
+
+  // POST /api/ads/inquiry — saves /ads page form submissions to the database
+  app.post("/api/ads/inquiry", async (req: Request, res: Response) => {
+    try {
+      const { email, website, adSpend, interest, utmSource, utmCampaign } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+
+      await db.insert(serviceInterests).values({
+        email: email.toLowerCase().trim(),
+        service: "ads-consultation",
+        otherDetails: JSON.stringify({ website: website || null, adSpend: adSpend || null, interest: interest || null }),
+        source: utmSource || "direct",
+        utmSource: utmSource || null,
+        utmCampaign: utmCampaign || null,
+      });
+
+      console.log(`[ADS] Inquiry saved: ${email} | adSpend=${adSpend} | website=${website}`);
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[ADS] Error saving inquiry:", err.message);
+      return res.status(500).json({ error: "Failed to save inquiry" });
+    }
+  });
+
+  // GET /api/ads/inquiries — admin view of all /ads form submissions
+  app.get("/api/ads/inquiries", async (req: Request, res: Response) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+      const rows = await db
+        .select()
+        .from(serviceInterests)
+        .where(sql`service = 'ads-consultation'`)
+        .orderBy(desc(serviceInterests.createdAt));
+      return res.json({ inquiries: rows });
+    } catch (err: any) {
+      console.error("[ADS] Error fetching inquiries:", err.message);
+      return res.status(500).json({ error: "Failed to fetch inquiries" });
     }
   });
 

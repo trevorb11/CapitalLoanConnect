@@ -37,21 +37,20 @@ export default function AdsConsultation() {
     if (!adSpend) { setError("Please select your monthly ad spend."); return; }
     setSubmitting(true);
     setError(null);
+    const params = new URLSearchParams(window.location.search);
     try {
-      // Fire-and-forget: record lead interest (non-blocking)
-      fetch("/api/analytics/track-visit", {
+      await fetch("/api/ads/inquiry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          pagePath: "/ads",
-          fullUrl: window.location.href,
-          utmSource: new URLSearchParams(window.location.search).get("utm_source"),
-          utmCampaign: new URLSearchParams(window.location.search).get("utm_campaign"),
-          utmMedium: new URLSearchParams(window.location.search).get("utm_medium"),
-          interest: `ads-consultation:${adSpend}:${interest || "direct"}:${website}`,
+          website,
+          adSpend,
+          interest: interest || null,
+          utmSource: params.get("utm_source"),
+          utmCampaign: params.get("utm_campaign"),
         }),
-      }).catch(() => {});
+      });
     } catch (_) {}
     setSubmitting(false);
     setSubmitted(true);
