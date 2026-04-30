@@ -6915,14 +6915,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!email) return res.status(401).json({ error: "Authentication required" });
 
     const snapshot = await storage.getMerchantBankSnapshot(email);
-    if (!snapshot) return res.json({ connected: false });
+    if (!snapshot) return res.json({ connected: false, hasPendingConnection: false });
 
     const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
     const metrics = (snapshot.metrics as any) || {};
+    const hasPendingConnection = Boolean(snapshot.chirpRequestCode) && !snapshot.isAccountConnected;
     res.json({
       connected: Boolean(snapshot.isAccountConnected),
+      hasPendingConnection,
       status: snapshot.status,
       institutionName: snapshot.institutionName,
+      connectedAt: snapshot.connectedAt,
       lastSyncedAt: snapshot.lastSyncedAt,
       accounts: accounts.map(a => ({ name: a.accountName || "Account", type: a.type || "", balance: Number(a.balance) || 0 })),
       metrics: {
@@ -6983,6 +6986,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const snapshot = await syncMerchantSnapshotFromChirp(email, existing.chirpRequestCode);
     res.json({ success: true, lastSyncedAt: snapshot?.lastSyncedAt });
+  });
+
+  // DELETE /api/lead/chirp/connection — disconnect (removes cached snapshot)
+  app.delete("/api/lead/chirp/connection", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    try {
+      await storage.deleteMerchantBankSnapshot(email);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[CHIRP][LEAD] disconnect error:", err);
+      res.status(500).json({ error: "Failed to disconnect" });
+    }
+  });
+
+  // POST /api/lead/chirp/register-webhook — registers/refreshes webhook for pending connection
+  app.post("/api/lead/chirp/register-webhook", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const snapshot = await storage.getMerchantBankSnapshot(email);
+      if (!snapshot?.chirpRequestCode) return res.status(400).json({ error: "No bank connection found." });
+      await registerChirpWebhookForCode(snapshot.chirpRequestCode);
+      res.json({ success: true, requestCode: snapshot.chirpRequestCode });
+    } catch (err: any) {
+      console.error("[CHIRP][LEAD] register-webhook error:", err);
+      res.status(500).json({ error: err.message || "Failed to register webhook" });
+    }
+  });
+
+  // GET /api/lead/bank-statements — list uploaded statements for this lead
+  app.get("/api/lead/bank-statements", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const uploads = await storage.getBankStatementUploadsByEmail(email);
+      res.json(uploads.map((s: any) => ({
+        id: s.id,
+        fileName: s.fileName,
+        fileSize: s.fileSize,
+        uploadedAt: s.uploadedAt || s.createdAt,
+        viewToken: s.viewToken,
+      })));
+    } catch (err: any) {
+      console.error("[LEAD] bank-statements list error:", err);
+      res.status(500).json({ error: "Failed to fetch statements" });
+    }
   });
 
   // GET /api/admin/lead-portal/leads — admin view of all lead portal signups

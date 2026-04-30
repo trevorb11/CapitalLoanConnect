@@ -151,6 +151,8 @@ const LEAD_CSS = `
   .lead-portal .upload-item .file-status { color: #2dd4bf; font-size: 11px; flex-shrink: 0; margin-left: 8px; }
   .lead-portal .upload-item.error { background: rgba(248,113,113,0.06); border-color: rgba(248,113,113,0.2); }
   .lead-portal .upload-item.error .file-status { color: #f87171; }
+  .lead-portal .upload-item.existing { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); }
+  .lead-portal .upload-item.existing .file-status { color: #64748b; }
 
   @media (max-width: 640px) {
     .lead-portal .tab-btn { flex: none; padding: 10px 14px; font-size: 12px; }
@@ -177,7 +179,10 @@ interface LeadPosition {
 
 interface BankingInsights {
   connected: boolean;
+  hasPendingConnection?: boolean;
+  status?: string | null;
   institutionName?: string | null;
+  connectedAt?: string | null;
   lastSyncedAt?: string | null;
   accounts?: Array<{ name: string; type: string; balance: number }>;
   metrics?: {
@@ -190,6 +195,14 @@ interface BankingInsights {
     revenueTrend?: string | null;
     healthScore?: number;
   };
+}
+
+interface SavedStatement {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  uploadedAt: string | null;
+  viewToken: string | null;
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────
@@ -216,10 +229,9 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [showOptional, setShowOptional] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,7 +239,9 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
     setError(null);
     try {
       const endpoint = mode === "signup" ? "/api/lead/signup" : "/api/lead/login";
-      const body = mode === "signup" ? { email, password, firstName, lastName, phone, businessName } : { email, password };
+      const body = mode === "signup"
+        ? { email, password, businessName, phone: phone || undefined, firstName: "", lastName: "" }
+        : { email, password };
       const res = await fetch(endpoint, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -242,35 +256,118 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
   };
 
   return (
-    <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 24, minHeight: "100vh" }}>
       <style>{LEAD_CSS}</style>
-      <div className="card" style={{ maxWidth: 440, width: "100%", padding: "40px 32px" }}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 26, fontWeight: 700, marginBottom: 8 }}>Financial Command Center</h1>
+      <div style={{ maxWidth: 420, width: "100%" }}>
+        {/* Logo / Brand */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <img
+            src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c11dae8ddeadf0fc2ffa7_Group%2017.svg"
+            alt="Today Capital Group"
+            style={{ height: 40, width: "auto", marginBottom: 20 }}
+          />
+          <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 26, fontWeight: 700, marginBottom: 8 }}>
+            {mode === "signup" ? "Track your funding" : "Welcome back"}
+          </h1>
           <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
-            {mode === "signup" ? "Track your funding positions, monitor cash flow, and get personalized insights \u2014 free." : "Sign in to your dashboard."}
+            {mode === "signup"
+              ? "Monitor your positions, cash flow, and renewal readiness — free."
+              : "Sign in to your financial dashboard."}
           </p>
         </div>
-        {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
-        <form onSubmit={handleSubmit}>
-          {mode === "signup" && (
-            <>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-                <div><label className="field-label">First Name</label><input className="field-input" value={firstName} onChange={e => setFirstName(e.target.value)} required /></div>
-                <div><label className="field-label">Last Name</label><input className="field-input" value={lastName} onChange={e => setLastName(e.target.value)} required /></div>
-              </div>
-              <div style={{ marginBottom: 14 }}><label className="field-label">Business Name</label><input className="field-input" value={businessName} onChange={e => setBusinessName(e.target.value)} required /></div>
-              <div style={{ marginBottom: 14 }}><label className="field-label">Phone</label><input className="field-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} /></div>
-            </>
+
+        <div className="card" style={{ padding: "28px 24px" }}>
+          {error && (
+            <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>
+              {error}
+            </div>
           )}
-          <div style={{ marginBottom: 14 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
-          <div style={{ marginBottom: 20 }}><label className="field-label">Password</label><input className="field-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} /></div>
-          <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Please wait..." : mode === "signup" ? "Create Free Account" : "Sign In"}</button>
-        </form>
-        <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
-          {mode === "signup"
-            ? <span>Already have an account? <button onClick={() => { setMode("login"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button></span>
-            : <span>No account? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create one free</button></span>}
+
+          <form onSubmit={handleSubmit}>
+            {mode === "signup" && (
+              <div style={{ marginBottom: 14 }}>
+                <label className="field-label">Business Name *</label>
+                <input
+                  className="field-input"
+                  value={businessName}
+                  onChange={e => setBusinessName(e.target.value)}
+                  placeholder="Acme LLC"
+                  required
+                  data-testid="input-business-name"
+                />
+              </div>
+            )}
+
+            <div style={{ marginBottom: 14 }}>
+              <label className="field-label">Email *</label>
+              <input
+                className="field-input"
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@business.com"
+                required
+                data-testid="input-email"
+              />
+            </div>
+
+            <div style={{ marginBottom: mode === "signup" ? 10 : 20 }}>
+              <label className="field-label">Password *</label>
+              <input
+                className="field-input"
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                minLength={6}
+                placeholder={mode === "signup" ? "At least 6 characters" : ""}
+                data-testid="input-password"
+              />
+            </div>
+
+            {/* Optional fields — hidden by default on signup to reduce friction */}
+            {mode === "signup" && (
+              <>
+                {!showOptional ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowOptional(true)}
+                    style={{ background: "none", border: "none", color: "#64748b", fontSize: 12, cursor: "pointer", marginBottom: 16, padding: 0 }}
+                  >
+                    + Add phone number (used for bank verification)
+                  </button>
+                ) : (
+                  <div style={{ marginBottom: 16 }}>
+                    <label className="field-label">Phone <span style={{ color: "#4b5568", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional — needed for bank connection)</span></label>
+                    <input
+                      className="field-input"
+                      type="tel"
+                      value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      placeholder="(555) 000-0000"
+                      data-testid="input-phone"
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            <button
+              className="btn-primary"
+              type="submit"
+              disabled={loading}
+              data-testid="button-submit"
+              style={{ marginTop: 4 }}
+            >
+              {loading ? "Please wait…" : mode === "signup" ? "Create Free Account" : "Sign In"}
+            </button>
+          </form>
+
+          <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
+            {mode === "signup"
+              ? <span>Already have an account?{" "}<button onClick={() => { setMode("login"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button></span>
+              : <span>No account?{" "}<button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create one free</button></span>}
+          </div>
         </div>
       </div>
     </div>
@@ -310,7 +407,6 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
       const res = await fetch("/api/lead/positions/extract", { method: "POST", credentials: "include", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Extraction failed");
-      // Populate form with extracted values
       setForm({
         funderName: data.funderName || "",
         productType: data.productType || "MCA",
@@ -338,7 +434,6 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
     } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
-  // ── Choose mode ────────────────────────────────────────────────────────
   if (mode === "choose") return (
     <div className="card">
       <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Add Funding Position</h3>
@@ -365,7 +460,6 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
     </div>
   );
 
-  // ── Extract mode ───────────────────────────────────────────────────────
   if (mode === "extract") return (
     <div className="card">
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
@@ -373,7 +467,6 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
         <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600 }}>Smart Extract</h3>
       </div>
 
-      {/* Source tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "rgba(15,23,41,0.7)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: 4 }}>
         {([["paste", "Paste Text"], ["termsheet", "Term Sheet PDF"], ["statement", "Bank Statement PDF"]] as const).map(([key, label]) => (
           <button key={key} type="button" onClick={() => { setExtractTab(key); setExtractFile(null); setExtractError(null); }}
@@ -384,7 +477,6 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
         ))}
       </div>
 
-      {/* Paste text */}
       {extractTab === "paste" && (
         <div>
           <label className="field-label">Paste your term sheet text, approval email, or loan details below</label>
@@ -400,7 +492,6 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
         </div>
       )}
 
-      {/* PDF upload (term sheet or bank statement) */}
       {(extractTab === "termsheet" || extractTab === "statement") && (
         <div>
           <input ref={fileInputRef} type="file" accept=".pdf" style={{ display: "none" }}
@@ -420,7 +511,7 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
           </div>
           {extractTab === "statement" && (
             <p style={{ color: "#64748b", fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>
-              The AI will look for recurring ACH debits that match MCA payment patterns and extract the funder details from transaction descriptions.
+              The AI will look for recurring ACH debits that match MCA payment patterns and extract funder details from transaction descriptions.
             </p>
           )}
         </div>
@@ -444,7 +535,6 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
     </div>
   );
 
-  // ── Manual / Review form ───────────────────────────────────────────────
   return (
     <div className="card">
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: extractNotes ? 12 : 16 }}>
@@ -487,7 +577,7 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
         </div>
         <div style={{ marginBottom: 16 }}><label className="field-label">Funded Date</label><input className="field-input" type="date" value={form.fundedDate} onChange={set("fundedDate")} style={{ maxWidth: 200 }} data-testid="input-funded-date" /></div>
         <div style={{ display: "flex", gap: 12 }}>
-          <button className="btn-primary" type="submit" disabled={saving} style={{ flex: 1 }} data-testid="btn-save-position">{saving ? "Saving..." : "Save Position"}</button>
+          <button className="btn-primary" type="submit" disabled={saving} style={{ flex: 1 }} data-testid="btn-save-position">{saving ? "Saving…" : "Save Position"}</button>
           <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
         </div>
       </form>
@@ -509,7 +599,7 @@ function PositionsTab() {
 
   const handleDelete = async (id: string) => { await fetch(`/api/lead/positions/${id}`, { method: "DELETE", credentials: "include" }); fetch_(); };
 
-  if (loading) return <div className="loading"><div className="spinner" /><p style={{ marginTop: 12 }}>Loading positions...</p></div>;
+  if (loading) return <div className="loading"><div className="spinner" /><p style={{ marginTop: 12 }}>Loading positions…</p></div>;
 
   const totalRemaining = positions.reduce((s, p) => s + (Number(p.remaining_balance) || 0), 0);
   const totalMonthlyLoad = positions.reduce((s, p) => s + calcPosition(p).monthlyLoad, 0);
@@ -519,7 +609,7 @@ function PositionsTab() {
       {showAdd ? (
         <AddPositionForm onSave={() => { setShowAdd(false); fetch_(); }} onCancel={() => setShowAdd(false)} />
       ) : (
-        <button className="btn-primary" onClick={() => setShowAdd(true)} style={{ marginBottom: 16 }}>+ Add Funding Position</button>
+        <button className="btn-primary" onClick={() => setShowAdd(true)} style={{ marginBottom: 16 }} data-testid="button-add-position">+ Add Funding Position</button>
       )}
 
       {positions.length > 0 && (
@@ -560,7 +650,7 @@ function PositionsTab() {
                   <div><span style={{ color: "#64748b" }}>Paid</span><br /><strong style={{ color: "#2dd4bf" }}>{c.progress.toFixed(0)}%</strong></div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                  <span style={{ color: "#64748b", fontSize: 12 }}>{fmt$(c.monthlyLoad)}/mo \u00B7 ~{c.paymentsLeft} payments left</span>
+                  <span style={{ color: "#64748b", fontSize: 12 }}>{fmt$(c.monthlyLoad)}/mo &middot; ~{c.paymentsLeft} payments left</span>
                   <button onClick={() => handleDelete(pos.id)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11 }}>Remove</button>
                 </div>
               </div>
@@ -576,17 +666,165 @@ function PositionsTab() {
   );
 }
 
-// ── STATEMENT UPLOAD ZONE (for LeadFinancialsTab) ────────────────────────
-interface UploadEntry { name: string; status: "uploading" | "done" | "error"; message?: string; }
+// ── CHIRP CONNECT BUTTON (full-featured, mirrors merchant portal) ──────────
+function LeadChirpConnectButton({ onSuccess, label = "Connect Your Bank" }: { onSuccess: () => void; label?: string }) {
+  const [starting, setStarting] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [needsPhone, setNeedsPhone] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [popupBlocked, setPopupBlocked] = useState<string | null>(null);
+  const pollRef = useRef<number | null>(null);
+  const popupRef = useRef<Window | null>(null);
 
-function LeadUploadZone({ email, businessName }: { email: string; businessName: string }) {
+  useEffect(() => () => { if (pollRef.current) window.clearInterval(pollRef.current); }, []);
+
+  const startPolling = useCallback(() => {
+    setWaiting(true);
+    let attempts = 0;
+    const MAX = 60;
+    pollRef.current = window.setInterval(async () => {
+      attempts += 1;
+      try {
+        const res = await fetch("/api/lead/banking/insights", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.connected) {
+            if (pollRef.current) window.clearInterval(pollRef.current);
+            pollRef.current = null;
+            setWaiting(false);
+            onSuccess();
+            return;
+          }
+        }
+      } catch (_) {}
+      if (popupRef.current && popupRef.current.closed && attempts > 2) {
+        try { await fetch("/api/lead/chirp/sync", { method: "POST", credentials: "include" }); } catch (_) {}
+        const finalRes = await fetch("/api/lead/banking/insights", { credentials: "include" });
+        if (finalRes.ok) {
+          const data = await finalRes.json();
+          if (data.connected) { onSuccess(); }
+        }
+        if (pollRef.current) window.clearInterval(pollRef.current);
+        pollRef.current = null;
+        setWaiting(false);
+        return;
+      }
+      if (attempts >= MAX) {
+        if (pollRef.current) window.clearInterval(pollRef.current);
+        pollRef.current = null;
+        setWaiting(false);
+      }
+    }, 5000);
+  }, [onSuccess]);
+
+  const doConnect = useCallback(async (phoneOverride?: string) => {
+    setStarting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/lead/chirp/connect", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(phoneOverride ? { phone: phoneOverride } : {}),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 400 && err.error?.toLowerCase().includes("phone")) {
+          setNeedsPhone(true);
+          setStarting(false);
+          return;
+        }
+        throw new Error(err.error || "Could not start bank connection.");
+      }
+      const data = await res.json();
+      const url = data.widgetUrl || data.verificationUrl;
+      if (!url) throw new Error("Could not get connection URL.");
+      setNeedsPhone(false);
+      setPopupBlocked(null);
+      popupRef.current = window.open(url, "chirp-connect", "width=480,height=720,menubar=no,toolbar=no");
+      if (!popupRef.current || popupRef.current.closed) setPopupBlocked(url);
+      startPolling();
+    } catch (e: any) {
+      setError(e.message || "Could not start bank connection.");
+    } finally {
+      setStarting(false);
+    }
+  }, [startPolling]);
+
+  const handlePhoneSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 10) { setError("Please enter a valid 10-digit phone number."); return; }
+    setError(null);
+    doConnect(digits.length === 10 ? `+1${digits}` : `+${digits}`);
+  }, [phone, doConnect]);
+
+  if (needsPhone) return (
+    <div>
+      <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 10, lineHeight: 1.6 }}>
+        We need your phone number to verify your identity with Chirp. This won't be shared with anyone else.
+      </p>
+      <form onSubmit={handlePhoneSubmit} style={{ display: "flex", gap: 8 }}>
+        <input
+          type="tel"
+          placeholder="(555) 000-0000"
+          value={phone}
+          onChange={e => setPhone(e.target.value)}
+          className="field-input"
+          style={{ flex: 1 }}
+          autoFocus
+          data-testid="input-chirp-phone"
+        />
+        <button type="submit" className="btn-secondary" disabled={starting} style={{ whiteSpace: "nowrap" }} data-testid="button-chirp-phone-submit">
+          {starting ? "Connecting…" : "Continue →"}
+        </button>
+      </form>
+      {error && <p style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{error}</p>}
+    </div>
+  );
+
+  return (
+    <div>
+      <button
+        className="btn-primary"
+        onClick={() => doConnect()}
+        disabled={starting || waiting}
+        data-testid="button-chirp-connect"
+      >
+        {starting ? "Initializing…" : waiting ? "Waiting for Chirp…" : label}
+      </button>
+      {waiting && !popupBlocked && (
+        <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 8 }}>
+          Complete the verification in the Chirp window — this page will update automatically.
+        </p>
+      )}
+      {popupBlocked && (
+        <div className="popup-fallback">
+          Your browser blocked the popup.{" "}
+          <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here to connect your bank</a>, then come back to this page.
+        </div>
+      )}
+      {error && <p style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{error}</p>}
+    </div>
+  );
+}
+
+// ── STATEMENT UPLOAD ZONE ─────────────────────────────────────────────────
+interface UploadEntry { id?: string; name: string; status: "uploading" | "done" | "error" | "existing"; message?: string; viewToken?: string | null; uploadedAt?: string | null; }
+
+function LeadUploadZone({ email, businessName, savedStatements, onUploaded }: {
+  email: string;
+  businessName: string;
+  savedStatements: SavedStatement[];
+  onUploaded: () => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploads, setUploads] = useState<UploadEntry[]>([]);
 
   const uploadFile = async (file: File) => {
-    const entry: UploadEntry = { name: file.name, status: "uploading" };
-    setUploads(prev => [...prev, entry]);
+    const entryName = file.name;
+    setUploads(prev => [...prev, { name: entryName, status: "uploading" }]);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -595,9 +833,10 @@ function LeadUploadZone({ email, businessName }: { email: string; businessName: 
       const res = await fetch("/api/bank-statements/upload", { method: "POST", credentials: "include", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Upload failed");
-      setUploads(prev => prev.map(u => u.name === file.name && u.status === "uploading" ? { ...u, status: "done" } : u));
+      setUploads(prev => prev.map(u => u.name === entryName && u.status === "uploading" ? { ...u, status: "done" } : u));
+      onUploaded();
     } catch (e: any) {
-      setUploads(prev => prev.map(u => u.name === file.name && u.status === "uploading" ? { ...u, status: "error", message: e.message } : u));
+      setUploads(prev => prev.map(u => u.name === entryName && u.status === "uploading" ? { ...u, status: "error", message: e.message } : u));
     }
   };
 
@@ -605,6 +844,11 @@ function LeadUploadZone({ email, businessName }: { email: string; businessName: 
     if (!files) return;
     Array.from(files).forEach(f => { if (f.type === "application/pdf") uploadFile(f); });
   };
+
+  const allEntries: UploadEntry[] = [
+    ...savedStatements.map(s => ({ id: s.id, name: s.fileName, status: "existing" as const, viewToken: s.viewToken, uploadedAt: s.uploadedAt })),
+    ...uploads,
+  ];
 
   return (
     <div>
@@ -617,17 +861,35 @@ function LeadUploadZone({ email, businessName }: { email: string; businessName: 
         data-testid="upload-zone-statements"
       >
         <input ref={inputRef} type="file" accept=".pdf" multiple style={{ display: "none" }} onChange={e => handleFiles(e.target.files)} />
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(45,212,191,0.5)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 10px", display: "block" }}>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
         <strong>Drop PDF statements here, or click to browse</strong>
-        <p>Last 3 months of business bank statements &mdash; PDF format only</p>
+        <p>Last 3 months of business bank statements &mdash; PDF format, up to 25 MB each</p>
       </div>
-      {uploads.length > 0 && (
+
+      {allEntries.length > 0 && (
         <div className="upload-list">
-          {uploads.map((u, i) => (
-            <div key={i} className={`upload-item${u.status === "error" ? " error" : ""}`}>
-              <span className="file-name">{u.name}</span>
-              <span className="file-status">
-                {u.status === "uploading" ? "Uploading…" : u.status === "done" ? "✓ Uploaded" : u.message || "Error"}
-              </span>
+          {allEntries.map((u, i) => (
+            <div key={u.id || i} className={`upload-item${u.status === "error" ? " error" : u.status === "existing" ? " existing" : ""}`}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <svg width="12" height="14" viewBox="0 0 12 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: u.status === "error" ? "#f87171" : u.status === "existing" ? "#64748b" : "#2dd4bf" }}>
+                  <rect x="1" y="1" width="10" height="12" rx="1.5"/><line x1="3.5" y1="4.5" x2="8.5" y2="4.5"/><line x1="3.5" y1="7" x2="8.5" y2="7"/><line x1="3.5" y1="9.5" x2="6.5" y2="9.5"/>
+                </svg>
+                <span className="file-name">{u.name}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                {u.status === "existing" && u.viewToken && (
+                  <a href={`/api/bank-statements/public/view/${u.viewToken}`} target="_blank" rel="noopener noreferrer"
+                    style={{ color: "#2dd4bf", fontSize: 11, textDecoration: "none" }}>View</a>
+                )}
+                <span className="file-status">
+                  {u.status === "uploading" ? "Uploading…"
+                    : u.status === "done" ? "✓ Uploaded"
+                    : u.status === "existing" ? (u.uploadedAt ? new Date(u.uploadedAt).toLocaleDateString() : "Uploaded")
+                    : u.message || "Error"}
+                </span>
+              </div>
             </div>
           ))}
         </div>
@@ -639,75 +901,156 @@ function LeadUploadZone({ email, businessName }: { email: string; businessName: 
 // ── FINANCIALS TAB ───────────────────────────────────────────────────────
 function LeadFinancialsTab({ email, businessName }: { email: string; businessName: string }) {
   const [banking, setBanking] = useState<BankingInsights | null>(null);
+  const [savedStatements, setSavedStatements] = useState<SavedStatement[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [popupBlocked, setPopupBlocked] = useState<string | null>(null);
+  const [showBanks, setShowBanks] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    try { const r = await fetch("/api/lead/banking/insights", { credentials: "include" }); if (r.ok) setBanking(await r.json()); } catch (_) {}
+    try {
+      const [bankRes, stmtRes] = await Promise.all([
+        fetch("/api/lead/banking/insights", { credentials: "include" }),
+        fetch("/api/lead/bank-statements", { credentials: "include" }),
+      ]);
+      if (bankRes.ok) setBanking(await bankRes.json());
+      if (stmtRes.ok) setSavedStatements(await stmtRes.json());
+    } catch (_) {}
     setLoading(false);
   }, []);
+
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleSync = async () => { setSyncing(true); try { await fetch("/api/lead/chirp/sync", { method: "POST", credentials: "include" }); await fetchData(); } catch (_) {} setSyncing(false); };
+  // Auto-register webhook when a pending connection exists
+  useEffect(() => {
+    if (banking?.hasPendingConnection) {
+      fetch("/api/lead/chirp/register-webhook", { method: "POST", credentials: "include" }).catch(() => {});
+    }
+  }, [banking?.hasPendingConnection]);
 
-  const handleConnect = async () => {
-    setPopupBlocked(null);
+  const handleSync = async () => {
+    setSyncing(true); setSyncError(null);
     try {
-      const res = await fetch("/api/lead/chirp/connect", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" });
-      if (res.ok) {
-        const data = await res.json();
-        const url = data.widgetUrl || data.verificationUrl;
-        if (url) {
-          const popup = window.open(url, "chirp-connect", "width=480,height=720");
-          if (!popup || popup.closed) setPopupBlocked(url);
-        }
-      }
-    } catch (_) {}
+      const res = await fetch("/api/lead/chirp/sync", { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Sync failed");
+      await fetchData();
+    } catch (e: any) { setSyncError(e.message); }
+    setSyncing(false);
   };
 
-  if (loading) return <div className="loading"><div className="spinner" /><p style={{ marginTop: 12 }}>Loading financial data...</p></div>;
+  const handleDisconnect = async () => {
+    await fetch("/api/lead/chirp/connection", { method: "DELETE", credentials: "include" });
+    await fetchData();
+  };
+
+  if (loading) return <div className="loading"><div className="spinner" /><p style={{ marginTop: 12 }}>Loading financial data…</p></div>;
 
   const m = banking?.metrics;
+  const chirpConnected = Boolean(banking?.connected);
+  const hasPending = Boolean(banking?.hasPendingConnection);
 
   return (
     <div>
-      <div className="card">
-        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Bank Connection</h3>
-        {banking?.connected ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2dd4bf" }} />
-              <span style={{ fontWeight: 500 }}>{banking.institutionName || "Connected Bank"}</span>
+      {/* ── Bank Connection Card ── */}
+      <div className="card" style={{ padding: 0 }}>
+        <button
+          onClick={() => setShowBanks(p => !p)}
+          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "16px 20px", textAlign: "left" }}
+          data-testid="button-toggle-bank-section"
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600, margin: 0 }}>Bank Connection</h3>
+            {chirpConnected && (
               <span className="badge" style={{ background: "rgba(45,212,191,0.15)", color: "#2dd4bf" }}>Connected</span>
-            </div>
-            {banking.accounts && banking.accounts.length > 0 && banking.accounts.map((a, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 13 }}>
-                <span>{a.name} <span style={{ color: "#64748b", fontSize: 11 }}>{a.type}</span></span>
-                <span style={{ fontWeight: 600, color: "#2dd4bf" }}>{fmt$(a.balance)}</span>
+            )}
+            {!chirpConnected && hasPending && (
+              <span className="badge" style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24" }}>Pending</span>
+            )}
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: showBanks ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease", flexShrink: 0 }}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        {showBanks && (
+          <div style={{ padding: "0 20px 20px" }}>
+            {chirpConnected ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2dd4bf", flexShrink: 0 }} />
+                  <span style={{ fontWeight: 500, fontSize: 14 }}>{banking?.institutionName || "Connected Bank"}</span>
+                  {banking?.lastSyncedAt && (
+                    <span style={{ color: "#64748b", fontSize: 12 }}>· Updated {new Date(banking.lastSyncedAt).toLocaleDateString()}</span>
+                  )}
+                </div>
+
+                {banking?.accounts && banking.accounts.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    {banking.accounts.map((acct, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 13 }}>
+                        <span>{acct.name} <span style={{ color: "#64748b", fontSize: 11 }}>{acct.type}</span></span>
+                        <span style={{ fontWeight: 600, color: "#2dd4bf" }}>{fmt$(acct.balance)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <button className="btn-secondary" onClick={handleSync} disabled={syncing} data-testid="button-sync-bank">
+                    {syncing ? "Syncing…" : "Sync Now"}
+                  </button>
+                  <button onClick={handleDisconnect} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 13 }} data-testid="button-disconnect-bank">
+                    Disconnect
+                  </button>
+                </div>
+                {syncError && <p style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{syncError}</p>}
+              </>
+            ) : hasPending ? (
+              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 12px", display: "block" }}>
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+                <p style={{ color: "#e8eaf0", fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Awaiting Bank Verification</p>
+                <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, marginBottom: 16 }}>
+                  Your bank connection is being verified. Once Chirp confirms it, your live financial data will appear here automatically.
+                </p>
+                <p style={{ color: "#64748b", fontSize: 12, marginBottom: 14 }}>
+                  Status: <span style={{ color: "#fbbf24" }}>{banking?.status || "Unverified"}</span>
+                </p>
+                <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                  <LeadChirpConnectButton onSuccess={fetchData} label="Reconnect Bank" />
+                  <button className="btn-secondary" onClick={handleSync} disabled={syncing}>
+                    {syncing ? "Checking…" : "Check Status"}
+                  </button>
+                </div>
+                {syncError && <p style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{syncError}</p>}
               </div>
-            ))}
-            <button className="btn-secondary" onClick={handleSync} disabled={syncing} style={{ marginTop: 12 }}>{syncing ? "Syncing..." : "Sync Now"}</button>
-          </>
-        ) : (
-          <div style={{ textAlign: "center", padding: "12px 0" }}>
-            <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 12 }}>Connect your bank to unlock live cash flow tracking and personalized recommendations.</p>
-            <button className="btn-primary" onClick={handleConnect}>Connect Your Bank</button>
-            {popupBlocked && (
-              <div className="popup-fallback">Your browser blocked the popup. <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here to connect</a>, then come back.</div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "12px 0" }}>
+                <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 16, lineHeight: 1.6 }}>
+                  Connect your bank for live cash flow tracking, real-time balances, and personalized funding readiness scores.
+                </p>
+                <LeadChirpConnectButton onSuccess={fetchData} />
+              </div>
             )}
           </div>
         )}
       </div>
 
-      {banking?.connected && m && m.monthlyRevenue > 0 && (
+      {/* ── Live Metrics (when connected) ── */}
+      {chirpConnected && m && m.monthlyRevenue > 0 && (
         <>
-          <div className="card" style={{ textAlign: "center" }}>
+          <div className="card" style={{ textAlign: "center", padding: "20px" }}>
             <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 4 }}>What You're Bringing In</p>
             <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 30, fontWeight: 700, color: "#2dd4bf" }}>{fmt$(m.monthlyRevenue)}</p>
             <p style={{ color: "#64748b", fontSize: 11 }}>per month</p>
-            {m.revenueTrend && <p style={{ color: m.revenueTrend === "growing" ? "#2dd4bf" : m.revenueTrend === "declining" ? "#f87171" : "#94a3b8", fontSize: 12, fontWeight: 600, marginTop: 6 }}>{m.revenueTrend === "growing" ? "\u2197" : m.revenueTrend === "declining" ? "\u2198" : "\u2192"} {m.revenueTrend}</p>}
+            {m.revenueTrend && (
+              <p style={{ color: m.revenueTrend === "growing" ? "#2dd4bf" : m.revenueTrend === "declining" ? "#f87171" : "#94a3b8", fontSize: 12, fontWeight: 600, marginTop: 6 }}>
+                {m.revenueTrend === "growing" ? "\u2197" : m.revenueTrend === "declining" ? "\u2198" : "\u2192"} {m.revenueTrend}
+              </p>
+            )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <div className="card" style={{ textAlign: "center" }}>
@@ -730,13 +1073,22 @@ function LeadFinancialsTab({ email, businessName }: { email: string; businessNam
         </>
       )}
 
-      {/* Statement upload — shown whether bank is connected or not */}
+      {/* ── Statement Upload ── */}
       <div className="card" style={{ marginTop: 4 }}>
-        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Upload Bank Statements</h3>
-        <p style={{ color: "#7b8499", fontSize: 13, marginBottom: 14 }}>
-          {banking?.connected ? "Supplement your live data with PDF statements if needed." : "No bank connection? Upload your last 3 months of statements instead."}
-        </p>
-        <LeadUploadZone email={email} businessName={businessName} />
+        <div style={{ marginBottom: 14 }}>
+          <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Bank Statements</h3>
+          <p style={{ color: "#7b8499", fontSize: 13 }}>
+            {chirpConnected
+              ? "Supplement your live data with PDF statements if needed."
+              : "No bank connection? Upload your last 3 months of statements instead."}
+          </p>
+        </div>
+        <LeadUploadZone
+          email={email}
+          businessName={businessName}
+          savedStatements={savedStatements}
+          onUploaded={fetchData}
+        />
       </div>
     </div>
   );
@@ -755,7 +1107,7 @@ function QualifyTab() {
     ]).then(([pos, bank]) => { setPositions(pos); setBanking(bank); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="loading"><div className="spinner" /><p style={{ marginTop: 12 }}>Checking your readiness...</p></div>;
+  if (loading) return <div className="loading"><div className="spinner" /><p style={{ marginTop: 12 }}>Checking your readiness…</p></div>;
 
   const revenue = banking?.metrics?.monthlyRevenue || 0;
   const totalMonthlyLoad = positions.reduce((s, p) => s + calcPosition(p).monthlyLoad, 0);
@@ -834,19 +1186,21 @@ export default function LeadPortal() {
     <div className="lead-portal">
       <style>{LEAD_CSS}</style>
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "32px 16px 80px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 26, fontWeight: 700, margin: 0 }}>Financial Command Center</h1>
             <p style={{ color: "#7b8499", fontSize: 14, marginTop: 4 }}>
-              {leadName ? `Welcome, ${leadName.split(" ")[0]}.` : "Welcome."} {businessName || "Track your positions and finances."}
+              {leadName ? `Welcome, ${leadName.split(" ")[0]}.` : "Welcome."}{" "}{businessName || "Track your positions and finances."}
             </p>
           </div>
-          <button className="btn-secondary" onClick={async () => { await fetch("/api/lead/auth/logout", { method: "POST", credentials: "include" }); setLoggedIn(false); }}>Sign Out</button>
+          <button className="btn-secondary" onClick={async () => { await fetch("/api/lead/auth/logout", { method: "POST", credentials: "include" }); setLoggedIn(false); }} data-testid="button-sign-out">
+            Sign Out
+          </button>
         </div>
 
         <div className="tab-bar">
           {([["positions", "My Positions"], ["financials", "Financials"], ["qualify", "Qualify"]] as const).map(([key, label]) => (
-            <button key={key} className={`tab-btn ${activeTab === key ? "active" : ""}`} onClick={() => setActiveTab(key)}>{label}</button>
+            <button key={key} className={`tab-btn ${activeTab === key ? "active" : ""}`} onClick={() => setActiveTab(key)} data-testid={`tab-${key}`}>{label}</button>
           ))}
         </div>
 
