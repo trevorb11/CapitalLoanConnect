@@ -11,7 +11,7 @@ This document describes how to take a TCG loan application and package it into a
 | **Endpoint** | `https://risk.bf9baa41.decide.taktile.com/run/api/v1/flows/gigfileads/decide` |
 | **Method** | `POST` |
 | **Content-Type** | `application/json` |
-| **Auth** | Bearer token (set in server environment as `GIGFI_API_KEY`) |
+| **Auth** | Bearer token- GIGFI_API_KEY:  |
 | **Policy** | Policy 3 / GigFi Leads v1.2 |
 | **Execution mode** | `sync` (response is immediate) |
 
