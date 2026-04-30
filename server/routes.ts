@@ -257,6 +257,28 @@ function filterEmptyValues(data: Record<string, any>): Record<string, any> {
   return filtered;
 }
 
+/**
+ * Returns true if an application/update came from Guide Funding Group.
+ * Checks agentName, referrerUrl, referralSource, trackingSource, and sourcePage
+ * so that forms "beamed in" from guidefundinggroup.com are always caught.
+ */
+function isGFGSubmission(data: any): boolean {
+  if (!data) return false;
+  const GFG_DOMAIN = "guidefundinggroup.com";
+  const GFG_NAME = "guide funding group";
+  const check = (v: any) => typeof v === "string" && (
+    v.toLowerCase().includes(GFG_DOMAIN) || v.toLowerCase().includes(GFG_NAME)
+  );
+  return (
+    check(data.agentName) ||
+    check(data.referrerUrl) ||
+    check(data.referralSource) ||
+    check(data.trackingSource) ||
+    check(data.sourcePage) ||
+    check(data.referrerUrl)
+  );
+}
+
 function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string; faxNumber?: string } {
   const { recaptchaToken, faxNumber, ...rest } = data;
   const sanitized = { ...rest };
@@ -1303,8 +1325,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Guide Funding Group: fire webhooks on update if GFG submission
+        // Detected via agentName, referrerUrl (guidefundinggroup.com), referralSource, trackingSource, or sourcePage
         const updatedOrExisting = updatedApp || existingApp;
-        const isGFGUpdate = (updatedOrExisting as any).agentName === 'Guide Funding Group';
+        const isGFGUpdate = isGFGSubmission(updatedOrExisting) || isGFGSubmission(applicationData);
         if (isGFGUpdate && !applicationData.isCompleted && updatedApp) {
           console.log(`[GFG] Guide Funding Group update detected — firing intake webhook for ${updatedApp.email}`);
           ghlService.sendIntakeWebhook(updatedApp).catch(err =>
@@ -1407,9 +1430,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Guide Funding Group: always fire intake webhook when a GFG submission arrives,
-      // even if isCompleted isn't set (GFG sends data without completion flags)
+      // even if isCompleted isn't set (GFG sends data without completion flags).
+      // Detected via agentName, referrerUrl (guidefundinggroup.com), referralSource, trackingSource, or sourcePage.
       const finalApp = updatedApp || application;
-      const isGFG = (finalApp as any).agentName === 'Guide Funding Group' || applicationData.agentName === 'Guide Funding Group';
+      const isGFG = isGFGSubmission(finalApp) || isGFGSubmission(applicationData);
       if (isGFG && !applicationData.isCompleted) {
         console.log(`[GFG] Guide Funding Group submission detected — firing intake webhook for ${finalApp.email}`);
         ghlService.sendIntakeWebhook(finalApp).catch(err =>
