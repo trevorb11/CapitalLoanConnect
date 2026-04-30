@@ -3621,16 +3621,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { 
-        email, businessName, applicationId, receivedAt, approvalStatus, approvalNotes, 
+        applicationId, receivedAt, approvalStatus, approvalNotes, 
         lenderId, lenderName,
         // Approval form fields
         advanceAmount, term, paymentFrequency, factorRate, totalPayback, netAfterFees, approvalDate,
         // Internal upload flag (skips GHL webhook)
         isInternal
       } = req.body;
-      
+
+      // If the request comes from an authenticated lead session, always use the session
+      // email (overrides body) and tag the upload as "lead-portal" to keep it identifiable
+      // for the team. Skip the GHL webhook — leads are internal, not public intake forms.
+      const leadSessionEmail = (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail)
+        ? req.session.user.merchantEmail as string
+        : null;
+      const isLeadPortalUpload = Boolean(leadSessionEmail);
+
+      let email: string = leadSessionEmail || req.body.email;
+      let businessName: string = req.body.businessName;
+
       if (!email) {
         return res.status(400).json({ error: "Email is required" });
+      }
+
+      // For lead portal uploads, look up business name from their account if not supplied
+      if (isLeadPortalUpload && !businessName) {
+        try {
+          const acct = await db.execute(sql`SELECT business_name FROM lead_portal_accounts WHERE email = ${email} LIMIT 1`);
+          businessName = (acct.rows[0] as any)?.business_name || businessName;
+        } catch (_) {}
       }
       
       // Parse receivedAt date if provided (for internal uploads with custom date)
@@ -3694,6 +3713,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storedFileName: storedFileName,
         mimeType: file.mimetype,
         fileSize: file.size,
+        source: isLeadPortalUpload ? "lead-portal" : undefined,
         viewToken,
         receivedAt: receivedAtDate,
         approvalStatus: approvalStatus || null,
@@ -3738,8 +3758,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Session-based throttling: only sends one webhook per email per 15-minute session
       // This prevents spam when users upload multiple PDFs at once
       // DISABLED for internal uploads (isInternal flag) - will be re-enabled with new webhook URL later
-      if (isInternal === 'true') {
-        console.log(`[BANK UPLOAD] Webhook DISABLED for internal upload (${email}) - functionality preserved for future use`);
+      // Also DISABLED for lead-portal uploads — leads are internal users, not public intake form submissions
+      if (isInternal === 'true' || isLeadPortalUpload) {
+        console.log(`[BANK UPLOAD] Webhook DISABLED for ${isLeadPortalUpload ? 'lead-portal' : 'internal'} upload (${email})`);
       } else {
         const nameParts = (matchingApp?.fullName || '').trim().split(' ');
         ghlService.sendBankStatementUploadedWebhook({
@@ -7044,7 +7065,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await db.execute(sql`SELECT l.*,
         (SELECT COUNT(*) FROM lead_positions WHERE lead_email = l.email) as position_count,
         (SELECT json_agg(json_build_object('funderName', funder_name, 'productType', product_type, 'fundedAmount', funded_amount, 'status', status))
-         FROM lead_positions WHERE lead_email = l.email) as positions
+         FROM lead_positions WHERE lead_email = l.email) as positions,
+        (SELECT COUNT(*) FROM bank_statement_uploads WHERE email = l.email) as statement_count,
+        (SELECT json_agg(json_build_object('id', id, 'fileName', original_file_name, 'uploadedAt', created_at, 'source', source))
+         FROM bank_statement_uploads WHERE email = l.email ORDER BY created_at DESC) as statements
         FROM lead_portal_accounts l ORDER BY l.created_at DESC`);
       res.json(result.rows);
     } catch (err: any) {
