@@ -336,6 +336,32 @@ const CSS = `
   .wb-success h3 { font-size: 26px; font-weight: 800; margin-bottom: 10px; }
   .wb-success p { font-size: 15px; color: #5a6a80; line-height: 1.7; }
 
+  /* ── EARLY CAPTURE FORM ── */
+  .wb-early-wrap {
+    max-width: 820px; margin: 0 auto; padding: 64px 24px 0;
+  }
+  .wb-early-card {
+    background: rgba(6,182,212,0.04);
+    border: 1px solid rgba(6,182,212,0.18);
+    border-radius: 20px;
+    padding: 40px 40px 36px;
+  }
+  .wb-early-header {
+    margin-bottom: 28px;
+  }
+  .wb-early-header h2 {
+    font-size: clamp(20px, 2.4vw, 28px);
+    font-weight: 800; letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+  .wb-early-header p {
+    font-size: 14px; color: #5a6a80; line-height: 1.65;
+  }
+  @media (max-width: 768px) {
+    .wb-early-card { padding: 28px 20px 24px; }
+    .wb-early-wrap { padding: 48px 16px 0; }
+  }
+
   /* ── FOOTER ── */
   .wb-footer {
     border-top: 1px solid rgba(255,255,255,0.06);
@@ -589,6 +615,89 @@ export default function ServiceWebsite() {
             <div className="wb-stat-num">$0</div>
             <div className="wb-stat-label">Templates used. Ever.</div>
           </div>
+        </div>
+      </div>
+
+      {/* ── EARLY LEAD CAPTURE FORM ── */}
+      <div className="wb-early-wrap">
+        <div className="wb-early-card">
+          {submitted ? (
+            <div className="wb-success" style={{ padding: "12px 0" }}>
+              <div className="wb-success-icon" style={{ width: 56, height: 56, fontSize: 24 }}>✓</div>
+              <h3 style={{ fontSize: 22 }}>We'll be in touch within 24 hours.</h3>
+              <p>Thanks for reaching out. One of our team members will follow up to schedule a free discovery call — no commitment required.</p>
+            </div>
+          ) : (
+            <>
+              <div className="wb-early-header">
+                <div className="wb-label">Let's get started</div>
+                <h2>Tell us about your business.</h2>
+                <p>Free consultation. We'll scope your project, answer every question, and send a quote — with no pressure to move forward.</p>
+              </div>
+              <form className="wb-form" onSubmit={handleSubmit}>
+                <div className="wb-form-row">
+                  <input
+                    className="wb-field"
+                    type="email"
+                    placeholder="Your email *"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    required
+                    data-testid="input-email-top"
+                  />
+                  <input
+                    className="wb-field"
+                    type="tel"
+                    placeholder="Phone number"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    data-testid="input-phone-top"
+                  />
+                </div>
+                <div className="wb-form-row">
+                  <input
+                    className="wb-field"
+                    placeholder="Business name"
+                    value={businessName}
+                    onChange={e => setBusinessName(e.target.value)}
+                    data-testid="input-business-top"
+                  />
+                  <input
+                    className="wb-field"
+                    placeholder="Current website (if any)"
+                    value={currentSite}
+                    onChange={e => setCurrentSite(e.target.value)}
+                    data-testid="input-current-site-top"
+                  />
+                </div>
+                <div className="wb-form-row">
+                  <select
+                    className="wb-field"
+                    value={goal}
+                    onChange={e => setGoal(e.target.value)}
+                    data-testid="select-goal-top"
+                  >
+                    <option value="">What's your primary goal?</option>
+                    <option value="generate-leads">Generate more leads online</option>
+                    <option value="look-professional">Look professional + credible</option>
+                    <option value="rank-google">Rank higher on Google</option>
+                    <option value="replace-old-site">Replace an outdated site</option>
+                    <option value="launch-new-business">Launch a new business</option>
+                    <option value="ecommerce">Sell products online</option>
+                  </select>
+                </div>
+                <button
+                  className="wb-submit"
+                  type="submit"
+                  disabled={submitting || !email}
+                  data-testid="button-submit-top"
+                >
+                  {submitting ? "Submitting..." : "Get My Free Quote"}
+                </button>
+                <p className="wb-fine">No commitment. No spam. We'll respond within 24 hours.</p>
+              </form>
+            </>
+          )}
         </div>
       </div>
 
