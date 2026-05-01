@@ -1480,8 +1480,101 @@ async function sendEmail(
 }
 
 // ========================================
-// EXPORT SERVICE OBJECT
+// ADS LEADS — contacts tagged "clicked ads"
 // ========================================
+export interface AdsLeadContact {
+  id: string;
+  name: string;
+  businessName: string;
+  email: string;
+  phone: string;
+  city: string;
+  state: string;
+  monthlyRevenue: string | null;
+  source: string;
+  tags: string[];
+  leadType: string;
+  lastActivity: string;
+}
+
+function deriveLeadType(tags: string[]): string {
+  const lower = tags.map(t => t.toLowerCase());
+  if (lower.some(t => t.includes('clicked interest email'))) return 'Interest Email';
+  if (lower.some(t => t.includes('clicked custom email'))) return 'Custom Email';
+  if (lower.some(t => t.includes('clicked pf email'))) return 'PF Email';
+  return 'Clicked through Email';
+}
+
+async function getAdsLeads(locationIdOverride?: string): Promise<{ contacts: AdsLeadContact[]; total: number }> {
+  const locationId = locationIdOverride || getLocationId();
+  const token = getAccessToken(locationId);
+
+  const allContacts: GHLRawContact[] = [];
+  let startAfter: number | undefined;
+  let startAfterId: string | undefined;
+  let hasMore = true;
+
+  while (hasMore && allContacts.length < 2000) {
+    const params = new URLSearchParams();
+    params.append('locationId', locationId);
+    params.append('limit', '100');
+    if (startAfter !== undefined) params.append('startAfter', String(startAfter));
+    if (startAfterId) params.append('startAfterId', startAfterId);
+
+    const response = await ghlFetch<{ contacts: GHLRawContact[]; meta?: { total?: number; nextPageUrl?: string } }>(
+      `/contacts/?${params.toString()}`,
+      token
+    );
+
+    const batch = response.contacts || [];
+    allContacts.push(...batch);
+
+    if (batch.length < 100 || !response.meta?.nextPageUrl) {
+      hasMore = false;
+    } else {
+      const last = batch[batch.length - 1];
+      startAfter = last.dateAdded ? new Date(last.dateAdded).getTime() : undefined;
+      startAfterId = last.id;
+    }
+  }
+
+  const adsContacts = allContacts.filter(c => {
+    const tags = (c.tags || []).map(t => t.toLowerCase());
+    return tags.some(t => t.includes('clicked ads'));
+  });
+
+  const contacts: AdsLeadContact[] = adsContacts.map(c => {
+    let monthlyRevenue: string | null = null;
+    if (c.customFields) {
+      for (const cf of c.customFields) {
+        if (cf.key === 'contact.monthly_revenue' || cf.key === 'monthly_revenue') {
+          monthlyRevenue = cf.value || cf.field_value || null;
+          break;
+        }
+      }
+    }
+    return {
+      id: c.id,
+      name: `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Unknown',
+      businessName: c.companyName || '',
+      email: c.email || '',
+      phone: c.phone || '',
+      city: c.city || '',
+      state: c.state || '',
+      monthlyRevenue,
+      source: c.source || '',
+      tags: c.tags || [],
+      leadType: deriveLeadType(c.tags || []),
+      lastActivity: c.dateUpdated || c.dateAdded || '',
+    };
+  });
+
+  // Most recently active first
+  contacts.sort((a, b) => new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime());
+
+  return { contacts, total: contacts.length };
+}
+
 export const repConsoleService = {
   // Core
   getContact360,
@@ -1493,6 +1586,7 @@ export const repConsoleService = {
   searchContactsByTags,
   getSmartLists,
   getSmartListContacts,
+  getAdsLeads,
 
   // Notes
   addNoteToContact,

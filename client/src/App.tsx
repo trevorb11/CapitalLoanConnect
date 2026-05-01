@@ -64,6 +64,7 @@ import MerchantProfile from "@/pages/MerchantProfile";
 import LeadPortal from "@/pages/LeadPortal";
 import TrackAdmin from "@/pages/TrackAdmin";
 import AdsConsultation from "@/pages/AdsConsultation";
+import AdsLeads from "@/pages/AdsLeads";
 import LeadsDashboard from "@/pages/LeadsDashboard";
 import ServicePayments from "@/pages/ServicePayments";
 import ServiceWebsite from "@/pages/ServiceWebsite";
@@ -167,6 +168,7 @@ function Router() {
       <Route path="/services/website" component={ServiceWebsite} />
       <Route path="/services/crm" component={ServiceCRM} />
       <Route path="/ads" component={AdsConsultation} />
+      <Route path="/ads-leads" component={AdsLeads} />
       <Route path="/leads" component={LeadsDashboard} />
 
       {/* Lead Portal Routes */}

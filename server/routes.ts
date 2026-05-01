@@ -793,6 +793,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/ads-leads — GHL contacts with "clicked ads" tag
+  app.get("/api/ads-leads", async (req: Request, res: Response) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+      const result = await repConsoleService.getAdsLeads();
+      return res.json(result);
+    } catch (err: any) {
+      console.error("[ADS-LEADS] Error fetching ads leads:", err.message);
+      return res.status(500).json({ error: "Failed to fetch ads leads" });
+    }
+  });
+
   // ========================================
   // LEAD SOURCE ANALYTICS ENDPOINT
   // ========================================
