@@ -6714,7 +6714,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         GROUP BY service
         ORDER BY clicks DESC
       `);
-      const recent = await db.execute(sql`SELECT * FROM service_interests ORDER BY created_at DESC LIMIT 50`);
+      const recent = await db.execute(sql`SELECT * FROM service_interests ORDER BY created_at DESC`);
       res.json({ summary: result.rows, recent: recent.rows });
     } catch (err: any) {
       console.error("[SERVICES] interests fetch error:", err);

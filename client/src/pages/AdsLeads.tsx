@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Users, ExternalLink, TrendingUp, Mail, MousePointerClick } from "lucide-react";
+import { Search, Users, ExternalLink, TrendingUp, Mail, MousePointerClick, Globe } from "lucide-react";
 
 interface AdsLeadContact {
   id: string;
@@ -122,6 +122,10 @@ export default function AdsLeads() {
               GHL contacts who clicked through ads &amp; email campaigns
             </p>
           </div>
+          <Button variant="outline" size="sm" onClick={() => navigate("/service-leads")} data-testid="link-service-leads">
+            <Globe className="w-4 h-4 mr-1" />
+            Service Leads
+          </Button>
           <Button variant="outline" size="sm" onClick={() => navigate("/leads")} data-testid="link-leads-dashboard">
             <TrendingUp className="w-4 h-4 mr-1" />
             Leads Dashboard
