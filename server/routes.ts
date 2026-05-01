@@ -7140,8 +7140,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (SELECT json_agg(json_build_object('funderName', funder_name, 'productType', product_type, 'fundedAmount', funded_amount, 'status', status))
          FROM lead_positions WHERE lead_email = l.email) as positions,
         (SELECT COUNT(*) FROM bank_statement_uploads WHERE email = l.email) as statement_count,
-        (SELECT json_agg(json_build_object('id', id, 'fileName', original_file_name, 'uploadedAt', created_at, 'source', source))
-         FROM bank_statement_uploads WHERE email = l.email ORDER BY created_at DESC) as statements
+        (SELECT json_agg(json_build_object('id', id, 'fileName', original_file_name, 'uploadedAt', created_at, 'source', source) ORDER BY created_at DESC)
+         FROM bank_statement_uploads WHERE email = l.email) as statements
         FROM lead_portal_accounts l ORDER BY l.created_at DESC`);
       res.json(result.rows);
     } catch (err: any) {
