@@ -6614,28 +6614,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
 
   // ========================================
-  // ADS LEADS TABLE — CSV seed + form submissions
+  // ADS LEADS — seed CSV contacts on first run
+  // (Table is defined in shared/schema.ts and managed by Drizzle/publish flow)
   // ========================================
   try {
-    await db.execute(sql`CREATE TABLE IF NOT EXISTS ads_leads (
-      id SERIAL PRIMARY KEY,
-      email TEXT UNIQUE,
-      first_name TEXT,
-      last_name TEXT,
-      phone TEXT,
-      business_name TEXT,
-      city TEXT,
-      state TEXT,
-      monthly_revenue TEXT,
-      source TEXT,
-      lead_batch TEXT,
-      lead_type TEXT NOT NULL DEFAULT 'Clicked through Email',
-      notes TEXT,
-      last_activity TIMESTAMP,
-      created_at TIMESTAMP DEFAULT NOW()
-    )`);
-
-    // Seed CSV contacts if table is empty (excluding form submissions)
     const countRes = await db.execute(sql`SELECT COUNT(*) FROM ads_leads WHERE lead_type != 'Form Submission'`);
     if (String(countRes.rows[0]?.count ?? '0') === '0') {
       const csvContacts = [
@@ -6665,9 +6647,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.log("[ADS-LEADS] Seeded 18 CSV contacts");
     }
-    console.log("[ADS-LEADS] Table ensured");
   } catch (err) {
-    console.error("[ADS-LEADS] Failed to ensure table:", err);
+    console.error("[ADS-LEADS] Failed to seed contacts:", err);
   }
 
   // Ensure table exists

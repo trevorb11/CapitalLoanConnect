@@ -865,3 +865,30 @@ export const insertAchAuthorizationSchema = createInsertSchema(achAuthorizations
 
 export type InsertAchAuthorization = z.infer<typeof insertAchAuthorizationSchema>;
 export type AchAuthorization = typeof achAuthorizations.$inferSelect;
+
+// ADS LEADS — contacts who clicked through ads/emails + form submissions from /ads page
+export const adsLeads = pgTable("ads_leads", {
+  id: serial("id").primaryKey(),
+  email: text("email").unique(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  phone: text("phone"),
+  businessName: text("business_name"),
+  city: text("city"),
+  state: text("state"),
+  monthlyRevenue: text("monthly_revenue"),
+  source: text("source"),
+  leadBatch: text("lead_batch"),
+  leadType: text("lead_type").notNull().default("Clicked through Email"),
+  notes: text("notes"),
+  lastActivity: timestamp("last_activity"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAdsLeadSchema = createInsertSchema(adsLeads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAdsLead = z.infer<typeof insertAdsLeadSchema>;
+export type AdsLead = typeof adsLeads.$inferSelect;
