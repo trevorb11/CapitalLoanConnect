@@ -62,6 +62,7 @@ import MerchantActivate from "@/pages/MerchantActivate";
 import MerchantResetPassword from "@/pages/MerchantResetPassword";
 import MerchantProfile from "@/pages/MerchantProfile";
 import LeadPortal from "@/pages/LeadPortal";
+import TrackAdmin from "@/pages/TrackAdmin";
 import AdsConsultation from "@/pages/AdsConsultation";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
@@ -164,6 +165,7 @@ function Router() {
       <Route path="/track" component={LeadPortal} />
       <Route path="/track/signup" component={LeadPortal} />
       <Route path="/track/login" component={LeadPortal} />
+      <Route path="/track-admin" component={TrackAdmin} />
 
       {/* Partner Portal Routes */}
       <Route path="/partners" component={PartnerLanding} />
