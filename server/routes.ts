@@ -6618,26 +6618,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // (Table is defined in shared/schema.ts and managed by Drizzle/publish flow)
   // ========================================
   try {
+    // Normalize any existing contacts: all non-form-submission leads → "Clicked through Email"
+    await db.execute(sql`UPDATE ads_leads SET lead_type = 'Clicked through Email' WHERE lead_type != 'Form Submission'`);
+
     const countRes = await db.execute(sql`SELECT COUNT(*) FROM ads_leads WHERE lead_type != 'Form Submission'`);
     if (String(countRes.rows[0]?.count ?? '0') === '0') {
       const csvContacts = [
-        ['deniseb@burgessservices.com','Denise','Burgess','+13035882573','Burgess Services LLC','','','62031.50','','','Interest Email','2025-10-07'],
+        ['deniseb@burgessservices.com','Denise','Burgess','+13035882573','Burgess Services LLC','','','62031.50','','','Clicked through Email','2025-10-07'],
         ['mochs@wclh.com','Mikel','Ochs','+14068024104','1978 LLC','Billings','MT','374011.00','SMA','SMA1','Clicked through Email','2025-10-03'],
-        ['todd@kingprecisionsolutions.com','Todd','King','+18773123858','King Precision Solutions','','','1169618.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
-        ['jed@fastpaypartners.com','Jed','Simon','+13109862048','Fast Pay Partners','','CA','216000.00','','','Interest Email','2026-04-14'],
+        ['todd@kingprecisionsolutions.com','Todd','King','+18773123858','King Precision Solutions','','','1169618.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['jed@fastpaypartners.com','Jed','Simon','+13109862048','Fast Pay Partners','','CA','216000.00','','','Clicked through Email','2026-04-14'],
         ['jim.blair@aberdean.com','James','Blair','+16082049619','DOKKOBRAZIL, INC.','','','2395916.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
         ['bl@specializedcrane.com','Brian','Lambrix','+19189913260','Specialized Hoisting and Hauling LLC','Tulsa','OK','42562.03','L4C','L4C14','Clicked through Email','2025-10-07'],
-        ['mcastaldo@mactecpackaging.com','Michael','Castaldo','+17324168525','MACTEC PACKAGING TECHNOLOGIES','','','1788716.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
-        ['joyce@se-oc.com','Joyce','Cumbo','+15055037228','GRANDVIEW TAVERN','','','1642214.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
-        ['terry@energytechhvac.com','Terry','Dipoma','+18015801230','TERRY DIPOMA','','','186796.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
-        ['bobfaia@mks-corp.com','Robert','Faia','+19787772196','MK SERVICES CORP.','','','10342450.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
-        ['emayfield@healthsourcechiro.com','Eric','Mayfield','+16128740705','MAYFIELD CHIROPRACTIC','','','357903.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
-        ['kleatherman@fitnessforumonline.com','Karen','Leatherman','+18436613800','KAL, INC.','','','1460051.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
+        ['mcastaldo@mactecpackaging.com','Michael','Castaldo','+17324168525','MACTEC PACKAGING TECHNOLOGIES','','','1788716.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['joyce@se-oc.com','Joyce','Cumbo','+15055037228','GRANDVIEW TAVERN','','','1642214.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['terry@energytechhvac.com','Terry','Dipoma','+18015801230','TERRY DIPOMA','','','186796.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['bobfaia@mks-corp.com','Robert','Faia','+19787772196','MK SERVICES CORP.','','','10342450.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['emayfield@healthsourcechiro.com','Eric','Mayfield','+16128740705','MAYFIELD CHIROPRACTIC','','','357903.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['kleatherman@fitnessforumonline.com','Karen','Leatherman','+18436613800','KAL, INC.','','','1460051.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
         ['docvroom@advancedcarechiro.com','Brian','Vroom','+15033581417','ADVANCED CARE CHIROPRACTIC, P.C.','','','163981.00','','','Clicked through Email','2025-10-07'],
-        ['jvalore@wandynamics.com','Jason','Valore','+18774009490','WAN DYNAMICS, INC.','','','1031011.00','UCC','UCC 4.6.26','Interest Email','2026-03-31'],
-        ['ervin.redd@cruiseplanners.com','Ervin','Redd','+18582291356','Wayfare Travel','San Diego','CA','337000.00','SMA','SMA1','Interest Email','2025-10-20'],
-        ['david.cabral@elsequip.com','David','Cabral','+16173121765','469 LINCOLN STREET LLC','Boston','MA','133622.00','L4C','L4C14','Interest Email','2025-10-07'],
-        ['mark.edfort@evolutionmedcom.com','Mark','Edfort','+16109559621','Evolution Medical Communications','Allentown','PA','2637464.00','EGTML','EGTML1','Interest Email','2025-10-15'],
+        ['jvalore@wandynamics.com','Jason','Valore','+18774009490','WAN DYNAMICS, INC.','','','1031011.00','UCC','UCC 4.6.26','Clicked through Email','2026-03-31'],
+        ['ervin.redd@cruiseplanners.com','Ervin','Redd','+18582291356','Wayfare Travel','San Diego','CA','337000.00','SMA','SMA1','Clicked through Email','2025-10-20'],
+        ['david.cabral@elsequip.com','David','Cabral','+16173121765','469 LINCOLN STREET LLC','Boston','MA','133622.00','L4C','L4C14','Clicked through Email','2025-10-07'],
+        ['mark.edfort@evolutionmedcom.com','Mark','Edfort','+16109559621','Evolution Medical Communications','Allentown','PA','2637464.00','EGTML','EGTML1','Clicked through Email','2025-10-15'],
         ['greg.plummer@enjoyrepeat.com','Gregory','Plummer','+13107173150','Enjoy Repeat, Inc.','Los Angeles','CA','128730.00','L4C','L4C14','Clicked through Email','2025-10-07'],
       ];
       for (const [email, firstName, lastName, phone, businessName, city, state, monthlyRevenue, source, leadBatch, leadType, createdDate] of csvContacts) {
