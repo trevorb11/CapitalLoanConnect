@@ -12,7 +12,7 @@ import { plaidService } from "./services/plaid";
 import { chirpService, ChirpApiError } from "./services/chirp";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand } from "./services/openai";
+import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, detectFundingPositions } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { notifyMerchantNewMessage } from "./services/twilio";
@@ -6372,6 +6372,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error("[SERVICES] Failed to ensure table:", err);
   }
 
+  // POST /api/ads-consultation/submit — record an ads consultation form submission (public)
+  app.post("/api/ads-consultation/submit", async (req: Request, res: Response) => {
+    try {
+      const { email, website, monthlySpend, intent, submittedAt } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+      console.log(`[ADS] Consultation form submission: ${normalizedEmail} | spend: ${monthlySpend} | intent: ${intent}`);
+
+      // Store in service_interests table with service = 'ads-consultation'
+      await db.execute(sql`INSERT INTO service_interests (email, service, source)
+        VALUES (${normalizedEmail}, 'ads-consultation', ${monthlySpend || 'unknown'})`).catch(() => {});
+
+      // Fire GHL webhook to create/update contact
+      const INTAKE_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35';
+      const webhookPayload = {
+        email: normalizedEmail,
+        company_website: website || '',
+        source: 'Ads Consultation Form',
+        submission_date: submittedAt || new Date().toISOString(),
+        tags: ['ads-consultation', `ad-spend-${monthlySpend || 'unknown'}`],
+        monthly_ad_spend: monthlySpend || '',
+        ad_intent: intent || '',
+        page_url: 'https://app.todaycapitalgroup.com/ads',
+      };
+      fetch(INTAKE_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload),
+      }).catch(err => console.error('[ADS] GHL webhook error:', err));
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[ADS] submission error:", err);
+      res.status(500).json({ error: "Submission failed" });
+    }
+  });
+
   // POST /api/services/interest — record a service interest click (no auth required)
   app.post("/api/services/interest", async (req: Request, res: Response) => {
     try {
@@ -6622,6 +6660,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     )`);
+    // Add columns that may not exist on older tables
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE`);
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS referred_by TEXT`);
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS onboarding_step TEXT DEFAULT 'signup'`);
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS renewal_alert_sent BOOLEAN DEFAULT false`);
     console.log("[LEAD] Lead portal tables ensured");
   } catch (err) {
     console.error("[LEAD] Failed to ensure lead tables:", err);
@@ -6638,9 +6681,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/lead/signup
   app.post("/api/lead/signup", async (req: Request, res: Response) => {
     try {
-      const { email, password, firstName, lastName, phone, businessName } = req.body;
-      if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
-      if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+      const { email, password, firstName, lastName, phone, businessName, referralCode } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
 
       const normalizedEmail = email.toLowerCase().trim();
 
@@ -6650,9 +6692,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ error: "An account with this email already exists. Try signing in." });
       }
 
-      const passwordHash = hashPassword(password);
-      await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name)
-        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null})`);
+      // Generate unique referral code (first 3 chars of first name + random 5 chars)
+      const prefix = (firstName || 'u').slice(0, 3).toLowerCase();
+      const suffix = Math.random().toString(36).slice(2, 7);
+      const newReferralCode = `${prefix}${suffix}`;
+
+      // Check if referred by someone
+      let referredBy: string | null = null;
+      if (referralCode) {
+        const referrer = await db.execute(sql`SELECT email FROM lead_portal_accounts WHERE referral_code = ${referralCode}`);
+        if (referrer.rows.length > 0) {
+          referredBy = (referrer.rows[0] as any).email;
+        }
+      }
+
+      // Password is optional at signup - leads can set it later
+      const passwordHash = password ? hashPassword(password) : null;
+      await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name, referral_code, referred_by, onboarding_step)
+        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${newReferralCode}, ${referredBy}, 'add_position')`);
 
       // Auto-login
       req.session.user = {
@@ -6661,6 +6718,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         merchantEmail: normalizedEmail,
         merchantName: [firstName, lastName].filter(Boolean).join(" ") || undefined,
       };
+
+      // Fire GHL webhook for new lead portal signup (non-blocking)
+      const LEAD_SIGNUP_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35';
+      const leadWebhookPayload = {
+        first_name: firstName || '',
+        last_name: lastName || '',
+        email: normalizedEmail,
+        phone: phone || '',
+        company_name: businessName || '',
+        source: 'Lead Portal Signup',
+        submission_date: new Date().toISOString(),
+        tags: ['lead-portal-signup', 'lead-source-website'],
+        page_url: 'https://app.todaycapitalgroup.com/track',
+      };
+      fetch(LEAD_SIGNUP_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(leadWebhookPayload),
+      }).then(() => console.log(`[LEAD] GHL webhook sent for new signup: ${normalizedEmail}`))
+        .catch(err => console.error('[LEAD] GHL webhook error:', err));
+
+      // Also create/update GHL contact directly for immediate visibility
+      try {
+        await ghlService.createOrUpdateContact({
+          email: normalizedEmail,
+          fullName: [firstName, lastName].filter(Boolean).join(" "),
+          phone: phone || undefined,
+          businessName: businessName || undefined,
+          referralSource: 'Lead Portal',
+        } as any);
+        console.log(`[LEAD] GHL contact created/updated for: ${normalizedEmail}`);
+      } catch (ghlErr) {
+        console.error('[LEAD] GHL contact sync error:', ghlErr);
+      }
 
       res.json({ success: true });
     } catch (err: any) {
@@ -6705,17 +6796,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/lead/auth/check
   app.get("/api/lead/auth/check", async (req: Request, res: Response) => {
     if (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail) {
-      const result = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
+      const result = await db.execute(sql`SELECT first_name, last_name, business_name, password_hash, referral_code, onboarding_step FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
       const row = result.rows[0] as any;
       res.json({
         isAuthenticated: true,
         email: req.session.user.merchantEmail,
         name: row ? [row.first_name, row.last_name].filter(Boolean).join(" ") : req.session.user.merchantName,
         businessName: row?.business_name || "",
+        hasPassword: Boolean(row?.password_hash),
+        referralCode: row?.referral_code || "",
+        onboardingStep: row?.onboarding_step || "done",
       });
     } else {
       res.json({ isAuthenticated: false });
     }
+  });
+
+  // POST /api/lead/set-password — set or update password for a lead account
+  app.post("/api/lead/set-password", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const { password } = req.body;
+    if (!password || password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+
+    try {
+      const passwordHash = hashPassword(password);
+      await db.execute(sql`UPDATE lead_portal_accounts SET password_hash = ${passwordHash} WHERE email = ${email}`);
+      console.log(`[LEAD] Password set for: ${email}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[LEAD] set-password error:", err);
+      res.status(500).json({ error: "Failed to set password" });
+    }
+  });
+
+  // POST /api/lead/onboarding/advance — advance onboarding step
+  app.post("/api/lead/onboarding/advance", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    const { step } = req.body;
+    const validSteps = ['add_position', 'connect_bank', 'view_qualify', 'done'];
+    if (!step || !validSteps.includes(step)) return res.status(400).json({ error: "Invalid step" });
+    await db.execute(sql`UPDATE lead_portal_accounts SET onboarding_step = ${step} WHERE email = ${email} AND onboarding_step != 'done'`);
+    res.json({ success: true });
+  });
+
+  // GET /api/lead/referrals — get referral stats for current lead
+  app.get("/api/lead/referrals", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    const account = await db.execute(sql`SELECT referral_code FROM lead_portal_accounts WHERE email = ${email}`);
+    const code = (account.rows[0] as any)?.referral_code;
+    if (!code) return res.json({ referralCode: null, referralCount: 0, referrals: [] });
+    const referrals = await db.execute(sql`SELECT first_name, created_at FROM lead_portal_accounts WHERE referred_by = ${email} ORDER BY created_at DESC`);
+    res.json({ referralCode: code, referralCount: referrals.rows.length, referrals: referrals.rows });
   });
 
   // POST /api/lead/auth/logout
@@ -6723,6 +6858,166 @@ export async function registerRoutes(app: Express): Promise<Server> {
     req.session.destroy(() => {});
     res.json({ success: true });
   });
+
+  // ── Lead Qualification Check ──
+  // Evaluates if a lead meets funding thresholds and fires a GHL webhook when they qualify
+  async function checkLeadQualification(email: string) {
+    try {
+      // Get lead account
+      const accountResult = await db.execute(sql`SELECT * FROM lead_portal_accounts WHERE email = ${email}`);
+      if (accountResult.rows.length === 0) return;
+      const account = accountResult.rows[0] as any;
+
+      // Already qualified — don't re-fire
+      if (account.is_qualified) return;
+
+      // Get positions
+      const positionsResult = await db.execute(sql`SELECT * FROM lead_positions WHERE lead_email = ${email} AND status = 'active'`);
+      const positions = positionsResult.rows as any[];
+
+      // Get banking metrics
+      const snapshot = await storage.getMerchantBankSnapshot(email);
+      const metrics = (snapshot?.metrics as any) || {};
+      const monthlyRevenue = Number(metrics.monthlyRevenue) || 0;
+      const healthScore = Number(metrics.healthScore) || 0;
+
+      // Calculate qualification signals
+      let score = 0;
+      const signals: string[] = [];
+
+      // Signal 1: Monthly revenue >= $15K
+      if (monthlyRevenue >= 15000) {
+        score += 30;
+        signals.push(`Revenue: $${monthlyRevenue.toLocaleString()}/mo`);
+      } else if (monthlyRevenue >= 10000) {
+        score += 15;
+        signals.push(`Revenue: $${monthlyRevenue.toLocaleString()}/mo (moderate)`);
+      }
+
+      // Signal 2: Health score >= 60
+      if (healthScore >= 60) {
+        score += 20;
+        signals.push(`Health score: ${healthScore}`);
+      }
+
+      // Signal 3: Position paydown > 50%
+      const paidDownPositions = positions.filter(p => {
+        const funded = Number(p.funded_amount) || 0;
+        const remaining = Number(p.remaining_balance) || funded;
+        return funded > 0 && remaining <= funded * 0.5;
+      });
+      if (paidDownPositions.length > 0) {
+        score += 25;
+        signals.push(`${paidDownPositions.length} position(s) > 50% paid down`);
+      }
+
+      // Signal 4: Has bank connected
+      if (snapshot?.isAccountConnected) {
+        score += 15;
+        signals.push('Bank connected');
+      }
+
+      // Signal 5: Has positions tracked (shows engagement)
+      if (positions.length > 0) {
+        score += 10;
+        signals.push(`${positions.length} position(s) tracked`);
+      }
+
+      // Determine tier
+      const tier = score >= 70 ? 'hot' : score >= 40 ? 'warm' : 'cold';
+      const isQualified = score >= 70;
+
+      // Update account with qualification data
+      await db.execute(sql`UPDATE lead_portal_accounts SET
+        qualification_score = ${score},
+        qualification_tier = ${tier},
+        is_qualified = ${isQualified}
+        WHERE email = ${email}`);
+
+      // If newly qualified (score >= 70), fire GHL webhook
+      if (isQualified) {
+        console.log(`[LEAD] Lead qualified! ${email} (score: ${score}, signals: ${signals.join(', ')})`);
+        const LEAD_QUALIFIED_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35';
+        const qualPayload = {
+          first_name: account.first_name || '',
+          last_name: account.last_name || '',
+          email: email,
+          phone: account.phone || '',
+          company_name: account.business_name || '',
+          source: 'Lead Portal - Qualified',
+          submission_date: new Date().toISOString(),
+          tags: ['lead-portal-qualified', 'lead-source-website'],
+          qualification_score: score,
+          qualification_tier: tier,
+          qualification_signals: signals.join('; '),
+          monthly_revenue: monthlyRevenue > 0 ? monthlyRevenue.toString() : '',
+          positions_count: positions.length.toString(),
+        };
+        fetch(LEAD_QUALIFIED_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(qualPayload),
+        }).catch(err => console.error('[LEAD] Qualification webhook error:', err));
+
+        // Tag the GHL contact as qualified
+        try {
+          const searchPayload = JSON.stringify({ locationId: 'n778xwOps9t8Q34eRPfM', query: email, pageLimit: 1 });
+          const searchResp = await fetch('https://services.leadconnectorhq.com/contacts/search', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.GHL_API_KEY}`,
+              'Content-Type': 'application/json',
+              'Version': '2021-07-28',
+            },
+            body: searchPayload,
+          });
+          const searchData = await searchResp.json() as any;
+          const contactId = searchData?.contacts?.[0]?.id;
+          if (contactId) {
+            await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${process.env.GHL_API_KEY}`,
+                'Content-Type': 'application/json',
+                'Version': '2021-07-28',
+              },
+              body: JSON.stringify({ tags: ['lead-portal-qualified'] }),
+            });
+          }
+        } catch (tagErr) {
+          console.error('[LEAD] GHL tag error:', tagErr);
+        }
+      }
+
+      // ── Renewal/Refi Alerts ──
+      // If any position is 50%+ paid down and we haven't sent a renewal alert yet
+      if (!account.renewal_alert_sent && paidDownPositions.length > 0) {
+        console.log(`[LEAD] Renewal alert triggered for ${email}: ${paidDownPositions.length} position(s) > 50% paid`);
+        await db.execute(sql`UPDATE lead_portal_accounts SET renewal_alert_sent = true WHERE email = ${email}`);
+
+        const renewalPayload = {
+          first_name: account.first_name || '',
+          last_name: account.last_name || '',
+          email: email,
+          phone: account.phone || '',
+          company_name: account.business_name || '',
+          source: 'Lead Portal - Renewal Alert',
+          submission_date: new Date().toISOString(),
+          tags: ['lead-portal-renewal-ready', 'lead-source-website'],
+          positions_count: paidDownPositions.length.toString(),
+          monthly_revenue: monthlyRevenue > 0 ? monthlyRevenue.toString() : '',
+        };
+        const RENEWAL_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35';
+        fetch(RENEWAL_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(renewalPayload),
+        }).catch(err => console.error('[LEAD] Renewal webhook error:', err));
+      }
+    } catch (err) {
+      console.error('[LEAD] Qualification check error:', err);
+    }
+  }
 
   // ── Lead Positions CRUD ──
 
@@ -6746,6 +7041,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, factor_rate, payment_amount, payment_frequency, funded_date, remaining_balance)
       VALUES (${email}, ${funderName}, ${productType || null}, ${fundedAmount || null}, ${paybackAmount || null}, ${factorRate || null}, ${paymentAmount || null}, ${paymentFrequency || null}, ${fundedDate || null}, ${remainingBalance || null})`);
 
+    // Check qualification after adding position (non-blocking)
+    checkLeadQualification(email).catch(() => {});
+
     res.json({ success: true });
   });
 
@@ -6755,6 +7053,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!email) return res.status(401).json({ error: "Authentication required" });
 
     await db.execute(sql`DELETE FROM lead_positions WHERE id = ${req.params.id} AND lead_email = ${email}`);
+
+    // Re-check qualification after removing position (non-blocking)
+    checkLeadQualification(email).catch(() => {});
+
     res.json({ success: true });
   });
 
@@ -6833,7 +7135,164 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!existing?.chirpRequestCode) return res.status(400).json({ error: "No bank connection found." });
 
     const snapshot = await syncMerchantSnapshotFromChirp(email, existing.chirpRequestCode);
+
+    // Auto-detect funding positions from transaction data (non-blocking)
+    (async () => {
+      try {
+        const bankData = await chirpService.getBankStatements(existing.chirpRequestCode, 6);
+        if (bankData.transactions && bankData.transactions.length > 0) {
+          console.log(`[LEAD] Scanning ${bankData.transactions.length} transactions for funding positions (${email})`);
+          const detected = await detectFundingPositions(bankData.transactions);
+          if (detected.length > 0) {
+            console.log(`[LEAD] Found ${detected.length} funding position(s) for ${email}`);
+            // Get existing positions to avoid duplicates
+            const existingPositions = await db.execute(sql`SELECT funder_name, payment_amount FROM lead_positions WHERE lead_email = ${email}`);
+            const existingFunders = new Set((existingPositions.rows as any[]).map(r => r.funder_name?.toLowerCase().trim()));
+
+            for (const pos of detected) {
+              const funderKey = pos.funderName.toLowerCase().trim();
+              if (existingFunders.has(funderKey)) {
+                console.log(`[LEAD] Skipping duplicate position: ${pos.funderName}`);
+                continue;
+              }
+              await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, payment_amount, payment_frequency, funded_date, remaining_balance, notes)
+                VALUES (${email}, ${pos.funderName}, ${pos.productType}, ${pos.estimatedOriginalAmount}, ${null}, ${pos.estimatedPaymentAmount}, ${pos.paymentFrequency}, ${pos.firstPaymentDate}, ${pos.estimatedRemainingBalance}, ${'Auto-detected from bank transactions (' + pos.confidence + ' confidence, ' + pos.paymentsFound + ' payments found)'})`);
+              existingFunders.add(funderKey);
+              console.log(`[LEAD] Auto-added position: ${pos.funderName} ($${pos.estimatedPaymentAmount} ${pos.paymentFrequency})`);
+            }
+          }
+        }
+      } catch (detectErr) {
+        console.error('[LEAD] Position detection error:', detectErr);
+      }
+    })();
+
+    // Check qualification after bank sync (non-blocking)
+    checkLeadQualification(email).catch(() => {});
+
     res.json({ success: true, lastSyncedAt: snapshot?.lastSyncedAt });
+  });
+
+  // POST /api/lead/upload-statement — lead uploads a PDF bank statement for analysis
+  app.post("/api/lead/upload-statement", (req, res, next) => {
+    bankStatementUpload.single("file")(req, res, (err: any) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: "File size exceeds 25MB limit" });
+        if (err.message === 'Only PDF files are allowed') return res.status(400).json({ error: err.message });
+        return res.status(400).json({ error: "File upload error: " + err.message });
+      }
+      next();
+    });
+  }, async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    try {
+      // Get lead info
+      const leadResult = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${email}`);
+      const lead = leadResult.rows[0] as any;
+      const businessName = lead?.business_name || '';
+
+      // Store file
+      if (!objectStorage.isConfigured()) {
+        return res.status(500).json({ error: "File storage is not configured." });
+      }
+      const storedFileName = await objectStorage.uploadFile(file.buffer, file.originalname, file.mimetype);
+      const viewToken = randomBytes(32).toString('hex');
+
+      // Save upload record
+      const upload = await storage.createBankStatementUpload({
+        email,
+        businessName,
+        loanApplicationId: null,
+        originalFileName: file.originalname,
+        storedFileName,
+        mimeType: file.mimetype,
+        fileSize: file.size,
+        viewToken,
+        receivedAt: null,
+        approvalStatus: null,
+        approvalNotes: null,
+        reviewedBy: null,
+        reviewedAt: null,
+        lenderId: null,
+        lenderName: null,
+      });
+
+      console.log(`[LEAD] Statement uploaded by ${email}: ${file.originalname} (${(file.size / 1024).toFixed(0)}KB)`);
+
+      // Update onboarding step
+      await db.execute(sql`UPDATE lead_portal_accounts SET onboarding_step = 'view_qualify' WHERE email = ${email} AND onboarding_step IN ('add_position', 'connect_bank')`);
+
+      // Re-check qualification
+      checkLeadQualification(email).catch(() => {});
+
+      res.json({ success: true, uploadId: upload.id, fileName: file.originalname });
+    } catch (err: any) {
+      console.error("[LEAD] statement upload error:", err);
+      res.status(500).json({ error: "Upload failed. Please try again." });
+    }
+  });
+
+  // POST /api/lead/detect-positions — manually trigger position detection from bank transactions
+  app.post("/api/lead/detect-positions", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    try {
+      const existing = await storage.getMerchantBankSnapshot(email);
+      if (!existing?.chirpRequestCode) {
+        return res.status(400).json({ error: "Connect your bank first to detect positions." });
+      }
+
+      const bankData = await chirpService.getBankStatements(existing.chirpRequestCode, 6);
+      if (!bankData.transactions || bankData.transactions.length === 0) {
+        return res.json({ detected: 0, positions: [], message: "No transactions found to analyze." });
+      }
+
+      console.log(`[LEAD] Manual position scan: ${bankData.transactions.length} transactions for ${email}`);
+      const detected = await detectFundingPositions(bankData.transactions);
+
+      if (detected.length === 0) {
+        return res.json({ detected: 0, positions: [], message: "No funding positions detected in your transactions." });
+      }
+
+      // Get existing positions to avoid duplicates
+      const existingPositions = await db.execute(sql`SELECT funder_name FROM lead_positions WHERE lead_email = ${email}`);
+      const existingFunders = new Set((existingPositions.rows as any[]).map(r => r.funder_name?.toLowerCase().trim()));
+
+      let added = 0;
+      const newPositions: any[] = [];
+      for (const pos of detected) {
+        const funderKey = pos.funderName.toLowerCase().trim();
+        if (existingFunders.has(funderKey)) continue;
+
+        await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, payment_amount, payment_frequency, funded_date, remaining_balance, notes)
+          VALUES (${email}, ${pos.funderName}, ${pos.productType}, ${pos.estimatedOriginalAmount}, ${null}, ${pos.estimatedPaymentAmount}, ${pos.paymentFrequency}, ${pos.firstPaymentDate}, ${pos.estimatedRemainingBalance}, ${'Auto-detected from bank transactions (' + pos.confidence + ' confidence, ' + pos.paymentsFound + ' payments found)'})`);
+        existingFunders.add(funderKey);
+        added++;
+        newPositions.push(pos);
+      }
+
+      // Re-check qualification
+      checkLeadQualification(email).catch(() => {});
+
+      res.json({
+        detected: detected.length,
+        added,
+        skippedDuplicates: detected.length - added,
+        positions: newPositions,
+        message: added > 0
+          ? `Found ${detected.length} position(s), added ${added} new one(s).`
+          : `Found ${detected.length} position(s) but they were already tracked.`,
+      });
+    } catch (err: any) {
+      console.error("[LEAD] detect-positions error:", err);
+      res.status(500).json({ error: "Failed to scan transactions. Please try again." });
+    }
   });
 
   // GET /api/admin/lead-portal/leads — admin view of all lead portal signups
@@ -6845,7 +7304,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await db.execute(sql`SELECT l.*,
         (SELECT COUNT(*) FROM lead_positions WHERE lead_email = l.email) as position_count,
         (SELECT json_agg(json_build_object('funderName', funder_name, 'productType', product_type, 'fundedAmount', funded_amount, 'status', status))
-         FROM lead_positions WHERE lead_email = l.email) as positions
+         FROM lead_positions WHERE lead_email = l.email) as positions,
+        (SELECT COUNT(*) FROM bank_statement_uploads WHERE email = l.email) as statement_count,
+        (SELECT json_agg(json_build_object('id', id, 'originalFileName', original_file_name, 'fileSize', file_size, 'viewToken', view_token, 'createdAt', created_at) ORDER BY created_at DESC)
+         FROM bank_statement_uploads WHERE email = l.email) as statements
         FROM lead_portal_accounts l ORDER BY l.created_at DESC`);
       res.json(result.rows);
     } catch (err: any) {

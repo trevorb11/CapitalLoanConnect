@@ -237,10 +237,106 @@ const CSS = `
     color: #14B8A6;
   }
 
+  .ach-form .print-only-date { display: none; }
+
   @media (max-width: 640px) {
     .ach-form .container { padding: 32px 20px; }
     .ach-form .field-row, .ach-form .field-row-3 { grid-template-columns: 1fr; }
     .ach-form h1 { font-size: 20px; }
+  }
+
+  @media print {
+    .ach-form { background: #fff; padding: 0; }
+    .ach-form .container { box-shadow: none; padding: 24px 20px; border-radius: 0; }
+    .ach-form .submit-btn { display: none; }
+
+    .ach-form .field-group {
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .ach-form label {
+      display: none;
+    }
+
+    .ach-form input, .ach-form select {
+      border: none;
+      border-bottom: 1px solid #000;
+      border-radius: 0;
+      padding: 4px 4px 4px 0;
+      font-size: 13px;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .ach-form input::placeholder {
+      color: transparent;
+    }
+
+    .ach-form .field-group::before {
+      font-size: 12px;
+      font-weight: 600;
+      color: #000;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .ach-form .field-group[data-print-label]::before {
+      content: attr(data-print-label);
+    }
+
+    .ach-form .radio-group { gap: 16px; }
+    .ach-form .radio-option { font-size: 13px; }
+    .ach-form .radio-option input[type="radio"] { width: 14px; height: 14px; }
+
+    .ach-form .sig-canvas {
+      border: 1px solid #000;
+      height: 80px;
+    }
+
+    .ach-form .sig-hint, .ach-form .clear-btn { display: none; }
+
+    .ach-form .sig-area[data-print-label]::before {
+      content: attr(data-print-label);
+      font-size: 12px;
+      font-weight: 600;
+      color: #000;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .ach-form .sig-area { background: transparent; border: none; padding: 16px 0; }
+
+    .ach-form [style*="fef2f2"] { display: none; }
+
+    .ach-form .section-label {
+      font-size: 12px;
+      margin-top: 24px;
+      margin-bottom: 12px;
+    }
+
+    .ach-form .disclaimer { font-size: 10px; padding: 10px; }
+    .ach-form .subtitle { font-size: 12px; margin-bottom: 20px; }
+    .ach-form h1 { font-size: 18px; }
+    .ach-form .logo-mark { width: 28px; height: 28px; font-size: 11px; }
+    .ach-form .logo-text { font-size: 13px; }
+
+    .ach-form .field-row, .ach-form .field-row-3 { gap: 12px; }
+
+    .ach-form .print-only-date {
+      display: block;
+      margin-top: 16px;
+    }
+
+    .ach-form .print-only-date input {
+      visibility: visible !important;
+      height: auto !important;
+      padding: 4px 4px 4px 0 !important;
+      margin: 0 !important;
+      border: none !important;
+      border-bottom: 1px solid #000 !important;
+      width: 50%;
+    }
   }
 `;
 
@@ -419,27 +515,27 @@ export default function AchForm() {
           {/* Financial Institution */}
           <div className="section-label">Financial Institution</div>
 
-          <div className="field-group">
+          <div className="field-group" data-print-label="Name of Financial Institution:">
             <label>Name of Financial Institution <span className="required">*</span></label>
             <input value={form.bankName} onChange={set("bankName")} placeholder="e.g. Bank of America" required />
           </div>
 
-          <div className="field-group">
+          <div className="field-group" data-print-label="Branch Address:">
             <label>Branch Address</label>
             <input value={form.bankAddress} onChange={set("bankAddress")} placeholder="Street address" />
           </div>
 
           <div className="field-row">
-            <div className="field-group">
+            <div className="field-group" data-print-label="City:">
               <label>City</label>
               <input value={form.bankCity} onChange={set("bankCity")} placeholder="City" />
             </div>
             <div className="field-row" style={{ gap: 12 }}>
-              <div className="field-group">
+              <div className="field-group" data-print-label="State:">
                 <label>State</label>
                 <input value={form.bankState} onChange={set("bankState")} placeholder="ST" maxLength={2} style={{ textTransform: "uppercase" }} />
               </div>
-              <div className="field-group">
+              <div className="field-group" data-print-label="Zip:">
                 <label>Zip</label>
                 <input value={form.bankZip} onChange={set("bankZip")} placeholder="00000" maxLength={5} />
               </div>
@@ -449,7 +545,7 @@ export default function AchForm() {
           {/* Account Details */}
           <div className="section-label">Account Details</div>
 
-          <div className="field-group">
+          <div className="field-group" data-print-label="Type of Account:">
             <label>Type of Account <span className="required">*</span></label>
             <div className="radio-group">
               <label className="radio-option">
@@ -464,11 +560,11 @@ export default function AchForm() {
           </div>
 
           <div className="field-row">
-            <div className="field-group">
+            <div className="field-group" data-print-label="Routing Number:">
               <label>Routing Number <span className="required">*</span></label>
               <input value={form.routingNumber} onChange={set("routingNumber")} placeholder="9 digits" maxLength={9} required />
             </div>
-            <div className="field-group">
+            <div className="field-group" data-print-label="Account Number:">
               <label>Account Number <span className="required">*</span></label>
               <input value={form.accountNumber} onChange={set("accountNumber")} placeholder="Account number" required />
             </div>
@@ -478,11 +574,11 @@ export default function AchForm() {
           <div className="section-label">Debit Details</div>
 
           <div className="field-row">
-            <div className="field-group">
+            <div className="field-group" data-print-label="Debit Date (on or after):">
               <label>Debit Date (on or after) <span className="required">*</span></label>
               <input type="date" value={form.debitDate} onChange={set("debitDate")} required />
             </div>
-            <div className="field-group">
+            <div className="field-group" data-print-label="Amount:">
               <label>Amount <span className="required">*</span></label>
               <div style={{ position: "relative" }}>
                 <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#6b7280", fontSize: 15 }}>$</span>
@@ -494,41 +590,41 @@ export default function AchForm() {
           {/* Business / Consumer Info */}
           <div className="section-label">Business / Consumer Information</div>
 
-          <div className="field-group">
+          <div className="field-group" data-print-label="Business / Consumer Name:">
             <label>Business / Consumer Name <span className="required">*</span></label>
             <input value={form.businessName} onChange={set("businessName")} placeholder="Legal business name or your full name" required />
           </div>
 
-          <div className="field-group">
+          <div className="field-group" data-print-label="Address:">
             <label>Address</label>
             <input value={form.businessAddress} onChange={set("businessAddress")} placeholder="Street address" />
           </div>
 
           <div className="field-row-3">
-            <div className="field-group">
+            <div className="field-group" data-print-label="City:">
               <label>City</label>
               <input value={form.businessCity} onChange={set("businessCity")} placeholder="City" />
             </div>
-            <div className="field-group">
+            <div className="field-group" data-print-label="State:">
               <label>State</label>
               <input value={form.businessState} onChange={set("businessState")} placeholder="ST" maxLength={2} style={{ textTransform: "uppercase" }} />
             </div>
-            <div className="field-group">
+            <div className="field-group" data-print-label="Zip:">
               <label>Zip</label>
               <input value={form.businessZip} onChange={set("businessZip")} placeholder="00000" maxLength={5} />
             </div>
           </div>
 
           <div className="field-row-3">
-            <div className="field-group">
+            <div className="field-group" data-print-label="Contact Name:">
               <label>Contact Name</label>
               <input value={form.contactName} onChange={set("contactName")} placeholder="Full name" />
             </div>
-            <div className="field-group">
+            <div className="field-group" data-print-label="Email:">
               <label>Email</label>
               <input type="email" value={form.contactEmail} onChange={set("contactEmail")} placeholder="email@example.com" />
             </div>
-            <div className="field-group">
+            <div className="field-group" data-print-label="Phone:">
               <label>Phone</label>
               <input type="tel" value={form.contactPhone} onChange={set("contactPhone")} placeholder="(555) 555-5555" />
             </div>
@@ -537,7 +633,7 @@ export default function AchForm() {
           {/* Signature */}
           <div className="section-label">Signature</div>
 
-          <div className="sig-area">
+          <div className="sig-area" data-print-label="Account Holder's Signature:">
             <label>Account Holder's Signature <span className="required">*</span></label>
             <canvas
               ref={canvasRef}
@@ -556,6 +652,10 @@ export default function AchForm() {
               <span className="sig-hint">{hasSigned ? "Signature captured" : "Draw your signature above"}</span>
               <button type="button" className="clear-btn" onClick={clearSig}>Clear</button>
             </div>
+          </div>
+
+          <div className="field-group print-only-date" data-print-label="Date:">
+            <input type="text" tabIndex={-1} readOnly style={{ visibility: "hidden", height: 0, padding: 0, margin: 0, border: "none" }} />
           </div>
 
           {/* Disclaimer */}

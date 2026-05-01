@@ -631,3 +631,113 @@ Respond ONLY with the JSON object.`;
     };
   }
 }
+
+// ── Detect Funding Positions from Bank Transactions ──
+
+export interface DetectedPosition {
+  funderName: string;
+  productType: string; // MCA, Term Loan, Line of Credit, etc.
+  estimatedPaymentAmount: number;
+  paymentFrequency: string; // daily, weekly, bi-weekly, monthly
+  paymentsFound: number; // how many payments were detected
+  firstPaymentDate: string;
+  lastPaymentDate: string;
+  estimatedRemainingBalance: number | null;
+  estimatedOriginalAmount: number | null;
+  confidence: "high" | "medium" | "low";
+  transactionDescriptions: string[]; // sample descriptions that matched
+}
+
+export async function detectFundingPositions(
+  transactions: Array<{ date: string; name: string; amount: number; type: string }>
+): Promise<DetectedPosition[]> {
+  if (!transactions || transactions.length === 0) return [];
+
+  // Filter to debits only and format for analysis
+  const debits = transactions
+    .filter(t => t.amount < 0 || t.type === "DEBIT")
+    .map(t => ({
+      date: t.date,
+      description: t.name,
+      amount: Math.abs(t.amount),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (debits.length === 0) return [];
+
+  // Limit to 500 most recent debits to stay within token limits
+  const recentDebits = debits.slice(-500);
+
+  const prompt = `Analyze these bank account debit transactions and identify any recurring payments to business funding companies (MCA providers, lenders, factors, etc.).
+
+KNOWN MCA / BUSINESS FUNDING COMPANIES (common names that appear in bank transactions):
+- Fora Financial, Fox Capital, Fundbox, Libertas, OnDeck, Kabbage, BlueVine, Credibly
+- CAN Capital, Rapid Finance, Yellowstone Capital, Everest Business Funding
+- Green Capital, Pearl Capital, Vox Funding, Fenix Capital, Clear Fund, Lite Fund
+- Smart Business Funder, Super Fast Cap, TVT Capital, Bizpoint, River Advance
+- American Financial Center, Fuji, Specialty Capital, Top Choice Financial
+- Revenued, Vital Cap, Westwood Funding, I Got Funded, Evolve Capital
+- Silverline Funding, GFE, Fintegra, Smarter Merchant
+- Square Capital, Stripe Capital, PayPal Working Capital, Shopify Capital
+- National Funding, Forward Financing, Reliant Funding, Expansion Capital
+- BFS Capital, Mantis Funding, Lendini, United Capital Source, Greenbox Capital
+- Any other entity that appears to be a business lender based on payment patterns
+
+TRANSACTION DATA (debits):
+${JSON.stringify(recentDebits, null, 1)}
+
+Look for:
+1. Recurring payments of the same amount to the same entity (daily, weekly, or monthly)
+2. ACH debits with lender-like names
+3. Payments labeled as "loan payment", "advance payment", "MCA", etc.
+
+Respond with a JSON array of detected positions. Each position should be:
+{
+  "funderName": "<clean company name>",
+  "productType": "<MCA, Term Loan, Line of Credit, Revenue Based Advance, Equipment Financing, SBA Loan, Unknown>",
+  "estimatedPaymentAmount": <number - typical single payment amount>,
+  "paymentFrequency": "<daily, weekly, bi-weekly, monthly>",
+  "paymentsFound": <number of matching transactions found>,
+  "firstPaymentDate": "<YYYY-MM-DD>",
+  "lastPaymentDate": "<YYYY-MM-DD>",
+  "estimatedRemainingBalance": <number or null - rough estimate based on payment trajectory, null if uncertain>,
+  "estimatedOriginalAmount": <number or null - rough estimate, null if uncertain>,
+  "confidence": "<high, medium, or low>",
+  "transactionDescriptions": ["<1-3 sample descriptions that matched>"]
+}
+
+Rules:
+- Only include positions where you found at least 2 recurring payments to the same entity.
+- Do NOT include normal business expenses (rent, utilities, payroll, subscriptions, insurance).
+- Do NOT include credit card payments, mortgage payments, or personal loans.
+- Focus on business funding: MCAs, term loans, lines of credit, revenue-based financing.
+- If daily debits are found, the product is almost certainly an MCA.
+- If no funding positions are detected, return an empty array [].
+
+Respond ONLY with the JSON array, no additional text.`;
+
+  try {
+    const response = await getAnthropic().messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2000,
+      system: "You are a financial analyst specializing in identifying business funding repayments in bank transaction data. Be precise and conservative. Only flag transactions you are confident are loan/advance repayments. Respond with valid JSON only.",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = response.content.find(b => b.type === "text");
+    let content = textBlock?.text?.trim() || "[]";
+
+    // Strip markdown code blocks
+    if (content.startsWith("```json")) content = content.slice(7);
+    else if (content.startsWith("```")) content = content.slice(3);
+    if (content.endsWith("```")) content = content.slice(0, -3);
+    content = content.trim();
+
+    const positions = JSON.parse(content) as DetectedPosition[];
+    console.log(`[AI] Detected ${positions.length} funding position(s) from ${recentDebits.length} debit transactions`);
+    return positions;
+  } catch (error) {
+    console.error("[AI] Position detection error:", error);
+    return [];
+  }
+}

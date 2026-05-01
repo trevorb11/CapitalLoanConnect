@@ -62,6 +62,11 @@ import MerchantActivate from "@/pages/MerchantActivate";
 import MerchantResetPassword from "@/pages/MerchantResetPassword";
 import MerchantProfile from "@/pages/MerchantProfile";
 import LeadPortal from "@/pages/LeadPortal";
+import AdsConsultation from "@/pages/AdsConsultation";
+import LeadsDashboard from "@/pages/LeadsDashboard";
+import ServicePayments from "@/pages/ServicePayments";
+import ServiceWebsite from "@/pages/ServiceWebsite";
+import ServiceCRM from "@/pages/ServiceCRM";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -156,7 +161,16 @@ function Router() {
       <Route path="/merchant-profile" component={MerchantProfile} />
       <Route path="/merchant-profile/:email" component={MerchantProfile} />
 
+      {/* Service Landing Pages */}
+      <Route path="/services/payments" component={ServicePayments} />
+      <Route path="/services/website" component={ServiceWebsite} />
+      <Route path="/services/crm" component={ServiceCRM} />
+
+      {/* Ads Consultation */}
+      <Route path="/ads" component={AdsConsultation} />
+
       {/* Lead Portal Routes */}
+      <Route path="/leads" component={LeadsDashboard} />
       <Route path="/track" component={LeadPortal} />
       <Route path="/track/signup" component={LeadPortal} />
       <Route path="/track/login" component={LeadPortal} />
