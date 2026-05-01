@@ -793,17 +793,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/ads-leads — GHL contacts with "clicked ads" tag
+  // GET /api/ads-leads — contacts from ads_leads table (seeded from CSV + form submissions)
   app.get("/api/ads-leads", async (req: Request, res: Response) => {
     try {
       if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
         return res.status(401).json({ error: "Admin access required" });
       }
-      const result = await repConsoleService.getAdsLeads();
-      return res.json(result);
+      const result = await db.execute(sql`SELECT * FROM ads_leads ORDER BY created_at DESC`);
+      const toIso = (val: any) => {
+        if (!val) return '';
+        if (val instanceof Date) return val.toISOString();
+        if (typeof val === 'string') return val;
+        return String(val);
+      };
+      const contacts = result.rows.map((r: any) => ({
+        id: String(r.id),
+        name: [r.first_name, r.last_name].filter(Boolean).join(' ') || r.email || 'Unknown',
+        businessName: r.business_name || '',
+        email: r.email || '',
+        phone: r.phone || '',
+        city: r.city || '',
+        state: r.state || '',
+        monthlyRevenue: r.monthly_revenue || null,
+        source: r.source || '',
+        leadBatch: r.lead_batch || '',
+        tags: [],
+        leadType: r.lead_type || 'Clicked through Email',
+        lastActivity: toIso(r.last_activity) || toIso(r.created_at),
+        notes: r.notes || '',
+      }));
+      return res.json({ contacts, total: contacts.length });
     } catch (err: any) {
       console.error("[ADS-LEADS] Error fetching ads leads:", err.message);
       return res.status(500).json({ error: "Failed to fetch ads leads" });
+    }
+  });
+
+  // POST /api/ads-consultation/submit — /ads page form submission, adds to ads_leads
+  app.post("/api/ads-consultation/submit", async (req: Request, res: Response) => {
+    try {
+      const { email, website, monthlySpend, intent } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+      const normalizedEmail = email.toLowerCase().trim();
+      const notes = [website && `Website: ${website}`, monthlySpend && `Ad Spend: ${monthlySpend}`, intent && `Intent: ${intent}`].filter(Boolean).join(' | ');
+      await db.execute(sql`
+        INSERT INTO ads_leads (email, notes, lead_type, last_activity)
+        VALUES (${normalizedEmail}, ${notes || null}, 'Form Submission', NOW())
+        ON CONFLICT (email) DO UPDATE SET
+          notes = EXCLUDED.notes,
+          lead_type = CASE WHEN ads_leads.lead_type = 'Form Submission' THEN 'Form Submission' ELSE ads_leads.lead_type END,
+          last_activity = NOW()
+      `);
+      console.log(`[ADS-LEADS] Form submission saved: ${normalizedEmail}`);
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[ADS-LEADS] Form submit error:", err.message);
+      return res.status(500).json({ error: "Failed to save submission" });
     }
   });
 
@@ -6567,6 +6612,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
   // SERVICES INTEREST TRACKING
   // ========================================
+
+  // ========================================
+  // ADS LEADS TABLE — CSV seed + form submissions
+  // ========================================
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS ads_leads (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE,
+      first_name TEXT,
+      last_name TEXT,
+      phone TEXT,
+      business_name TEXT,
+      city TEXT,
+      state TEXT,
+      monthly_revenue TEXT,
+      source TEXT,
+      lead_batch TEXT,
+      lead_type TEXT NOT NULL DEFAULT 'Clicked through Email',
+      notes TEXT,
+      last_activity TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+
+    // Seed CSV contacts if table is empty (excluding form submissions)
+    const countRes = await db.execute(sql`SELECT COUNT(*) FROM ads_leads WHERE lead_type != 'Form Submission'`);
+    if (String(countRes.rows[0]?.count ?? '0') === '0') {
+      const csvContacts = [
+        ['deniseb@burgessservices.com','Denise','Burgess','+13035882573','Burgess Services LLC','','','62031.50','','','Interest Email','2025-10-07'],
+        ['mochs@wclh.com','Mikel','Ochs','+14068024104','1978 LLC','Billings','MT','374011.00','SMA','SMA1','Clicked through Email','2025-10-03'],
+        ['todd@kingprecisionsolutions.com','Todd','King','+18773123858','King Precision Solutions','','','1169618.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
+        ['jed@fastpaypartners.com','Jed','Simon','+13109862048','Fast Pay Partners','','CA','216000.00','','','Interest Email','2026-04-14'],
+        ['jim.blair@aberdean.com','James','Blair','+16082049619','DOKKOBRAZIL, INC.','','','2395916.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['bl@specializedcrane.com','Brian','Lambrix','+19189913260','Specialized Hoisting and Hauling LLC','Tulsa','OK','42562.03','L4C','L4C14','Clicked through Email','2025-10-07'],
+        ['mcastaldo@mactecpackaging.com','Michael','Castaldo','+17324168525','MACTEC PACKAGING TECHNOLOGIES','','','1788716.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
+        ['joyce@se-oc.com','Joyce','Cumbo','+15055037228','GRANDVIEW TAVERN','','','1642214.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
+        ['terry@energytechhvac.com','Terry','Dipoma','+18015801230','TERRY DIPOMA','','','186796.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
+        ['bobfaia@mks-corp.com','Robert','Faia','+19787772196','MK SERVICES CORP.','','','10342450.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
+        ['emayfield@healthsourcechiro.com','Eric','Mayfield','+16128740705','MAYFIELD CHIROPRACTIC','','','357903.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
+        ['kleatherman@fitnessforumonline.com','Karen','Leatherman','+18436613800','KAL, INC.','','','1460051.00','UCC','UCC 4.6.26','Interest Email','2026-04-06'],
+        ['docvroom@advancedcarechiro.com','Brian','Vroom','+15033581417','ADVANCED CARE CHIROPRACTIC, P.C.','','','163981.00','','','Clicked through Email','2025-10-07'],
+        ['jvalore@wandynamics.com','Jason','Valore','+18774009490','WAN DYNAMICS, INC.','','','1031011.00','UCC','UCC 4.6.26','Interest Email','2026-03-31'],
+        ['ervin.redd@cruiseplanners.com','Ervin','Redd','+18582291356','Wayfare Travel','San Diego','CA','337000.00','SMA','SMA1','Interest Email','2025-10-20'],
+        ['david.cabral@elsequip.com','David','Cabral','+16173121765','469 LINCOLN STREET LLC','Boston','MA','133622.00','L4C','L4C14','Interest Email','2025-10-07'],
+        ['mark.edfort@evolutionmedcom.com','Mark','Edfort','+16109559621','Evolution Medical Communications','Allentown','PA','2637464.00','EGTML','EGTML1','Interest Email','2025-10-15'],
+        ['greg.plummer@enjoyrepeat.com','Gregory','Plummer','+13107173150','Enjoy Repeat, Inc.','Los Angeles','CA','128730.00','L4C','L4C14','Clicked through Email','2025-10-07'],
+      ];
+      for (const [email, firstName, lastName, phone, businessName, city, state, monthlyRevenue, source, leadBatch, leadType, createdDate] of csvContacts) {
+        await db.execute(sql`INSERT INTO ads_leads (email, first_name, last_name, phone, business_name, city, state, monthly_revenue, source, lead_batch, lead_type, last_activity, created_at)
+          VALUES (${email}, ${firstName}, ${lastName}, ${phone}, ${businessName}, ${city || null}, ${state || null}, ${monthlyRevenue}, ${source || null}, ${leadBatch || null}, ${leadType}, ${new Date('2026-04-30')}, ${new Date(createdDate)})
+          ON CONFLICT (email) DO NOTHING`);
+      }
+      console.log("[ADS-LEADS] Seeded 18 CSV contacts");
+    }
+    console.log("[ADS-LEADS] Table ensured");
+  } catch (err) {
+    console.error("[ADS-LEADS] Failed to ensure table:", err);
+  }
 
   // Ensure table exists
   try {
