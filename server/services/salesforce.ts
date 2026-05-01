@@ -410,7 +410,30 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
     const merchantRtId = rts[0]?.Id;
 
     const accountName = (businessName || fullName || email || "Unknown").slice(0, 255);
-    const nameParts = fullName.split(/\s+/);
+
+    // Ensure we have a real name, not an email address
+    let resolvedName = fullName;
+    if (!resolvedName || resolvedName.includes("@")) {
+      // Try to get name from GHL via the neonPool (dialer_contacts)
+      try {
+        const { neonPool } = await import("../db");
+        if (neonPool) {
+          const nameResult = await neonPool.query(
+            "SELECT first_name, last_name FROM dialer_contacts WHERE LOWER(email) = $1 AND first_name IS NOT NULL AND first_name != '' LIMIT 1",
+            [email.toLowerCase()]
+          );
+          if (nameResult.rows[0]) {
+            const fn = nameResult.rows[0].first_name || "";
+            const ln = nameResult.rows[0].last_name || "";
+            if (fn && !fn.includes("@")) {
+              resolvedName = `${fn} ${ln}`.trim();
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const nameParts = (resolvedName || "").split(/\s+/).filter(p => p && !p.includes("@"));
     const today = new Date();
     const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
 
@@ -441,7 +464,7 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
     const contact = clean({
       AccountId: acctRes.id,
       FirstName: nameParts[0] || null,
-      LastName: nameParts.slice(1).join(" ") || email || "Unknown",
+      LastName: nameParts.slice(1).join(" ") || (nameParts[0] ? "Unknown" : businessName || "Unknown"),
       Email: email || null,
       Phone: phone || null,
       Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score),
