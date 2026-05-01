@@ -75,6 +75,8 @@ export default function AdsLeads() {
     queryKey: ["/api/ads-leads"],
   });
 
+  const isUnauthorized = error && String(error.message).startsWith("401");
+
   const contacts = data?.contacts || [];
 
   const leadTypeOptions = useMemo(() => {
@@ -192,6 +194,13 @@ export default function AdsLeads() {
                 {Array.from({ length: 8 }).map((_, i) => (
                   <Skeleton key={i} className="h-12 w-full" />
                 ))}
+              </div>
+            ) : isUnauthorized ? (
+              <div className="p-8 text-center space-y-3">
+                <p className="text-muted-foreground">You must be logged in as an admin to view this page.</p>
+                <Button variant="default" size="sm" onClick={() => navigate("/")} data-testid="button-go-to-login">
+                  Go to Login
+                </Button>
               </div>
             ) : error ? (
               <div className="p-8 text-center text-muted-foreground">
