@@ -27,6 +27,7 @@ const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
+import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail } from "./services/email";
 import { syncApplicationToSalesforce, syncDecisionToSalesforce } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
@@ -765,6 +766,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       console.log(`[ADS] Inquiry saved: ${email} | adSpend=${adSpend} | website=${website}`);
+      const { subject: adsSub, html: adsHtml } = buildAdsInquiryEmail({ email, website, adSpend, interest, utmSource, utmCampaign });
+      sendMarketingNotification(adsSub, adsHtml).catch(() => {});
       return res.json({ ok: true });
     } catch (err: any) {
       console.error("[ADS] Error saving inquiry:", err.message);
@@ -6589,6 +6592,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         VALUES (${normalizedEmail}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${service}, ${otherDetails || null}, ${source || 'direct'}, ${utmCampaign || null}, ${utmSource || null})`);
 
       console.log(`[SERVICES] Interest recorded: ${normalizedEmail} -> ${service}`);
+      const { subject: svcSub, html: svcHtml } = buildServicesInterestEmail({ email: normalizedEmail, firstName, lastName, phone, businessName, service, otherDetails, source });
+      sendMarketingNotification(svcSub, svcHtml).catch(() => {});
       res.json({ success: true });
     } catch (err: any) {
       console.error("[SERVICES] interest error:", err);
@@ -6860,6 +6865,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         merchantEmail: normalizedEmail,
         merchantName: [firstName, lastName].filter(Boolean).join(" ") || undefined,
       };
+
+      const { subject: leadSub, html: leadHtml } = buildLeadPortalSignupEmail({ email: normalizedEmail, firstName, lastName, phone, businessName });
+      sendMarketingNotification(leadSub, leadHtml).catch(() => {});
 
       res.json({ success: true });
     } catch (err: any) {
