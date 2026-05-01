@@ -12,7 +12,7 @@ import { plaidService } from "./services/plaid";
 import { chirpService, ChirpApiError } from "./services/chirp";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, detectFundingPositions } from "./services/openai";
+import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, extractPositionTerms, extractPositionTermsFromPdfBuffer } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { notifyMerchantNewMessage } from "./services/twilio";
@@ -20,13 +20,14 @@ import { fireSmsStageEvent } from "./sms-middleware";
 import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
 import { pool, neonPool, db } from "./db";
-import { loanApplications } from "@shared/schema";
-import { ilike, or, desc } from "drizzle-orm";
+import { loanApplications, pageVisits, serviceInterests } from "@shared/schema";
+import { ilike, or, desc, sql } from "drizzle-orm";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
+import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail } from "./services/email";
 import { syncApplicationToSalesforce, syncDecisionToSalesforce } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
@@ -257,6 +258,28 @@ function filterEmptyValues(data: Record<string, any>): Record<string, any> {
   return filtered;
 }
 
+/**
+ * Returns true if an application/update came from Guide Funding Group.
+ * Checks agentName, referrerUrl, referralSource, trackingSource, and sourcePage
+ * so that forms "beamed in" from guidefundinggroup.com are always caught.
+ */
+function isGFGSubmission(data: any): boolean {
+  if (!data) return false;
+  const GFG_DOMAIN = "guidefundinggroup.com";
+  const GFG_NAME = "guide funding group";
+  const check = (v: any) => typeof v === "string" && (
+    v.toLowerCase().includes(GFG_DOMAIN) || v.toLowerCase().includes(GFG_NAME)
+  );
+  return (
+    check(data.agentName) ||
+    check(data.referrerUrl) ||
+    check(data.referralSource) ||
+    check(data.trackingSource) ||
+    check(data.sourcePage) ||
+    check(data.referrerUrl)
+  );
+}
+
 function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string; faxNumber?: string } {
   const { recaptchaToken, faxNumber, ...rest } = data;
   const sanitized = { ...rest };
@@ -320,6 +343,19 @@ function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: 
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ── INDUSTRY PAGE REDIRECTS ────────────────────────────────────────────
+  const industryRedirects = [
+    "construction",
+    "restaurant",
+    "trucking",
+    "auto-repair",
+  ];
+  for (const slug of industryRedirects) {
+    app.get(`/industries/${slug}`, (_req: Request, res: Response) => {
+      res.redirect(301, `https://fund.todaycapitalgroup.com/industries/${slug}`);
+    });
+  }
+
   // ── ADMIN PORTAL PREVIEW TOKEN STORE (in-memory, 30-min TTL) ──────────
   const adminPreviewTokens = new Map<string, { email: string; name: string; businessName: string; expiresAt: number }>();
   setInterval(() => {
@@ -666,6 +702,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ═══════════════════════════════════════════════════════════════
+
+  // ========================================
+  // PAGE VISIT TRACKER (email-link click-throughs)
+  // ========================================
+
+  app.post("/api/analytics/track-visit", async (req: Request, res: Response) => {
+    try {
+      const { email, phone, interest, pagePath, fullUrl, referrer, utmSource, utmCampaign, utmMedium } = req.body;
+
+      // Must have at least email or phone to be worth tracking
+      if (!email && !phone) {
+        return res.status(400).json({ error: "email or phone required" });
+      }
+
+      await db.insert(pageVisits).values({
+        email: email?.toLowerCase()?.trim() || null,
+        phone: phone?.trim() || null,
+        interest: interest?.trim() || null,
+        pagePath: pagePath || null,
+        fullUrl: fullUrl || null,
+        referrer: referrer || null,
+        utmSource: utmSource || null,
+        utmCampaign: utmCampaign || null,
+        utmMedium: utmMedium || null,
+      });
+
+      console.log(`[VISIT] Tracked: ${email || phone} → ${pagePath}${interest ? ` (interest: ${interest})` : ""}`);
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[VISIT] Error tracking visit:", err.message);
+      return res.status(500).json({ error: "Failed to track visit" });
+    }
+  });
+
+  // GET /api/analytics/page-visits — admin view of tracked visits
+  app.get("/api/analytics/page-visits", async (req: Request, res: Response) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== "admin") {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+      const visits = await db.select().from(pageVisits).orderBy(sql`created_at DESC`).limit(500);
+      return res.json({ visits });
+    } catch (err: any) {
+      console.error("[VISIT] Error fetching visits:", err.message);
+      return res.status(500).json({ error: "Failed to fetch visits" });
+    }
+  });
+
+  // POST /api/ads/inquiry — saves /ads page form submissions to the database
+  app.post("/api/ads/inquiry", async (req: Request, res: Response) => {
+    try {
+      const { email, website, adSpend, interest, utmSource, utmCampaign } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+
+      await db.insert(serviceInterests).values({
+        email: email.toLowerCase().trim(),
+        service: "ads-consultation",
+        otherDetails: JSON.stringify({ website: website || null, adSpend: adSpend || null, interest: interest || null }),
+        source: utmSource || "direct",
+        utmSource: utmSource || null,
+        utmCampaign: utmCampaign || null,
+      });
+
+      console.log(`[ADS] Inquiry saved: ${email} | adSpend=${adSpend} | website=${website}`);
+      const { subject: adsSub, html: adsHtml } = buildAdsInquiryEmail({ email, website, adSpend, interest, utmSource, utmCampaign });
+      sendMarketingNotification(adsSub, adsHtml).catch(() => {});
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[ADS] Error saving inquiry:", err.message);
+      return res.status(500).json({ error: "Failed to save inquiry" });
+    }
+  });
+
+  // GET /api/ads/inquiries — admin view of all /ads form submissions
+  app.get("/api/ads/inquiries", async (req: Request, res: Response) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+      const rows = await db
+        .select()
+        .from(serviceInterests)
+        .where(sql`service = 'ads-consultation'`)
+        .orderBy(desc(serviceInterests.createdAt));
+      return res.json({ inquiries: rows });
+    } catch (err: any) {
+      console.error("[ADS] Error fetching inquiries:", err.message);
+      return res.status(500).json({ error: "Failed to fetch inquiries" });
+    }
+  });
 
   // ========================================
   // LEAD SOURCE ANALYTICS ENDPOINT
@@ -1202,8 +1328,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Guide Funding Group: fire webhooks on update if GFG submission
+        // Detected via agentName, referrerUrl (guidefundinggroup.com), referralSource, trackingSource, or sourcePage
         const updatedOrExisting = updatedApp || existingApp;
-        const isGFGUpdate = (updatedOrExisting as any).agentName === 'Guide Funding Group';
+        const isGFGUpdate = isGFGSubmission(updatedOrExisting) || isGFGSubmission(applicationData);
         if (isGFGUpdate && !applicationData.isCompleted && updatedApp) {
           console.log(`[GFG] Guide Funding Group update detected — firing intake webhook for ${updatedApp.email}`);
           ghlService.sendIntakeWebhook(updatedApp).catch(err =>
@@ -1306,9 +1433,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Guide Funding Group: always fire intake webhook when a GFG submission arrives,
-      // even if isCompleted isn't set (GFG sends data without completion flags)
+      // even if isCompleted isn't set (GFG sends data without completion flags).
+      // Detected via agentName, referrerUrl (guidefundinggroup.com), referralSource, trackingSource, or sourcePage.
       const finalApp = updatedApp || application;
-      const isGFG = (finalApp as any).agentName === 'Guide Funding Group' || applicationData.agentName === 'Guide Funding Group';
+      const isGFG = isGFGSubmission(finalApp) || isGFGSubmission(applicationData);
       if (isGFG && !applicationData.isCompleted) {
         console.log(`[GFG] Guide Funding Group submission detected — firing intake webhook for ${finalApp.email}`);
         ghlService.sendIntakeWebhook(finalApp).catch(err =>
@@ -3561,16 +3689,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { 
-        email, businessName, applicationId, receivedAt, approvalStatus, approvalNotes, 
+        applicationId, receivedAt, approvalStatus, approvalNotes, 
         lenderId, lenderName,
         // Approval form fields
         advanceAmount, term, paymentFrequency, factorRate, totalPayback, netAfterFees, approvalDate,
         // Internal upload flag (skips GHL webhook)
         isInternal
       } = req.body;
-      
+
+      // If the request comes from an authenticated lead session, always use the session
+      // email (overrides body) and tag the upload as "lead-portal" to keep it identifiable
+      // for the team. Skip the GHL webhook — leads are internal, not public intake forms.
+      const leadSessionEmail = (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail)
+        ? req.session.user.merchantEmail as string
+        : null;
+      const isLeadPortalUpload = Boolean(leadSessionEmail);
+
+      let email: string = leadSessionEmail || req.body.email;
+      let businessName: string = req.body.businessName;
+
       if (!email) {
         return res.status(400).json({ error: "Email is required" });
+      }
+
+      // For lead portal uploads, look up business name from their account if not supplied
+      if (isLeadPortalUpload && !businessName) {
+        try {
+          const acct = await db.execute(sql`SELECT business_name FROM lead_portal_accounts WHERE email = ${email} LIMIT 1`);
+          businessName = (acct.rows[0] as any)?.business_name || businessName;
+        } catch (_) {}
       }
       
       // Parse receivedAt date if provided (for internal uploads with custom date)
@@ -3634,6 +3781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storedFileName: storedFileName,
         mimeType: file.mimetype,
         fileSize: file.size,
+        source: isLeadPortalUpload ? "lead-portal" : undefined,
         viewToken,
         receivedAt: receivedAtDate,
         approvalStatus: approvalStatus || null,
@@ -3678,8 +3826,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Session-based throttling: only sends one webhook per email per 15-minute session
       // This prevents spam when users upload multiple PDFs at once
       // DISABLED for internal uploads (isInternal flag) - will be re-enabled with new webhook URL later
-      if (isInternal === 'true') {
-        console.log(`[BANK UPLOAD] Webhook DISABLED for internal upload (${email}) - functionality preserved for future use`);
+      // Also DISABLED for lead-portal uploads — leads are internal users, not public intake form submissions
+      if (isInternal === 'true' || isLeadPortalUpload) {
+        console.log(`[BANK UPLOAD] Webhook DISABLED for ${isLeadPortalUpload ? 'lead-portal' : 'internal'} upload (${email})`);
       } else {
         const nameParts = (matchingApp?.fullName || '').trim().split(' ');
         ghlService.sendBankStatementUploadedWebhook({
@@ -4985,6 +5134,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (f.includes('biweekly') || f.includes('bi-weekly')) return 'biweekly';
     return 'weekly';
   }
+
+  // Accept Offer click tracking — fires GHL webhook then redirects to /congratulations
+  app.get("/api/approval-letter/:slug/accept", async (req, res) => {
+    const { slug } = req.params;
+
+    try {
+      const decision = await storage.getBusinessUnderwritingDecisionBySlug(slug);
+
+      // Build /congratulations redirect params from whatever we have
+      const params = new URLSearchParams();
+      if (decision?.businessEmail) params.set("email", decision.businessEmail);
+      if (decision?.businessName) params.set("businessName", decision.businessName);
+      if (decision?.businessPhone) params.set("phone", decision.businessPhone);
+      if (decision?.ghlOpportunityId) params.set("opportunityId", decision.ghlOpportunityId);
+
+      // Fire GHL webhook in background (don't block the redirect)
+      if (decision) {
+        const GHL_ACCEPT_WEBHOOK_URL =
+          "https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/52ad2d89-b393-4f32-a102-5b835e7f6db7";
+
+        const payload = {
+          event: "accept_offer_clicked",
+          email: decision.businessEmail,
+          businessName: decision.businessName || null,
+          phone: decision.businessPhone || null,
+          lender: decision.lender || null,
+          advanceAmount: decision.advanceAmount ? String(decision.advanceAmount) : null,
+          term: decision.term || null,
+          ghlOpportunityId: decision.ghlOpportunityId || null,
+          slug,
+          clickedAt: new Date().toISOString(),
+        };
+
+        console.log(`[ACCEPT OFFER] Firing GHL webhook for ${decision.businessEmail}`, payload);
+
+        fetch(GHL_ACCEPT_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then((r) => {
+            if (!r.ok) r.text().then((t) => console.error(`[ACCEPT OFFER] GHL webhook failed (${r.status}): ${t}`));
+            else console.log(`[ACCEPT OFFER] GHL webhook sent for ${decision.businessEmail}`);
+          })
+          .catch((e) => console.error("[ACCEPT OFFER] GHL webhook error:", e));
+      }
+
+      res.redirect(302, `/congratulations${params.toString() ? `?${params.toString()}` : ""}`);
+    } catch (error) {
+      console.error("[ACCEPT OFFER] Error:", error);
+      res.redirect(302, "/congratulations");
+    }
+  });
 
   // Get approval letter by slug (public route for approved businesses)
   app.get("/api/approval-letter/:slug", async (req, res) => {
@@ -6372,44 +6574,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error("[SERVICES] Failed to ensure table:", err);
   }
 
-  // POST /api/ads-consultation/submit — record an ads consultation form submission (public)
-  app.post("/api/ads-consultation/submit", async (req: Request, res: Response) => {
-    try {
-      const { email, website, monthlySpend, intent, submittedAt } = req.body;
-      if (!email) return res.status(400).json({ error: "Email is required" });
-
-      const normalizedEmail = email.toLowerCase().trim();
-      console.log(`[ADS] Consultation form submission: ${normalizedEmail} | spend: ${monthlySpend} | intent: ${intent}`);
-
-      // Store in service_interests table with service = 'ads-consultation'
-      await db.execute(sql`INSERT INTO service_interests (email, service, source)
-        VALUES (${normalizedEmail}, 'ads-consultation', ${monthlySpend || 'unknown'})`).catch(() => {});
-
-      // Fire GHL webhook to create/update contact
-      const INTAKE_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35';
-      const webhookPayload = {
-        email: normalizedEmail,
-        company_website: website || '',
-        source: 'Ads Consultation Form',
-        submission_date: submittedAt || new Date().toISOString(),
-        tags: ['ads-consultation', `ad-spend-${monthlySpend || 'unknown'}`],
-        monthly_ad_spend: monthlySpend || '',
-        ad_intent: intent || '',
-        page_url: 'https://app.todaycapitalgroup.com/ads',
-      };
-      fetch(INTAKE_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(webhookPayload),
-      }).catch(err => console.error('[ADS] GHL webhook error:', err));
-
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error("[ADS] submission error:", err);
-      res.status(500).json({ error: "Submission failed" });
-    }
-  });
-
   // POST /api/services/interest — record a service interest click (no auth required)
   app.post("/api/services/interest", async (req: Request, res: Response) => {
     try {
@@ -6428,6 +6592,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         VALUES (${normalizedEmail}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${service}, ${otherDetails || null}, ${source || 'direct'}, ${utmCampaign || null}, ${utmSource || null})`);
 
       console.log(`[SERVICES] Interest recorded: ${normalizedEmail} -> ${service}`);
+      const { subject: svcSub, html: svcHtml } = buildServicesInterestEmail({ email: normalizedEmail, firstName, lastName, phone, businessName, service, otherDetails, source });
+      sendMarketingNotification(svcSub, svcHtml).catch(() => {});
       res.json({ success: true });
     } catch (err: any) {
       console.error("[SERVICES] interest error:", err);
@@ -6660,11 +6826,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     )`);
-    // Add columns that may not exist on older tables
-    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE`);
-    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS referred_by TEXT`);
-    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS onboarding_step TEXT DEFAULT 'signup'`);
-    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS renewal_alert_sent BOOLEAN DEFAULT false`);
     console.log("[LEAD] Lead portal tables ensured");
   } catch (err) {
     console.error("[LEAD] Failed to ensure lead tables:", err);
@@ -6681,8 +6842,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/lead/signup
   app.post("/api/lead/signup", async (req: Request, res: Response) => {
     try {
-      const { email, password, firstName, lastName, phone, businessName, referralCode } = req.body;
-      if (!email) return res.status(400).json({ error: "Email is required" });
+      const { email, password, firstName, lastName, phone, businessName } = req.body;
+      if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+      if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 
       const normalizedEmail = email.toLowerCase().trim();
 
@@ -6692,24 +6854,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ error: "An account with this email already exists. Try signing in." });
       }
 
-      // Generate unique referral code (first 3 chars of first name + random 5 chars)
-      const prefix = (firstName || 'u').slice(0, 3).toLowerCase();
-      const suffix = Math.random().toString(36).slice(2, 7);
-      const newReferralCode = `${prefix}${suffix}`;
-
-      // Check if referred by someone
-      let referredBy: string | null = null;
-      if (referralCode) {
-        const referrer = await db.execute(sql`SELECT email FROM lead_portal_accounts WHERE referral_code = ${referralCode}`);
-        if (referrer.rows.length > 0) {
-          referredBy = (referrer.rows[0] as any).email;
-        }
-      }
-
-      // Password is optional at signup - leads can set it later
-      const passwordHash = password ? hashPassword(password) : null;
-      await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name, referral_code, referred_by, onboarding_step)
-        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${newReferralCode}, ${referredBy}, 'add_position')`);
+      const passwordHash = hashPassword(password);
+      await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name)
+        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null})`);
 
       // Auto-login
       req.session.user = {
@@ -6719,39 +6866,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         merchantName: [firstName, lastName].filter(Boolean).join(" ") || undefined,
       };
 
-      // Fire GHL webhook for new lead portal signup (non-blocking)
-      const LEAD_SIGNUP_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35';
-      const leadWebhookPayload = {
-        first_name: firstName || '',
-        last_name: lastName || '',
-        email: normalizedEmail,
-        phone: phone || '',
-        company_name: businessName || '',
-        source: 'Lead Portal Signup',
-        submission_date: new Date().toISOString(),
-        tags: ['lead-portal-signup', 'lead-source-website'],
-        page_url: 'https://app.todaycapitalgroup.com/track',
-      };
-      fetch(LEAD_SIGNUP_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(leadWebhookPayload),
-      }).then(() => console.log(`[LEAD] GHL webhook sent for new signup: ${normalizedEmail}`))
-        .catch(err => console.error('[LEAD] GHL webhook error:', err));
-
-      // Also create/update GHL contact directly for immediate visibility
-      try {
-        await ghlService.createOrUpdateContact({
-          email: normalizedEmail,
-          fullName: [firstName, lastName].filter(Boolean).join(" "),
-          phone: phone || undefined,
-          businessName: businessName || undefined,
-          referralSource: 'Lead Portal',
-        } as any);
-        console.log(`[LEAD] GHL contact created/updated for: ${normalizedEmail}`);
-      } catch (ghlErr) {
-        console.error('[LEAD] GHL contact sync error:', ghlErr);
-      }
+      const { subject: leadSub, html: leadHtml } = buildLeadPortalSignupEmail({ email: normalizedEmail, firstName, lastName, phone, businessName });
+      sendMarketingNotification(leadSub, leadHtml).catch(() => {});
 
       res.json({ success: true });
     } catch (err: any) {
@@ -6796,61 +6912,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/lead/auth/check
   app.get("/api/lead/auth/check", async (req: Request, res: Response) => {
     if (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail) {
-      const result = await db.execute(sql`SELECT first_name, last_name, business_name, password_hash, referral_code, onboarding_step FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
+      const result = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
       const row = result.rows[0] as any;
       res.json({
         isAuthenticated: true,
         email: req.session.user.merchantEmail,
         name: row ? [row.first_name, row.last_name].filter(Boolean).join(" ") : req.session.user.merchantName,
         businessName: row?.business_name || "",
-        hasPassword: Boolean(row?.password_hash),
-        referralCode: row?.referral_code || "",
-        onboardingStep: row?.onboarding_step || "done",
       });
     } else {
       res.json({ isAuthenticated: false });
     }
-  });
-
-  // POST /api/lead/set-password — set or update password for a lead account
-  app.post("/api/lead/set-password", async (req: Request, res: Response) => {
-    const email = getLeadEmail(req);
-    if (!email) return res.status(401).json({ error: "Authentication required" });
-
-    const { password } = req.body;
-    if (!password || password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
-
-    try {
-      const passwordHash = hashPassword(password);
-      await db.execute(sql`UPDATE lead_portal_accounts SET password_hash = ${passwordHash} WHERE email = ${email}`);
-      console.log(`[LEAD] Password set for: ${email}`);
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error("[LEAD] set-password error:", err);
-      res.status(500).json({ error: "Failed to set password" });
-    }
-  });
-
-  // POST /api/lead/onboarding/advance — advance onboarding step
-  app.post("/api/lead/onboarding/advance", async (req: Request, res: Response) => {
-    const email = getLeadEmail(req);
-    if (!email) return res.status(401).json({ error: "Authentication required" });
-    const { step } = req.body;
-    const validSteps = ['add_position', 'connect_bank', 'view_qualify', 'done'];
-    if (!step || !validSteps.includes(step)) return res.status(400).json({ error: "Invalid step" });
-    await db.execute(sql`UPDATE lead_portal_accounts SET onboarding_step = ${step} WHERE email = ${email} AND onboarding_step != 'done'`);
-    res.json({ success: true });
-  });
-
-  // GET /api/lead/referrals — get referral stats for current lead
-  app.get("/api/lead/referrals", async (req: Request, res: Response) => {
-    const email = getLeadEmail(req);
-    if (!email) return res.status(401).json({ error: "Authentication required" });
-    const account = await db.execute(sql`SELECT referral_code FROM lead_portal_accounts WHERE email = ${email}`);
-    const code = (account.rows[0] as any)?.referral_code;
-    if (!code) return res.json({ referralCode: null, referralCount: 0, referrals: [] });
-    const referrals = await db.execute(sql`SELECT first_name, created_at FROM lead_portal_accounts WHERE referred_by = ${email} ORDER BY created_at DESC`);
-    res.json({ referralCode: code, referralCount: referrals.rows.length, referrals: referrals.rows });
   });
 
   // POST /api/lead/auth/logout
@@ -6858,166 +6930,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     req.session.destroy(() => {});
     res.json({ success: true });
   });
-
-  // ── Lead Qualification Check ──
-  // Evaluates if a lead meets funding thresholds and fires a GHL webhook when they qualify
-  async function checkLeadQualification(email: string) {
-    try {
-      // Get lead account
-      const accountResult = await db.execute(sql`SELECT * FROM lead_portal_accounts WHERE email = ${email}`);
-      if (accountResult.rows.length === 0) return;
-      const account = accountResult.rows[0] as any;
-
-      // Already qualified — don't re-fire
-      if (account.is_qualified) return;
-
-      // Get positions
-      const positionsResult = await db.execute(sql`SELECT * FROM lead_positions WHERE lead_email = ${email} AND status = 'active'`);
-      const positions = positionsResult.rows as any[];
-
-      // Get banking metrics
-      const snapshot = await storage.getMerchantBankSnapshot(email);
-      const metrics = (snapshot?.metrics as any) || {};
-      const monthlyRevenue = Number(metrics.monthlyRevenue) || 0;
-      const healthScore = Number(metrics.healthScore) || 0;
-
-      // Calculate qualification signals
-      let score = 0;
-      const signals: string[] = [];
-
-      // Signal 1: Monthly revenue >= $15K
-      if (monthlyRevenue >= 15000) {
-        score += 30;
-        signals.push(`Revenue: $${monthlyRevenue.toLocaleString()}/mo`);
-      } else if (monthlyRevenue >= 10000) {
-        score += 15;
-        signals.push(`Revenue: $${monthlyRevenue.toLocaleString()}/mo (moderate)`);
-      }
-
-      // Signal 2: Health score >= 60
-      if (healthScore >= 60) {
-        score += 20;
-        signals.push(`Health score: ${healthScore}`);
-      }
-
-      // Signal 3: Position paydown > 50%
-      const paidDownPositions = positions.filter(p => {
-        const funded = Number(p.funded_amount) || 0;
-        const remaining = Number(p.remaining_balance) || funded;
-        return funded > 0 && remaining <= funded * 0.5;
-      });
-      if (paidDownPositions.length > 0) {
-        score += 25;
-        signals.push(`${paidDownPositions.length} position(s) > 50% paid down`);
-      }
-
-      // Signal 4: Has bank connected
-      if (snapshot?.isAccountConnected) {
-        score += 15;
-        signals.push('Bank connected');
-      }
-
-      // Signal 5: Has positions tracked (shows engagement)
-      if (positions.length > 0) {
-        score += 10;
-        signals.push(`${positions.length} position(s) tracked`);
-      }
-
-      // Determine tier
-      const tier = score >= 70 ? 'hot' : score >= 40 ? 'warm' : 'cold';
-      const isQualified = score >= 70;
-
-      // Update account with qualification data
-      await db.execute(sql`UPDATE lead_portal_accounts SET
-        qualification_score = ${score},
-        qualification_tier = ${tier},
-        is_qualified = ${isQualified}
-        WHERE email = ${email}`);
-
-      // If newly qualified (score >= 70), fire GHL webhook
-      if (isQualified) {
-        console.log(`[LEAD] Lead qualified! ${email} (score: ${score}, signals: ${signals.join(', ')})`);
-        const LEAD_QUALIFIED_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35';
-        const qualPayload = {
-          first_name: account.first_name || '',
-          last_name: account.last_name || '',
-          email: email,
-          phone: account.phone || '',
-          company_name: account.business_name || '',
-          source: 'Lead Portal - Qualified',
-          submission_date: new Date().toISOString(),
-          tags: ['lead-portal-qualified', 'lead-source-website'],
-          qualification_score: score,
-          qualification_tier: tier,
-          qualification_signals: signals.join('; '),
-          monthly_revenue: monthlyRevenue > 0 ? monthlyRevenue.toString() : '',
-          positions_count: positions.length.toString(),
-        };
-        fetch(LEAD_QUALIFIED_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(qualPayload),
-        }).catch(err => console.error('[LEAD] Qualification webhook error:', err));
-
-        // Tag the GHL contact as qualified
-        try {
-          const searchPayload = JSON.stringify({ locationId: 'n778xwOps9t8Q34eRPfM', query: email, pageLimit: 1 });
-          const searchResp = await fetch('https://services.leadconnectorhq.com/contacts/search', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.GHL_API_KEY}`,
-              'Content-Type': 'application/json',
-              'Version': '2021-07-28',
-            },
-            body: searchPayload,
-          });
-          const searchData = await searchResp.json() as any;
-          const contactId = searchData?.contacts?.[0]?.id;
-          if (contactId) {
-            await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
-              method: 'PUT',
-              headers: {
-                'Authorization': `Bearer ${process.env.GHL_API_KEY}`,
-                'Content-Type': 'application/json',
-                'Version': '2021-07-28',
-              },
-              body: JSON.stringify({ tags: ['lead-portal-qualified'] }),
-            });
-          }
-        } catch (tagErr) {
-          console.error('[LEAD] GHL tag error:', tagErr);
-        }
-      }
-
-      // ── Renewal/Refi Alerts ──
-      // If any position is 50%+ paid down and we haven't sent a renewal alert yet
-      if (!account.renewal_alert_sent && paidDownPositions.length > 0) {
-        console.log(`[LEAD] Renewal alert triggered for ${email}: ${paidDownPositions.length} position(s) > 50% paid`);
-        await db.execute(sql`UPDATE lead_portal_accounts SET renewal_alert_sent = true WHERE email = ${email}`);
-
-        const renewalPayload = {
-          first_name: account.first_name || '',
-          last_name: account.last_name || '',
-          email: email,
-          phone: account.phone || '',
-          company_name: account.business_name || '',
-          source: 'Lead Portal - Renewal Alert',
-          submission_date: new Date().toISOString(),
-          tags: ['lead-portal-renewal-ready', 'lead-source-website'],
-          positions_count: paidDownPositions.length.toString(),
-          monthly_revenue: monthlyRevenue > 0 ? monthlyRevenue.toString() : '',
-        };
-        const RENEWAL_WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/2fca1a25-5e31-444b-a21a-f53fbbb56f35';
-        fetch(RENEWAL_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(renewalPayload),
-        }).catch(err => console.error('[LEAD] Renewal webhook error:', err));
-      }
-    } catch (err) {
-      console.error('[LEAD] Qualification check error:', err);
-    }
-  }
 
   // ── Lead Positions CRUD ──
 
@@ -7041,9 +6953,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, factor_rate, payment_amount, payment_frequency, funded_date, remaining_balance)
       VALUES (${email}, ${funderName}, ${productType || null}, ${fundedAmount || null}, ${paybackAmount || null}, ${factorRate || null}, ${paymentAmount || null}, ${paymentFrequency || null}, ${fundedDate || null}, ${remainingBalance || null})`);
 
-    // Check qualification after adding position (non-blocking)
-    checkLeadQualification(email).catch(() => {});
-
     res.json({ success: true });
   });
 
@@ -7053,12 +6962,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!email) return res.status(401).json({ error: "Authentication required" });
 
     await db.execute(sql`DELETE FROM lead_positions WHERE id = ${req.params.id} AND lead_email = ${email}`);
-
-    // Re-check qualification after removing position (non-blocking)
-    checkLeadQualification(email).catch(() => {});
-
     res.json({ success: true });
   });
+
+  // POST /api/lead/positions/extract — AI-powered term extraction from text or PDF
+  {
+    const multerMemory = (await import("multer")).default({ storage: (await import("multer")).default.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+    app.post("/api/lead/positions/extract", (req, res, next) => {
+      multerMemory.single("file")(req, res, next);
+    }, async (req: Request, res: Response) => {
+      const email = getLeadEmail(req);
+      if (!email) return res.status(401).json({ error: "Authentication required" });
+      if (!isOpenAIConfigured()) return res.status(503).json({ error: "AI extraction is not configured." });
+
+      try {
+        const pdfBuffer: Buffer | null = req.file?.buffer || null;
+        const text: string = req.body?.text || "";
+
+        if (pdfBuffer) {
+          // For any PDF upload (text-based or image-based), send directly to GPT-4o
+          // which can read both text-layer PDFs and scanned/image PDFs natively
+          console.log(`[EXTRACT] PDF upload (${pdfBuffer.length} bytes), sending to GPT-4o`);
+          const terms = await extractPositionTermsFromPdfBuffer(pdfBuffer);
+          return res.json(terms);
+        }
+
+        // Pasted text path
+        if (!text || text.trim().length < 10) {
+          return res.status(400).json({ error: "No content to analyze. Please paste some text or upload a PDF." });
+        }
+
+        const terms = await extractPositionTerms(text);
+        res.json(terms);
+      } catch (err: any) {
+        console.error("[EXTRACT] extraction error:", err);
+        res.status(500).json({ error: err.message || "Extraction failed" });
+      }
+    });
+  }
 
   // ── Lead Banking (reuses merchant Chirp infrastructure) ──
 
@@ -7068,14 +7009,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!email) return res.status(401).json({ error: "Authentication required" });
 
     const snapshot = await storage.getMerchantBankSnapshot(email);
-    if (!snapshot) return res.json({ connected: false });
+    if (!snapshot) return res.json({ connected: false, hasPendingConnection: false });
 
     const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
     const metrics = (snapshot.metrics as any) || {};
+    const hasPendingConnection = Boolean(snapshot.chirpRequestCode) && !snapshot.isAccountConnected;
     res.json({
       connected: Boolean(snapshot.isAccountConnected),
+      hasPendingConnection,
       status: snapshot.status,
       institutionName: snapshot.institutionName,
+      connectedAt: snapshot.connectedAt,
       lastSyncedAt: snapshot.lastSyncedAt,
       accounts: accounts.map(a => ({ name: a.accountName || "Account", type: a.type || "", balance: Number(a.balance) || 0 })),
       metrics: {
@@ -7135,163 +7079,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!existing?.chirpRequestCode) return res.status(400).json({ error: "No bank connection found." });
 
     const snapshot = await syncMerchantSnapshotFromChirp(email, existing.chirpRequestCode);
-
-    // Auto-detect funding positions from transaction data (non-blocking)
-    (async () => {
-      try {
-        const bankData = await chirpService.getBankStatements(existing.chirpRequestCode, 6);
-        if (bankData.transactions && bankData.transactions.length > 0) {
-          console.log(`[LEAD] Scanning ${bankData.transactions.length} transactions for funding positions (${email})`);
-          const detected = await detectFundingPositions(bankData.transactions);
-          if (detected.length > 0) {
-            console.log(`[LEAD] Found ${detected.length} funding position(s) for ${email}`);
-            // Get existing positions to avoid duplicates
-            const existingPositions = await db.execute(sql`SELECT funder_name, payment_amount FROM lead_positions WHERE lead_email = ${email}`);
-            const existingFunders = new Set((existingPositions.rows as any[]).map(r => r.funder_name?.toLowerCase().trim()));
-
-            for (const pos of detected) {
-              const funderKey = pos.funderName.toLowerCase().trim();
-              if (existingFunders.has(funderKey)) {
-                console.log(`[LEAD] Skipping duplicate position: ${pos.funderName}`);
-                continue;
-              }
-              await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, payment_amount, payment_frequency, funded_date, remaining_balance, notes)
-                VALUES (${email}, ${pos.funderName}, ${pos.productType}, ${pos.estimatedOriginalAmount}, ${null}, ${pos.estimatedPaymentAmount}, ${pos.paymentFrequency}, ${pos.firstPaymentDate}, ${pos.estimatedRemainingBalance}, ${'Auto-detected from bank transactions (' + pos.confidence + ' confidence, ' + pos.paymentsFound + ' payments found)'})`);
-              existingFunders.add(funderKey);
-              console.log(`[LEAD] Auto-added position: ${pos.funderName} ($${pos.estimatedPaymentAmount} ${pos.paymentFrequency})`);
-            }
-          }
-        }
-      } catch (detectErr) {
-        console.error('[LEAD] Position detection error:', detectErr);
-      }
-    })();
-
-    // Check qualification after bank sync (non-blocking)
-    checkLeadQualification(email).catch(() => {});
-
     res.json({ success: true, lastSyncedAt: snapshot?.lastSyncedAt });
   });
 
-  // POST /api/lead/upload-statement — lead uploads a PDF bank statement for analysis
-  app.post("/api/lead/upload-statement", (req, res, next) => {
-    bankStatementUpload.single("file")(req, res, (err: any) => {
-      if (err) {
-        if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: "File size exceeds 25MB limit" });
-        if (err.message === 'Only PDF files are allowed') return res.status(400).json({ error: err.message });
-        return res.status(400).json({ error: "File upload error: " + err.message });
-      }
-      next();
-    });
-  }, async (req: Request, res: Response) => {
+  // DELETE /api/lead/chirp/connection — disconnect (removes cached snapshot)
+  app.delete("/api/lead/chirp/connection", async (req: Request, res: Response) => {
     const email = getLeadEmail(req);
     if (!email) return res.status(401).json({ error: "Authentication required" });
-
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: "No file uploaded" });
-
     try {
-      // Get lead info
-      const leadResult = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${email}`);
-      const lead = leadResult.rows[0] as any;
-      const businessName = lead?.business_name || '';
-
-      // Store file
-      if (!objectStorage.isConfigured()) {
-        return res.status(500).json({ error: "File storage is not configured." });
-      }
-      const storedFileName = await objectStorage.uploadFile(file.buffer, file.originalname, file.mimetype);
-      const viewToken = randomBytes(32).toString('hex');
-
-      // Save upload record
-      const upload = await storage.createBankStatementUpload({
-        email,
-        businessName,
-        loanApplicationId: null,
-        originalFileName: file.originalname,
-        storedFileName,
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        viewToken,
-        receivedAt: null,
-        approvalStatus: null,
-        approvalNotes: null,
-        reviewedBy: null,
-        reviewedAt: null,
-        lenderId: null,
-        lenderName: null,
-      });
-
-      console.log(`[LEAD] Statement uploaded by ${email}: ${file.originalname} (${(file.size / 1024).toFixed(0)}KB)`);
-
-      // Update onboarding step
-      await db.execute(sql`UPDATE lead_portal_accounts SET onboarding_step = 'view_qualify' WHERE email = ${email} AND onboarding_step IN ('add_position', 'connect_bank')`);
-
-      // Re-check qualification
-      checkLeadQualification(email).catch(() => {});
-
-      res.json({ success: true, uploadId: upload.id, fileName: file.originalname });
+      await storage.deleteMerchantBankSnapshot(email);
+      res.json({ success: true });
     } catch (err: any) {
-      console.error("[LEAD] statement upload error:", err);
-      res.status(500).json({ error: "Upload failed. Please try again." });
+      console.error("[CHIRP][LEAD] disconnect error:", err);
+      res.status(500).json({ error: "Failed to disconnect" });
     }
   });
 
-  // POST /api/lead/detect-positions — manually trigger position detection from bank transactions
-  app.post("/api/lead/detect-positions", async (req: Request, res: Response) => {
+  // POST /api/lead/chirp/register-webhook — registers/refreshes webhook for pending connection
+  app.post("/api/lead/chirp/register-webhook", async (req: Request, res: Response) => {
     const email = getLeadEmail(req);
     if (!email) return res.status(401).json({ error: "Authentication required" });
-
     try {
-      const existing = await storage.getMerchantBankSnapshot(email);
-      if (!existing?.chirpRequestCode) {
-        return res.status(400).json({ error: "Connect your bank first to detect positions." });
-      }
-
-      const bankData = await chirpService.getBankStatements(existing.chirpRequestCode, 6);
-      if (!bankData.transactions || bankData.transactions.length === 0) {
-        return res.json({ detected: 0, positions: [], message: "No transactions found to analyze." });
-      }
-
-      console.log(`[LEAD] Manual position scan: ${bankData.transactions.length} transactions for ${email}`);
-      const detected = await detectFundingPositions(bankData.transactions);
-
-      if (detected.length === 0) {
-        return res.json({ detected: 0, positions: [], message: "No funding positions detected in your transactions." });
-      }
-
-      // Get existing positions to avoid duplicates
-      const existingPositions = await db.execute(sql`SELECT funder_name FROM lead_positions WHERE lead_email = ${email}`);
-      const existingFunders = new Set((existingPositions.rows as any[]).map(r => r.funder_name?.toLowerCase().trim()));
-
-      let added = 0;
-      const newPositions: any[] = [];
-      for (const pos of detected) {
-        const funderKey = pos.funderName.toLowerCase().trim();
-        if (existingFunders.has(funderKey)) continue;
-
-        await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, payment_amount, payment_frequency, funded_date, remaining_balance, notes)
-          VALUES (${email}, ${pos.funderName}, ${pos.productType}, ${pos.estimatedOriginalAmount}, ${null}, ${pos.estimatedPaymentAmount}, ${pos.paymentFrequency}, ${pos.firstPaymentDate}, ${pos.estimatedRemainingBalance}, ${'Auto-detected from bank transactions (' + pos.confidence + ' confidence, ' + pos.paymentsFound + ' payments found)'})`);
-        existingFunders.add(funderKey);
-        added++;
-        newPositions.push(pos);
-      }
-
-      // Re-check qualification
-      checkLeadQualification(email).catch(() => {});
-
-      res.json({
-        detected: detected.length,
-        added,
-        skippedDuplicates: detected.length - added,
-        positions: newPositions,
-        message: added > 0
-          ? `Found ${detected.length} position(s), added ${added} new one(s).`
-          : `Found ${detected.length} position(s) but they were already tracked.`,
-      });
+      const snapshot = await storage.getMerchantBankSnapshot(email);
+      if (!snapshot?.chirpRequestCode) return res.status(400).json({ error: "No bank connection found." });
+      await registerChirpWebhookForCode(snapshot.chirpRequestCode);
+      res.json({ success: true, requestCode: snapshot.chirpRequestCode });
     } catch (err: any) {
-      console.error("[LEAD] detect-positions error:", err);
-      res.status(500).json({ error: "Failed to scan transactions. Please try again." });
+      console.error("[CHIRP][LEAD] register-webhook error:", err);
+      res.status(500).json({ error: err.message || "Failed to register webhook" });
+    }
+  });
+
+  // GET /api/lead/bank-statements — list uploaded statements for this lead
+  app.get("/api/lead/bank-statements", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const uploads = await storage.getBankStatementUploadsByEmail(email);
+      res.json(uploads.map((s: any) => ({
+        id: s.id,
+        fileName: s.fileName,
+        fileSize: s.fileSize,
+        uploadedAt: s.uploadedAt || s.createdAt,
+        viewToken: s.viewToken,
+      })));
+    } catch (err: any) {
+      console.error("[LEAD] bank-statements list error:", err);
+      res.status(500).json({ error: "Failed to fetch statements" });
     }
   });
 
@@ -7306,7 +7140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (SELECT json_agg(json_build_object('funderName', funder_name, 'productType', product_type, 'fundedAmount', funded_amount, 'status', status))
          FROM lead_positions WHERE lead_email = l.email) as positions,
         (SELECT COUNT(*) FROM bank_statement_uploads WHERE email = l.email) as statement_count,
-        (SELECT json_agg(json_build_object('id', id, 'originalFileName', original_file_name, 'fileSize', file_size, 'viewToken', view_token, 'createdAt', created_at) ORDER BY created_at DESC)
+        (SELECT json_agg(json_build_object('id', id, 'fileName', original_file_name, 'uploadedAt', created_at, 'source', source) ORDER BY created_at DESC)
          FROM bank_statement_uploads WHERE email = l.email) as statements
         FROM lead_portal_accounts l ORDER BY l.created_at DESC`);
       res.json(result.rows);
@@ -12173,6 +12007,145 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     res.json({
       summary: { total: BATCH_BUSINESSES.length, submitted: submitted.length, accepted: accepted.length, rejected: rejected.length, skipped: skipped.length },
+      results,
+    });
+  });
+
+  // POST /api/admin/gigfi-csv-submit — submit a list of leads from CSV (App ID used to pull SSN from DB)
+  app.post("/api/admin/gigfi-csv-submit", async (req: Request, res: Response) => {
+    if (!req.session.user || req.session.user.role !== "admin") {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    if (!isGigFiConfigured()) {
+      return res.status(503).json({ error: "GigFi not configured" });
+    }
+
+    // Each lead: { appId, firstName, lastName, email, phone, businessName, dob, address, city, state, zip, revenue?, businessAge? }
+    const leads: Array<{
+      appId: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      businessName: string;
+      dob: string;
+      address: string;
+      city: string;
+      state: string;
+      zip: string;
+      revenue?: number;
+      businessAge?: string;
+    }> = req.body.leads;
+
+    if (!Array.isArray(leads) || leads.length === 0) {
+      return res.status(400).json({ error: "leads array required" });
+    }
+
+    function normalizePhone(p: string): string { return (p || "").replace(/\D/g, "").slice(0, 10); }
+    function isValidPhone(p: string): boolean { return normalizePhone(p).length === 10; }
+
+    const results: Array<{
+      appId: string;
+      name: string;
+      email: string;
+      status: string;
+      gigfiStatus?: string;
+      redirectUrl?: string;
+      decisionId?: string;
+      skippedReason?: string;
+    }> = [];
+
+    for (const lead of leads) {
+      const fullName = `${lead.firstName} ${lead.lastName}`.trim();
+      try {
+        // Look up SSN from DB by App ID
+        const app = await storage.getLoanApplication(lead.appId);
+        if (!app) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: "App ID not found in DB" });
+          continue;
+        }
+
+        const ssn = (app.socialSecurityNumber || "").replace(/\D/g, "");
+        if (ssn.length !== 9) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `SSN missing or invalid (found: "${app.socialSecurityNumber || "none"}")` });
+          continue;
+        }
+
+        // Validate phone
+        const phone = isValidPhone(lead.phone) ? lead.phone : "";
+        if (!phone) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `Invalid phone: "${lead.phone}"` });
+          continue;
+        }
+
+        // Validate address
+        const zip = (lead.zip || "").replace(/\D/g, "").slice(0, 5);
+        const state = (lead.state || "").toUpperCase().slice(0, 2);
+        if (!lead.address || !lead.city || state.length !== 2 || zip.length !== 5) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `Incomplete address (addr="${lead.address}" city="${lead.city}" state="${state}" zip="${zip}")` });
+          continue;
+        }
+
+        // Validate DOB
+        if (!lead.dob) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: "DOB missing" });
+          continue;
+        }
+
+        // Sanity-check DOB year (must be 1900–2010 for an adult applicant)
+        const dobYear = parseInt((lead.dob || "").slice(0, 4), 10);
+        if (isNaN(dobYear) || dobYear < 1900 || dobYear > 2010) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `DOB year looks invalid: "${lead.dob}"` });
+          continue;
+        }
+
+        const leadData: GigFiLeadData = {
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          email: lead.email,
+          phone,
+          businessName: lead.businessName,
+          monthlyRevenue: lead.revenue || 3000,
+          financingAmount: 10000,
+          businessAge: lead.businessAge,
+          ssn,
+          dob: lead.dob,
+          homeAddress: lead.address,
+          homeCity: lead.city,
+          homeState: state,
+          homeZip: zip,
+          payFrequency: "4",         // Monthly
+          nextPayDay: "05/01/2026",
+          cellPhone: phone,
+        };
+
+        const gigfiResult = await submitToGigFi(leadData, lead.appId);
+
+        storage.saveGigFiResult(lead.appId, gigfiResult.status, gigfiResult.decisionId, gigfiResult.redirectUrl)
+          .catch(err => console.error("[GIGFI-CSV] Failed to save result:", err));
+
+        results.push({
+          appId: lead.appId,
+          name: fullName,
+          email: lead.email,
+          status: "SUBMITTED",
+          gigfiStatus: gigfiResult.status,
+          redirectUrl: gigfiResult.redirectUrl,
+          decisionId: gigfiResult.decisionId,
+          skippedReason: gigfiResult.errorMessage,
+        });
+      } catch (err: any) {
+        results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "ERROR", skippedReason: err.message });
+      }
+    }
+
+    const submitted = results.filter(r => r.status === "SUBMITTED");
+    const accepted = submitted.filter(r => r.gigfiStatus === "ACCEPTED");
+    const rejected = submitted.filter(r => r.gigfiStatus === "REJECTED");
+    const skipped = results.filter(r => r.status !== "SUBMITTED");
+
+    res.json({
+      summary: { total: leads.length, submitted: submitted.length, accepted: accepted.length, rejected: rejected.length, skipped: skipped.length },
       results,
     });
   });

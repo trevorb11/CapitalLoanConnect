@@ -2,10 +2,13 @@ import { useState, useEffect } from "react";
 
 interface LeadStatement {
   id: number;
-  originalFileName: string;
-  fileSize: number;
-  viewToken: string | null;
-  createdAt: string;
+  fileName?: string;
+  originalFileName?: string;
+  fileSize?: number;
+  viewToken?: string | null;
+  createdAt?: string;
+  uploadedAt?: string;
+  source?: string;
 }
 
 interface LeadAccount {
@@ -311,10 +314,10 @@ export default function LeadsDashboard() {
                                       <div>
                                         <div style={{ fontWeight: 600, color: "#1a1a2e", display: "flex", alignItems: "center", gap: 6 }}>
                                           <span style={{ color: "#6366f1", fontSize: 14 }}>&#128196;</span>
-                                          {s.originalFileName}
+                                          {s.fileName || s.originalFileName || "Statement"}
                                         </div>
                                         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
-                                          {fmtFileSize(s.fileSize)} &middot; {formatDate(s.createdAt)}
+                                          {s.fileSize ? fmtFileSize(s.fileSize) : ""}{s.fileSize ? " \u00B7 " : ""}{formatDate(s.uploadedAt || s.createdAt || null)}
                                         </div>
                                       </div>
                                       {s.viewToken && (

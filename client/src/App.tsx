@@ -62,6 +62,7 @@ import MerchantActivate from "@/pages/MerchantActivate";
 import MerchantResetPassword from "@/pages/MerchantResetPassword";
 import MerchantProfile from "@/pages/MerchantProfile";
 import LeadPortal from "@/pages/LeadPortal";
+import TrackAdmin from "@/pages/TrackAdmin";
 import AdsConsultation from "@/pages/AdsConsultation";
 import LeadsDashboard from "@/pages/LeadsDashboard";
 import ServicePayments from "@/pages/ServicePayments";
@@ -161,19 +162,18 @@ function Router() {
       <Route path="/merchant-profile" component={MerchantProfile} />
       <Route path="/merchant-profile/:email" component={MerchantProfile} />
 
-      {/* Service Landing Pages */}
+      {/* Ads Consultation — AdBlend Partnership */}
       <Route path="/services/payments" component={ServicePayments} />
       <Route path="/services/website" component={ServiceWebsite} />
       <Route path="/services/crm" component={ServiceCRM} />
-
-      {/* Ads Consultation */}
       <Route path="/ads" component={AdsConsultation} />
+      <Route path="/leads" component={LeadsDashboard} />
 
       {/* Lead Portal Routes */}
-      <Route path="/leads" component={LeadsDashboard} />
       <Route path="/track" component={LeadPortal} />
       <Route path="/track/signup" component={LeadPortal} />
       <Route path="/track/login" component={LeadPortal} />
+      <Route path="/track-admin" component={TrackAdmin} />
 
       {/* Partner Portal Routes */}
       <Route path="/partners" component={PartnerLanding} />
@@ -202,10 +202,11 @@ function App() {
   useEffect(() => {
     initUTMTracking();
     
-    // Track visits from URL parameters (email or phone)
+    // Track visits from URL parameters (email, phone, interest)
     const params = new URLSearchParams(window.location.search);
     const email = params.get('email');
     const phone = params.get('phone');
+    const interest = params.get('interest');
     
     if (email || phone) {
       fetch('/api/analytics/track-visit', {
@@ -214,9 +215,13 @@ function App() {
         body: JSON.stringify({
           email,
           phone,
+          interest,
           pagePath: window.location.pathname,
           fullUrl: window.location.href,
-          referrer: document.referrer
+          referrer: document.referrer,
+          utmSource: params.get('utm_source'),
+          utmCampaign: params.get('utm_campaign'),
+          utmMedium: params.get('utm_medium'),
         })
       }).catch(err => console.error('Failed to track visit:', err));
     }

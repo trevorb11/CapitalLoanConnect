@@ -390,9 +390,9 @@ export default function Services() {
       <div className="wrap">
         {/* Logo */}
         <div className="logo-row">
-          <div className="logo-mark">GF</div>
+          <div className="logo-mark">TCG</div>
           <div>
-            <div className="logo-text">Guide Funding Group</div>
+            <div className="logo-text">Today Capital Group</div>
             <div className="logo-sub">Business Services</div>
           </div>
         </div>

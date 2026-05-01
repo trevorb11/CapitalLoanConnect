@@ -8,24 +8,13 @@
 
 const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
 const SF_REFRESH_TOKEN = process.env.SF_REFRESH_TOKEN;
-const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://test.salesforce.com"; // test.salesforce.com for sandbox
+const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://test.salesforce.com";
 
 let cachedAccessToken = process.env.SF_ACCESS_TOKEN || "";
-let tokenExpiresAt = 0; // epoch ms — 0 = needs refresh on first call
+let tokenExpiresAt = 0;
 
-const US_STATES = new Set([
-  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS",
-  "KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY",
-  "NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"
-]);
-
-// ---------------------------------------------------------------------------
-// Token management — auto-refresh via OAuth2 refresh_token grant
-// ---------------------------------------------------------------------------
 async function refreshAccessToken(): Promise<string> {
-  if (!SF_REFRESH_TOKEN) {
-    return cachedAccessToken;
-  }
+  if (!SF_REFRESH_TOKEN) return cachedAccessToken;
   try {
     const res = await fetch(`${SF_LOGIN_URL}/services/oauth2/token`, {
       method: "POST",
@@ -39,7 +28,7 @@ async function refreshAccessToken(): Promise<string> {
     const data = await res.json() as any;
     if (data.access_token) {
       cachedAccessToken = data.access_token;
-      tokenExpiresAt = Date.now() + 90 * 60 * 1000; // refresh at 90min
+      tokenExpiresAt = Date.now() + 90 * 60 * 1000;
       console.log("[SF Auth] Token refreshed successfully");
       return cachedAccessToken;
     }
@@ -51,7 +40,7 @@ async function refreshAccessToken(): Promise<string> {
   }
 }
 
-async function getAccessToken(): Promise<string> {
+export async function getAccessToken(): Promise<string> {
   if (!cachedAccessToken || Date.now() > tokenExpiresAt) {
     return refreshAccessToken();
   }
@@ -59,33 +48,22 @@ async function getAccessToken(): Promise<string> {
 }
 
 function sfHeaders(token: string) {
-  return {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
+  return { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
 async function sfApi(method: string, path: string, body?: object): Promise<{ success: boolean; id?: string; data?: any; error?: string }> {
   try {
     let token = await getAccessToken();
     let res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
-      method,
-      headers: sfHeaders(token),
-      body: body ? JSON.stringify(body) : undefined,
+      method, headers: sfHeaders(token), body: body ? JSON.stringify(body) : undefined,
     });
-
-    // Auto-retry on 401 with a fresh token
     if (res.status === 401 && SF_REFRESH_TOKEN) {
-      console.log("[SF API] 401 — refreshing token and retrying...");
       tokenExpiresAt = 0;
       token = await refreshAccessToken();
       res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
-        method,
-        headers: sfHeaders(token),
-        body: body ? JSON.stringify(body) : undefined,
+        method, headers: sfHeaders(token), body: body ? JSON.stringify(body) : undefined,
       });
     }
-
     if (res.status === 204) return { success: true };
     const data = await res.json();
     if (res.ok) return { success: true, id: data.id, data };
@@ -103,24 +81,24 @@ async function sfQuery(soql: string): Promise<any[]> {
       `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
       { headers: sfHeaders(token) }
     );
-
     if (res.status === 401 && SF_REFRESH_TOKEN) {
       tokenExpiresAt = 0;
-      const freshToken = await refreshAccessToken();
+      const fresh = await refreshAccessToken();
       const retry = await fetch(
         `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
-        { headers: sfHeaders(freshToken) }
+        { headers: sfHeaders(fresh) }
       );
-      const data = await retry.json();
-      return data.records || [];
+      return ((await retry.json()) as any).records || [];
     }
-
-    const data = await res.json();
-    return data.records || [];
-  } catch {
-    return [];
-  }
+    return ((await res.json()) as any).records || [];
+  } catch { return []; }
 }
+
+const US_STATES = new Set([
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS",
+  "KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY",
+  "NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"
+]);
 
 function parseNum(v: any): number | null {
   if (v === null || v === undefined) return null;
@@ -360,9 +338,172 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       };
     }
 
-    // No existing Lead or Opportunity found — skip (update-only mode)
-    console.log(`[SF Sync] No existing Lead or Opportunity found for ${email || phone} — skipping (update-only mode)`);
-    return { synced: false, reason: "no existing SF record to update" };
+    // --- Auto-create for Dillon's apps only ---
+    const agentName = (app.agentName || app.agent_name || "").toLowerCase();
+    const agentEmail = (app.agentEmail || app.agent_email || "").toLowerCase();
+    const isDillon = agentName.includes("dillon") || agentEmail.includes("dillon");
+
+    if (!isDillon) {
+      console.log(`[SF Sync] No existing Lead or Opportunity found for ${email || phone} — skipping (update-only, not Dillon's)`);
+      return { synced: false, reason: "no existing SF record to update" };
+    }
+
+    console.log(`[SF Sync] Dillon's app — auto-creating SF records for ${businessName || email}`);
+
+    // If we found a Lead earlier, convert it first
+    if (existingLead) {
+      try {
+        const token = await getAccessToken();
+        // Convert Lead via SOAP API
+        const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+          <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sf="urn:partner.soap.sforce.com">
+            <soapenv:Header><sf:SessionHeader><sf:sessionId>${token}</sf:sessionId></sf:SessionHeader></soapenv:Header>
+            <soapenv:Body>
+              <sf:convertLead><sf:leadConverts>
+                <sf:leadId>${existingLead.Id}</sf:leadId>
+                <sf:convertedStatus>Qualified</sf:convertedStatus>
+                <sf:doNotCreateOpportunity>false</sf:doNotCreateOpportunity>
+              </sf:leadConverts></sf:convertLead>
+            </soapenv:Body>
+          </soapenv:Envelope>`;
+
+        const convRes = await fetch(`${SF_INSTANCE_URL}/services/Soap/u/66.0`, {
+          method: "POST",
+          headers: { "Content-Type": "text/xml", "SOAPAction": "convertLead" },
+          body: soapBody,
+        });
+        const convText = await convRes.text();
+
+        // Parse SOAP response for IDs
+        const getTag = (tag: string) => {
+          const m = convText.match(new RegExp(`<${tag}>(.*?)</${tag}>`));
+          return m ? m[1] : null;
+        };
+
+        const convOppId = getTag("opportunityId");
+        const convAcctId = getTag("accountId");
+        const convCtId = getTag("contactId");
+        const convSuccess = getTag("success") === "true";
+
+        if (convSuccess && convOppId) {
+          console.log(`[SF Sync] Converted Lead ${existingLead.Id} → Opp ${convOppId}`);
+          return {
+            synced: true,
+            action: "lead-converted",
+            leadId: existingLead.Id,
+            oppId: convOppId,
+            accountId: convAcctId || undefined,
+            contactId: convCtId || undefined,
+          };
+        } else {
+          console.log(`[SF Sync] Lead conversion failed, falling through to create`);
+        }
+      } catch (convErr: any) {
+        console.error(`[SF Sync] Lead conversion error: ${convErr.message}`);
+      }
+    }
+
+    // No Lead to convert — create new Account + Contact + Opportunity
+    const rts = await sfQuery(
+      "SELECT Id FROM RecordType WHERE SObjectType='Account' AND Name='Merchant' AND IsActive=true"
+    );
+    const merchantRtId = rts[0]?.Id;
+
+    const accountName = (businessName || fullName || email || "Unknown").slice(0, 255);
+
+    // Ensure we have a real name, not an email address
+    let resolvedName = fullName;
+    if (!resolvedName || resolvedName.includes("@")) {
+      // Try to get name from GHL via the neonPool (dialer_contacts)
+      try {
+        const { neonPool } = await import("../db");
+        if (neonPool) {
+          const nameResult = await neonPool.query(
+            "SELECT first_name, last_name FROM dialer_contacts WHERE LOWER(email) = $1 AND first_name IS NOT NULL AND first_name != '' LIMIT 1",
+            [email.toLowerCase()]
+          );
+          if (nameResult.rows[0]) {
+            const fn = nameResult.rows[0].first_name || "";
+            const ln = nameResult.rows[0].last_name || "";
+            if (fn && !fn.includes("@")) {
+              resolvedName = `${fn} ${ln}`.trim();
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const nameParts = (resolvedName || "").split(/\s+/).filter(p => p && !p.includes("@"));
+    const today = new Date();
+    const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
+
+    const account = clean({
+      Name: accountName,
+      ...(merchantRtId ? { RecordTypeId: merchantRtId } : {}),
+      Company_Name__c: businessName || null,
+      Doing_Business_As__c: app.doingBusinessAs || app.doing_business_as || null,
+      EIN__c: app.ein || null,
+      Industry: mapIndustry(app.industry),
+      Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue),
+      Primary_Business_Bank__c: app.bankName || app.bank_name || null,
+      Phone: phone || null,
+      Website: app.companyWebsite || app.company_website || null,
+      BillingCity: app.city || null,
+      ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
+      BillingPostalCode: app.zipCode || app.zip_code || null,
+      ...((state || app.city) ? { BillingCountryCode: "US" } : {}),
+      Account_Status__c: "Pending",
+    });
+
+    const acctRes = await sfApi("POST", "/sobjects/Account", account);
+    if (!acctRes.success) {
+      console.log(`[SF Sync] Account creation failed: ${acctRes.error}`);
+      return { synced: false, error: `Account: ${acctRes.error}` };
+    }
+
+    const contact = clean({
+      AccountId: acctRes.id,
+      FirstName: nameParts[0] || null,
+      LastName: nameParts.slice(1).join(" ") || (nameParts[0] ? "Unknown" : businessName || "Unknown"),
+      Email: email || null,
+      Phone: phone || null,
+      Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score),
+      Scrubbed__c: false,
+      Opted_In_for_AI_Calls__c: false,
+      Do_Not_Contact__c: false,
+      Consent_to_Text__c: false,
+      MailingCity: app.city || null,
+      ...(US_STATES.has(state) ? { MailingStateCode: state } : {}),
+      ...((state || app.city) ? { MailingCountryCode: "US" } : {}),
+    });
+
+    const ctRes = await sfApi("POST", "/sobjects/Contact", contact);
+
+    const closeDate = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+    const opportunity = clean({
+      AccountId: acctRes.id,
+      Primary_Contact__c: ctRes.success ? ctRes.id : null,
+      Name: `${accountName} - ${dateStr}`.slice(0, 120),
+      StageName: "Application & Docs",
+      CloseDate: closeDate,
+      ...appFields,
+      ...oppOnlyFields,
+      LeadSource: app.referralSource || app.referral_source || "Website",
+      Revenue_Verified__c: false,
+      Bank_Statement_Tampering_Flag__c: false,
+      Engagement_Status__c: "Working",
+    });
+
+    const oppRes = await sfApi("POST", "/sobjects/Opportunity", opportunity);
+
+    console.log(`[SF Sync] Created (Dillon): Account=${acctRes.id}, Contact=${ctRes.id || "failed"}, Opp=${oppRes.id || "failed"}`);
+    return {
+      synced: true,
+      action: "created",
+      accountId: acctRes.id,
+      contactId: ctRes.id,
+      oppId: oppRes.id,
+    };
 
   } catch (err: any) {
     console.error(`[SF Sync] Error: ${err.message}`);

@@ -216,6 +216,36 @@ export class GmailService {
     }
   }
 
+  async sendEmail(to: string, subject: string, htmlBody: string): Promise<boolean> {
+    try {
+      const gmail = await getUncachableGmailClient();
+      const boundary = `boundary_${Date.now()}`;
+      const messageParts = [
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        ``,
+        `--${boundary}`,
+        `Content-Type: text/html; charset=UTF-8`,
+        ``,
+        htmlBody,
+        ``,
+        `--${boundary}--`,
+      ];
+      const raw = Buffer.from(messageParts.join("\r\n")).toString("base64url");
+      const result = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw },
+      });
+      console.log(`[GMAIL] Email sent → ${to} | id=${result.data.id} | subject="${subject}"`);
+      return true;
+    } catch (err) {
+      console.error(`[GMAIL] Failed to send email to ${to}:`, err);
+      return false;
+    }
+  }
+
   isLikelyApprovalEmail(email: EmailMessage): boolean {
     const subject = email.subject.toLowerCase();
     const from = email.from.toLowerCase();

@@ -741,3 +741,100 @@ Respond ONLY with the JSON array, no additional text.`;
     return [];
   }
 }
+
+// ── POSITION TERM EXTRACTION FROM DOCUMENTS ──────────────────────────────
+
+export interface ExtractedPositionTerms {
+  funderName: string | null;
+  productType: string | null;
+  fundedAmount: number | null;
+  paybackAmount: number | null;
+  factorRate: string | null;
+  paymentAmount: number | null;
+  paymentFrequency: string | null;
+  remainingBalance: number | null;
+  fundedDate: string | null;
+  confidence: "high" | "medium" | "low";
+  notes: string | null;
+}
+
+const POSITION_SYSTEM_PROMPT = `You are a financial document parser that extracts MCA/business loan position details.
+Return ONLY valid JSON, no markdown fences:
+{
+  "funderName": string or null,
+  "productType": one of "MCA"|"LOC"|"Term Loan"|"SBA"|"Revenue Based"|"Other" or null,
+  "fundedAmount": number (no commas/symbols) or null,
+  "paybackAmount": number or null,
+  "factorRate": string e.g. "1.30" or null,
+  "paymentAmount": number or null,
+  "paymentFrequency": one of "daily"|"weekly"|"bi-weekly"|"monthly" or null,
+  "remainingBalance": number or null,
+  "fundedDate": "YYYY-MM-DD" or null,
+  "confidence": "high"|"medium"|"low",
+  "notes": string or null
+}
+Rules: strip $ and commas from numbers; "advance amount"/"funded amount" = fundedAmount; "payback"/"total remittance" = paybackAmount; "RTR"/"daily ACH" = daily frequency; for bank statements look for recurring ACH debits; confidence "high" if 5+ fields extracted, "medium" if 3-4, "low" otherwise.`;
+
+function parsePositionJson(raw: string): ExtractedPositionTerms {
+  let clean = raw.trim();
+  if (clean.startsWith("```json")) clean = clean.slice(7);
+  else if (clean.startsWith("```")) clean = clean.slice(3);
+  if (clean.endsWith("```")) clean = clean.slice(0, -3);
+  return JSON.parse(clean.trim()) as ExtractedPositionTerms;
+}
+
+const POSITION_EMPTY: ExtractedPositionTerms = {
+  funderName: null, productType: null, fundedAmount: null, paybackAmount: null,
+  factorRate: null, paymentAmount: null, paymentFrequency: null, remainingBalance: null,
+  fundedDate: null, confidence: "low", notes: "Could not parse document."
+};
+
+export async function extractPositionTerms(text: string): Promise<ExtractedPositionTerms> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: POSITION_SYSTEM_PROMPT },
+        { role: "user", content: `Extract funding position terms from this document:\n\n${text.slice(0, 12000)}` }
+      ],
+      temperature: 0.1,
+      max_tokens: 600
+    });
+    return parsePositionJson(response.choices[0]?.message?.content || "{}");
+  } catch (err) {
+    console.error("[OPENAI] extractPositionTerms error:", err);
+    return POSITION_EMPTY;
+  }
+}
+
+export async function extractPositionTermsFromPdfBuffer(pdfBuffer: Buffer): Promise<ExtractedPositionTerms> {
+  try {
+    const base64Pdf = pdfBuffer.toString("base64");
+    const response = await (openai as any).responses.create({
+      model: "gpt-4o",
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_file",
+              filename: "document.pdf",
+              file_data: `data:application/pdf;base64,${base64Pdf}`,
+            },
+            {
+              type: "input_text",
+              text: `${POSITION_SYSTEM_PROMPT}\n\nExtract all funding/loan position terms from this document and return ONLY the JSON:`
+            }
+          ]
+        }
+      ],
+      temperature: 0.1,
+      max_output_tokens: 600,
+    });
+    const content = response.output_text || response.output?.[0]?.content?.[0]?.text || "{}";
+    return parsePositionJson(content);
+  } catch (err) {
+    console.error("[OPENAI] extractPositionTermsFromPdfBuffer error:", err);
+    return { ...POSITION_EMPTY, notes: "Could not read this PDF. Try pasting the text instead." };
+  }
+}

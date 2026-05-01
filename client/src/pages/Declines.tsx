@@ -327,6 +327,49 @@ export default function Declines() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  const handleExportCSV = () => {
+    const headers = [
+      "Business Name",
+      "Email",
+      "Assigned Rep",
+      "Decline Reason",
+      "Notes",
+      "Reviewed By",
+      "Follow Up",
+      "Follow Up Date",
+      "Decision Date",
+    ];
+
+    const escape = (val: any) => {
+      const str = String(val ?? "").replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = filteredDecisions.map((d) => [
+      escape(d.businessName || ""),
+      escape(d.businessEmail || ""),
+      escape(d.assignedRep || ""),
+      escape(d.declineReason || ""),
+      escape(d.notes || ""),
+      escape(d.reviewedBy || ""),
+      escape(d.followUpWorthy ? "Yes" : "No"),
+      escape(d.followUpDate ? formatDate(d.followUpDate) : ""),
+      escape(formatDate(d.approvalDate || d.updatedAt || d.createdAt)),
+    ]);
+
+    const csv = [headers.map(h => `"${h}"`).join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const dateStr = new Date().toISOString().split("T")[0];
+    a.download = `declines-${dateStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
   // Check for 403 errors
   useEffect(() => {
     if (decisionsError && (decisionsError as any).message?.includes("403")) {
@@ -385,15 +428,27 @@ export default function Declines() {
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => setLocation("/approvals")}
-              className="flex items-center gap-2"
-              data-testid="button-view-approvals"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              View Approvals ({totalApproved})
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleExportCSV}
+                disabled={filteredDecisions.length === 0}
+                className="flex items-center gap-2"
+                data-testid="button-export-csv"
+              >
+                <Download className="w-4 h-4" />
+                Export CSV{filteredDecisions.length > 0 ? ` (${filteredDecisions.length})` : ""}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setLocation("/approvals")}
+                className="flex items-center gap-2"
+                data-testid="button-view-approvals"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                View Approvals ({totalApproved})
+              </Button>
+            </div>
           </div>
         </div>
 

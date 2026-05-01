@@ -795,3 +795,73 @@ export const serviceInterests = pgTable("service_interests", {
 });
 
 export type ServiceInterest = typeof serviceInterests.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// PAGE VISIT TRACKING (email-link click-throughs)
+// ═══════════════════════════════════════════════════════════════
+
+export const pageVisits = pgTable("page_visits", {
+  id: serial("id").primaryKey(),
+  email: text("email"),
+  phone: text("phone"),
+  interest: text("interest"),          // e.g. "payments", "website" from ?interest= param
+  pagePath: text("page_path"),         // e.g. "/services"
+  fullUrl: text("full_url"),           // full URL with all query params
+  referrer: text("referrer"),
+  utmSource: text("utm_source"),
+  utmCampaign: text("utm_campaign"),
+  utmMedium: text("utm_medium"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PageVisit = typeof pageVisits.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// ACH DEBIT AUTHORIZATION FORMS
+// ═══════════════════════════════════════════════════════════════
+
+export const achAuthorizations = pgTable("ach_authorizations", {
+  id: serial("id").primaryKey(),
+
+  // Financial institution
+  bankName: text("bank_name").notNull(),
+  bankAddress: text("bank_address"),
+  bankCity: text("bank_city"),
+  bankState: text("bank_state"),
+  bankZip: text("bank_zip"),
+
+  // Account details
+  accountType: text("account_type").default("checking"), // "checking" | "savings"
+  routingNumber: text("routing_number").notNull(),
+  accountNumber: text("account_number").notNull(),
+
+  // Debit details
+  debitDate: text("debit_date"),   // stored as YYYY-MM-DD string
+  amount: text("amount"),           // stored as string e.g. "1500.00"
+
+  // Business / consumer info
+  businessName: text("business_name").notNull(),
+  businessAddress: text("business_address"),
+  businessCity: text("business_city"),
+  businessState: text("business_state"),
+  businessZip: text("business_zip"),
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+
+  // Signature
+  signatureData: text("signature_data"),  // base64 PNG data URL
+  signedAt: timestamp("signed_at"),
+
+  // Metadata
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAchAuthorizationSchema = createInsertSchema(achAuthorizations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAchAuthorization = z.infer<typeof insertAchAuthorizationSchema>;
+export type AchAuthorization = typeof achAuthorizations.$inferSelect;

@@ -103,7 +103,7 @@ function buildGigFiPayload(data: GigFiLeadData, refId: string) {
         AccountToUse: "C",
       },
       EmploymentInfo: {
-        MonthlyIncome: data.monthlyRevenue,
+        MonthlyIncome: data.monthlyRevenue || 10000,
         PayFrequency: data.payFrequency,
         IncomeType: "5", // Self-Employed (business owners)
         PayrollType: "3", // Direct Deposit

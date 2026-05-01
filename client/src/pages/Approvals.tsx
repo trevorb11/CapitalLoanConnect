@@ -1149,7 +1149,7 @@ export default function Approvals() {
                               </Button>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                             <div>
                               <div className="text-muted-foreground">Advance Amount</div>
                               <div className="font-semibold text-green-600 dark:text-green-400">
@@ -1170,6 +1170,13 @@ export default function Approvals() {
                               <div className="text-muted-foreground">Payment Frequency</div>
                               <div className="font-medium capitalize">{appr.paymentFrequency || "N/A"}</div>
                             </div>
+                            <div>
+                              <div className="text-muted-foreground">Approval Date</div>
+                              <div className="font-medium flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {appr.approvalDate ? formatDate(appr.approvalDate) : "N/A"}
+                              </div>
+                            </div>
                           </div>
                           {(appr.totalPayback || appr.netAfterFees) && (
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3 pt-3 border-t">
@@ -1180,13 +1187,6 @@ export default function Approvals() {
                               <div>
                                 <div className="text-muted-foreground">Net After Fees</div>
                                 <div className="font-medium">{formatCurrency(appr.netAfterFees)}</div>
-                              </div>
-                              <div>
-                                <div className="text-muted-foreground">Approval Date</div>
-                                <div className="font-medium flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {formatDate(appr.approvalDate)}
-                                </div>
                               </div>
                             </div>
                           )}

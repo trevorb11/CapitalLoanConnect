@@ -158,11 +158,8 @@ export default function ApprovalLetter() {
   const businessName = approval.businessName || "Valued Customer";
   const businessEmail = approval.businessEmail || "";
 
-  // Build the Accept Offer / congratulations URL with pre-filled context
-  const congratsParams = new URLSearchParams();
-  if (businessEmail) congratsParams.set("email", businessEmail);
-  if (businessName) congratsParams.set("businessName", businessName);
-  const congratulationsUrl = `/congratulations${congratsParams.toString() ? `?${congratsParams.toString()}` : ""}`;
+  // Server-side redirect: fires GHL webhook then redirects to /congratulations with full contact context
+  const congratulationsUrl = `/api/approval-letter/${slug}/accept`;
 
   const factorRate = current.factorRate || "1.25";
   const lender = current.lender || "Standard Program";
