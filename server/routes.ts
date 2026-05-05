@@ -6650,6 +6650,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.log("[ADS-LEADS] Seeded 18 CSV contacts");
     }
+
+    // Always upsert new batch contacts (ON CONFLICT DO NOTHING keeps existing rows safe)
+    const batchMay2026 = [
+      ['info@epiccg.com','Andrew','Painter','Clicked through Email','2026-05-04 20:25:00'],
+      ['noah@bnastaffing.com','Noah','Nielsen','Clicked through Email','2026-05-04 17:10:00'],
+      ['ncaron@macairgroup.com','Nicole','Caron','Clicked through Email','2026-05-04 18:49:00'],
+      ['daynah@microsoft.com','Dayna','Hailey','Clicked through Email','2026-05-04 17:09:00'],
+      ['rcastiglione@wnyasset.com','Rob','Castiglione','Clicked through Email','2026-05-04 17:07:00'],
+      ['lbarnes@eyeboston.com','Lisa','Barnes','Clicked through Email','2026-05-04 16:08:00'],
+      ['sara.b.wilson@cummins.com','Sara','Wilson','Clicked through Email','2026-05-04 16:08:00'],
+      ['nadkarni@dell.com','Nadkarni','Sachit','Clicked through Email','2026-05-04 16:08:00'],
+      ['minh.ly.2011@marshall.usc.edu','Mike','Ly','Clicked through Email','2026-05-04 20:53:00'],
+    ];
+    for (const [email, firstName, lastName, leadType, createdAt] of batchMay2026) {
+      await db.execute(sql`INSERT INTO ads_leads (email, first_name, last_name, lead_type, last_activity, created_at)
+        VALUES (${email}, ${firstName}, ${lastName}, ${leadType}, ${new Date('2026-05-04')}, ${new Date(createdAt)})
+        ON CONFLICT (email) DO NOTHING`);
+    }
+    // Update Denise Burgess last_activity — she clicked again May 4
+    await db.execute(sql`UPDATE ads_leads SET last_activity = ${new Date('2026-05-04 20:26:00')} WHERE email = 'deniseb@burgessservices.com'`);
   } catch (err) {
     console.error("[ADS-LEADS] Failed to seed contacts:", err);
   }
