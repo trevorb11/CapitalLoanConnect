@@ -1100,6 +1100,33 @@ export class GoHighLevelService {
   }
 
   /**
+   * Search contacts by a GHL tag name, paginating through all results
+   */
+  async searchContactsByTag(tag: string): Promise<any[]> {
+    if (!this.isEnabled) return [];
+    const allContacts: any[] = [];
+    let page = 1;
+    const limit = 100;
+    try {
+      while (true) {
+        const response = await this.makeRequest(
+          `/contacts/?locationId=${this.locationId}&tags[]=${encodeURIComponent(tag)}&limit=${limit}&page=${page}`,
+          "GET"
+        );
+        const contacts = response.contacts || [];
+        allContacts.push(...contacts);
+        if (contacts.length < limit) break;
+        page++;
+      }
+      console.log(`[GHL] searchContactsByTag("${tag}"): found ${allContacts.length} total`);
+      return allContacts;
+    } catch (error) {
+      console.error(`[GHL] Error searching contacts by tag "${tag}":`, error);
+      return [];
+    }
+  }
+
+  /**
    * Search for opportunities by contact ID
    */
   async searchOpportunitiesByContact(contactId: string): Promise<any[]> {

@@ -37,6 +37,78 @@ import type { LoanApplication, MerchantBankSnapshot } from "@shared/schema";
 // Initialize Object Storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
 
+// ── Ads Leads GHL sync state (in-memory, reset on restart) ──────────────────
+const adsSyncState = {
+  running: false,
+  lastRunAt: null as string | null,
+  lastAddedCount: 0,
+  lastTotalFound: 0,
+  lastError: null as string | null,
+  nextRunAt: null as string | null,
+  active: false,      // true while the timed job is scheduled for today
+};
+
+const GHL_LOCATION_ID_SYNC = "n778xwOps9t8Q34eRPfM";
+const GHL_PRIVATE_TOKEN = process.env.GHL_PRIVATE_TOKEN;
+
+async function ghlGetContactsByTag(tag: string): Promise<any[]> {
+  const token = GHL_PRIVATE_TOKEN;
+  if (!token) throw new Error("GHL_PRIVATE_TOKEN not set");
+  const all: any[] = [];
+  let page = 1;
+  while (true) {
+    const url = `https://services.leadconnectorhq.com/contacts/?locationId=${GHL_LOCATION_ID_SYNC}&tags[]=${encodeURIComponent(tag)}&limit=100&page=${page}`;
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Version: "2021-07-28" },
+    });
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`GHL ${resp.status}: ${txt.slice(0, 200)}`);
+    }
+    const data = await resp.json();
+    const contacts = data.contacts || [];
+    all.push(...contacts);
+    if (contacts.length < 100) break;
+    page++;
+  }
+  return all;
+}
+
+async function runAdsLeadsSync() {
+  if (adsSyncState.running) return;
+  adsSyncState.running = true;
+  adsSyncState.lastError = null;
+  try {
+    const TAG = "clicked ads email";
+    const contacts = await ghlGetContactsByTag(TAG);
+    adsSyncState.lastTotalFound = contacts.length;
+    let added = 0;
+    for (const c of contacts) {
+      const email = (c.email || "").toLowerCase().trim();
+      if (!email) continue;
+      const firstName = c.firstName || c.first_name || "";
+      const lastName = c.lastName || c.last_name || "";
+      const phone = c.phone || "";
+      const businessName = c.companyName || c.company_name || "";
+      const result = await db.execute(sql`
+        INSERT INTO ads_leads (email, first_name, last_name, phone, business_name, lead_type, last_activity, created_at)
+        VALUES (${email}, ${firstName}, ${lastName}, ${phone || null}, ${businessName || null},
+                'Clicked through Email', NOW(), NOW())
+        ON CONFLICT (email) DO NOTHING
+      `);
+      if (String(result.rowCount) === "1") added++;
+    }
+    adsSyncState.lastAddedCount = added;
+    adsSyncState.lastRunAt = new Date().toISOString();
+    console.log(`[ADS-SYNC] GHL tag sync complete: found=${contacts.length} added=${added}`);
+  } catch (err: any) {
+    adsSyncState.lastError = err?.message || "Unknown error";
+    console.error("[ADS-SYNC] GHL tag sync error:", err?.message);
+  } finally {
+    adsSyncState.running = false;
+  }
+}
+
 // Log Object Storage status on startup
 if (objectStorage.isConfigured()) {
   console.log("[OBJECT STORAGE] ✓ Configured and ready for bank statement uploads");
@@ -827,6 +899,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("[ADS-LEADS] Error fetching ads leads:", err.message);
       return res.status(500).json({ error: "Failed to fetch ads leads" });
     }
+  });
+
+  // GET /api/ads-leads/sync-status — returns last sync info
+  app.get("/api/ads-leads/sync-status", (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    return res.json(adsSyncState);
+  });
+
+  // POST /api/ads-leads/sync — manually trigger a GHL tag sync
+  app.post("/api/ads-leads/sync", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    if (adsSyncState.running) {
+      return res.json({ ...adsSyncState, message: "Sync already in progress" });
+    }
+    runAdsLeadsSync();
+    return res.json({ ...adsSyncState, message: "Sync started" });
   });
 
   // POST /api/ads-consultation/submit — /ads page form submission, adds to ads_leads
@@ -12289,6 +12381,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ outboundIpv4: stdout.trim() });
     });
   });
+
+  // ── Ads Leads GHL timed sync — every 30 min until midnight today ──────────
+  (function startAdsLeadsPoll() {
+    const INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+    function scheduleNext() {
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(23, 59, 59, 999);
+      if (now >= midnight) {
+        adsSyncState.active = false;
+        adsSyncState.nextRunAt = null;
+        console.log("[ADS-SYNC] Polling stopped — past midnight");
+        return;
+      }
+      const nextRun = new Date(now.getTime() + INTERVAL_MS);
+      adsSyncState.active = true;
+      adsSyncState.nextRunAt = (nextRun > midnight ? midnight : nextRun).toISOString();
+      setTimeout(async () => {
+        await runAdsLeadsSync();
+        scheduleNext();
+      }, INTERVAL_MS);
+    }
+    // Run immediately on startup, then schedule
+    runAdsLeadsSync().then(scheduleNext);
+    console.log("[ADS-SYNC] GHL tag polling started — runs every 30 min until midnight");
+  })();
 
   return httpServer;
 }
