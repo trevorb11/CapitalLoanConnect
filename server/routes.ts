@@ -6662,6 +6662,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ['sara.b.wilson@cummins.com','Sara','Wilson','Clicked through Email','2026-05-04 16:08:00'],
       ['nadkarni@dell.com','Nadkarni','Sachit','Clicked through Email','2026-05-04 16:08:00'],
       ['minh.ly.2011@marshall.usc.edu','Mike','Ly','Clicked through Email','2026-05-04 20:53:00'],
+      ['todd@earthtrades.com','Todd','Henderson','Clicked through Email','2026-05-04 13:52:00'],
+      ['pete.eskew@id.me','Peter','Eskew','Clicked through Email','2026-05-04 12:07:00'],
+      ['tniles@negllc.us','Tim','Niles','Clicked through Email','2026-05-04 12:08:00'],
+      ['miljan.petkovic@roamingnetworks.com','Roaming','Networks','Clicked through Email','2026-05-04 12:08:00'],
+      ['marc@americandoor.com','Marc','Jurman','Clicked through Email','2026-05-04 11:09:00'],
+      ['kkoch1@psusd.us','Kevin','Koch','Clicked through Email','2026-05-04 11:09:00'],
+      ['lsutherland@vsi360.com','Len','Sutherland','Clicked through Email','2026-05-04 11:07:00'],
+      ['hfleishman@gtglobal.com','Herman','Fleishman','Clicked through Email','2026-05-04 11:29:00'],
     ];
     for (const [email, firstName, lastName, leadType, createdAt] of batchMay2026) {
       await db.execute(sql`INSERT INTO ads_leads (email, first_name, last_name, lead_type, last_activity, created_at)
