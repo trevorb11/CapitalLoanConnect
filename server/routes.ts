@@ -86,7 +86,7 @@ async function runAdsLeadsSync() {
   adsSyncState.running = true;
   adsSyncState.lastError = null;
   try {
-    const TAG = "clicked ads email";
+    const TAG = "clicked ads";
     const contacts = await ghlGetContactsByTag(TAG);
     adsSyncState.lastTotalFound = contacts.length;
     let added = 0;
@@ -12389,30 +12389,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // ── Ads Leads GHL timed sync — every 30 min until midnight today ──────────
+  // ── Ads Leads GHL sync — runs every 2 hours indefinitely ─────────────────
   (function startAdsLeadsPoll() {
-    const INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
-    function scheduleNext() {
-      const now = new Date();
-      const midnight = new Date(now);
-      midnight.setHours(23, 59, 59, 999);
-      if (now >= midnight) {
-        adsSyncState.active = false;
-        adsSyncState.nextRunAt = null;
-        console.log("[ADS-SYNC] Polling stopped — past midnight");
-        return;
-      }
-      const nextRun = new Date(now.getTime() + INTERVAL_MS);
-      adsSyncState.active = true;
-      adsSyncState.nextRunAt = (nextRun > midnight ? midnight : nextRun).toISOString();
-      setTimeout(async () => {
-        await runAdsLeadsSync();
-        scheduleNext();
-      }, INTERVAL_MS);
-    }
-    // Run immediately on startup, then schedule
-    runAdsLeadsSync().then(scheduleNext);
-    console.log("[ADS-SYNC] GHL tag polling started — runs every 30 min until midnight");
+    const INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
+    adsSyncState.active = true;
+    adsSyncState.nextRunAt = new Date(Date.now() + INTERVAL_MS).toISOString();
+    // Run immediately on startup, then repeat every 2 hours
+    runAdsLeadsSync().then(() => {
+      adsSyncState.nextRunAt = new Date(Date.now() + INTERVAL_MS).toISOString();
+    });
+    setInterval(async () => {
+      await runAdsLeadsSync();
+      adsSyncState.nextRunAt = new Date(Date.now() + INTERVAL_MS).toISOString();
+    }, INTERVAL_MS);
+    console.log("[ADS-SYNC] GHL tag polling started — tag='clicked ads', every 2 hours");
   })();
 
   return httpServer;
