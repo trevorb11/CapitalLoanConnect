@@ -56,10 +56,17 @@ async function ghlGetContactsByTag(tag: string): Promise<any[]> {
   if (!token) throw new Error("GHL_PRIVATE_TOKEN not set");
   const all: any[] = [];
   let page = 1;
+  const pageLimit = 100;
   while (true) {
-    const url = `https://services.leadconnectorhq.com/contacts/?locationId=${GHL_LOCATION_ID_SYNC}&tags[]=${encodeURIComponent(tag)}&limit=100&page=${page}`;
-    const resp = await fetch(url, {
+    const resp = await fetch("https://services.leadconnectorhq.com/contacts/search", {
+      method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Version: "2021-07-28" },
+      body: JSON.stringify({
+        locationId: GHL_LOCATION_ID_SYNC,
+        filters: [{ field: "tags", operator: "contains", value: tag }],
+        pageLimit,
+        page,
+      }),
     });
     if (!resp.ok) {
       const txt = await resp.text();
@@ -68,7 +75,7 @@ async function ghlGetContactsByTag(tag: string): Promise<any[]> {
     const data = await resp.json();
     const contacts = data.contacts || [];
     all.push(...contacts);
-    if (contacts.length < 100) break;
+    if (contacts.length < pageLimit) break;
     page++;
   }
   return all;
