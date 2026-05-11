@@ -66,6 +66,7 @@ import TrackAdmin from "@/pages/TrackAdmin";
 import AdsConsultation from "@/pages/AdsConsultation";
 import AdsLeads from "@/pages/AdsLeads";
 import ServiceLeads from "@/pages/ServiceLeads";
+import ConsolSBA from "@/pages/ConsolSBA";
 import LeadsDashboard from "@/pages/LeadsDashboard";
 import ServicePayments from "@/pages/ServicePayments";
 import ServiceWebsite from "@/pages/ServiceWebsite";
@@ -121,6 +122,7 @@ function Router() {
       <Route path="/internal-upload" component={InternalStatementsUpload} />
       <Route path="/funding-check" component={FundingCheck} />
       <Route path="/sba" component={SBALanding} />
+      <Route path="/consol-sba" component={ConsolSBA} />
       <Route path="/sig" component={SignatureApplication} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/congratulations" component={Congratulations} />
