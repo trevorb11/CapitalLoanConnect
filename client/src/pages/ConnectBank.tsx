@@ -1,7 +1,6 @@
-import { useState, useCallback, useRef } from "react";
-import { usePlaidLink } from "react-plaid-link";
+import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,78 +17,70 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Loader2, CheckCircle2, Lock, AlertCircle, Upload, Building2, FileText, Mail, ExternalLink } from "lucide-react";
-import plaidLogo from "@assets/plaid_logo_1770240188710.png";
+import { Loader2, CheckCircle2, Lock, AlertCircle, Upload, Building2, FileText, Mail, ExternalLink, Shield } from "lucide-react";
+
 
 const formSchema = z.object({
-  businessName: z.string().min(2, "Business name must be at least 2 characters"),
-  email: z.string().email("Please enter a valid email address")
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Please enter a valid email address"),
+  phone: z.string().min(10, "Please enter a valid phone number"),
 });
 
 type FormData = z.infer<typeof formSchema>;
 
 export default function ConnectBank() {
-  const [linkToken, setLinkToken] = useState<string | null>(null);
   const [step, setStep] = useState<'input' | 'connecting' | 'uploading' | 'success'>('input');
-  const [connectionMethod, setConnectionMethod] = useState<'plaid' | 'upload' | null>(null);
+  const [connectionMethod, setConnectionMethod] = useState<'chirp' | 'upload' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const prefillEmail = params.get("email") || "";
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      businessName: "",
-      email: ""
+      firstName: "",
+      lastName: "",
+      email: prefillEmail,
+      phone: "",
     }
   });
 
-  const createLinkTokenMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/plaid/create-link-token");
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setLinkToken(data.link_token);
-    },
-    onError: () => {
-      toast({
-        title: "Connection Error",
-        description: "Failed to initialize bank connection. Please try again later.",
-        variant: "destructive"
+  const chirpRequestMutation = useMutation({
+    mutationFn: async (values: FormData) => {
+      // Step 1: Create the Chirp verification request
+      const createRes = await apiRequest("POST", "/api/chirp/request", {
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        phone: values.phone,
       });
-    }
-  });
+      const createData = await createRes.json();
+      if (!createData.requestCode) {
+        throw new Error(createData.error || "No request code returned from Chirp");
+      }
 
-  const exchangeTokenMutation = useMutation({
-    mutationFn: async (payload: { publicToken: string; metadata: any }) => {
-      const res = await apiRequest("POST", "/api/plaid/exchange-token", {
-        publicToken: payload.publicToken,
-        metadata: payload.metadata,
-        businessName: form.getValues("businessName"),
-        email: form.getValues("email")
-      });
-      return res.json();
+      const widgetUrl = createData.verificationUrl
+        || `https://chirp.digital/api/widget?requestCode=${createData.requestCode}`;
+
+      return { requestCode: createData.requestCode, widgetUrl };
     },
-    onSuccess: () => {
-      setConnectionMethod('plaid');
-      setStep('success');
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
-      toast({
-        title: "Bank Connected",
-        description: "Your bank account has been successfully connected!"
-      });
+    onSuccess: ({ widgetUrl }) => {
+      window.location.href = widgetUrl;
     },
-    onError: () => {
+    onError: (err: Error) => {
       setStep('input');
       toast({
-        title: "Connection Failed",
-        description: "We couldn't connect to your bank. Please try again.",
-        variant: "destructive"
+        title: "Connection Error",
+        description: err.message || "Failed to start bank verification. Please try again.",
+        variant: "destructive",
       });
-    }
+    },
   });
 
   const uploadMutation = useMutation({
@@ -97,7 +88,7 @@ export default function ConnectBank() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("email", form.getValues("email"));
-      formData.append("businessName", form.getValues("businessName"));
+      formData.append("businessName", `${form.getValues("firstName")} ${form.getValues("lastName")}`);
 
       const response = await fetch("/api/bank-statements/upload", {
         method: "POST",
@@ -139,70 +130,35 @@ export default function ConnectBank() {
     }
   });
 
-  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
+  const handleConnectBank = async () => {
+    const valid = await form.trigger();
+    if (!valid) return;
     setStep('connecting');
-    exchangeTokenMutation.mutate({ publicToken, metadata });
-  }, [exchangeTokenMutation]);
-
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
-    onSuccess: onPlaidSuccess,
-  });
-
-  const handleConnectBank = () => {
-    const isValid = form.trigger();
-    isValid.then((valid) => {
-      if (valid) {
-        if (!linkToken) {
-          createLinkTokenMutation.mutate();
-          setTimeout(() => {
-            if (ready) open();
-          }, 1000);
-        } else if (ready) {
-          open();
-        }
-      }
-    });
-  };
-
-  const initializePlaidLink = () => {
-    if (!linkToken) {
-      createLinkTokenMutation.mutate();
-    }
+    chirpRequestMutation.mutate(form.getValues());
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.type !== "application/pdf") {
-        toast({
-          title: "Invalid File Type",
-          description: "Please select a PDF file.",
-          variant: "destructive"
-        });
+        toast({ title: "Invalid File Type", description: "Please select a PDF file.", variant: "destructive" });
         return;
       }
       if (file.size > 25 * 1024 * 1024) {
-        toast({
-          title: "File Too Large",
-          description: "File must be under 25MB.",
-          variant: "destructive"
-        });
+        toast({ title: "File Too Large", description: "File must be under 25MB.", variant: "destructive" });
         return;
       }
       setSelectedFile(file);
     }
   };
 
-  const handleUpload = () => {
-    const isValid = form.trigger();
-    isValid.then((valid) => {
-      if (valid && selectedFile) {
-        setStep('uploading');
-        setUploadProgress(30);
-        uploadMutation.mutate(selectedFile);
-      }
-    });
+  const handleUpload = async () => {
+    const valid = await form.trigger();
+    if (valid && selectedFile) {
+      setStep('uploading');
+      setUploadProgress(30);
+      uploadMutation.mutate(selectedFile);
+    }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -210,31 +166,23 @@ export default function ConnectBank() {
     const file = e.dataTransfer.files[0];
     if (file) {
       if (file.type !== "application/pdf") {
-        toast({
-          title: "Invalid File Type",
-          description: "Please select a PDF file.",
-          variant: "destructive"
-        });
+        toast({ title: "Invalid File Type", description: "Please select a PDF file.", variant: "destructive" });
         return;
       }
       if (file.size > 25 * 1024 * 1024) {
-        toast({
-          title: "File Too Large",
-          description: "File must be under 25MB.",
-          variant: "destructive"
-        });
+        toast({ title: "File Too Large", description: "File must be under 25MB.", variant: "destructive" });
         return;
       }
       setSelectedFile(file);
     }
   };
 
-  if (step === 'connecting' || exchangeTokenMutation.isPending) {
+  if (step === 'connecting' || chirpRequestMutation.isPending) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#192F56] to-[#19112D] flex flex-col items-center justify-center text-white p-4">
         <Loader2 className="w-16 h-16 animate-spin text-[#5FBFB8] mb-4" data-testid="loader-connecting" />
-        <h2 className="text-2xl font-bold mb-2">Connecting Bank...</h2>
-        <p className="text-white/70">Securely connecting to your bank account.</p>
+        <h2 className="text-2xl font-bold mb-2">Preparing Verification...</h2>
+        <p className="text-white/70">You'll be redirected to complete your bank verification securely.</p>
       </div>
     );
   }
@@ -246,7 +194,7 @@ export default function ConnectBank() {
         <h2 className="text-2xl font-bold mb-2">Uploading Statement...</h2>
         <p className="text-white/70">Securely uploading your bank statement.</p>
         <div className="w-64 h-2 bg-white/20 rounded-full mt-4">
-          <div 
+          <div
             className="h-full bg-[#5FBFB8] rounded-full transition-all duration-300"
             style={{ width: `${uploadProgress}%` }}
           />
@@ -256,6 +204,7 @@ export default function ConnectBank() {
   }
 
   if (step === 'success') {
+    const isChirp = connectionMethod === 'chirp';
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#192F56] to-[#19112D] flex items-center justify-center p-4">
         <Card className="w-full max-w-lg shadow-xl border-0">
@@ -264,15 +213,15 @@ export default function ConnectBank() {
               <CheckCircle2 className="w-10 h-10 text-green-600" />
             </div>
             <h2 className="text-2xl font-bold text-[#192F56] mb-3" data-testid="heading-success">
-              {connectionMethod === 'plaid' ? 'Bank Connected!' : 'Statement Uploaded!'}
+              {isChirp ? "Bank Connected!" : "Statement Uploaded!"}
             </h2>
             <p className="text-gray-600 mb-6">
-              {connectionMethod === 'plaid' 
-                ? "Your bank account is now connected. We can access your statements for verification."
+              {isChirp
+                ? "Your bank account has been successfully verified. Our team will review your financials shortly."
                 : "Your bank statement has been received and will be reviewed by our team."}
             </p>
             <div className="space-y-3">
-              <Button 
+              <Button
                 className="w-full bg-[#192F56] hover:bg-[#2a4575] text-white"
                 onClick={() => setLocation("/")}
                 data-testid="button-go-to-application"
@@ -280,21 +229,13 @@ export default function ConnectBank() {
                 Go to Application
               </Button>
               <a href="https://www.todaycapitalgroup.com/#contact-us" target="_blank" rel="noopener noreferrer" className="block">
-                <Button 
-                  variant="outline"
-                  className="w-full"
-                  data-testid="button-contact-team"
-                >
+                <Button variant="outline" className="w-full" data-testid="button-contact-team">
                   <Mail className="w-4 h-4 mr-2" />
                   Get in Touch with Our Team
                 </Button>
               </a>
               <a href="https://fund.todaycapitalgroup.com" target="_blank" rel="noopener noreferrer" className="block">
-                <Button 
-                  variant="outline"
-                  className="w-full"
-                  data-testid="button-view-offerings"
-                >
+                <Button variant="outline" className="w-full" data-testid="button-view-offerings">
                   <ExternalLink className="w-4 h-4 mr-2" />
                   View Offerings
                 </Button>
@@ -315,7 +256,7 @@ export default function ConnectBank() {
             Connect Your Bank
           </CardTitle>
           <p className="text-white/70 mt-2">
-            Provide your bank information to expedite your funding application.
+            Provide your information to expedite your funding application.
           </p>
         </CardHeader>
         <CardContent className="p-8 bg-white rounded-b-xl">
@@ -324,22 +265,30 @@ export default function ConnectBank() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="businessName"
+                  name="firstName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Business Name</FormLabel>
+                      <FormLabel>First Name</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="e.g. Acme Corp" 
-                          data-testid="input-business-name"
-                          {...field} 
-                        />
+                        <Input placeholder="John" data-testid="input-first-name" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                
+                <FormField
+                  control={form.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Smith" data-testid="input-last-name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={form.control}
                   name="email"
@@ -347,12 +296,20 @@ export default function ConnectBank() {
                     <FormItem>
                       <FormLabel>Email Address</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="you@company.com" 
-                          type="email"
-                          data-testid="input-email"
-                          {...field} 
-                        />
+                        <Input placeholder="you@company.com" type="email" data-testid="input-email" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number</FormLabel>
+                      <FormControl>
+                        <Input placeholder="(555) 000-0000" type="tel" data-testid="input-phone" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -364,32 +321,27 @@ export default function ConnectBank() {
                 <h3 className="text-lg font-semibold text-[#192F56] mb-4 text-center">
                   Choose Your Method
                 </h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
-                  {/* Plaid Option */}
+                  {/* Chirp Instant Verify Option */}
                   <div className="border-2 border-[#5FBFB8] rounded-xl p-6 hover-elevate transition-all">
                     <div className="text-center mb-4">
-                      <img 
-                        src={plaidLogo} 
-                        alt="Plaid" 
-                        className="h-8 mx-auto mb-3"
-                      />
-                      <h4 className="font-semibold text-[#192F56]">Instant Connect</h4>
+                      <div className="w-12 h-12 bg-[#5FBFB8]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Shield className="w-6 h-6 text-[#5FBFB8]" />
+                      </div>
+                      <h4 className="font-semibold text-[#192F56]">Instant Verify</h4>
                       <p className="text-sm text-gray-500 mt-1">
-                        Securely connect via Plaid
+                        Securely connect via Chirp
                       </p>
                     </div>
-                    <Button 
+                    <Button
                       type="button"
-                      onClick={() => {
-                        initializePlaidLink();
-                        handleConnectBank();
-                      }}
-                      disabled={createLinkTokenMutation.isPending}
+                      onClick={handleConnectBank}
+                      disabled={chirpRequestMutation.isPending}
                       className="w-full bg-[#5FBFB8] hover:bg-[#4ca8a1] text-white"
-                      data-testid="button-connect-plaid"
+                      data-testid="button-connect-chirp"
                     >
-                      {createLinkTokenMutation.isPending ? (
+                      {chirpRequestMutation.isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin mr-2" />
                       ) : (
                         <Lock className="w-4 h-4 mr-2" />
@@ -397,7 +349,7 @@ export default function ConnectBank() {
                       Connect Bank
                     </Button>
                     <p className="text-xs text-center text-gray-400 mt-2">
-                      Fast & automatic verification
+                      Fast &amp; automatic verification
                     </p>
                   </div>
 
@@ -419,7 +371,7 @@ export default function ConnectBank() {
                         Upload PDF bank statements
                       </p>
                     </div>
-                    
+
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -428,7 +380,7 @@ export default function ConnectBank() {
                       className="hidden"
                       data-testid="input-file"
                     />
-                    
+
                     {!selectedFile ? (
                       <div
                         onClick={() => fileInputRef.current?.click()}
@@ -438,18 +390,14 @@ export default function ConnectBank() {
                         data-testid="dropzone-upload"
                       >
                         <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-                        <p className="text-sm text-gray-500">
-                          Click or drag PDF here
-                        </p>
+                        <p className="text-sm text-gray-500">Click or drag PDF here</p>
                         <p className="text-xs text-gray-400 mt-1">Max 25MB</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
                         <div className="flex items-center gap-2 bg-gray-50 p-3 rounded-lg">
                           <FileText className="w-5 h-5 text-[#192F56]" />
-                          <span className="text-sm text-gray-700 truncate flex-1">
-                            {selectedFile.name}
-                          </span>
+                          <span className="text-sm text-gray-700 truncate flex-1">{selectedFile.name}</span>
                           <button
                             type="button"
                             onClick={() => setSelectedFile(null)}
@@ -459,7 +407,7 @@ export default function ConnectBank() {
                             &times;
                           </button>
                         </div>
-                        <Button 
+                        <Button
                           type="button"
                           onClick={handleUpload}
                           disabled={uploadMutation.isPending}
@@ -475,19 +423,17 @@ export default function ConnectBank() {
                         </Button>
                       </div>
                     )}
-                    <p className="text-xs text-center text-gray-400 mt-2">
-                      PDF files only
-                    </p>
+                    <p className="text-xs text-center text-gray-400 mt-2">PDF files only</p>
                   </div>
                 </div>
 
-                {createLinkTokenMutation.isError && (
-                  <div 
-                    className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 mt-4" 
+                {chirpRequestMutation.isError && (
+                  <div
+                    className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 mt-4"
                     data-testid="text-error"
                   >
                     <AlertCircle className="w-5 h-5" />
-                    Failed to initialize bank connection. Please try again.
+                    Failed to start bank verification. Please try again.
                   </div>
                 )}
               </div>

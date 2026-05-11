@@ -1,14 +1,747 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRoute } from "wouter";
 import { Building2, Loader2, AlertCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import FullApplication from "@/pages/FullApplication";
+import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { type LoanApplication } from "@shared/schema";
+import { getStoredUTMParams } from "@/lib/utm";
 
 interface PartnerInfo {
   partnerId: string;
   companyName: string;
   contactName: string;
+}
+
+interface UploadedFile {
+  id: string;
+  originalFileName: string;
+  fileSize: number;
+}
+
+const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA",
+  "HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+  "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+  "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"
+];
+
+const INDUSTRIES = [
+  { value: "Automotive", label: "Automotive" },
+  { value: "Construction", label: "Construction" },
+  { value: "Transportation", label: "Transportation" },
+  { value: "Health Services", label: "Health Services" },
+  { value: "Utilities and Home Services", label: "Utilities and Home Services" },
+  { value: "Hospitality", label: "Hospitality" },
+  { value: "Entertainment and Recreation", label: "Entertainment and Recreation" },
+  { value: "Retail Stores", label: "Retail Stores" },
+  { value: "Professional Services", label: "Professional Services" },
+  { value: "Restaurants & Food Services", label: "Restaurants & Food Services" },
+  { value: "Other", label: "Other" },
+];
+
+const formatEin = (v: string) => {
+  const d = v.replace(/\D/g, "").slice(0, 9);
+  if (d.length <= 2) return d;
+  return `${d.slice(0, 2)}-${d.slice(2)}`;
+};
+
+const formatSsn = (v: string) => {
+  const d = v.replace(/\D/g, "").slice(0, 9);
+  if (d.length <= 3) return d;
+  if (d.length <= 5) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
+};
+
+const formatPhone = (v: string) => {
+  const d = v.replace(/\D/g, "").slice(0, 10);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+};
+
+const formatCurrency = (v: string) => {
+  const [int] = v.split(".");
+  const digits = int.replace(/\D/g, "");
+  if (!digits) return "";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(digits));
+};
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+function PartnerForm({ partnerInfo, slug }: { partnerInfo: PartnerInfo; slug: string }) {
+  const { toast } = useToast();
+  const [applicationId, setApplicationId] = useState<string | null>(() => localStorage.getItem("partnerApplicationId"));
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState<any>({});
+  const [consentChecked, setConsentChecked] = useState(false);
+  const [showConsentError, setShowConsentError] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const { data: existingData, isLoading } = useQuery<LoanApplication>({
+    queryKey: [`/api/applications/${applicationId}`],
+    enabled: !!applicationId,
+  });
+
+  useEffect(() => {
+    if (existingData) {
+      setFormData({
+        legal_business_name: existingData.legalBusinessName || existingData.businessName || "",
+        doing_business_as: existingData.doingBusinessAs || existingData.businessName || "",
+        company_website: existingData.companyWebsite || "",
+        business_start_date: existingData.businessStartDate || "",
+        ein: existingData.ein ? formatEin(existingData.ein) : "",
+        company_email: existingData.companyEmail || existingData.businessEmail || existingData.email || "",
+        state_of_incorporation: existingData.stateOfIncorporation || existingData.state || "",
+        do_you_process_credit_cards: existingData.doYouProcessCreditCards || "",
+        industry: existingData.industry || "",
+        business_street_address: existingData.businessStreetAddress || existingData.businessAddress || "",
+        business_city: existingData.city || "",
+        business_state: existingData.state || "",
+        business_zip: existingData.zipCode || "",
+        requested_loan_amount: existingData.requestedAmount ? formatCurrency(existingData.requestedAmount.toString()) : "",
+        monthly_revenue: existingData.monthlyRevenue ? formatCurrency(existingData.monthlyRevenue.toString()) : "",
+        mca_balance_amount: existingData.mcaBalanceAmount ? formatCurrency(existingData.mcaBalanceAmount.toString()) : "",
+        mca_balance_bank_name: existingData.mcaBalanceBankName || "",
+        full_name: existingData.fullName || "",
+        email: existingData.email || "",
+        phone: existingData.phone ? formatPhone(existingData.phone) : "",
+        social_security_: existingData.socialSecurityNumber ? formatSsn(existingData.socialSecurityNumber) : "",
+        personal_credit_score_range: existingData.personalCreditScoreRange || existingData.ficoScoreExact || "",
+        owner_address1: existingData.ownerAddress1 || "",
+        owner_address2: existingData.ownerAddress2 || "",
+        owner_city: existingData.ownerCity || "",
+        owner_state: existingData.ownerState || "",
+        owner_zip: existingData.ownerZip || "",
+        date_of_birth: existingData.dateOfBirth || "",
+        ownership_percentage: existingData.ownerPercentage || existingData.ownership || "",
+      });
+    }
+  }, [existingData]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    let value = e.target.value;
+    const name = e.target.name;
+    if (name === "ein") value = formatEin(value);
+    if (name === "social_security_") value = formatSsn(value);
+    if (name === "phone") value = formatPhone(value);
+    if (["requested_loan_amount", "mca_balance_amount", "monthly_revenue"].includes(name)) value = formatCurrency(value);
+    setFormData({ ...formData, [name]: value });
+  };
+
+  const addFiles = (files: File[]) => {
+    const valid: File[] = [];
+    for (const file of files) {
+      if (file.type !== "application/pdf") {
+        toast({ title: "Invalid File", description: `${file.name}: Only PDF files are allowed`, variant: "destructive" });
+      } else if (file.size > 25 * 1024 * 1024) {
+        toast({ title: "Invalid File", description: `${file.name}: File size must be under 25MB`, variant: "destructive" });
+      } else {
+        valid.push(file);
+      }
+    }
+    setSelectedFiles(prev => [...prev, ...valid]);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    addFiles(Array.from(e.target.files || []));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    addFiles(Array.from(e.dataTransfer.files));
+  };
+
+  const uploadBankStatements = async (appId: string, email: string, businessName: string) => {
+    if (selectedFiles.length === 0) return;
+    setIsUploading(true);
+    setUploadProgress(0);
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const fd = new FormData();
+      fd.append("file", selectedFiles[i]);
+      fd.append("email", email);
+      fd.append("businessName", businessName);
+      fd.append("applicationId", appId);
+      try {
+        await fetch("/api/bank-statements/upload", { method: "POST", body: fd });
+      } catch {}
+      setUploadProgress(((i + 1) / selectedFiles.length) * 100);
+    }
+    setIsUploading(false);
+    setSelectedFiles([]);
+  };
+
+  const goToStep2 = async () => {
+    const required = [
+      "legal_business_name","doing_business_as","company_email","business_start_date",
+      "ein","industry","state_of_incorporation","do_you_process_credit_cards",
+      "business_street_address","business_city","business_state","business_zip",
+      "requested_loan_amount","monthly_revenue",
+    ];
+    for (const f of required) {
+      if (!formData[f]) {
+        toast({ title: "Missing Information", description: "Please fill in all required fields.", variant: "destructive" });
+        return;
+      }
+    }
+    const einDigits = formData.ein.replace(/\D/g, "");
+    if (einDigits.length !== 9) {
+      toast({ title: "Invalid EIN", description: "EIN must be exactly 9 digits (XX-XXXXXXX)", variant: "destructive" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        legalBusinessName: formData.legal_business_name,
+        doingBusinessAs: formData.doing_business_as,
+        companyEmail: formData.company_email,
+        businessStartDate: formData.business_start_date,
+        ein: formData.ein.replace(/\D/g, ""),
+        industry: formData.industry,
+        stateOfIncorporation: formData.state_of_incorporation,
+        doYouProcessCreditCards: formData.do_you_process_credit_cards,
+        businessStreetAddress: formData.business_street_address,
+        city: formData.business_city,
+        state: formData.business_state,
+        zipCode: formData.business_zip,
+        requestedAmount: formData.requested_loan_amount.replace(/[^0-9.]/g, ""),
+        monthlyRevenue: formData.monthly_revenue.replace(/[^0-9.]/g, ""),
+        averageMonthlyRevenue: formData.monthly_revenue.replace(/[^0-9.]/g, ""),
+        referralPartnerId: partnerInfo.partnerId,
+        referralPartnerCode: slug,
+        referralSource: `partner:${partnerInfo.companyName}`,
+        currentStep: 1,
+        ...getStoredUTMParams(),
+      };
+
+      let res;
+      if (applicationId) {
+        res = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
+      } else {
+        res = await apiRequest("POST", "/api/applications", payload);
+      }
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        toast({
+          title: "Required Fields Missing",
+          description: data.missingFields?.slice(0, 3).join(", ") || data.error || "Please complete all required fields.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (data.id && !applicationId) {
+        localStorage.setItem("partnerApplicationId", data.id);
+        setApplicationId(data.id);
+      }
+
+      setIsSubmitting(false);
+      setCurrentStep(2);
+      window.scrollTo(0, 0);
+    } catch {
+      toast({ title: "Save Error", description: "Could not save your progress. Please try again.", variant: "destructive" });
+      setIsSubmitting(false);
+    }
+  };
+
+  const submitApplication = async () => {
+    const required = [
+      "full_name","email","phone","social_security_",
+      "owner_address1","owner_city","owner_state","owner_zip",
+      "date_of_birth","ownership_percentage",
+    ];
+    for (const f of required) {
+      if (!formData[f]) {
+        toast({ title: "Missing Information", description: "Please fill in all required fields.", variant: "destructive" });
+        return;
+      }
+    }
+    const ssnDigits = formData.social_security_.replace(/\D/g, "");
+    if (ssnDigits.length !== 9) {
+      toast({ title: "Invalid SSN", description: "Social Security Number must be exactly 9 digits", variant: "destructive" });
+      return;
+    }
+    if (!consentChecked) {
+      setShowConsentError(true);
+      toast({ title: "Consent Required", description: "Please agree to the terms to continue.", variant: "destructive" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload: any = {
+        legalBusinessName: formData.legal_business_name,
+        doingBusinessAs: formData.doing_business_as,
+        companyWebsite: formData.company_website,
+        businessStartDate: formData.business_start_date,
+        ein: formData.ein.replace(/\D/g, ""),
+        companyEmail: formData.company_email,
+        stateOfIncorporation: formData.state_of_incorporation,
+        doYouProcessCreditCards: formData.do_you_process_credit_cards,
+        industry: formData.industry,
+        businessStreetAddress: formData.business_street_address,
+        businessAddress: formData.business_street_address,
+        city: formData.business_city,
+        state: formData.business_state,
+        zipCode: formData.business_zip,
+        businessCsz: `${formData.business_city}, ${formData.business_state} ${formData.business_zip}`,
+        requestedAmount: formData.requested_loan_amount.replace(/[^0-9.]/g, ""),
+        monthlyRevenue: formData.monthly_revenue.replace(/[^0-9.]/g, ""),
+        averageMonthlyRevenue: formData.monthly_revenue.replace(/[^0-9.]/g, ""),
+        mcaBalanceAmount: formData.mca_balance_amount ? formData.mca_balance_amount.replace(/[^0-9.]/g, "") : "",
+        mcaBalanceBankName: formData.mca_balance_bank_name,
+        fullName: formData.full_name,
+        email: formData.email,
+        socialSecurityNumber: formData.social_security_.replace(/\D/g, ""),
+        phone: formData.phone.replace(/\D/g, ""),
+        personalCreditScoreRange: formData.personal_credit_score_range,
+        ownerAddress1: formData.owner_address1,
+        ownerAddress2: formData.owner_address2,
+        ownerCity: formData.owner_city,
+        ownerState: formData.owner_state,
+        ownerZip: formData.owner_zip,
+        ownerCsz: `${formData.owner_city}, ${formData.owner_state} ${formData.owner_zip}`,
+        dateOfBirth: formData.date_of_birth,
+        ownerPercentage: formData.ownership_percentage,
+        ownership: formData.ownership_percentage,
+        applicantSignature: new Date().toISOString(),
+        isFullApplicationCompleted: true,
+        referralPartnerId: partnerInfo.partnerId,
+        referralPartnerCode: slug,
+        referralSource: `partner:${partnerInfo.companyName}`,
+        ...getStoredUTMParams(),
+      };
+
+      let res;
+      if (applicationId) {
+        res = await apiRequest("PATCH", `/api/applications/${applicationId}`, payload);
+      } else {
+        res = await apiRequest("POST", "/api/applications", payload);
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({
+          title: "Submission Failed",
+          description: err.missingFields?.slice(0, 3).join(", ") || err.error || "Please complete all required fields.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const data = await res.json();
+      const appIdToUse = data?.id?.toString() || applicationId;
+
+      if (appIdToUse && selectedFiles.length > 0) {
+        await uploadBankStatements(appIdToUse, formData.email, formData.legal_business_name);
+      }
+
+      setIsSubmitting(false);
+      setShowSuccess(true);
+      localStorage.removeItem("partnerApplicationId");
+      window.scrollTo(0, 0);
+    } catch {
+      setIsSubmitting(false);
+      toast({ title: "Error", description: "Failed to submit application. Please try again.", variant: "destructive" });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)" }}>
+        <div style={{ color: "white", fontSize: "1.1rem" }}>Loading...</div>
+      </div>
+    );
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "0.85rem 1rem",
+    border: "2px solid rgba(255,255,255,0.2)",
+    background: "rgba(255,255,255,0.1)",
+    color: "white", borderRadius: "8px",
+    fontSize: "1rem", fontFamily: "inherit",
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: "0.9rem", fontWeight: 500,
+    color: "rgba(255,255,255,0.9)",
+    marginBottom: "0.5rem", display: "block",
+  };
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    appearance: "none" as const,
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+    backgroundRepeat: "no-repeat", backgroundPosition: "right 1rem center", backgroundSize: "1em",
+  };
+
+  if (showSuccess) {
+    return (
+      <div style={{ fontFamily: "Inter, sans-serif", backgroundColor: "#f0f2f5", minHeight: "100vh", padding: "20px" }}>
+        <div style={{
+          background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)",
+          color: "white", padding: "3rem", borderRadius: "15px",
+          boxShadow: "0 12px 30px rgba(25, 47, 86, 0.3)",
+          minHeight: "500px", width: "100%", maxWidth: "900px",
+          margin: "2rem auto", textAlign: "center", paddingTop: "4rem",
+        }}>
+          <div style={{ width: "80px", height: "80px", margin: "0 auto 2rem", background: "rgba(34, 197, 94, 0.2)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <h1 style={{ fontSize: "2.2rem", marginBottom: "1rem", fontWeight: 700 }}>Application Received!</h1>
+          <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "1.1rem", maxWidth: "500px", margin: "0 auto 2rem" }}>
+            Thank you for submitting your application. Our team will review it and contact you shortly.
+          </p>
+          <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.95rem", marginBottom: "2rem" }}>
+            Referred by {partnerInfo.companyName}
+          </p>
+          <a href="https://todaycapitalgroup.com" target="_blank" rel="noopener noreferrer"
+            style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.9rem", textDecoration: "underline" }}>
+            Return to Website
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ fontFamily: "Inter, sans-serif", backgroundColor: "#f0f2f5", minHeight: "100vh", padding: "20px" }}>
+      <div style={{
+        background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)",
+        color: "white", padding: "2.5rem", borderRadius: "15px",
+        boxShadow: "0 12px 30px rgba(25, 47, 86, 0.3)",
+        width: "100%", maxWidth: "900px", margin: "2rem auto",
+      }}>
+        <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+          <h1 style={{ fontSize: "1.8rem", fontWeight: 700, marginBottom: "0.5rem" }}>Business Funding Application</h1>
+          <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.95rem" }}>
+            Referred by <span style={{ color: "rgba(255,255,255,0.95)", fontWeight: 600 }}>{partnerInfo.companyName}</span>
+          </p>
+          <div style={{ display: "flex", justifyContent: "center", gap: "1rem", marginTop: "1.5rem" }}>
+            <div style={{ width: "50%", height: "4px", background: currentStep >= 1 ? "#5FBFB8" : "rgba(255,255,255,0.2)", borderRadius: "2px" }} />
+            <div style={{ width: "50%", height: "4px", background: currentStep >= 2 ? "#5FBFB8" : "rgba(255,255,255,0.2)", borderRadius: "2px" }} />
+          </div>
+        </div>
+
+        {currentStep === 1 && (
+          <div>
+            <h2 style={{ fontSize: "1.3rem", fontWeight: 600, marginBottom: "1.5rem", color: "#5FBFB8" }}>Step 1: Business Information</h2>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem" }}>
+              <div>
+                <label style={labelStyle}>Legal Business Name *</label>
+                <input name="legal_business_name" value={formData.legal_business_name || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-legal_business_name" />
+              </div>
+              <div>
+                <label style={labelStyle}>DBA (Doing Business As) *</label>
+                <input name="doing_business_as" value={formData.doing_business_as || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-doing_business_as" />
+              </div>
+              <div>
+                <label style={labelStyle}>Company Email *</label>
+                <input type="email" name="company_email" value={formData.company_email || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-company_email" />
+              </div>
+              <div>
+                <label style={labelStyle}>Business Start Date *</label>
+                <input type="date" name="business_start_date" value={formData.business_start_date || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-business_start_date" />
+              </div>
+              <div>
+                <label style={labelStyle}>EIN (Tax ID) *</label>
+                <input name="ein" value={formData.ein || ""} onChange={handleInputChange} placeholder="XX-XXXXXXX" style={inputStyle} data-testid="input-ein" />
+              </div>
+              <div>
+                <label style={labelStyle}>Industry *</label>
+                <select name="industry" value={formData.industry || ""} onChange={handleInputChange} style={selectStyle} data-testid="select-industry">
+                  <option value="" style={{ color: "black" }}>Select...</option>
+                  {INDUSTRIES.map(i => <option key={i.value} value={i.value} style={{ color: "black" }}>{i.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>State of Incorporation *</label>
+                <select name="state_of_incorporation" value={formData.state_of_incorporation || ""} onChange={handleInputChange} style={selectStyle} data-testid="select-state_of_incorporation">
+                  <option value="" style={{ color: "black" }}>Select...</option>
+                  {US_STATES.map(s => <option key={s} value={s} style={{ color: "black" }}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Process Credit Cards? *</label>
+                <select name="do_you_process_credit_cards" value={formData.do_you_process_credit_cards || ""} onChange={handleInputChange} style={selectStyle} data-testid="select-do_you_process_credit_cards">
+                  <option value="" style={{ color: "black" }}>Select...</option>
+                  <option value="Yes" style={{ color: "black" }}>Yes</option>
+                  <option value="No" style={{ color: "black" }}>No</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Company Website</label>
+                <input name="company_website" value={formData.company_website || ""} onChange={handleInputChange} placeholder="www.example.com" style={inputStyle} data-testid="input-company_website" />
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: "1.1rem", fontWeight: 600, margin: "2rem 0 1rem", color: "rgba(255,255,255,0.9)" }}>Business Address</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem" }}>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={labelStyle}>Street Address *</label>
+                <input name="business_street_address" value={formData.business_street_address || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-business_street_address" />
+              </div>
+              <div>
+                <label style={labelStyle}>City *</label>
+                <input name="business_city" value={formData.business_city || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-business_city" />
+              </div>
+              <div>
+                <label style={labelStyle}>State *</label>
+                <select name="business_state" value={formData.business_state || ""} onChange={handleInputChange} style={selectStyle} data-testid="select-business_state">
+                  <option value="" style={{ color: "black" }}>Select...</option>
+                  {US_STATES.map(s => <option key={s} value={s} style={{ color: "black" }}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>ZIP Code *</label>
+                <input name="business_zip" value={formData.business_zip || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-business_zip" />
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: "1.1rem", fontWeight: 600, margin: "2rem 0 1rem", color: "rgba(255,255,255,0.9)" }}>Funding Request</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem" }}>
+              <div>
+                <label style={labelStyle}>Requested Amount *</label>
+                <input name="requested_loan_amount" value={formData.requested_loan_amount || ""} onChange={handleInputChange} placeholder="$0" style={inputStyle} data-testid="input-requested_loan_amount" />
+              </div>
+              <div>
+                <label style={labelStyle}>Monthly Revenue *</label>
+                <input name="monthly_revenue" value={formData.monthly_revenue || ""} onChange={handleInputChange} placeholder="$0" style={inputStyle} data-testid="input-monthly_revenue" />
+              </div>
+              <div>
+                <label style={labelStyle}>Current MCA Balance</label>
+                <input name="mca_balance_amount" value={formData.mca_balance_amount || ""} onChange={handleInputChange} placeholder="$0" style={inputStyle} data-testid="input-mca_balance_amount" />
+              </div>
+              <div>
+                <label style={labelStyle}>MCA Lender Name</label>
+                <input name="mca_balance_bank_name" value={formData.mca_balance_bank_name || ""} onChange={handleInputChange} placeholder="N/A" style={inputStyle} data-testid="input-mca_balance_bank_name" />
+              </div>
+            </div>
+
+            <div style={{ marginTop: "2.5rem", textAlign: "center" }}>
+              <button
+                onClick={goToStep2}
+                disabled={isSubmitting}
+                data-testid="button-next"
+                style={{
+                  background: isSubmitting ? "rgba(95,191,184,0.5)" : "#5FBFB8",
+                  color: "white", border: "none", padding: "1rem 3rem",
+                  borderRadius: "8px", fontSize: "1.1rem", fontWeight: 600,
+                  cursor: isSubmitting ? "not-allowed" : "pointer",
+                  display: "inline-flex", alignItems: "center", gap: "0.5rem",
+                }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <span style={{ width: "20px", height: "20px", border: "2px solid white", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                    Saving...
+                  </>
+                ) : "Continue to Owner Info →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {currentStep === 2 && (
+          <div>
+            <h2 style={{ fontSize: "1.3rem", fontWeight: 600, marginBottom: "1.5rem", color: "#5FBFB8" }}>Step 2: Owner Information</h2>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem" }}>
+              <div>
+                <label style={labelStyle}>Full Name *</label>
+                <input name="full_name" value={formData.full_name || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-full_name" />
+              </div>
+              <div>
+                <label style={labelStyle}>Email *</label>
+                <input type="email" name="email" value={formData.email || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-email" />
+              </div>
+              <div>
+                <label style={labelStyle}>Phone *</label>
+                <input name="phone" value={formData.phone || ""} onChange={handleInputChange} placeholder="XXX-XXX-XXXX" style={inputStyle} data-testid="input-phone" />
+              </div>
+              <div>
+                <label style={labelStyle}>Social Security Number *</label>
+                <input name="social_security_" value={formData.social_security_ || ""} onChange={handleInputChange} placeholder="XXX-XX-XXXX" style={inputStyle} data-testid="input-social_security_" />
+              </div>
+              <div>
+                <label style={labelStyle}>Date of Birth *</label>
+                <input type="date" name="date_of_birth" value={formData.date_of_birth || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-date_of_birth" />
+              </div>
+              <div>
+                <label style={labelStyle}>Ownership Percentage *</label>
+                <input type="number" name="ownership_percentage" value={formData.ownership_percentage || ""} onChange={handleInputChange} placeholder="100" style={inputStyle} data-testid="input-ownership_percentage" />
+              </div>
+              <div>
+                <label style={labelStyle}>Estimated FICO Score</label>
+                <input type="number" name="personal_credit_score_range" value={formData.personal_credit_score_range || ""} onChange={handleInputChange} placeholder="e.g. 720" style={inputStyle} data-testid="input-personal_credit_score_range" />
+              </div>
+            </div>
+
+            <h3 style={{ fontSize: "1.1rem", fontWeight: 600, margin: "2rem 0 1rem", color: "rgba(255,255,255,0.9)" }}>Home Address</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1.25rem" }}>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={labelStyle}>Street Address *</label>
+                <input name="owner_address1" value={formData.owner_address1 || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-owner_address1" />
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={labelStyle}>Apt/Suite/Unit</label>
+                <input name="owner_address2" value={formData.owner_address2 || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-owner_address2" />
+              </div>
+              <div>
+                <label style={labelStyle}>City *</label>
+                <input name="owner_city" value={formData.owner_city || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-owner_city" />
+              </div>
+              <div>
+                <label style={labelStyle}>State *</label>
+                <select name="owner_state" value={formData.owner_state || ""} onChange={handleInputChange} style={selectStyle} data-testid="select-owner_state">
+                  <option value="" style={{ color: "black" }}>Select...</option>
+                  {US_STATES.map(s => <option key={s} value={s} style={{ color: "black" }}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>ZIP Code *</label>
+                <input name="owner_zip" value={formData.owner_zip || ""} onChange={handleInputChange} style={inputStyle} data-testid="input-owner_zip" />
+              </div>
+            </div>
+
+            {/* Bank Statement Upload */}
+            <div style={{ marginTop: "2.5rem", padding: "1.5rem", background: "rgba(255,255,255,0.05)", borderRadius: "10px" }}>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "0.5rem", color: "rgba(255,255,255,0.9)" }}>Upload Bank Statements</h3>
+              <p style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.6)", marginBottom: "1rem" }}>Last 3–6 months of business bank statements (PDF only, optional)</p>
+
+              <input ref={fileInputRef} type="file" accept=".pdf" multiple onChange={handleFileSelect} style={{ display: "none" }} data-testid="input-bank-statements" />
+
+              <div
+                onDrop={handleDrop}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="dropzone-bank-statements"
+                style={{
+                  border: `2px dashed ${isDragging ? "#5FBFB8" : "rgba(255,255,255,0.3)"}`,
+                  borderRadius: "10px", padding: "2rem", textAlign: "center",
+                  cursor: "pointer", background: isDragging ? "rgba(95,191,184,0.1)" : "transparent",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 1rem" }}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <p style={{ fontSize: "0.95rem", fontWeight: 500, color: "rgba(255,255,255,0.9)", marginBottom: "0.5rem" }}>Drag & drop your bank statements here</p>
+                <p style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.5)" }}>or click to browse (PDF only, max 25MB per file)</p>
+              </div>
+
+              {selectedFiles.length > 0 && (
+                <ul style={{ listStyle: "none", padding: 0, margin: "1rem 0 0" }}>
+                  {selectedFiles.map((file, i) => (
+                    <li key={`${file.name}-${i}`} data-testid={`selected-file-${i}`}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(255,255,255,0.1)", borderRadius: "6px", padding: "0.75rem 1rem", marginBottom: "0.5rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: 0 }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5FBFB8" strokeWidth="2" style={{ flexShrink: 0 }}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: "0.9rem", fontWeight: 500, color: "white", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{file.name}</p>
+                          <p style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.5)", margin: 0 }}>{formatFileSize(file.size)}</p>
+                        </div>
+                      </div>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedFiles(p => p.filter((_, idx) => idx !== i)); }}
+                        data-testid={`remove-file-${i}`}
+                        style={{ background: "transparent", border: "none", cursor: "pointer", padding: "0.25rem", display: "flex", alignItems: "center" }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {isUploading && (
+                <div style={{ marginTop: "1rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                    <span style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.7)" }}>Uploading statements...</span>
+                    <span style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.7)" }}>{Math.round(uploadProgress)}%</span>
+                  </div>
+                  <div style={{ height: "6px", background: "rgba(255,255,255,0.1)", borderRadius: "3px", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${uploadProgress}%`, background: "#5FBFB8", borderRadius: "3px", transition: "width 0.3s ease" }} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Consent */}
+            <div style={{ marginTop: "2.5rem", padding: "1.5rem", background: "rgba(255,255,255,0.05)", borderRadius: "10px" }}>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1rem", color: "rgba(255,255,255,0.9)" }}>Authorization & Consent</h3>
+              <label style={{
+                display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer",
+                padding: "1rem",
+                background: showConsentError ? "rgba(239,68,68,0.1)" : "transparent",
+                border: showConsentError ? "1px solid rgba(239,68,68,0.4)" : "1px solid transparent",
+                borderRadius: "8px",
+              }}>
+                <input type="checkbox" checked={consentChecked} onChange={(e) => { setConsentChecked(e.target.checked); setShowConsentError(false); }}
+                  data-testid="checkbox-consent"
+                  style={{ width: "20px", height: "20px", marginTop: "2px", accentColor: "#5FBFB8" }} />
+                <span style={{ fontSize: "0.9rem", color: "rgba(255,255,255,0.8)", lineHeight: 1.5 }}>
+                  By checking this box, I authorize Today Capital Group to submit my application to lending partners
+                  and consent to a soft credit inquiry. I certify that all information provided is accurate and complete.
+                  This serves as my electronic signature.
+                </span>
+              </label>
+            </div>
+
+            <div style={{ marginTop: "2rem", display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
+              <button onClick={() => setCurrentStep(1)} data-testid="button-back"
+                style={{ background: "transparent", color: "white", border: "2px solid rgba(255,255,255,0.3)", padding: "1rem 2rem", borderRadius: "8px", fontSize: "1rem", fontWeight: 500, cursor: "pointer" }}>
+                ← Back
+              </button>
+              <button onClick={submitApplication} disabled={isSubmitting || isUploading} data-testid="button-submit"
+                style={{
+                  background: (isSubmitting || isUploading) ? "rgba(95,191,184,0.5)" : "#5FBFB8",
+                  color: "white", border: "none", padding: "1rem 3rem", borderRadius: "8px",
+                  fontSize: "1.1rem", fontWeight: 600,
+                  cursor: (isSubmitting || isUploading) ? "not-allowed" : "pointer",
+                  display: "flex", alignItems: "center", gap: "0.5rem",
+                }}>
+                {isSubmitting || isUploading ? (
+                  <>
+                    <span style={{ width: "20px", height: "20px", border: "2px solid white", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                    {isUploading ? "Uploading Statements..." : "Submitting..."}
+                  </>
+                ) : "Submit Application"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
 }
 
 export default function PartnerApplication() {
@@ -18,23 +751,12 @@ export default function PartnerApplication() {
 
   useEffect(() => {
     const validateSlug = async () => {
-      if (!params?.slug) {
-        setStatus("invalid");
-        return;
-      }
-
+      if (!params?.slug) { setStatus("invalid"); return; }
       try {
         const res = await fetch(`/api/partner/validate-slug/${params.slug}`);
         const data = await res.json();
-
         if (data.valid) {
-          setPartnerInfo({
-            partnerId: data.partnerId,
-            companyName: data.companyName,
-            contactName: data.contactName,
-          });
-
-          // Store partner info in localStorage so FullApplication picks it up
+          setPartnerInfo({ partnerId: data.partnerId, companyName: data.companyName, contactName: data.contactName });
           localStorage.setItem("referralPartnerId", data.partnerId);
           localStorage.setItem("referralPartnerCode", params.slug);
           localStorage.setItem("referralCompanyName", data.companyName);
@@ -42,12 +764,10 @@ export default function PartnerApplication() {
         } else {
           setStatus("invalid");
         }
-      } catch (error) {
-        console.error("Error validating partner slug:", error);
+      } catch {
         setStatus("invalid");
       }
     };
-
     validateSlug();
   }, [params?.slug]);
 
@@ -71,13 +791,8 @@ export default function PartnerApplication() {
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
           <h1 className="text-xl font-semibold text-[#051D49] mb-2">Invalid Application Link</h1>
-          <p className="text-gray-500 mb-6">
-            This application link is no longer valid. You can still apply for funding directly.
-          </p>
-          <Button
-            onClick={() => window.location.href = "/"}
-            className="w-full bg-[#46B9B3] hover:bg-[#3da8a2] text-[#051D49]"
-          >
+          <p className="text-gray-500 mb-6">This application link is no longer valid. You can still apply for funding directly.</p>
+          <Button onClick={() => window.location.href = "/"} className="w-full bg-[#46B9B3] hover:bg-[#3da8a2] text-[#051D49]">
             Apply for Funding
           </Button>
         </Card>
@@ -87,7 +802,6 @@ export default function PartnerApplication() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#051D49] to-[#0D1B4A]">
-      {/* Partner branded header */}
       <div className="bg-[#051D49] border-b border-white/10 py-3 px-4">
         <div className="max-w-4xl mx-auto flex items-center justify-center gap-3">
           <div className="w-8 h-8 bg-[#46B9B3]/20 rounded-full flex items-center justify-center">
@@ -98,9 +812,7 @@ export default function PartnerApplication() {
           </span>
         </div>
       </div>
-
-      {/* Render the full application form */}
-      <FullApplication />
+      <PartnerForm partnerInfo={partnerInfo!} slug={params?.slug || ""} />
     </div>
   );
 }

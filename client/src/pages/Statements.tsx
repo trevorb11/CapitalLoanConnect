@@ -308,20 +308,25 @@ export default function Statements() {
           </p>
 
           {/* Schedule a Call CTA - Primary action after bank connection */}
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-4">
-            <h3 className="font-semibold text-center mb-2">What's Next?</h3>
-            <p className="text-sm text-muted-foreground text-center mb-4">
-              Schedule a call with one of our funding specialists to discuss your options and get answers to any questions.
+          <div className="bg-primary rounded-xl p-6 mb-5 shadow-lg">
+            <div className="flex items-center justify-center mb-3">
+              <div className="bg-white/20 rounded-full p-2 mr-3">
+                <Calendar className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Schedule Your Funding Call</h3>
+            </div>
+            <p className="text-white/80 text-sm text-center mb-5">
+              A dedicated funding specialist is ready to review your information, answer your questions, and guide you through your options.
             </p>
             <a 
-              href="https://bit.ly/3Zxj0Kq" 
+              href="https://api.leadconnectorhq.com/widget/bookings/admin-today-capital-group-personal-calendar-hj45vukzd" 
               target="_blank" 
               rel="noopener noreferrer"
               className="block"
             >
-              <Button className="w-full" data-testid="button-schedule-call-plaid-success">
-                <Calendar className="w-4 h-4 mr-2" />
-                Schedule a Call with a Funding Specialist
+              <Button size="lg" className="w-full bg-white text-primary font-bold text-base hover:bg-white/90" data-testid="button-schedule-call-plaid-success">
+                <Calendar className="w-5 h-5 mr-2" />
+                Book a Free Consultation
               </Button>
             </a>
           </div>
@@ -380,20 +385,25 @@ export default function Statements() {
           </div>
 
           {/* Schedule a Call CTA - Primary action after upload */}
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-4">
-            <h3 className="font-semibold text-center mb-2">What's Next?</h3>
-            <p className="text-sm text-muted-foreground text-center mb-4">
-              Schedule a call with one of our funding specialists to discuss your options and get answers to any questions.
+          <div className="bg-primary rounded-xl p-6 mb-5 shadow-lg">
+            <div className="flex items-center justify-center mb-3">
+              <div className="bg-white/20 rounded-full p-2 mr-3">
+                <Calendar className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Schedule Your Funding Call</h3>
+            </div>
+            <p className="text-white/80 text-sm text-center mb-5">
+              A dedicated funding specialist is ready to review your statements, answer your questions, and walk you through your options.
             </p>
             <a 
-              href="https://bit.ly/3Zxj0Kq" 
+              href="https://api.leadconnectorhq.com/widget/bookings/admin-today-capital-group-personal-calendar-hj45vukzd" 
               target="_blank" 
               rel="noopener noreferrer"
               className="block"
             >
-              <Button className="w-full" data-testid="button-schedule-call-success">
-                <Calendar className="w-4 h-4 mr-2" />
-                Schedule a Call with a Funding Specialist
+              <Button size="lg" className="w-full bg-white text-primary font-bold text-base hover:bg-white/90" data-testid="button-schedule-call-success">
+                <Calendar className="w-5 h-5 mr-2" />
+                Book a Free Consultation
               </Button>
             </a>
           </div>
@@ -674,7 +684,7 @@ export default function Statements() {
                 <span className="text-sm text-muted-foreground">Prefer to talk to someone first?</span>
               </div>
               <a 
-                href="https://bit.ly/3Zxj0Kq" 
+                href="https://api.leadconnectorhq.com/widget/bookings/admin-today-capital-group-personal-calendar-hj45vukzd" 
                 target="_blank" 
                 rel="noopener noreferrer"
               >

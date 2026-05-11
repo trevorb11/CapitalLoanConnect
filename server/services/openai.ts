@@ -1,10 +1,24 @@
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
-// Use Replit AI Integrations env vars if available, otherwise fall back to standard OpenAI
+// OpenAI — used for lighter utility parsers (contact search, commands, email parsing)
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
 });
+
+// Anthropic — used for bank statement analysis (deeper financial reasoning)
+// Lazy-init to avoid crashing at startup if key is not yet set
+let _anthropic: Anthropic | null = null;
+function getAnthropic(): Anthropic {
+  if (!_anthropic) {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) throw new Error("ANTHROPIC_API_KEY is not configured");
+    _anthropic = new Anthropic({ apiKey: key });
+  }
+  return _anthropic;
+}
+const CLAUDE_MODEL = "claude-sonnet-4-6";
 
 // Lender criteria for funding qualification analysis
 const LENDER_CRITERIA = `
@@ -75,17 +89,30 @@ const LENDER_CRITERIA = `
 
 export interface BankStatementAnalysis {
   overallScore: number; // 0-100
+  scoreExplanation: string; // one-line plain-language explanation of the score
   qualificationTier: string;
   estimatedMonthlyRevenue: number;
+  estimatedMonthlyExpenses: number;
+  netCashFlow: number;
   averageDailyBalance: number;
+  currentBalance: number;
+  revenueConsistency: "very consistent" | "mostly consistent" | "somewhat variable" | "highly variable";
+  cashRunwayDays: number; // estimated days the business can cover expenses from current balance
+  monthlyBreakdown: Array<{
+    month: string; // e.g. "Jan 2026"
+    revenue: number;
+    expenses: number;
+  }>;
   redFlags: Array<{
     issue: string;
     severity: "low" | "medium" | "high";
     details: string;
+    priority: number; // 1 = most urgent
   }>;
   positiveIndicators: Array<{
     indicator: string;
     details: string;
+    priority: number; // 1 = most impactful
   }>;
   fundingRecommendation: {
     eligible: boolean;
@@ -115,7 +142,7 @@ Additional Information Provided:
 `
     : "";
 
-  const prompt = `You are a business funding analyst. Analyze the following bank statement data and provide a funding eligibility assessment.
+  const prompt = `Analyze the following bank statement data and provide a comprehensive financial assessment.
 
 ${LENDER_CRITERIA}
 
@@ -126,67 +153,88 @@ ${extractedText}
 
 Analyze this bank statement and respond with a JSON object following this exact structure:
 {
-  "overallScore": <number 0-100 representing funding readiness>,
+  "overallScore": <number 0-100>,
+  "scoreExplanation": "<one plain-language sentence explaining the score, e.g. 'Solid revenue with room to build up cash reserves'>",
   "qualificationTier": "<one of: Prime Borrower, Growth Capital, Working Capital, Cash Flow Financing, Startup Capital, Foundation Building>",
-  "estimatedMonthlyRevenue": <number - estimated average monthly deposits/revenue>,
-  "averageDailyBalance": <number - estimated average daily balance>,
+  "estimatedMonthlyRevenue": <number>,
+  "estimatedMonthlyExpenses": <number>,
+  "netCashFlow": <number - revenue minus expenses>,
+  "averageDailyBalance": <number>,
+  "currentBalance": <number - most recent ending balance, or 0 if not visible>,
+  "revenueConsistency": "<one of: very consistent, mostly consistent, somewhat variable, highly variable>",
+  "cashRunwayDays": <number - how many days the business could cover expenses from current balance alone>,
+  "monthlyBreakdown": [
+    {"month": "Jan 2026", "revenue": <number>, "expenses": <number>}
+  ],
   "redFlags": [
     {
-      "issue": "<brief issue name>",
+      "issue": "<brief 3-5 word label>",
       "severity": "<low|medium|high>",
-      "details": "<specific details about this red flag>"
+      "details": "<1-2 sentence explanation in plain language — no jargon>",
+      "priority": <number, 1 = most urgent>
     }
   ],
   "positiveIndicators": [
     {
-      "indicator": "<indicator name>",
-      "details": "<specific positive observation>"
+      "indicator": "<brief 3-5 word label>",
+      "details": "<1-2 sentence explanation>",
+      "priority": <number, 1 = most impactful>
     }
   ],
   "fundingRecommendation": {
     "eligible": <boolean>,
-    "maxAmount": <number - estimated max funding amount>,
-    "estimatedRates": "<rate range string>",
-    "product": "<recommended funding product>",
-    "message": "<2-3 sentence personalized message about their funding prospects>"
+    "maxAmount": <number>,
+    "estimatedRates": "<rate range>",
+    "product": "<recommended product>",
+    "message": "<2-3 sentence personalized message>"
   },
   "improvementSuggestions": [
-    "<specific actionable suggestion to improve funding chances>"
+    "<short, specific, actionable tip — one sentence each>"
   ],
-  "summary": "<3-4 sentence executive summary of the analysis>"
+  "summary": "<2-3 sentence plain-language summary a business owner would understand>"
 }
 
 Important:
-- Be realistic and conservative in your estimates
-- If the statement quality is poor or unreadable, note this in the summary
-- Extract actual numbers when visible (deposits, balances, fees)
-- Look for patterns across multiple months if visible
-- Consider business type indicators from merchant names
+- Write for a business owner, not an underwriter. Use plain language.
+- Keep labels short (3-5 words). Put details in the details field.
+- Sort redFlags by priority (most urgent first) and positiveIndicators by priority (strongest first).
+- monthlyBreakdown should include each month visible in the statements, most recent first.
+- cashRunwayDays = currentBalance / (estimatedMonthlyExpenses / 30). Round to nearest whole number.
+- revenueConsistency: look at month-to-month variance in deposits.
+- Be realistic and conservative in estimates.
+- If statement quality is poor, note it in summary and lower confidence.
+- improvement suggestions should be things the merchant can actually do, not generic advice.
 
 Respond ONLY with the JSON object, no additional text.`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Cost-effective model good at document analysis
+    const response = await getAnthropic().messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 3000,
+      system: `You are a financial analyst on a business finance brokerage platform called Today Capital Group. The platform brokers SBA loans, MCAs (merchant cash advances), lines of credit, revenue-based financing, and other business funding products.
+
+You are analyzing bank statements for merchants who have been funded through the platform. The analysis powers their merchant portal dashboard, which helps them:
+- Monitor their cash flow, revenue, and expenses
+- Track their financial health over time
+- See how their open funding positions relate to their revenue
+- Understand when they might be ready for a renewal or additional funding
+- Get early warnings if their finances are trending downward
+- See actionable tips to strengthen their business finances
+
+Your analysis should be accurate, conservative, and framed in a way that is helpful and encouraging to the merchant. Avoid harsh underwriting language — this is a tool to help merchants succeed, not to judge them. Always respond with valid JSON only.`,
       messages: [
-        {
-          role: "system",
-          content:
-            "You are a business funding analyst specializing in bank statement analysis. You provide accurate, conservative assessments of funding eligibility based on bank statement data. Always respond with valid JSON only.",
-        },
         {
           role: "user",
           content: prompt,
         },
       ],
-      temperature: 0.3, // Lower temperature for more consistent analysis
-      max_tokens: 2000,
     });
 
-    const content = response.choices[0]?.message?.content;
+    const textBlock = response.content.find((b) => b.type === "text");
+    const content = textBlock?.text;
 
     if (!content) {
-      throw new Error("No response from OpenAI");
+      throw new Error("No response from Claude");
     }
 
     // Strip markdown code blocks if present (```json...```)
@@ -206,9 +254,13 @@ Respond ONLY with the JSON object, no additional text.`;
 
     return analysis;
   } catch (error) {
-    console.error("[OPENAI] Analysis error:", error);
+    console.error("[CLAUDE] Bank statement analysis error:", error);
 
-    // Return a default analysis if parsing fails
+    // Log more detail for debugging
+    if (error instanceof Error) {
+      console.error("[CLAUDE] Error name:", error.name, "| Message:", error.message);
+    }
+
     if (error instanceof SyntaxError) {
       throw new Error(
         "Failed to parse AI analysis response. Please try again."
@@ -221,6 +273,10 @@ Respond ONLY with the JSON object, no additional text.`;
 
 export function isOpenAIConfigured(): boolean {
   return !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
+}
+
+export function isAnthropicConfigured(): boolean {
+  return !!process.env.ANTHROPIC_API_KEY;
 }
 
 // ========================================
@@ -291,7 +347,7 @@ Respond ONLY with the JSON object.`;
     });
 
     const content = response.choices[0]?.message?.content;
-    
+
     if (!content) {
       throw new Error("No response from OpenAI");
     }
@@ -309,16 +365,16 @@ Respond ONLY with the JSON object.`;
     cleanContent = cleanContent.trim();
 
     const parsed = JSON.parse(cleanContent) as ParsedContactQuery;
-    
+
     // Ensure reasonable defaults
     if (!parsed.limit || parsed.limit < 1) parsed.limit = 25;
     if (parsed.limit > 100) parsed.limit = 100;
-    
+
     return parsed;
-    
+
   } catch (error) {
     console.error("[OPENAI] Contact query parsing error:", error);
-    
+
     // Return a default search if parsing fails
     return {
       searchType: 'general',
@@ -410,7 +466,7 @@ Respond ONLY with the JSON object.`;
     });
 
     const content = response.choices[0]?.message?.content;
-    
+
     if (!content) {
       throw new Error("No response from OpenAI");
     }
@@ -428,12 +484,12 @@ Respond ONLY with the JSON object.`;
     cleanContent = cleanContent.trim();
 
     const parsed = JSON.parse(cleanContent) as ParsedCommand;
-    
+
     return parsed;
-    
+
   } catch (error) {
     console.error("[OPENAI] Command parsing error:", error);
-    
+
     // Default to search if parsing fails
     return {
       intent: 'search',
@@ -532,7 +588,7 @@ Respond ONLY with the JSON object.`;
     });
 
     const content = response.choices[0]?.message?.content;
-    
+
     if (!content) {
       throw new Error("No response from OpenAI");
     }
@@ -550,10 +606,10 @@ Respond ONLY with the JSON object.`;
     cleanContent = cleanContent.trim();
 
     return JSON.parse(cleanContent) as ParsedApproval;
-    
+
   } catch (error) {
     console.error("[OPENAI] Approval parsing error:", error);
-    
+
     // Return a default non-approval response
     return {
       isApproval: false,
@@ -573,5 +629,212 @@ Respond ONLY with the JSON object.`;
       conditions: null,
       notes: null
     };
+  }
+}
+
+// ── Detect Funding Positions from Bank Transactions ──
+
+export interface DetectedPosition {
+  funderName: string;
+  productType: string; // MCA, Term Loan, Line of Credit, etc.
+  estimatedPaymentAmount: number;
+  paymentFrequency: string; // daily, weekly, bi-weekly, monthly
+  paymentsFound: number; // how many payments were detected
+  firstPaymentDate: string;
+  lastPaymentDate: string;
+  estimatedRemainingBalance: number | null;
+  estimatedOriginalAmount: number | null;
+  confidence: "high" | "medium" | "low";
+  transactionDescriptions: string[]; // sample descriptions that matched
+}
+
+export async function detectFundingPositions(
+  transactions: Array<{ date: string; name: string; amount: number; type: string }>
+): Promise<DetectedPosition[]> {
+  if (!transactions || transactions.length === 0) return [];
+
+  // Filter to debits only and format for analysis
+  const debits = transactions
+    .filter(t => t.amount < 0 || t.type === "DEBIT")
+    .map(t => ({
+      date: t.date,
+      description: t.name,
+      amount: Math.abs(t.amount),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (debits.length === 0) return [];
+
+  // Limit to 500 most recent debits to stay within token limits
+  const recentDebits = debits.slice(-500);
+
+  const prompt = `Analyze these bank account debit transactions and identify any recurring payments to business funding companies (MCA providers, lenders, factors, etc.).
+
+KNOWN MCA / BUSINESS FUNDING COMPANIES (common names that appear in bank transactions):
+- Fora Financial, Fox Capital, Fundbox, Libertas, OnDeck, Kabbage, BlueVine, Credibly
+- CAN Capital, Rapid Finance, Yellowstone Capital, Everest Business Funding
+- Green Capital, Pearl Capital, Vox Funding, Fenix Capital, Clear Fund, Lite Fund
+- Smart Business Funder, Super Fast Cap, TVT Capital, Bizpoint, River Advance
+- American Financial Center, Fuji, Specialty Capital, Top Choice Financial
+- Revenued, Vital Cap, Westwood Funding, I Got Funded, Evolve Capital
+- Silverline Funding, GFE, Fintegra, Smarter Merchant
+- Square Capital, Stripe Capital, PayPal Working Capital, Shopify Capital
+- National Funding, Forward Financing, Reliant Funding, Expansion Capital
+- BFS Capital, Mantis Funding, Lendini, United Capital Source, Greenbox Capital
+- Any other entity that appears to be a business lender based on payment patterns
+
+TRANSACTION DATA (debits):
+${JSON.stringify(recentDebits, null, 1)}
+
+Look for:
+1. Recurring payments of the same amount to the same entity (daily, weekly, or monthly)
+2. ACH debits with lender-like names
+3. Payments labeled as "loan payment", "advance payment", "MCA", etc.
+
+Respond with a JSON array of detected positions. Each position should be:
+{
+  "funderName": "<clean company name>",
+  "productType": "<MCA, Term Loan, Line of Credit, Revenue Based Advance, Equipment Financing, SBA Loan, Unknown>",
+  "estimatedPaymentAmount": <number - typical single payment amount>,
+  "paymentFrequency": "<daily, weekly, bi-weekly, monthly>",
+  "paymentsFound": <number of matching transactions found>,
+  "firstPaymentDate": "<YYYY-MM-DD>",
+  "lastPaymentDate": "<YYYY-MM-DD>",
+  "estimatedRemainingBalance": <number or null - rough estimate based on payment trajectory, null if uncertain>,
+  "estimatedOriginalAmount": <number or null - rough estimate, null if uncertain>,
+  "confidence": "<high, medium, or low>",
+  "transactionDescriptions": ["<1-3 sample descriptions that matched>"]
+}
+
+Rules:
+- Only include positions where you found at least 2 recurring payments to the same entity.
+- Do NOT include normal business expenses (rent, utilities, payroll, subscriptions, insurance).
+- Do NOT include credit card payments, mortgage payments, or personal loans.
+- Focus on business funding: MCAs, term loans, lines of credit, revenue-based financing.
+- If daily debits are found, the product is almost certainly an MCA.
+- If no funding positions are detected, return an empty array [].
+
+Respond ONLY with the JSON array, no additional text.`;
+
+  try {
+    const response = await getAnthropic().messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2000,
+      system: "You are a financial analyst specializing in identifying business funding repayments in bank transaction data. Be precise and conservative. Only flag transactions you are confident are loan/advance repayments. Respond with valid JSON only.",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = response.content.find(b => b.type === "text");
+    let content = textBlock?.text?.trim() || "[]";
+
+    // Strip markdown code blocks
+    if (content.startsWith("```json")) content = content.slice(7);
+    else if (content.startsWith("```")) content = content.slice(3);
+    if (content.endsWith("```")) content = content.slice(0, -3);
+    content = content.trim();
+
+    const positions = JSON.parse(content) as DetectedPosition[];
+    console.log(`[AI] Detected ${positions.length} funding position(s) from ${recentDebits.length} debit transactions`);
+    return positions;
+  } catch (error) {
+    console.error("[AI] Position detection error:", error);
+    return [];
+  }
+}
+
+// ── POSITION TERM EXTRACTION FROM DOCUMENTS ──────────────────────────────
+
+export interface ExtractedPositionTerms {
+  funderName: string | null;
+  productType: string | null;
+  fundedAmount: number | null;
+  paybackAmount: number | null;
+  factorRate: string | null;
+  paymentAmount: number | null;
+  paymentFrequency: string | null;
+  remainingBalance: number | null;
+  fundedDate: string | null;
+  confidence: "high" | "medium" | "low";
+  notes: string | null;
+}
+
+const POSITION_SYSTEM_PROMPT = `You are a financial document parser that extracts MCA/business loan position details.
+Return ONLY valid JSON, no markdown fences:
+{
+  "funderName": string or null,
+  "productType": one of "MCA"|"LOC"|"Term Loan"|"SBA"|"Revenue Based"|"Other" or null,
+  "fundedAmount": number (no commas/symbols) or null,
+  "paybackAmount": number or null,
+  "factorRate": string e.g. "1.30" or null,
+  "paymentAmount": number or null,
+  "paymentFrequency": one of "daily"|"weekly"|"bi-weekly"|"monthly" or null,
+  "remainingBalance": number or null,
+  "fundedDate": "YYYY-MM-DD" or null,
+  "confidence": "high"|"medium"|"low",
+  "notes": string or null
+}
+Rules: strip $ and commas from numbers; "advance amount"/"funded amount" = fundedAmount; "payback"/"total remittance" = paybackAmount; "RTR"/"daily ACH" = daily frequency; for bank statements look for recurring ACH debits; confidence "high" if 5+ fields extracted, "medium" if 3-4, "low" otherwise.`;
+
+function parsePositionJson(raw: string): ExtractedPositionTerms {
+  let clean = raw.trim();
+  if (clean.startsWith("```json")) clean = clean.slice(7);
+  else if (clean.startsWith("```")) clean = clean.slice(3);
+  if (clean.endsWith("```")) clean = clean.slice(0, -3);
+  return JSON.parse(clean.trim()) as ExtractedPositionTerms;
+}
+
+const POSITION_EMPTY: ExtractedPositionTerms = {
+  funderName: null, productType: null, fundedAmount: null, paybackAmount: null,
+  factorRate: null, paymentAmount: null, paymentFrequency: null, remainingBalance: null,
+  fundedDate: null, confidence: "low", notes: "Could not parse document."
+};
+
+export async function extractPositionTerms(text: string): Promise<ExtractedPositionTerms> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: POSITION_SYSTEM_PROMPT },
+        { role: "user", content: `Extract funding position terms from this document:\n\n${text.slice(0, 12000)}` }
+      ],
+      temperature: 0.1,
+      max_tokens: 600
+    });
+    return parsePositionJson(response.choices[0]?.message?.content || "{}");
+  } catch (err) {
+    console.error("[OPENAI] extractPositionTerms error:", err);
+    return POSITION_EMPTY;
+  }
+}
+
+export async function extractPositionTermsFromPdfBuffer(pdfBuffer: Buffer): Promise<ExtractedPositionTerms> {
+  try {
+    const base64Pdf = pdfBuffer.toString("base64");
+    const response = await (openai as any).responses.create({
+      model: "gpt-4o",
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_file",
+              filename: "document.pdf",
+              file_data: `data:application/pdf;base64,${base64Pdf}`,
+            },
+            {
+              type: "input_text",
+              text: `${POSITION_SYSTEM_PROMPT}\n\nExtract all funding/loan position terms from this document and return ONLY the JSON:`
+            }
+          ]
+        }
+      ],
+      temperature: 0.1,
+      max_output_tokens: 600,
+    });
+    const content = response.output_text || response.output?.[0]?.content?.[0]?.text || "{}";
+    return parsePositionJson(content);
+  } catch (err) {
+    console.error("[OPENAI] extractPositionTermsFromPdfBuffer error:", err);
+    return { ...POSITION_EMPTY, notes: "Could not read this PDF. Try pasting the text instead." };
   }
 }

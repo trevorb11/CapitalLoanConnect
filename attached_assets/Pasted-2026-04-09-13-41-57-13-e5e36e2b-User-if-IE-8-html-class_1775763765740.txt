@@ -1,0 +1,105 @@
+2026-04-09 13:41:57.13
+e5e36e2b
+User
+<!--[if IE 8]> <html class="no-
+2026-04-09 13:41:57.13
+e5e36e2b
+User
+<!--[if IE 7]> <html class="no-js ie7 oldie" lang="en-US"> <![endif]-->
+
+2026-04-09 13:41:57.13
+e5e36e2b
+User
+[CHIRP] 403 /createRequest <!DOCTYPE html>
+2026-04-09 13:41:57.13
+e5e36e2b
+User
+<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+'<!--[if gt IE 8]><!--> <html class="no-js" lang="en-US"> <!--<![endif]-->\n' +
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+'<!--[if IE 7]> <html class="no-js ie7 oldie" lang="en-US"> <![endif]-->\n' +
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+'<meta charset="UTF-8" />\n' +
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+'<head>\n' +
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+'<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />\n' +
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+body: '<!DOCTYPE html>\n' +
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+at ChirpService.request (file:///home/runner/workspace/dist/index.js:3493:15)
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+'<title>Attention Required! | Cloudflare</title>\n' +
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+[CHIRP] createVerificationRequest error: ChirpApiError: Chirp API error 403
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+status: 403,
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+'<meta http-equiv="X-UA-Compatible" content="IE=Edge" />\n' +
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+at async ChirpService.createVerificationRequest (file:///home/runner/workspace/dist/index.js:3510:18)
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+'<!--[if IE 8]> <html class="no-js ie8 oldie" lang="en-US"> <![endif]-->\n' +
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+at async file:///home/runner/workspace/dist/index.js:8013:22 {
+2026-04-09 13:41:57.14
+e5e36e2b
+User
+'<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->\n' +
+2026-04-09 13:42:04.46
+e5e36e2b
+User
+<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->
+2026-04-09 13:42:04.46
+e5e36e2b
+User
+<!--[if IE 7]> <html class="no-js ie7 oldie" lang="en-US"> <![endif]-->
+2026-04-09 13:42:04.46
+e5e36e2b
+User
+[CHIRP] 403 /createRequest <!DOCTYPE html>
+2026-04-09 13:42:04.46
+e5e36e2b
+User
+<!--[if IE 8]> <html class="no-
+2026-04-09 13:42:04.46
+e5e36e2b
+User
+'<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->\n' +
+2026-04-09 13:42:04.46
+e5e36e2b
+User
+at async file:///home/runner/workspace/dist/index.js:8013:22 {

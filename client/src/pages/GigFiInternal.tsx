@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Send, CheckCircle2, XCircle, AlertTriangle, ChevronRight, LogOut, Loader2, ExternalLink, Copy, X, DollarSign, User, Building2, Phone, Mail, CalendarDays, ShieldCheck } from "lucide-react";
+import { Search, Send, CheckCircle2, XCircle, AlertTriangle, ChevronRight, LogOut, Loader2, ExternalLink, Copy, X, DollarSign, User, Building2, Phone, Mail, CalendarDays, ShieldCheck, LayoutList } from "lucide-react";
+import { Link } from "wouter";
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -569,6 +570,12 @@ export default function GigFiInternal() {
           {auth.agentName && (
             <span className="text-sm text-muted-foreground hidden sm:block">{auth.agentName}</span>
           )}
+          <Button variant="ghost" size="sm" asChild data-testid="button-view-submissions">
+            <Link href="/gigfi-submissions">
+              <LayoutList className="w-4 h-4 mr-1.5" />
+              Submissions
+            </Link>
+          </Button>
           <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-logout">
             <LogOut className="w-4 h-4 mr-1.5" />
             Sign Out

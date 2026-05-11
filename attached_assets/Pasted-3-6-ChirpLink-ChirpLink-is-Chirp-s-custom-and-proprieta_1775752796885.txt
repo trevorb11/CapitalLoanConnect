@@ -1,0 +1,264 @@
+3.6. ChirpLink™
+ChirpLink™ is Chirp’s custom and proprietary widget for linking customer financial accounts to merchant applications using a plug-and-play integration setup.
+
+Here’s a sample ChirpLink™ widget integration implementation:
+
+Load the ChirpLink™ widget script via the Chirp CDN link -
+<script src="https://chirp.digital/cdn/chirplink.js"></script>
+Generate a token based on the request code using genAuthTokenForChirpLink endpoint to access ChirpLink™ (details explained below).
+Initiate and monitor the ChirpLink™ widget per your workflow using the associated APIs
+Listen for responses provided by the event callbacks listed below
+onLoad - This event is fired as soon as the widget is loaded, it also provides request code and status of the link whether it is expired or not.
+onBankSelect - This event is fired when the customer selects the bank they want to link. This event also provides the details of the selected bank.
+onSuccess - This event is fired once the verification is processed successfully.
+onError - This event is fired when an error occurs during the verification process. The details of the error are also shared.
+onClose - This event is fired when the customer closes the verification widget along with the step number from where the ChirpLink™ widget was closed.
+onAttempt - This event triggers when the user attempts the verification widget.
+The ChirpLink™ widget also provides a method called close() that can be used to programmatically close the widget as per the integration workflow
+The detailed explanation of all these events and method can be found under the section below
+
+ChirpLink™ CDN Link - https://chirp.digital/cdn/chirplink.js
+
+3.6.1. Customization Options for ChirpLink™
+#	Option	Description
+1	token	Token generated for initiating a customer verification in the entity's integration. This token is mandatory for ChirpLink™
+2	mode	Mode of the widget to be rendered as per integration. This is an optional field. The two possible modes supported by the widget currently are “POPUP” and “ADAPTABLE”. This is an optional field and defaults to opening as a POPUP if unspecified or incorrectly spelled
+3	overlay	Controls whether a background overlay is shown behind the widget; set to false to disable it. The default option is set to true if the overlay option is not passed.
+4	onLoad	This event is fired as soon as the widget is loaded, it also provides request code and status of the link whether it is expired or not
+5	onBankSelect	This event is fired when the customer selects the bank they want to link. This event also provides the details of the selected bank
+6	onError	This event is fired when an error occurs during the verification process. The details of the error are also shared
+7	onClose	This event is fired when the customer closes the verification widget along with the step number from where the ChirpLink™ widget was closed
+8	onSuccess	This event is fired once the verification is processed successfully
+9	onAttempt	This event is fired once the customer attempted to verify during verification process
+The events are explained in detail with examples in the Event Callbacks section
+
+3.6.2. Event Callbacks
+ChirpLink™ provides six events that you can use to customise the behaviour of the verification widget
+
+3.6.2.1. onLoad
+Triggered as soon as the widget is loaded, indicating the widget is loaded and ready. It also returns a payload containing relevant data associated with the loaded widget. The payload structure may include properties such as requestCode and isLinkExpired (whether this link is expired or not), providing valuable information for further processing.
+
+Example payload structure
+
+    {	
+        requestCode: "QLU0GU",
+        isLinkExpired: true,
+        message: "Request code QLU0GU is expired. Please contact <phoneNumber> <profileName> at <supportEmail> with the request code for further assistance."
+    }	              
+Payload definition
+
+requestCode: Request code of the verification flow.
+
+isLinkExpired: Status of the link whether it is expired or not.
+
+message: Description of the reason why this link has expired. This field is included only if the link expires.
+
+3.6.2.2. onSuccess
+Triggered when a verification is processed successfully. The process can result in both success and failure depending on the credentials submitted by the customer during the verification process and how the FI processes the verification request. A sample object is provided below for both success and failed scenarios which needs to be used in the integration workflow. The URLs configured in the profile for success and failure redirections are sent in the event callback for handling the verification feedback redirections accordingly.
+
+Example success payload structure
+
+    {	
+        success: true, 
+        urlToRedirect: "sampleSuccessURL.com",
+        status: "VERIFIED",
+        statusDetails: "NA"
+    }	              
+Example failure payload structure
+
+    {	
+        success: false, 
+        urlToRedirect: "sampleFailureURL.com",
+        status: "ATTEMPTED",
+        statusDetails: "Attempted - Credential Error"
+    }	              
+Payload definition
+
+success: A boolean value indicating the success status of the verification process. If true, the verification was successful.
+
+urlToRedirect: A URL to which the user can be redirected after the verification process. This is useful for both success and failure scenarios.
+
+status: Status of the verification request, possible values are "VERIFIED", "REJECTED" or "ATTEMPTED"
+
+statusDetails: Status description of the verification request, possible values are "Attempted - In Progress", "Attempted - Bank Error", "Attempted - Credential Error" or "NA"
+
+3.6.2.3. onError
+Triggered when an error occurs during the execution of specific functionalities throughout the verification process. This could include errors related to verification processes and API calls
+
+Example payload structure
+
+    {	
+        success: false, 
+        errorMessage: "sample error message"
+
+    }	              
+Payload definition
+
+success: A boolean value indicating the success status of the operation. If false, an error occurred.
+
+errorMessage: A string providing an error message explaining the nature of the error.
+
+3.6.2.4. onClose
+Triggered when the user closes the verification widget. It serves as a valuable indicator of user interactions and can be used to track the progression or completion of various verification stages like CUSTOMER_CONSENT, BANK_SELECTION, INITIAL_LOGIN, MFA, VERIFIED, EXPIRED, or REJECTED.
+
+CUSTOMER_CONSENT - Initial landing page of the widget
+
+BANK_SELECTION - Page for users to select their bank
+
+INITIAL_LOGIN - Initial login page where users enter their credentials
+
+MFA - Page for additional security verification
+
+VERIFIED - Confirmation page indicating successful completion of the authentication process
+
+EXPIRED - Page notifying users when their session or verification has expired
+
+REJECTED - Page indicating that the given request code is rejected
+
+Example payload structure
+
+    {	
+        pageClosed : true,
+        closedPage : "CUSTOMER_CONSENT"
+    }	              
+Payload definition
+
+pageClosed: A boolean value indicating whether the page was closed. If true, the page was closed.
+
+closedPage: A string specifying the specific page that was closed. Possible values include CUSTOMER_CONSENT, BANK_SELECTION, INITIAL_LOGIN, MFA, VERIFIED, EXPIRED, or REJECTED.
+
+3.6.2.5. onBankSelect
+Triggered when the user makes a bank selection, and it provides an object containing details such as whether a bank was selected and the name of the selected bank.
+
+Example payload structure
+
+    {	
+        bankSelected: true,
+        bankName: "Chirp Test Bank",
+        bankUrl: "sampleUrl.com"
+    }	              
+Payload definition
+
+bankSelected: A boolean value indicating whether a bank was selected. If true, a bank was selected.
+
+bankName: A string specifying the name of the selected bank.
+
+bankUrl: A string specifying the official site url of the selected bank.
+
+3.6.2.6. onAttempt
+Triggered when the user attempts the verification widget. It serves as a valuable indicator of user interactions and can be used to track the attempted progression of various verification attempted stages like CREDENTIAL_ERROR, BANK_ERROR and IN_PROGRESS.
+
+CREDENTIAL_ERROR - Indicates that the credentials supplied for verification are invalid.
+
+BANK_ERROR - Indicates that the error is caused by an issue on the bank's end.
+
+IN_PROGRESS - Indicates that the verification process is currently ongoing.
+
+Example payload structure
+
+    {	
+        attempted: true,
+        message: "CREDENTIAL_ERROR"
+    }	              
+Payload definition
+
+attempted: A boolean value indicating the status of the attempt.
+
+message: A string specifying the attempted message. Possible values include CREDENTIAL_ERROR, BANK_ERROR or IN_PROGRESS.
+
+3.6.3. Close method - close()
+The close method should be used for closing the ChirpLink™ widget programmatically as per the integration workflow. Successful execution of this method triggers the onClose event upon completion which also provides more details about the closed page through the field closedPage in the event callback payload.
+
+Before the close() method can be used, the ChirpLink™ widget must have already been initialized like the sample below.
+
+var newChirpLink = new ChirpLink({ …options });
+The close button can then be called as needed to close the ChirpLink™ widget programmatically
+
+<button onclick="newChirpLink.close()">Close ChirpLink</button>
+3.6.4. Integration Steps in Detail and Sample Script
+3.6.4.1. Add ChirpLink™ Script
+Include the Chirp script in your website's script file by adding this below mentioned CDN link. ChirpLink™ CDN Link -
+https://chirp.digital/cdn/chirplink.js
+
+3.6.4.2. genAuthTokenForChirpLink - (POST)
+It is used to generate a one-time accessible token associated with a request code for Chirp verification. The endpoint is accessible via a POST request and returns a response containing details about the generated authentication token.
+
+Endpoint : https://chirp.digital/api/genAuthTokenForChirpLink/chirpLink/<request_code>
+
+Headers - Authorization : <profileToken>
+
+Example success response:
+
+Status code: 200
+
+    {	
+        "success": true,
+        "token": "y5yh45h4w5h45h4j4w6j4wj4htrhw6u65h6j56h5y",
+        "requestCode": "QLU0GU",
+        "validUpto": "8/10/2021, 10:33 PM"
+    }	              
+Response Field Definition:
+
+success: Response result of the request
+
+token: Token generated for initiating a customer verification in entity’s integration
+
+requestCode: The request code for which the token is valid
+
+validUpto: The expiration time until the generated token is valid. Timezone is CST
+
+3.6.4.3. Integration
+After successfully retrieving the token using the genAuthTokenForChirpLink endpoint, you must integrate the token into your script. Sample script was mentioned below.
+
+3.6.4.4. View
+In desktop mode, the verification widget is displayed as an overlay popup in the center of the screen. Users can interact with the ChirpLink™ widget without navigating away from the current page. The background gradient in the overlay popup can be removed by setting the overlay option to false.
+
+In mobile mode, the verification widget will automatically overlay the full size of the screen.
+
+3.6.4.5. Sample script for events
+    var newChirpLink = new ChirpLink({
+
+    token:"y5yh45h4w5h45h4j4w6j4wj4htrhw6u65h6j56h5y",
+
+    onLoad: function (load) {
+      console.log('On Load event', load);
+    },
+    onSuccess: function (success) {
+      console.log('On Success ',success);
+    },
+    onError: function (err) {
+      console.log("On Error ", err);
+    },
+    onClose: function (close) {
+      console.log("on Close",close);
+    },
+    onBankSelect: function (bank) {
+      console.log("On Bank Select", bank);
+    },
+    onAttempt: function (attempt) { 
+        console.log("On Attempt", attempt);
+      }
+  });
+
+3.6.5. Create Custom Customer Messages
+A message is shown to the end customer when the request reaches an end state(connected, rejected, or expired). This message can be customized by the Entity in the Chirp Portal. Click here to view the Portal documentation.
+
+3.6.6. Adaptable ChirpLink™
+ChirpLink™ can also act as an adaptable widget to be placed anywhere on a webpage. This helps with creating custom workflows and placing the ChirpLink™ widget in a container
+
+3.6.6.1. Setting up the Container
+To utilize the adaptable feature of ChirpLink™, you need to designate an HTML element to serve as the container for the widget. Here's how you can create this container:
+
+<div id="chirpLinkWidget"></div>
+Ensure that the container element is placed appropriately and is also properly created within the HTML structure if added dynamically.
+
+3.6.6.2. Integrating Adaptable ChirpLink™
+To integrate the ChirpLink™ widget in its adaptable mode, follow these steps:
+
+var newChirpLink = new ChirpLink({
+    token:"y5yh45h4w5h45h4j4w6j4wj4htrhw6u65h6j56h5y",
+    mode : "ADAPTABLE"
+)}
+The mode should be set to “ADAPTABLE” as its value for making the widget adaptable to a container. If the mode parameter is not specified or incorrectly spelled, the widget defaults to opening as a popup.
+
+ChirpLink™ provides six events that you can use to customize the behavior of the verification widget. Click here to learn more about these callback events.

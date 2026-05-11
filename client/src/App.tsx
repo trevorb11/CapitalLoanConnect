@@ -34,6 +34,7 @@ import RetargetingLanding from "@/pages/RetargetingLanding";
 import ProgressTracker from "@/pages/ProgressTracker";
 import PartnerDashboard from "@/pages/PartnerDashboard";
 import PartnerApplication from "@/pages/PartnerApplication";
+import PartnerLanding from "@/pages/PartnerLanding";
 import ReferralLanding from "@/pages/ReferralLanding";
 import Approvals from "@/pages/Approvals";
 import Declines from "@/pages/Declines";
@@ -41,6 +42,9 @@ import Unqualified from "@/pages/Unqualified";
 import Funded from "@/pages/Funded";
 import RepConsole from "@/pages/RepConsole";
 import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
+import Analytics from "@/pages/Analytics";
+import Services from "@/pages/Services";
+import AchForm from "@/pages/AchForm";
 import ApprovalLetter from "@/pages/ApprovalLetter";
 import InternalStatementsUpload from "@/pages/InternalStatementsUpload";
 import SBALanding from "@/pages/SBALanding";
@@ -52,10 +56,21 @@ import AutomatedTriggers from "@/pages/AutomatedTriggers";
 import SmsInbox from "@/pages/SmsInbox";
 import GigFiStandalone from "@/pages/GigFiStandalone";
 import GigFiInternal from "@/pages/GigFiInternal";
+import GigFiSubmissions from "@/pages/GigFiSubmissions";
 import MerchantPortal from "@/pages/MerchantPortal";
 import MerchantActivate from "@/pages/MerchantActivate";
 import MerchantResetPassword from "@/pages/MerchantResetPassword";
 import MerchantProfile from "@/pages/MerchantProfile";
+import LeadPortal from "@/pages/LeadPortal";
+import TrackAdmin from "@/pages/TrackAdmin";
+import AdsConsultation from "@/pages/AdsConsultation";
+import AdsLeads from "@/pages/AdsLeads";
+import ServiceLeads from "@/pages/ServiceLeads";
+import ConsolSBA from "@/pages/ConsolSBA";
+import LeadsDashboard from "@/pages/LeadsDashboard";
+import ServicePayments from "@/pages/ServicePayments";
+import ServiceWebsite from "@/pages/ServiceWebsite";
+import ServiceCRM from "@/pages/ServiceCRM";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -107,6 +122,7 @@ function Router() {
       <Route path="/internal-upload" component={InternalStatementsUpload} />
       <Route path="/funding-check" component={FundingCheck} />
       <Route path="/sba" component={SBALanding} />
+      <Route path="/consol-sba" component={ConsolSBA} />
       <Route path="/sig" component={SignatureApplication} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/congratulations" component={Congratulations} />
@@ -121,14 +137,22 @@ function Router() {
       <Route path="/sms-inbox" component={SmsInbox} />
       <Route path="/gig" component={GigFiStandalone} />
       <Route path="/gigfi-internal" component={GigFiInternal} />
+      <Route path="/gigfi-submissions" component={GigFiSubmissions} />
       <Route path="/agents" component={AgentSelector} />
 
       {/* Rep Console - Contact 360 View */}
       <Route path="/rep-console" component={RepConsole} />
       <Route path="/rep-console/:contactId" component={RepConsole} />
       
-      {/* Lead Source Analytics - Admin Only */}
+      {/* Analytics Dashboards - Admin Only */}
       <Route path="/lead-sources" component={LeadSourceAnalytics} />
+      <Route path="/analytics" component={Analytics} />
+
+      {/* Services Interest Page - Public */}
+      <Route path="/services" component={Services} />
+
+      {/* ACH Authorization Form - Public */}
+      <Route path="/ach" component={AchForm} />
 
       {/* Approval Letter - Public page for approved businesses */}
       <Route path="/approved/:slug" component={ApprovalLetter} />
@@ -142,7 +166,23 @@ function Router() {
       <Route path="/merchant-profile" component={MerchantProfile} />
       <Route path="/merchant-profile/:email" component={MerchantProfile} />
 
+      {/* Ads Consultation — AdBlend Partnership */}
+      <Route path="/services/payments" component={ServicePayments} />
+      <Route path="/services/website" component={ServiceWebsite} />
+      <Route path="/services/crm" component={ServiceCRM} />
+      <Route path="/ads" component={AdsConsultation} />
+      <Route path="/ads-leads" component={AdsLeads} />
+      <Route path="/service-leads" component={ServiceLeads} />
+      <Route path="/leads" component={LeadsDashboard} />
+
+      {/* Lead Portal Routes */}
+      <Route path="/track" component={LeadPortal} />
+      <Route path="/track/signup" component={LeadPortal} />
+      <Route path="/track/login" component={LeadPortal} />
+      <Route path="/track-admin" component={TrackAdmin} />
+
       {/* Partner Portal Routes */}
+      <Route path="/partners" component={PartnerLanding} />
       <Route path="/partner" component={PartnerDashboard} />
       <Route path="/partner/dashboard" component={PartnerDashboard} />
       <Route path="/apply/:slug" component={PartnerApplication} />
@@ -168,10 +208,11 @@ function App() {
   useEffect(() => {
     initUTMTracking();
     
-    // Track visits from URL parameters (email or phone)
+    // Track visits from URL parameters (email, phone, interest)
     const params = new URLSearchParams(window.location.search);
     const email = params.get('email');
     const phone = params.get('phone');
+    const interest = params.get('interest');
     
     if (email || phone) {
       fetch('/api/analytics/track-visit', {
@@ -180,9 +221,13 @@ function App() {
         body: JSON.stringify({
           email,
           phone,
+          interest,
           pagePath: window.location.pathname,
           fullUrl: window.location.href,
-          referrer: document.referrer
+          referrer: document.referrer,
+          utmSource: params.get('utm_source'),
+          utmCampaign: params.get('utm_campaign'),
+          utmMedium: params.get('utm_medium'),
         })
       }).catch(err => console.error('Failed to track visit:', err));
     }

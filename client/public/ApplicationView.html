@@ -335,7 +335,7 @@
     // Fetch application data
     async function loadApplicationData() {
         try {
-            const response = await fetch(`/api/applications/${applicationId}/view`);
+            const response = await fetch(`/api/applications/${applicationId}/view?t=${Date.now()}`, { cache: 'no-store' });
             if (!response.ok) throw new Error('Failed to load application');
             
             const data = await response.json();
@@ -352,25 +352,10 @@
             document.getElementById('industry').textContent = data.industry || '';
             document.getElementById('business_address').textContent = data.businessStreetAddress || data.businessAddress || '';
             
-            // Parse businessCsz (format: "City, ST 12345") into separate fields
-            const businessCsz = data.businessCsz || '';
-            if (businessCsz) {
-                const parts = businessCsz.split(',').map(p => p.trim());
-                if (parts.length >= 2) {
-                    document.getElementById('city').textContent = parts[0] || '';
-                    const stateZip = parts[1].split(' ').filter(p => p);
-                    document.getElementById('state').textContent = stateZip[0] || '';
-                    document.getElementById('zip_code').textContent = stateZip[1] || '';
-                } else {
-                    document.getElementById('city').textContent = data.city || '';
-                    document.getElementById('state').textContent = data.state || '';
-                    document.getElementById('zip_code').textContent = data.zipCode || '';
-                }
-            } else {
-                document.getElementById('city').textContent = data.city || '';
-                document.getElementById('state').textContent = data.state || '';
-                document.getElementById('zip_code').textContent = data.zipCode || '';
-            }
+            // Business city/state/zip — server normalizes these, so read directly
+            document.getElementById('city').textContent = data.city || '';
+            document.getElementById('state').textContent = data.state || '';
+            document.getElementById('zip_code').textContent = data.zipCode || '';
             
             document.getElementById('requested_amount').textContent = data.requestedAmount ? `$${parseFloat(data.requestedAmount).toLocaleString()}` : '';
             document.getElementById('mca_balance_amount').textContent = data.mcaBalanceAmount ? `$${parseFloat(data.mcaBalanceAmount).toLocaleString()}` : '';
@@ -386,25 +371,10 @@
             document.getElementById('ownership').textContent = data.ownerPercentage || data.ownership || '';
             document.getElementById('owner_address1').textContent = data.ownerAddress1 || data.address1 || '';
             
-            // Parse ownerCsz (format: "City, ST 12345") into separate fields
-            const ownerCsz = data.ownerCsz || '';
-            if (ownerCsz) {
-                const parts = ownerCsz.split(',').map(p => p.trim());
-                if (parts.length >= 2) {
-                    document.getElementById('owner_city').textContent = parts[0] || '';
-                    const stateZip = parts[1].split(' ').filter(p => p);
-                    document.getElementById('owner_state').textContent = stateZip[0] || '';
-                    document.getElementById('owner_zip').textContent = stateZip[1] || '';
-                } else {
-                    document.getElementById('owner_city').textContent = data.ownerCity || '';
-                    document.getElementById('owner_state').textContent = data.ownerState || '';
-                    document.getElementById('owner_zip').textContent = data.ownerZip || '';
-                }
-            } else {
-                document.getElementById('owner_city').textContent = data.ownerCity || '';
-                document.getElementById('owner_state').textContent = data.ownerState || '';
-                document.getElementById('owner_zip').textContent = data.ownerZip || '';
-            }
+            // Owner city/state/zip — server normalizes these, so read directly
+            document.getElementById('owner_city').textContent = data.ownerCity || '';
+            document.getElementById('owner_state').textContent = data.ownerState || '';
+            document.getElementById('owner_zip').textContent = data.ownerZip || '';
             
             // Set submission date
             if (data.updatedAt) {
@@ -671,13 +641,13 @@
         const signaturePlaceholder = document.getElementById('signature_placeholder');
         const isCheckboxSignature = signaturePlaceholder && signaturePlaceholder.style.display !== 'none' && signaturePlaceholder.innerHTML.includes('Digitally Signed by');
         
-        if ((signatureData.src && signatureData.isVisible) || isCheckboxSignature) {
+        if (!includeLingo && ((signatureData.src && signatureData.isVisible) || isCheckboxSignature)) {
             try {
                 // LEFT COLUMN: Disclosure text
                 doc.setFontSize(7);
                 doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100, 100, 100);
-                const disclosureText = 'Confirm Application\nBy signing below, each of the listed business and business owner/officer (individually and collectively, "you") authorize Today Capital Group and its representatives, successors, assigns, and designees involved with or acquiring commercial loans or purchases of future receivables, including Merchant Cash Advance transactions (collectively, "Transactions"), to obtain consumer or personal, business, and investigative reports and other information about you. This includes credit card processor statements and bank statements from consumer reporting agencies such as TransUnion, Experian, and Equifax, Identity IQ, and other credit bureaus, banks, creditors, government agencies, and third parties (the "Recipients"). You also authorize Today Capital Group to transmit this application form, along with any obtained information, to any or all of the Recipients for the stated purposes. Furthermore, you consent to any creditor or financial institution releasing information about you to Today Capital Group and the Recipients. You authorize Today Capital Group to communicate with the Recipients on your behalf and represent you in dealings with them. Additionally, you permit Today Capital Group';
+                const disclosureText = 'Confirm Application\nBy signing below, each of the listed business and business owner/officer (individually and collectively, "you") authorize Today Capital Group and its representatives, successors, assigns, and designees involved with or acquiring commercial loans or purchases of future receivables, including Merchant Cash Advance transactions (collectively, "Transactions"), to obtain consumer or personal, business, and investigative reports and other information about you. This includes credit card processor statements and bank statements from consumer reporting agencies such as TransUnion, Experian, and Equifax, Identity IQ, and other credit bureaus, banks, creditors, government agencies, and third parties (the "Recipients"). You also authorize Today Capital Group to transmit this application form, along with any obtained information, to any or all of the Recipients for the stated purposes. Furthermore, you consent to any creditor or financial institution releasing information about you to Today Capital Group and the Recipients. You authorize Today Capital Group to communicate with the Recipients on your behalf and represent you in dealings with them. Additionally, you permit Today Capital Group and its Recipients to contact you via text message, automated call, or email using the contact information provided above.';
                 const splitDisclosure = doc.splitTextToSize(disclosureText, 95);
                 doc.text(splitDisclosure, 20, yPos);
                 
@@ -742,7 +712,7 @@
             doc.line(20, yPos + 2, 100, yPos + 2);
             yPos += 10;
 
-            const lingoText = 'The Merchant and Owner(s)/Officer(s) identified above (individually, and "Applicant") each represents, acknowledges and agrees that (1) all the information and documents provided to ______________ ("Representative") including credit card processor statements are true, accurate and complete, (2) Applicant will immediately notify Representative of any change in such information or financial condition, (3) Applicant authorizes Representative to disclose all information and documents that Representative may obtain including credit reports to the other persons or entities (collectively, "Assignees") that may be involved with or acquire commercial funding having daily repayment features or purchases of future receivables, including Merchant Cash Advance transactions, including without limitation the application therefor (collectively, "Transactions"), and each Assignee is authorized to use such information and documents, and share such information and documents with other Assignees, in connection with potential Transactions, (4) Representative and each Assignee will rely upon the accuracy and completeness of such information and documents, (5) Representative, Assignees, and each of their representatives, successors, assigns and designees (collectively, "Recipients") are authorized to request and receive and investigative reports, credit reports, statements from creditors or financial institutions, verification information, or any other information that a Recipient deems necessary, (6) Applicant waives and releases and claims against Recipients and any other information-providers arising from any act or omission relating to the requesting, receiving, or release of information, (7) each Owner/Officer represents that he or she is authorized to sign this form on behalf of Merchant and (8) Applicant consents to receive marketing calls and texts from Representative and its affiliates or assigns using automated technology. Consent is not a condition of funding. A copy of this authorization may be accepted as an original.';
+            const lingoText = 'The Merchant and Owner(s)/Officer(s) identified above (individually, and "Applicant") each represents, acknowledges and agrees that (1) all the information and documents provided to Today Capital Group LLC ("Representative") including credit card processor statements are true, accurate and complete, (2) Applicant will immediately notify Representative of any change in such information or financial condition, (3) Applicant authorizes Representative to disclose all information and documents that Representative may obtain including credit reports to the other persons or entities (collectively, "Assignees") that may be involved with or acquire commercial funding having daily repayment features or purchases of future receivables, including Merchant Cash Advance transactions, including without limitation the application therefor (collectively, "Transactions"), and each Assignee is authorized to use such information and documents, and share such information and documents with other Assignees, in connection with potential Transactions, (4) Representative and each Assignee will rely upon the accuracy and completeness of such information and documents, (5) Representative, Assignees, and each of their representatives, successors, assigns and designees (collectively, "Recipients") are authorized to request and receive and investigative reports, credit reports, statements from creditors or financial institutions, verification information, or any other information that a Recipient deems necessary, (6) Applicant waives and releases and claims against Recipients and any other information-providers arising from any act or omission relating to the requesting, receiving, or release of information, (7) each Owner/Officer represents that he or she is authorized to sign this form on behalf of Merchant and (8) Applicant consents to receive marketing calls and texts from Representative and its affiliates or assigns using automated technology. Consent is not a condition of funding. A copy of this authorization may be accepted as an original. Applicant further agrees to the use of electronic signatures for the execution of this document, including, but not limited to, the use of specialized electronic signature platforms.';
 
             doc.setFontSize(8);
             doc.setFont('helvetica', 'normal');

@@ -637,29 +637,37 @@ export default function Approvals() {
     if (!fundingDecision) return;
     setFundSaving(true);
     try {
-      let approvals = getApprovalsForDecision(fundingDecision);
-      const primary = approvals.find(a => a.isPrimary) || approvals[0];
+      // Build a funded entry from the form values — do NOT mutate the approval packages
+      const fundedEntry = {
+        id: crypto.randomUUID(),
+        lender: fundForm.lender || null,
+        advanceAmount: fundForm.advanceAmount || null,
+        term: fundForm.term || null,
+        paymentFrequency: fundForm.paymentFrequency || null,
+        factorRate: fundForm.factorRate || null,
+        maxUpsell: fundForm.maxUpsell || null,
+        totalPayback: fundForm.totalPayback || null,
+        netAfterFees: fundForm.netAfterFees || null,
+        notes: fundForm.notes || null,
+        fundedDate: fundForm.fundedDate
+          ? new Date(fundForm.fundedDate + 'T12:00:00').toISOString()
+          : new Date().toISOString(),
+        assignedRep: null,
+        createdAt: new Date().toISOString(),
+      };
 
-      if (primary) {
-        primary.advanceAmount = fundForm.advanceAmount;
-        primary.term = fundForm.term;
-        primary.paymentFrequency = fundForm.paymentFrequency;
-        primary.factorRate = fundForm.factorRate;
-        primary.maxUpsell = fundForm.maxUpsell;
-        primary.totalPayback = fundForm.totalPayback;
-        primary.netAfterFees = fundForm.netAfterFees;
-        primary.lender = fundForm.lender;
-        primary.notes = fundForm.notes;
-        primary.approvalDate = fundForm.approvalDate;
-        approvals = approvals.map(a => (a.id === primary.id ? primary : a));
-      }
+      // Prepend new entry to existing funded entries (newest first)
+      const rawFundings = fundingDecision.additionalFundings;
+      const existingFundings: unknown[] = Array.isArray(rawFundings) ? rawFundings : [];
+      const mergedFundings = [fundedEntry, ...existingFundings];
 
       await updateMutation.mutateAsync({
         id: fundingDecision.id,
         updates: {
           status: 'funded',
           fundedDate: fundForm.fundedDate,
-          additionalApprovals: approvals,
+          additionalFundings: mergedFundings,
+          // additionalApprovals intentionally omitted — approval packages are never touched when funding
         },
       });
       setFundingDecision(null);
@@ -1141,7 +1149,7 @@ export default function Approvals() {
                               </Button>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                             <div>
                               <div className="text-muted-foreground">Advance Amount</div>
                               <div className="font-semibold text-green-600 dark:text-green-400">
@@ -1162,6 +1170,13 @@ export default function Approvals() {
                               <div className="text-muted-foreground">Payment Frequency</div>
                               <div className="font-medium capitalize">{appr.paymentFrequency || "N/A"}</div>
                             </div>
+                            <div>
+                              <div className="text-muted-foreground">Approval Date</div>
+                              <div className="font-medium flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {appr.approvalDate ? formatDate(appr.approvalDate) : "N/A"}
+                              </div>
+                            </div>
                           </div>
                           {(appr.totalPayback || appr.netAfterFees) && (
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-3 pt-3 border-t">
@@ -1172,13 +1187,6 @@ export default function Approvals() {
                               <div>
                                 <div className="text-muted-foreground">Net After Fees</div>
                                 <div className="font-medium">{formatCurrency(appr.netAfterFees)}</div>
-                              </div>
-                              <div>
-                                <div className="text-muted-foreground">Approval Date</div>
-                                <div className="font-medium flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {formatDate(appr.approvalDate)}
-                                </div>
                               </div>
                             </div>
                           )}

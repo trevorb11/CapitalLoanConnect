@@ -710,6 +710,50 @@ export default function Funded() {
     return [];
   };
 
+  const handleExportCsv = () => {
+    const escape = (v: string | null | undefined) => {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const headers = [
+      'Business Name', 'Email', 'Assigned Rep', 'Funded Date',
+      'Lender', 'Advance Amount', 'Term', 'Factor Rate',
+      'Payment Frequency', 'Total Payback', 'Net After Fees', 'Max Upsell', 'Notes',
+    ];
+
+    const rows = filteredDecisions.map(d => {
+      const fundings = getFundingsForDecision(d);
+      const f = fundings[0];
+      return [
+        escape(d.businessName),
+        escape(d.businessEmail),
+        escape(d.assignedRep),
+        escape(f?.fundedDate ? formatDate(f.fundedDate) : formatDate(d.fundedDate)),
+        escape(f?.lender || d.lender),
+        escape(f?.advanceAmount || d.advanceAmount?.toString()),
+        escape(f?.term || d.term),
+        escape(f?.factorRate || d.factorRate?.toString()),
+        escape(f?.paymentFrequency || d.paymentFrequency),
+        escape(f?.totalPayback || d.totalPayback?.toString()),
+        escape(f?.netAfterFees || d.netAfterFees?.toString()),
+        escape(f?.maxUpsell || d.maxUpsell?.toString()),
+        escape(f?.notes || d.notes),
+      ].join(',');
+    });
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `funded-deals-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "Exported", description: `${filteredDecisions.length} funded deal${filteredDecisions.length !== 1 ? 's' : ''} exported to CSV.` });
+  };
+
   // Helper: get the most recent approval date for a decision
   const getMostRecentApprovalDate = (d: BusinessUnderwritingDecision): number => {
     const dates: number[] = [];
@@ -905,6 +949,16 @@ export default function Funded() {
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={handleExportCsv}
+                className="flex items-center gap-2"
+                data-testid="button-export-csv"
+                disabled={filteredDecisions.length === 0}
+              >
+                <Download className="w-4 h-4" />
+                Export CSV
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => {

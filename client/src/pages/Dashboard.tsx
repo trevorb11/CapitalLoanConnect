@@ -159,6 +159,17 @@ interface BankConnection {
   createdAt: string;
 }
 
+interface ChirpConnection {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  businessName: string;
+  requestedAmount: string;
+  chirpRequestCode: string;
+  createdAt: string;
+}
+
 interface BotAttempt {
   id: string;
   email: string | null;
@@ -1128,6 +1139,97 @@ function ReconnectPlaidButton({ plaidItemId, onSuccess }: { plaidItemId: string;
   );
 }
 
+// Underwriter Snapshot — inline financial summary shown on Chirp connection cards
+function UnderwriterSnapshot({ email }: { email: string }) {
+  const [data, setData] = useState<any>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || loaded) return;
+    fetch(`/api/admin/underwriter-snapshot/${encodeURIComponent(email)}`, { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setData(d); })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, [email, expanded, loaded]);
+
+  return (
+    <div className="mt-3">
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="text-xs text-blue-500 hover:text-blue-400 font-medium flex items-center gap-1"
+      >
+        {expanded ? "▾" : "▸"} Financial Snapshot
+      </button>
+      {expanded && (
+        <div className="mt-2 p-3 bg-muted/50 rounded-lg text-sm">
+          {!loaded ? (
+            <p className="text-muted-foreground text-xs">Loading...</p>
+          ) : !data?.hasData ? (
+            <p className="text-muted-foreground text-xs">No banking data available for this merchant.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Monthly Revenue</p>
+                  <p className="font-semibold text-green-500">${Number(data.metrics.monthlyRevenue).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Monthly Expenses</p>
+                  <p className="font-semibold">${Number(data.metrics.monthlyExpenses).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Net Cash Flow</p>
+                  <p className={`font-semibold ${data.metrics.netCashFlow >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {data.metrics.netCashFlow >= 0 ? '+' : '-'}${Math.abs(data.metrics.netCashFlow).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Current Balance</p>
+                  <p className="font-semibold">${Number(data.metrics.currentBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                <span>Avg Balance: ${Number(data.metrics.avgBalance).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                {data.metrics.healthScore > 0 && (
+                  <span>
+                    Health: <span className={data.metrics.healthScore >= 70 ? 'text-green-500' : data.metrics.healthScore >= 45 ? 'text-yellow-500' : 'text-red-500'} style={{ fontWeight: 600 }}>
+                      {data.metrics.healthScore}/100
+                    </span>
+                  </span>
+                )}
+                {data.metrics.revenueTrend && (
+                  <span>Trend: <span className={data.metrics.revenueTrend === 'growing' ? 'text-green-500' : data.metrics.revenueTrend === 'declining' ? 'text-red-500' : ''} style={{ fontWeight: 500, textTransform: 'capitalize' }}>{data.metrics.revenueTrend}</span></span>
+                )}
+                {data.metrics.monthsAnalyzed > 0 && <span>{data.metrics.monthsAnalyzed} months analyzed</span>}
+                {data.institutionName && <span>{data.institutionName}</span>}
+                {data.lastSyncedAt && <span>Last sync: {new Date(data.lastSyncedAt).toLocaleDateString()}</span>}
+              </div>
+              {/* Monthly breakdown */}
+              {data.activityByMonth?.length > 0 && (
+                <div className="mt-3 border-t border-muted pt-2">
+                  <p className="text-xs text-muted-foreground font-medium mb-2">Monthly Breakdown</p>
+                  <div className="grid gap-1 text-xs">
+                    {data.activityByMonth.slice(0, 6).map((m: any, i: number) => (
+                      <div key={i} className="flex justify-between items-center">
+                        <span className="text-muted-foreground w-20">{m.month}</span>
+                        <span className="text-green-500 w-24 text-right">+{m.totalCredit}</span>
+                        <span className="text-red-400 w-24 text-right">-{m.totalDebit}</span>
+                        <span className="w-24 text-right font-medium">{m.averageDailyBalance || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BankStatementsTab() {
   const { toast } = useToast();
   const [expandedBusinesses, setExpandedBusinesses] = useState<Set<string>>(new Set());
@@ -1217,6 +1319,15 @@ function BankStatementsTab() {
     queryKey: ['/api/plaid/all'],
     queryFn: async () => {
       const res = await fetch('/api/plaid/all', { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const { data: chirpConnections, isLoading: chirpConnectionsLoading } = useQuery<ChirpConnection[]>({
+    queryKey: ['/api/chirp/connections'],
+    queryFn: async () => {
+      const res = await fetch('/api/chirp/connections', { credentials: 'include' });
       if (!res.ok) return [];
       return res.json();
     },
@@ -1984,13 +2095,24 @@ function BankStatementsTab() {
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const isLoading = uploadsLoading || connectionsLoading;
+  // Filter & sort Chirp connections
+  const filteredChirpConnections = (chirpConnections || [])
+    .filter(conn => {
+      const name = conn.businessName || conn.fullName || '';
+      const matchesSearch = !lowerQuery || name.toLowerCase().includes(lowerQuery) || conn.email.toLowerCase().includes(lowerQuery);
+      const notDecided = showAllStatements || !emailHasDecision(conn.email);
+      return matchesSearch && notDecided;
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const isLoading = uploadsLoading || connectionsLoading || chirpConnectionsLoading;
   const hasUploads = filteredUploadsByBusiness.length > 0;
   const hasConnections = filteredConnections.length > 0;
-  const isEmpty = !hasUploads && !hasConnections;
+  const hasChirpConnections = filteredChirpConnections.length > 0;
+  const isEmpty = !hasUploads && !hasConnections && !hasChirpConnections;
 
   // Check if there's any data at all (before search filtering)
-  const hasAnyData = (bankUploads && bankUploads.length > 0) || (bankConnections && bankConnections.length > 0);
+  const hasAnyData = (bankUploads && bankUploads.length > 0) || (bankConnections && bankConnections.length > 0) || (chirpConnections && chirpConnections.length > 0);
 
   if (isLoading) {
     return (
@@ -2312,11 +2434,9 @@ function BankStatementsTab() {
                     if (approvals.length === 0) return null;
 
                     const sortedApprovals = [...approvals].sort((a, b) => {
-                      if (a.isPrimary) return -1;
-                      if (b.isPrimary) return 1;
-                      // Sort remaining by approvalDate descending (newest first)
-                      const dateA = a.approvalDate || '';
-                      const dateB = b.approvalDate || '';
+                      // Sort all approvals newest to oldest by approvalDate
+                      const dateA = a.approvalDate || a.createdAt || '';
+                      const dateB = b.approvalDate || b.createdAt || '';
                       return dateB.localeCompare(dateA);
                     });
                     const bestApproval = sortedApprovals[0];
@@ -2355,6 +2475,11 @@ function BankStatementsTab() {
                               {appr.term && <span className="text-muted-foreground">{appr.term}</span>}
                               {appr.factorRate && <span className="text-muted-foreground">{appr.factorRate}x</span>}
                               {appr.paymentFrequency && <span className="text-muted-foreground capitalize">{appr.paymentFrequency}</span>}
+                              {appr.approvalDate && (
+                                <span className="text-muted-foreground text-xs">
+                                  {format(new Date(appr.approvalDate + 'T00:00:00'), 'MMM d, yyyy')}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
                               <Button
@@ -2599,6 +2724,90 @@ function BankStatementsTab() {
                           </Button>
                         </div>
                       )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Chirp Connected Banks Section */}
+        {hasChirpConnections && (
+          <div>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Landmark className="w-5 h-5 text-blue-600" />
+              Chirp Connected Banks
+              <Badge className="bg-blue-600 text-white text-xs">{filteredChirpConnections.length}</Badge>
+            </h3>
+            <div className="space-y-4">
+              {filteredChirpConnections.map((conn) => (
+                <Card key={conn.id} className="p-6 hover-elevate" data-testid={`card-chirp-connection-${conn.id}`}>
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3 flex-wrap">
+                        <h4 className="font-semibold text-lg flex items-center gap-2">
+                          <Building2 className="w-5 h-5 text-primary" />
+                          {conn.businessName || conn.fullName}
+                        </h4>
+                        <Badge className="bg-blue-600 text-white">Chirp Connected</Badge>
+                        {(() => {
+                          const decision = getBusinessDecision(conn.email);
+                          if (!decision) return null;
+                          const statusColors: Record<string, string> = {
+                            approved: 'bg-blue-600 text-white',
+                            funded: 'bg-purple-600 text-white',
+                            declined: 'bg-red-600 text-white',
+                            unqualified: 'bg-amber-600 text-white',
+                          };
+                          const statusLabels: Record<string, string> = {
+                            approved: 'Approved',
+                            funded: 'Funded',
+                            declined: 'Declined',
+                            unqualified: 'Unqualified',
+                          };
+                          const cls = statusColors[decision.status] || 'bg-muted text-muted-foreground';
+                          const label = statusLabels[decision.status] || decision.status;
+                          return <Badge className={cls}>{label}</Badge>;
+                        })()}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Applicant:</span>
+                          <span className="font-medium">{conn.fullName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-muted-foreground">Connected:</span>
+                          <span className="font-medium">{format(new Date(conn.createdAt), 'MMM d, yyyy')}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <User className="w-4 h-4" />
+                        {conn.email}
+                      </div>
+                      {/* Underwriter Snapshot — inline financial summary */}
+                      <UnderwriterSnapshot email={conn.email} />
+                    </div>
+                    <div className="flex flex-col gap-2 min-w-[160px]">
+                      <Button
+                        size="sm"
+                        onClick={() => window.open(`/api/chirp/request/${conn.chirpRequestCode}/pdf/download`, '_blank')}
+                        data-testid={`button-chirp-pdf-${conn.id}`}
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        Download PDF
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(`/api/chirp/request/${conn.chirpRequestCode}/details`, '_blank')}
+                        data-testid={`button-chirp-details-${conn.id}`}
+                      >
+                        <Landmark className="w-4 h-4 mr-2" />
+                        View Details
+                      </Button>
                     </div>
                   </div>
                 </Card>
@@ -3308,6 +3517,11 @@ function BotAttemptsTab() {
 export default function Dashboard() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [additionalApps, setAdditionalApps] = useState<LoanApplication[]>([]);
+  const [loadMoreOffset, setLoadMoreOffset] = useState(100);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial" | "low-revenue">("all");
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>("all");
   const [selectedAppDetails, setSelectedAppDetails] = useState<LoanApplication | null>(null);
@@ -3321,12 +3535,64 @@ export default function Dashboard() {
     queryFn: getQueryFn({ on401: "returnNull" }),
   });
 
-  const { data: applications, isLoading: appsLoading } = useQuery<LoanApplication[]>({
-    queryKey: ["/api/applications"],
+  // Debounce search: wait 400 ms after the user stops typing before hitting the server
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // Reset additional pages whenever search term changes
+  useEffect(() => {
+    setAdditionalApps([]);
+    setLoadMoreOffset(100);
+    setHasMore(false);
+  }, [debouncedSearch]);
+
+  const { data: firstPageApps, isLoading: appsLoading } = useQuery<LoanApplication[]>({
+    queryKey: ["/api/applications", debouncedSearch],
     enabled: authData?.isAuthenticated === true,
-    queryFn: getQueryFn({ on401: "returnNull" }),
+    queryFn: async () => {
+      const url = debouncedSearch
+        ? `/api/applications?search=${encodeURIComponent(debouncedSearch)}`
+        : `/api/applications`;
+      const res = await fetch(url, { credentials: "include" });
+      if (res.status === 401) return null;
+      if (!res.ok) throw new Error("Failed to fetch applications");
+      const data: LoanApplication[] = await res.json();
+      // Show "load more" only for admin/underwriting, no search active, exactly 100 records back
+      setHasMore(!debouncedSearch && data.length === 100);
+      return data;
+    },
     retry: false,
+    staleTime: 30_000, // cache for 30s so tab switching doesn't re-fetch constantly
   });
+
+  // Merge first page + any additional pages loaded via "Load More"
+  const applications = [...(firstPageApps ?? []), ...additionalApps];
+
+  const loadMore = async () => {
+    setIsLoadingMore(true);
+    try {
+      const res = await fetch(`/api/applications?offset=${loadMoreOffset}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      const data: LoanApplication[] = await res.json();
+      setAdditionalApps(prev => [...prev, ...data]);
+      setLoadMoreOffset(prev => prev + 100);
+      setHasMore(data.length === 100);
+    } catch {
+      /* silently fail — user can try again */
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Helper: invalidate first-page query AND clear accumulated extra pages
+  const resetAndRefetch = () => {
+    setAdditionalApps([]);
+    setLoadMoreOffset(100);
+    setHasMore(false);
+    queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+  };
 
 
   const { data: bankUploads } = useQuery<BankStatementUpload[]>({
@@ -3381,7 +3647,7 @@ export default function Dashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/check"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+      resetAndRefetch();
     },
   });
 
@@ -3404,7 +3670,7 @@ export default function Dashboard() {
       setSelectedAppDetails(updatedApp);
       setIsEditMode(false);
       // Refresh the applications list
-      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+      resetAndRefetch();
     },
   });
 
@@ -3503,7 +3769,7 @@ export default function Dashboard() {
 
   const handleLoginSuccess = () => {
     refetchAuth();
-    queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+    resetAndRefetch();
   };
 
   if (authLoading) {
@@ -3527,11 +3793,7 @@ export default function Dashboard() {
   const filteredApplications = applications
     ? applications
         .filter((app) => {
-          const matchesSearch =
-            (app.fullName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (app.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (app.businessName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (app.legalBusinessName || "").toLowerCase().includes(searchTerm.toLowerCase());
+          // Search filtering is now server-side — client only handles status + agent filters
 
           // Parse monthly revenue for low-revenue filter
           const revenueStr = app.monthlyRevenue || app.averageMonthlyRevenue || "0";
@@ -3549,9 +3811,11 @@ export default function Dashboard() {
 
           // Agent filter (admin only feature)
           const matchesAgentFilter =
-            selectedAgentFilter === "all" || app.agentName === selectedAgentFilter;
+            selectedAgentFilter === "all" ||
+            (selectedAgentFilter === "unassigned" && !app.agentName) ||
+            app.agentName === selectedAgentFilter;
 
-          return matchesSearch && matchesFilter && matchesAgentFilter;
+          return matchesFilter && matchesAgentFilter;
         })
         .sort((a, b) => {
           const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -3836,15 +4100,51 @@ export default function Dashboard() {
                 )}
               </div>
               <div className="flex gap-2 w-full md:w-auto">
-                <Button
-                  variant="outline"
-                  onClick={() => window.open("/api/application-template", "_blank")}
-                  data-testid="button-download-template"
-                  className="flex-1 md:flex-none"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download Template
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      data-testid="button-download-template"
+                      className="flex-1 md:flex-none"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Template
+                      <ChevronDown className="w-3 h-3 ml-2" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Select Template Type</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      data-testid="template-standard"
+                      onClick={() => window.open("/api/application-template?type=standard", "_blank")}
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      Standard
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-testid="template-signature"
+                      onClick={() => window.open("/api/application-template?type=signature", "_blank")}
+                    >
+                      <FileEdit className="w-4 h-4 mr-2" />
+                      Signature
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-testid="template-lcg"
+                      onClick={() => window.open("/api/application-template?type=lcg", "_blank")}
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      LCG
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-testid="template-redacted"
+                      onClick={() => window.open("/api/application-template?type=redacted", "_blank")}
+                    >
+                      <Lock className="w-4 h-4 mr-2" />
+                      Redacted
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button
                   variant="outline"
                   onClick={() => window.open("/api/applications/export/csv", "_blank")}
@@ -3927,6 +4227,7 @@ export default function Dashboard() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Agents</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
                     {uniqueAgentNames.map((agentName) => (
                       <SelectItem key={agentName} value={agentName || ""}>
                         {agentName}
@@ -3938,6 +4239,7 @@ export default function Dashboard() {
             </div>
           </div>
         </Card>
+
 
         {appsLoading ? (
           <Card className="p-12" data-testid="card-loading-state">
@@ -4002,6 +4304,12 @@ export default function Dashboard() {
                         <Badge variant="outline" className="text-xs" data-testid={`badge-agent-${app.id}`}>
                           <User className="w-3 h-3 mr-1" />
                           {app.agentName}
+                        </Badge>
+                      )}
+                      {authData.role === "admin" && (app as any).referralPartnerName && (
+                        <Badge variant="outline" className="text-xs border-blue-400 text-blue-600 dark:text-blue-400" data-testid={`badge-partner-${app.id}`}>
+                          <User className="w-3 h-3 mr-1" />
+                          {(app as any).referralPartnerName}
                         </Badge>
                       )}
                     </div>
@@ -4124,6 +4432,25 @@ export default function Dashboard() {
                 </div>
               </Card>
             ))}
+
+            {/* Load more */}
+            {hasMore && (
+              <div className="flex justify-center pt-2 pb-4" data-testid="div-load-more">
+                <Button
+                  variant="outline"
+                  onClick={loadMore}
+                  disabled={isLoadingMore}
+                  data-testid="button-load-more"
+                >
+                  {isLoadingMore ? "Loading..." : "Load more applications"}
+                </Button>
+              </div>
+            )}
+            {!hasMore && applications.length > 100 && (
+              <p className="text-center text-xs text-muted-foreground py-3" data-testid="text-all-loaded">
+                All {applications.length} applications loaded — use search to filter further.
+              </p>
+            )}
           </div>
         ) : (
           <Card className="p-12" data-testid="card-empty-state">
@@ -4248,12 +4575,19 @@ export default function Dashboard() {
               </div>
 
               {/* Agent Information */}
-              {selectedAppDetails.agentName && (
+              {(selectedAppDetails.agentName || (selectedAppDetails as any).referralPartnerName) && (
                 <div>
                   <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Agent Information</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    <div><span className="font-medium">Agent:</span> {selectedAppDetails.agentName}</div>
-                    <div><span className="font-medium">Agent Email:</span> {selectedAppDetails.agentEmail || "N/A"}</div>
+                    {selectedAppDetails.agentName && (
+                      <>
+                        <div><span className="font-medium">Agent:</span> {selectedAppDetails.agentName}</div>
+                        <div><span className="font-medium">Agent Email:</span> {selectedAppDetails.agentEmail || "N/A"}</div>
+                      </>
+                    )}
+                    {(selectedAppDetails as any).referralPartnerName && (
+                      <div><span className="font-medium">Referring Partner:</span> {(selectedAppDetails as any).referralPartnerName}</div>
+                    )}
                   </div>
                 </div>
               )}

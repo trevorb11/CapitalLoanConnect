@@ -9,9 +9,10 @@ import archiver from "archiver";
 import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
+import { chirpService, ChirpApiError } from "./services/chirp";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand } from "./services/openai";
+import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, extractPositionTerms, extractPositionTermsFromPdfBuffer } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { notifyMerchantNewMessage } from "./services/twilio";
@@ -19,18 +20,101 @@ import { fireSmsStageEvent } from "./sms-middleware";
 import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
 import { pool, neonPool, db } from "./db";
-import { sql as drizzleSql } from "drizzle-orm";
+import { loanApplications, pageVisits, serviceInterests } from "@shared/schema";
+import { ilike, or, desc, sql, sql as drizzleSql } from "drizzle-orm";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
+import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail } from "./services/email";
 import { syncApplicationToSalesforce, syncDecisionToSalesforce } from "./services/salesforce";
+import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
+import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { z } from "zod";
-import type { LoanApplication } from "@shared/schema";
+import type { LoanApplication, MerchantBankSnapshot } from "@shared/schema";
 
 // Initialize Object Storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
+
+// ── Ads Leads GHL sync state (in-memory, reset on restart) ──────────────────
+const adsSyncState = {
+  running: false,
+  lastRunAt: null as string | null,
+  lastAddedCount: 0,
+  lastTotalFound: 0,
+  lastError: null as string | null,
+  nextRunAt: null as string | null,
+  active: false,      // true while the timed job is scheduled for today
+};
+
+const GHL_LOCATION_ID_SYNC = "n778xwOps9t8Q34eRPfM";
+const GHL_PRIVATE_TOKEN = process.env.GHL_PRIVATE_TOKEN;
+
+async function ghlGetContactsByTag(tag: string): Promise<any[]> {
+  const token = GHL_PRIVATE_TOKEN;
+  if (!token) throw new Error("GHL_PRIVATE_TOKEN not set");
+  const all: any[] = [];
+  let page = 1;
+  const pageLimit = 100;
+  while (true) {
+    const resp = await fetch("https://services.leadconnectorhq.com/contacts/search", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Version: "2021-07-28" },
+      body: JSON.stringify({
+        locationId: GHL_LOCATION_ID_SYNC,
+        filters: [{ field: "tags", operator: "contains", value: tag }],
+        pageLimit,
+        page,
+      }),
+    });
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`GHL ${resp.status}: ${txt.slice(0, 200)}`);
+    }
+    const data = await resp.json();
+    const contacts = data.contacts || [];
+    all.push(...contacts);
+    if (contacts.length < pageLimit) break;
+    page++;
+  }
+  return all;
+}
+
+async function runAdsLeadsSync() {
+  if (adsSyncState.running) return;
+  adsSyncState.running = true;
+  adsSyncState.lastError = null;
+  try {
+    const TAG = "clicked ads";
+    const contacts = await ghlGetContactsByTag(TAG);
+    adsSyncState.lastTotalFound = contacts.length;
+    let added = 0;
+    for (const c of contacts) {
+      const email = (c.email || "").toLowerCase().trim();
+      if (!email) continue;
+      const firstName = c.firstName || c.first_name || "";
+      const lastName = c.lastName || c.last_name || "";
+      const phone = c.phone || "";
+      const businessName = c.companyName || c.company_name || "";
+      const result = await db.execute(sql`
+        INSERT INTO ads_leads (email, first_name, last_name, phone, business_name, lead_type, last_activity, created_at)
+        VALUES (${email}, ${firstName}, ${lastName}, ${phone || null}, ${businessName || null},
+                'Clicked through Email', NOW(), NOW())
+        ON CONFLICT (email) DO NOTHING
+      `);
+      if (String(result.rowCount) === "1") added++;
+    }
+    adsSyncState.lastAddedCount = added;
+    adsSyncState.lastRunAt = new Date().toISOString();
+    console.log(`[ADS-SYNC] GHL tag sync complete: found=${contacts.length} added=${added}`);
+  } catch (err: any) {
+    adsSyncState.lastError = err?.message || "Unknown error";
+    console.error("[ADS-SYNC] GHL tag sync error:", err?.message);
+  } finally {
+    adsSyncState.running = false;
+  }
+}
 
 // Log Object Storage status on startup
 if (objectStorage.isConfigured()) {
@@ -253,6 +337,28 @@ function filterEmptyValues(data: Record<string, any>): Record<string, any> {
   return filtered;
 }
 
+/**
+ * Returns true if an application/update came from Guide Funding Group.
+ * Checks agentName, referrerUrl, referralSource, trackingSource, and sourcePage
+ * so that forms "beamed in" from guidefundinggroup.com are always caught.
+ */
+function isGFGSubmission(data: any): boolean {
+  if (!data) return false;
+  const GFG_DOMAIN = "guidefundinggroup.com";
+  const GFG_NAME = "guide funding group";
+  const check = (v: any) => typeof v === "string" && (
+    v.toLowerCase().includes(GFG_DOMAIN) || v.toLowerCase().includes(GFG_NAME)
+  );
+  return (
+    check(data.agentName) ||
+    check(data.referrerUrl) ||
+    check(data.referralSource) ||
+    check(data.trackingSource) ||
+    check(data.sourcePage) ||
+    check(data.referrerUrl)
+  );
+}
+
 function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string; faxNumber?: string } {
   const { recaptchaToken, faxNumber, ...rest } = data;
   const sanitized = { ...rest };
@@ -316,6 +422,19 @@ function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: 
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ── INDUSTRY PAGE REDIRECTS ────────────────────────────────────────────
+  const industryRedirects = [
+    "construction",
+    "restaurant",
+    "trucking",
+    "auto-repair",
+  ];
+  for (const slug of industryRedirects) {
+    app.get(`/industries/${slug}`, (_req: Request, res: Response) => {
+      res.redirect(301, `https://fund.todaycapitalgroup.com/industries/${slug}`);
+    });
+  }
+
   // ── ADMIN PORTAL PREVIEW TOKEN STORE (in-memory, 30-min TTL) ──────────
   const adminPreviewTokens = new Map<string, { email: string; name: string; businessName: string; expiresAt: number }>();
   setInterval(() => {
@@ -342,6 +461,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ========================================
   app.get("/api/health", (_req, res) => {
     res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // Diagnostic: returns the server's outbound IP — useful for IP whitelisting
+  app.get("/api/server-ip", async (_req, res) => {
+    try {
+      const r = await fetch("https://api.ipify.org?format=json");
+      const d = await r.json() as { ip: string };
+      res.json({ ip: d.ip, env: process.env.NODE_ENV });
+    } catch {
+      res.status(500).json({ error: "Could not resolve IP" });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -373,6 +503,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
   ];
 
   // GET /api/admin/claude/ping — auth test
+  // ---------------------------------------------------------------------------
+  // Batch retry: re-sync all failed decisions to Salesforce
+  // ---------------------------------------------------------------------------
+  app.post("/api/admin/sf-retry-failed", async (req, res) => {
+    const apiKey = req.headers["x-claude-api-key"] as string;
+    const isAuthed = apiKey === process.env.CLAUDE_API_KEY || req.session?.user;
+    if (!isAuthed) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      // Get all decisions that failed or were never attempted
+      const failed = await storage.getBusinessUnderwritingDecisions();
+      const toRetry = failed.filter(d =>
+        d.sfSynced === false || d.sfSyncedAt === null
+      );
+
+      let retried = 0, succeeded = 0, stillFailed = 0;
+
+      for (const decision of toRetry) {
+        try {
+          const result = await syncDecisionToSalesforce(decision);
+          retried++;
+
+          await storage.updateBusinessUnderwritingDecision(decision.id, {
+            sfSynced: result.synced,
+            sfSyncedAt: new Date(),
+            sfSyncMessage: result.error || (result.action || "ok"),
+            sfOpportunityId: result.oppId || null,
+          });
+
+          if (result.synced) succeeded++;
+          else stillFailed++;
+
+          // Rate limit: small delay between API calls
+          await new Promise(r => setTimeout(r, 200));
+        } catch (err: any) {
+          stillFailed++;
+          console.error(`[SF Retry] Error for ${decision.businessName}:`, err.message);
+        }
+      }
+
+      console.log(`[SF Retry] Done: retried=${retried}, succeeded=${succeeded}, failed=${stillFailed}`);
+      return res.json({ ok: true, retried, succeeded, stillFailed, total: toRetry.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Salesforce inbound poll — call periodically or via cron to sync SF → dashboard
+  // ---------------------------------------------------------------------------
+  app.post("/api/admin/sf-poll", async (req, res) => {
+    // Auth: require Claude API key or admin session
+    const apiKey = req.headers["x-claude-api-key"] as string;
+    const isAuthed = apiKey === process.env.CLAUDE_API_KEY || req.session?.user;
+    if (!isAuthed) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      const result = await pollSalesforceChanges();
+      return res.json({ ok: true, ...result });
+    } catch (err: any) {
+      console.error("[SF Poll] Endpoint error:", err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/admin/claude/ping", claudeAuth, (_req, res) => {
     res.json({ ok: true, message: "Claude API authenticated", timestamp: new Date().toISOString() });
   });
@@ -586,6 +781,175 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ═══════════════════════════════════════════════════════════════
+
+  // ========================================
+  // PAGE VISIT TRACKER (email-link click-throughs)
+  // ========================================
+
+  app.post("/api/analytics/track-visit", async (req: Request, res: Response) => {
+    try {
+      const { email, phone, interest, pagePath, fullUrl, referrer, utmSource, utmCampaign, utmMedium } = req.body;
+
+      // Must have at least email or phone to be worth tracking
+      if (!email && !phone) {
+        return res.status(400).json({ error: "email or phone required" });
+      }
+
+      await db.insert(pageVisits).values({
+        email: email?.toLowerCase()?.trim() || null,
+        phone: phone?.trim() || null,
+        interest: interest?.trim() || null,
+        pagePath: pagePath || null,
+        fullUrl: fullUrl || null,
+        referrer: referrer || null,
+        utmSource: utmSource || null,
+        utmCampaign: utmCampaign || null,
+        utmMedium: utmMedium || null,
+      });
+
+      console.log(`[VISIT] Tracked: ${email || phone} → ${pagePath}${interest ? ` (interest: ${interest})` : ""}`);
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[VISIT] Error tracking visit:", err.message);
+      return res.status(500).json({ error: "Failed to track visit" });
+    }
+  });
+
+  // GET /api/analytics/page-visits — admin view of tracked visits
+  app.get("/api/analytics/page-visits", async (req: Request, res: Response) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role !== "admin") {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+      const visits = await db.select().from(pageVisits).orderBy(sql`created_at DESC`).limit(500);
+      return res.json({ visits });
+    } catch (err: any) {
+      console.error("[VISIT] Error fetching visits:", err.message);
+      return res.status(500).json({ error: "Failed to fetch visits" });
+    }
+  });
+
+  // POST /api/ads/inquiry — saves /ads page form submissions to the database
+  app.post("/api/ads/inquiry", async (req: Request, res: Response) => {
+    try {
+      const { email, website, adSpend, interest, utmSource, utmCampaign } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+
+      await db.insert(serviceInterests).values({
+        email: email.toLowerCase().trim(),
+        service: "ads-consultation",
+        otherDetails: JSON.stringify({ website: website || null, adSpend: adSpend || null, interest: interest || null }),
+        source: utmSource || "direct",
+        utmSource: utmSource || null,
+        utmCampaign: utmCampaign || null,
+      });
+
+      console.log(`[ADS] Inquiry saved: ${email} | adSpend=${adSpend} | website=${website}`);
+      const { subject: adsSub, html: adsHtml } = buildAdsInquiryEmail({ email, website, adSpend, interest, utmSource, utmCampaign });
+      sendMarketingNotification(adsSub, adsHtml).catch(() => {});
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[ADS] Error saving inquiry:", err.message);
+      return res.status(500).json({ error: "Failed to save inquiry" });
+    }
+  });
+
+  // GET /api/ads/inquiries — admin view of all /ads form submissions
+  app.get("/api/ads/inquiries", async (req: Request, res: Response) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+      const rows = await db
+        .select()
+        .from(serviceInterests)
+        .where(sql`service = 'ads-consultation'`)
+        .orderBy(desc(serviceInterests.createdAt));
+      return res.json({ inquiries: rows });
+    } catch (err: any) {
+      console.error("[ADS] Error fetching inquiries:", err.message);
+      return res.status(500).json({ error: "Failed to fetch inquiries" });
+    }
+  });
+
+  // GET /api/ads-leads — contacts from ads_leads table (seeded from CSV + form submissions)
+  app.get("/api/ads-leads", async (req: Request, res: Response) => {
+    try {
+      if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
+        return res.status(401).json({ error: "Admin access required" });
+      }
+      const result = await db.execute(sql`SELECT * FROM ads_leads ORDER BY created_at DESC`);
+      const toIso = (val: any) => {
+        if (!val) return '';
+        if (val instanceof Date) return val.toISOString();
+        if (typeof val === 'string') return val;
+        return String(val);
+      };
+      const contacts = result.rows.map((r: any) => ({
+        id: String(r.id),
+        name: [r.first_name, r.last_name].filter(Boolean).join(' ') || r.email || 'Unknown',
+        businessName: r.business_name || '',
+        email: r.email || '',
+        phone: r.phone || '',
+        city: r.city || '',
+        state: r.state || '',
+        monthlyRevenue: r.monthly_revenue || null,
+        source: r.source || '',
+        leadBatch: r.lead_batch || '',
+        tags: [],
+        leadType: r.lead_type || 'Clicked through Email',
+        lastActivity: toIso(r.last_activity) || toIso(r.created_at),
+        notes: r.notes || '',
+      }));
+      return res.json({ contacts, total: contacts.length });
+    } catch (err: any) {
+      console.error("[ADS-LEADS] Error fetching ads leads:", err.message);
+      return res.status(500).json({ error: "Failed to fetch ads leads" });
+    }
+  });
+
+  // GET /api/ads-leads/sync-status — returns last sync info
+  app.get("/api/ads-leads/sync-status", (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    return res.json(adsSyncState);
+  });
+
+  // POST /api/ads-leads/sync — manually trigger a GHL tag sync
+  app.post("/api/ads-leads/sync", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === "merchant" || req.session.user.role === "lead") {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    if (adsSyncState.running) {
+      return res.json({ ...adsSyncState, message: "Sync already in progress" });
+    }
+    runAdsLeadsSync();
+    return res.json({ ...adsSyncState, message: "Sync started" });
+  });
+
+  // POST /api/ads-consultation/submit — /ads page form submission, adds to ads_leads
+  app.post("/api/ads-consultation/submit", async (req: Request, res: Response) => {
+    try {
+      const { email, website, monthlySpend, intent } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+      const normalizedEmail = email.toLowerCase().trim();
+      const notes = [website && `Website: ${website}`, monthlySpend && `Ad Spend: ${monthlySpend}`, intent && `Intent: ${intent}`].filter(Boolean).join(' | ');
+      await db.execute(sql`
+        INSERT INTO ads_leads (email, notes, lead_type, last_activity)
+        VALUES (${normalizedEmail}, ${notes || null}, 'Form Submission', NOW())
+        ON CONFLICT (email) DO UPDATE SET
+          notes = EXCLUDED.notes,
+          lead_type = CASE WHEN ads_leads.lead_type = 'Form Submission' THEN 'Form Submission' ELSE ads_leads.lead_type END,
+          last_activity = NOW()
+      `);
+      console.log(`[ADS-LEADS] Form submission saved: ${normalizedEmail}`);
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[ADS-LEADS] Form submit error:", err.message);
+      return res.status(500).json({ error: "Failed to save submission" });
+    }
+  });
 
   // ========================================
   // LEAD SOURCE ANALYTICS ENDPOINT
@@ -1116,11 +1480,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Send webhook only (GHL API sync disabled for now)
         // Only send intake webhook when explicitly completed
         if (applicationData.isCompleted && updatedApp) {
-          ghlService.sendIntakeWebhook(updatedApp).catch(err => 
+          ghlService.sendIntakeWebhook(updatedApp).catch(err =>
             console.error("Intake webhook error (non-blocking):", err)
           );
         }
-        
+
+        // Guide Funding Group: fire webhooks on update if GFG submission
+        // Detected via agentName, referrerUrl (guidefundinggroup.com), referralSource, trackingSource, or sourcePage
+        const updatedOrExisting = updatedApp || existingApp;
+        const isGFGUpdate = isGFGSubmission(updatedOrExisting) || isGFGSubmission(applicationData);
+        if (isGFGUpdate && !applicationData.isCompleted && updatedApp) {
+          console.log(`[GFG] Guide Funding Group update detected — firing intake webhook for ${updatedApp.email}`);
+          ghlService.sendIntakeWebhook(updatedApp).catch(err =>
+            console.error("[GFG] Intake webhook error (non-blocking):", err)
+          );
+
+          const hasFullAppData = !!(updatedApp as any).socialSecurityNumber && !!(updatedApp as any).dateOfBirth;
+          if (hasFullAppData) {
+            console.log(`[GFG] Full application data detected on update — firing full application webhook for ${updatedApp.email}`);
+            ghlService.sendWebhook(updatedApp).catch(err =>
+              console.error("[GFG] Full application webhook error (non-blocking):", err)
+            );
+          }
+        }
+
         // Return with validation errors if any (data was still saved)
         if (postStepValidationErrors.length > 0) {
           return res.json({
@@ -1153,8 +1536,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Sync to Salesforce (fire-and-forget — never blocks the merchant experience)
-      syncApplicationToSalesforce(updatedApp || application).catch(err =>
+      syncApplicationToSalesforce(updatedApp || application).then(sfResult => {
+        // Also sync to dialer_contacts with SF IDs
+        if (sfResult.synced) {
+          syncApplicationToDialer(updatedApp || application, {
+            accountId: sfResult.accountId,
+            contactId: sfResult.contactId,
+            oppId: sfResult.oppId,
+          }).catch(err => console.error("[Dialer Sync] Error:", err.message));
+        }
+      }).catch(err =>
         console.error('[SF Sync] Background error:', err.message)
+      );
+
+      // Also sync to dialer even without SF (for business field updates)
+      syncApplicationToDialer(updatedApp || application).catch(err =>
+        console.error("[Dialer Sync] Error:", err.message)
       );
       
       // Only send intake webhook when explicitly completed
@@ -1190,6 +1587,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
             triggerKey: 'trigger.portal_after_intake',
             sendLink: true,
           });
+        }
+      }
+
+      // Guide Funding Group: always fire intake webhook when a GFG submission arrives,
+      // even if isCompleted isn't set (GFG sends data without completion flags).
+      // Detected via agentName, referrerUrl (guidefundinggroup.com), referralSource, trackingSource, or sourcePage.
+      const finalApp = updatedApp || application;
+      const isGFG = isGFGSubmission(finalApp) || isGFGSubmission(applicationData);
+      if (isGFG && !applicationData.isCompleted) {
+        console.log(`[GFG] Guide Funding Group submission detected — firing intake webhook for ${finalApp.email}`);
+        ghlService.sendIntakeWebhook(finalApp).catch(err =>
+          console.error("[GFG] Intake webhook error (non-blocking):", err)
+        );
+
+        // If GFG submission has full application data (SSN, DOB, address present), also fire the full application webhook
+        const hasFullAppData = !!(finalApp as any).socialSecurityNumber && !!(finalApp as any).dateOfBirth;
+        if (hasFullAppData) {
+          console.log(`[GFG] Full application data detected — firing full application webhook for ${finalApp.email}`);
+          ghlService.sendWebhook(finalApp).catch(err =>
+            console.error("[GFG] Full application webhook error (non-blocking):", err)
+          );
         }
       }
 
@@ -1416,6 +1834,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.agentViewUrl = generateApplicationUrl(req, id);
       }
 
+      // Keep ownerCsz and businessCsz in sync whenever individual address fields are
+      // updated — the display reads the combined CSZ field first, so it must stay current.
+      const needsAddressSync = updates.ownerCity || updates.ownerState || updates.ownerZip
+                            || updates.city || updates.state || updates.zipCode;
+      if (needsAddressSync) {
+        const existingApp2 = await storage.getLoanApplication(id);
+
+        if (updates.ownerCity || updates.ownerState || updates.ownerZip) {
+          const city  = updates.ownerCity  ?? existingApp2?.ownerCity  ?? '';
+          const state = updates.ownerState ?? existingApp2?.ownerState ?? '';
+          const zip   = updates.ownerZip   ?? existingApp2?.ownerZip   ?? '';
+          if (city || state || zip) {
+            updates.ownerCsz = `${city}, ${state} ${zip}`.trim();
+          }
+        }
+
+        if (updates.city || updates.state || updates.zipCode) {
+          const city  = updates.city     ?? existingApp2?.city     ?? '';
+          const state = updates.state    ?? existingApp2?.state    ?? '';
+          const zip   = updates.zipCode  ?? existingApp2?.zipCode  ?? '';
+          if (city || state || zip) {
+            updates.businessCsz = `${city}, ${state} ${zip}`.trim();
+          }
+        }
+      }
+
+      // Keep businessAddress and businessStreetAddress in sync — both columns store
+      // the same value but different parts of the codebase read different fields.
+      // Whichever is updated, mirror it to the other so edits are always visible.
+      if (updates.businessAddress && !updates.businessStreetAddress) {
+        updates.businessStreetAddress = updates.businessAddress;
+      } else if (updates.businessStreetAddress && !updates.businessAddress) {
+        updates.businessAddress = updates.businessStreetAddress;
+      }
+
+      // Keep ficoScoreExact and personalCreditScoreRange in sync — the edit form
+      // writes ficoScoreExact but many display areas read personalCreditScoreRange.
+      if (updates.ficoScoreExact && !updates.personalCreditScoreRange) {
+        updates.personalCreditScoreRange = updates.ficoScoreExact;
+      } else if (updates.personalCreditScoreRange && !updates.ficoScoreExact) {
+        updates.ficoScoreExact = updates.personalCreditScoreRange;
+      }
+
+      // Keep legalBusinessName and businessName in sync — the admin edit form saves
+      // legalBusinessName but some downstream endpoints (merchant portal, GHL, etc.)
+      // read businessName directly.
+      if (updates.legalBusinessName && !updates.businessName) {
+        updates.businessName = updates.legalBusinessName;
+      } else if (updates.businessName && !updates.legalBusinessName) {
+        updates.legalBusinessName = updates.businessName;
+      }
+
       // Check if application was already completed BEFORE applying updates
       const appBeforeUpdate = await storage.getLoanApplication(id);
       const wasAlreadyCompleted = appBeforeUpdate?.isFullApplicationCompleted === true;
@@ -1583,34 +2053,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!req.session.user?.isAuthenticated) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      
-      const allApplications = await storage.getAllLoanApplications();
-      console.log(`[DASHBOARD] Total applications in DB: ${allApplications.length}`);
-      console.log(`[DASHBOARD] User role: ${req.session.user.role}, email: ${req.session.user.agentEmail || 'N/A'}`);
-      
-      // Filter based on role
-      if (req.session.user.role === 'admin') {
-        // Admin sees all applications
-        console.log(`[DASHBOARD] Returning all ${allApplications.length} applications for admin`);
-        return res.json(allApplications);
-      } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
-        // Agent sees only their applications
+
+      const search  = (req.query.search  as string) || undefined;
+      const offset  = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+      // Admin default: 100 most recent records per page when not searching (prevents 3-5 MB payloads)
+      const ADMIN_LIMIT = 100;
+
+      // Build partner name lookup map (lightweight — partners table is tiny)
+      const allPartners = await storage.getAllPartners();
+      const partnerNameMap = new Map(allPartners.map(p => [p.id, p.contactName]));
+
+      const enrich = (apps: any[]) => apps.map(app => ({
+        ...app,
+        referralPartnerName: app.referralPartnerId ? (partnerNameMap.get(app.referralPartnerId) ?? null) : null,
+      }));
+
+      const role = req.session.user.role;
+      console.log(`[DASHBOARD] User role: ${role}, search: "${search || ''}", email: ${req.session.user.agentEmail || 'N/A'}`);
+
+      if (role === 'admin' || role === 'underwriting') {
+        // Paginate: 100 records per page when not searching; searching returns all matches
+        const limit = search ? undefined : ADMIN_LIMIT;
+        const pageOffset = search ? 0 : offset;
+        const [apps, total] = await Promise.all([
+          storage.getApplicationsSummaryFiltered({ search, limit, offset: pageOffset }),
+          storage.getApplicationsCount({ search }),
+        ]);
+        const enriched = enrich(apps);
+        console.log(`[DASHBOARD] Returning ${enriched.length} (offset ${pageOffset}) of ${total} for ${role}`);
+        res.setHeader('X-Total-Count', String(total));
+        return res.json(enriched);
+
+      } else if ((role === 'agent' || role === 'user') && req.session.user.agentEmail) {
         const agentEmail = req.session.user.agentEmail.toLowerCase();
-        const filteredApplications = allApplications.filter(
-          (app) => (app.agentEmail || '').toLowerCase() === agentEmail
-        );
-        console.log(`[DASHBOARD] Returning ${filteredApplications.length} applications for agent ${agentEmail}`);
-        return res.json(filteredApplications);
-      } else if (req.session.user.role === 'user' && req.session.user.agentEmail) {
-        // User role - can only see applications they submitted (restricted access)
-        const userEmail = req.session.user.agentEmail.toLowerCase();
-        const filteredApplications = allApplications.filter(
-          (app) => (app.agentEmail || '').toLowerCase() === userEmail
-        );
-        console.log(`[DASHBOARD] Returning ${filteredApplications.length} applications for user ${userEmail}`);
-        return res.json(filteredApplications);
+        const apps = await storage.getApplicationsSummaryFiltered({ search, agentEmail });
+        console.log(`[DASHBOARD] Returning ${apps.length} applications for ${role} ${agentEmail}`);
+        res.setHeader('X-Total-Count', String(apps.length));
+        return res.json(enrich(apps));
       }
-      
+
       return res.status(403).json({ error: "Access denied" });
     } catch (error) {
       console.error("Error fetching applications:", error);
@@ -1640,8 +2121,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Application not found" });
       }
       
-      // Return application data (agent view is secure by obscurity via UUID)
-      res.json(application);
+      // Prevent browser/CDN caching so edits are always reflected immediately
+      res.set({
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      });
+
+      // ─── Normalize: resolve all combined-vs-individual field conflicts ───────
+      // Individual fields are ALWAYS authoritative when present. Combined/CSZ
+      // fields (businessCsz, ownerCsz) are only used as a fallback when the
+      // individual fields are completely absent. This ensures that admin edits
+      // to individual fields are always reflected immediately in the view.
+      const normalized: Record<string, any> = { ...application };
+
+      // Helper: parse "City, ST 12345" → { city, state, zip }
+      function parseCsz(csz: string): { city: string; state: string; zip: string } {
+        const parts = (csz || '').split(',').map(p => p.trim());
+        if (parts.length >= 2) {
+          const stateZip = parts[1].split(' ').filter(Boolean);
+          return { city: parts[0], state: stateZip[0] || '', zip: stateZip[1] || '' };
+        }
+        return { city: '', state: '', zip: '' };
+      }
+
+      // Business address — prefer individual fields; fall back to businessCsz
+      if (!normalized.city && !normalized.state && !normalized.zipCode && normalized.businessCsz) {
+        const parsed = parseCsz(normalized.businessCsz);
+        normalized.city      = parsed.city;
+        normalized.state     = parsed.state;
+        normalized.zipCode   = parsed.zip;
+      }
+
+      // Owner address — prefer individual fields; fall back to ownerCsz
+      if (!normalized.ownerCity && !normalized.ownerState && !normalized.ownerZip && normalized.ownerCsz) {
+        const parsed = parseCsz(normalized.ownerCsz);
+        normalized.ownerCity  = parsed.city;
+        normalized.ownerState = parsed.state;
+        normalized.ownerZip   = parsed.zip;
+      }
+
+      // Return normalized data — the view reads individual fields only
+      res.json(normalized);
     } catch (error) {
       console.error("Error fetching application for view:", error);
       res.status(500).json({ error: "Failed to fetch application" });
@@ -2575,6 +3096,717 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========================================
+  // CHIRP INTEGRATION ROUTES
+  // ========================================
+
+  // POST /api/chirp/request — create a verification request for a customer
+  // Server-side proxy to Chirp API. chirpAxios sends Origin/Referer headers
+  // that match chirp.digital's own interface to satisfy Cloudflare WAF.
+  app.post("/api/chirp/request", async (req: Request, res: Response) => {
+    try {
+      const { firstName, lastName, email, phone, applicationId, customerId } = req.body;
+      if (!firstName || !lastName || !email || !phone) {
+        return res.status(400).json({ error: "firstName, lastName, email, and phone are required" });
+      }
+      const result = await chirpService.createVerificationRequest({
+        cusFirstName: firstName,
+        cusLastName: lastName,
+        cusEmail: email,
+        cusPhone: phone,
+        customerId: customerId || applicationId,
+        leadId: applicationId,
+        leadProvider: "TodayCapital",
+      });
+      console.log(`[CHIRP] Created request ${result.requestCode} for ${firstName} ${lastName}`);
+      // Fire-and-forget: store requestCode against the matching loan application
+      if (result.requestCode) {
+        storage.saveChirpRequestCode(email, phone, result.requestCode).catch(e =>
+          console.warn("[CHIRP] Failed to persist requestCode:", e)
+        );
+      }
+      // Sanitize URLs — Chirp sandbox sometimes returns "NA" as a placeholder
+      const sanitizeUrl = (u?: string) =>
+        u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
+      const safeWidget = sanitizeUrl(result.widgetUrl)
+        || `https://chirp.digital/api/widget?requestCode=${result.requestCode}`;
+      const safeVerification = sanitizeUrl(result.verificationUrl) || safeWidget;
+      res.json({ success: true, ...result, widgetUrl: safeWidget, verificationUrl: safeVerification });
+    } catch (err: any) {
+      console.error("[CHIRP] createVerificationRequest error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/connections — list all applications with a stored Chirp request code
+  app.get("/api/chirp/connections", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    try {
+      const apps = await storage.getApplicationsWithChirpCode();
+      const connections = apps.map(a => ({
+        id: a.id,
+        fullName: a.fullName,
+        email: a.email,
+        phone: a.phone,
+        businessName: a.businessName,
+        requestedAmount: a.requestedAmount,
+        chirpRequestCode: (a as any).chirpRequestCode,
+        createdAt: a.createdAt,
+      }));
+      res.json(connections);
+    } catch (err: any) {
+      console.error("[CHIRP] getApplicationsWithChirpCode error:", err);
+      res.status(500).json({ error: "Failed to fetch Chirp connections" });
+    }
+  });
+
+  // GET /api/admin/underwriter-snapshot/:email — quick-glance banking data for underwriters
+  app.get("/api/admin/underwriter-snapshot/:email", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant') {
+      return res.status(401).json({ error: "Admin authentication required" });
+    }
+    try {
+      const email = decodeURIComponent(req.params.email);
+      const snapshot = await storage.getMerchantBankSnapshot(email);
+      if (!snapshot) {
+        return res.json({ hasData: false });
+      }
+      const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
+      const metrics = (snapshot.metrics as any) || {};
+      const summary = (snapshot.summaryData as any) || {};
+      const activityByMonth: any[] = summary?.activityByMonth || [];
+
+      res.json({
+        hasData: true,
+        merchantEmail: snapshot.merchantEmail,
+        chirpRequestCode: snapshot.chirpRequestCode,
+        institutionName: snapshot.institutionName,
+        status: snapshot.status,
+        isAccountConnected: Boolean(snapshot.isAccountConnected),
+        connectedAt: snapshot.connectedAt,
+        lastSyncedAt: snapshot.lastSyncedAt,
+        accounts: accounts.map(a => ({
+          name: a.accountName || "Account",
+          type: a.type || "",
+          balance: Number(a.balance) || 0,
+          chirpAccountId: a.chirpAccountId || null,
+        })),
+        metrics: {
+          monthlyRevenue: Number(metrics.monthlyRevenue) || 0,
+          monthlyExpenses: Number(metrics.monthlyExpenses) || 0,
+          netCashFlow: Number(metrics.netCashFlow) || 0,
+          avgBalance: Number(metrics.avgBalance) || 0,
+          currentBalance: Number(metrics.currentBalance) || 0,
+          monthsAnalyzed: Number(metrics.monthsAnalyzed) || 0,
+          revenueTrend: metrics.revenueTrend || null,
+          healthScore: Number(metrics.healthScore) || 0,
+        },
+        // Monthly breakdown for underwriter review
+        activityByMonth: activityByMonth
+          .filter((m: any) => (m.month || "").toLowerCase() !== "all")
+          .map((m: any) => ({
+            month: m.month,
+            totalCredit: m.totalCredit,
+            totalDebit: m.totalDebit,
+            averageDailyBalance: m.averageDailyBalance,
+            net: m.net || m.totalNet,
+          })),
+      });
+    } catch (err: any) {
+      console.error("[ADMIN] underwriter-snapshot error:", err);
+      res.status(500).json({ error: "Failed to load underwriter snapshot" });
+    }
+  });
+
+  // GET /api/chirp/request/:code/pdf/download — stream PDF bank statement report
+  app.get("/api/chirp/request/:code/pdf/download", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    try {
+      const { code } = req.params;
+      const { accountNumber, chirpAccountId } = req.query as { accountNumber?: string; chirpAccountId?: string };
+
+      let account: { accountNumber?: string; chirpAccountId?: string } = {};
+      if (chirpAccountId) {
+        account = { chirpAccountId };
+      } else if (accountNumber) {
+        account = { accountNumber };
+      } else {
+        // Attempt to find the first account from details
+        try {
+          const details = await chirpService.getRequestDetails(code, { numberOfDays: 90, sort: "DESCENDING" });
+          const firstAccount = (details as any)?.accounts?.[0];
+          if (firstAccount?.chirpAccountId) account = { chirpAccountId: firstAccount.chirpAccountId };
+          else if (firstAccount?.accountNumber) account = { accountNumber: firstAccount.accountNumber };
+        } catch (_) { /* fall through with empty account */ }
+      }
+
+      const pdfBuffer = await chirpService.downloadReportPdfBytes(code, account);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="chirp-report-${code}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("[CHIRP] PDF download error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/chirp/request/:code/token — generate ChirpLink widget token
+  app.post("/api/chirp/request/:code/token", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const result = await chirpService.genAuthTokenForChirpLink(code);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] genAuthTokenForChirpLink error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/request/:code/status — poll verification status
+  app.get("/api/chirp/request/:code/status", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const result = await chirpService.getRequestStatus(code);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] getRequestStatus error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/request/:code/details — get full verified data (accounts + transactions)
+  app.get("/api/chirp/request/:code/details", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const days = req.query.days ? Number(req.query.days) : 90;
+      const result = await chirpService.getRequestDetails(code, { numberOfDays: days, sort: "DESCENDING" });
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] getRequestDetails error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/request/:code/summary — pre-computed financial summary
+  app.get("/api/chirp/request/:code/summary", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const result = await chirpService.getSummaryInfoByRequestCode(code);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] getSummaryInfo error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/chirp/request/:code/pdf — generate PDF report
+  app.post("/api/chirp/request/:code/pdf", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const { accountNumber, chirpAccountId } = req.body;
+      const result = await chirpService.getRequestReportAsPDF(code, { accountNumber, chirpAccountId });
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] getRequestReportAsPDF error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/chirp/request/:code/refresh — refresh a verified connection
+  app.post("/api/chirp/request/:code/refresh", async (req: Request, res: Response) => {
+    try {
+      const { code } = req.params;
+      const result = await chirpService.refreshRequest(code, req.body.metaInfo);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[CHIRP] refreshRequest error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/chirp/health — verify token is configured and environment
+  app.get("/api/chirp/health", async (_req: Request, res: Response) => {
+    const configured = !!process.env.CHIRP_API_TOKEN;
+    res.json({
+      configured,
+      environment: process.env.CHIRP_ENV || "production",
+      clientId: process.env.CHIRP_CLIENT_ID || null,
+    });
+  });
+
+  // ========================================
+  // MERCHANT-SCOPED CHIRP BANKING ROUTES
+  //
+  // These endpoints power the merchant portal's banking view. They never
+  // expose raw request codes to the client; they resolve the merchant's
+  // connection from the authenticated session and proxy through our cached
+  // snapshot so we only hit Chirp on (a) initial connect, (b) an explicit
+  // sync, or (c) a Chirp webhook push. Everything else is pure DB reads.
+  // ========================================
+
+  // Shared helper: build + persist merchant snapshot from Chirp responses
+  // Helper: register a Chirp webhook for a given requestCode so Chirp pushes
+  // status updates to us (inbound) rather than us polling (outbound GET blocked
+  // by Cloudflare WAF on some server IPs).
+  async function registerChirpWebhookForCode(requestCode: string): Promise<void> {
+    const baseUrl = process.env.PUBLIC_BASE_URL;
+    if (!baseUrl) return;
+    const webhookUrl = `${baseUrl.replace(/\/$/, "")}/api/chirp/webhook`;
+    try {
+      await chirpService.createCustomerNotification({
+        name: `merchant-portal-status-${requestCode}`,
+        requestCode,
+        type: "REQUEST_STATUS",
+        rule: "GREATER_THAN",
+        webhookUrl: [webhookUrl],
+        notifyIf: ["ALL"],
+        notifyViaWebhook: true,
+      });
+      console.log(`[CHIRP] Webhook registered for requestCode ${requestCode} → ${webhookUrl}`);
+    } catch (e: any) {
+      console.warn(`[CHIRP] Failed to register webhook for ${requestCode}:`, e?.message || e);
+    }
+  }
+
+  async function syncMerchantSnapshotFromChirp(merchantEmail: string, requestCode: string): Promise<MerchantBankSnapshot | null> {
+    // Track whether ANY of the three read endpoints succeeded.
+    let anySucceeded = false;
+    let status: any = null;
+    let details: any = null;
+    let summary: any = null;
+
+    try {
+      [status, details, summary] = await Promise.all([
+        chirpService.getRequestStatus(requestCode).catch((e) => { console.warn(`[CHIRP] getRequestStatus 403/err: ${e?.message}`); return null; }),
+        chirpService.getRequestDetails(requestCode, { numberOfDays: 90, sort: "DESCENDING" }).catch((e) => { console.warn(`[CHIRP] getRequestDetails 403/err: ${e?.message}`); return null; }),
+        chirpService.getSummaryInfoByRequestCode(requestCode).catch((e) => { console.warn(`[CHIRP] getSummaryInfo 403/err: ${e?.message}`); return null; }),
+      ]);
+      anySucceeded = status !== null || details !== null || summary !== null;
+    } catch (err: any) {
+      console.warn(`[CHIRP] sync parallel fetch error: ${err?.message}`);
+    }
+
+    // If ALL endpoints failed (likely WAF block), register a webhook so we get
+    // notified when data becomes available, then return the current snapshot.
+    if (!anySucceeded) {
+      console.warn(`[CHIRP] All read endpoints blocked for ${requestCode}. Registering webhook for push delivery.`);
+      registerChirpWebhookForCode(requestCode).catch(() => {});
+      return await storage.getMerchantBankSnapshotByRequestCode(requestCode);
+    }
+
+    try {
+      const accounts: any[] = (details as any)?.Accounts || (details as any)?.accounts || [];
+      const institutionName =
+        (details as any)?.InstitutionName ||
+        (details as any)?.institutionName ||
+        status?.selectedBank ||
+        null;
+
+      // Derive merchant-friendly metrics from Chirp's pre-aggregated summary.
+      const parseMoney = (v: unknown): number => {
+        if (typeof v === "number") return v;
+        if (typeof v !== "string") return 0;
+        const n = Number.parseFloat(v.replace(/[^0-9.\-]/g, ""));
+        return Number.isFinite(n) ? n : 0;
+      };
+
+      // Primary: use Chirp's pre-aggregated summary when available
+      const activityByMonth: any[] = (summary as any)?.activityByMonth || [];
+      const perMonth = activityByMonth.filter((m: any) => (m.month || "").toLowerCase() !== "all");
+      let monthlyRevenue = 0;
+      let monthlyExpenses = 0;
+      let avgBalance = 0;
+      let currentBalance = 0;
+      let monthsAnalyzed = perMonth.length;
+
+      if (perMonth.length > 0) {
+        // Summary endpoint available — use pre-computed aggregates
+        monthlyRevenue = perMonth.reduce((s, m) => s + parseMoney(m.totalCredit), 0) / perMonth.length;
+        monthlyExpenses = perMonth.reduce((s, m) => s + parseMoney(m.totalDebit), 0) / perMonth.length;
+        const overall = activityByMonth.find((m: any) => (m.month || "").toLowerCase() === "all") || activityByMonth[0];
+        avgBalance = parseMoney(overall?.averageDailyBalance ?? overall?.averageMonthlyBalance);
+        currentBalance = parseMoney((summary as any)?.currentBalance);
+      } else if (details) {
+        // Fallback: compute metrics from raw transaction data in details.
+        // Chirp returns TransactionSummaries as a flat array where each item
+        // IS a transaction (not a wrapper with a sub-array).
+        console.log(`[CHIRP] Summary unavailable for ${requestCode}, computing from transaction details`);
+        const allTxns: any[] = (details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || [];
+
+        // Group transactions by month, using type/is_income to classify
+        const byMonth = new Map<string, { credits: number; debits: number }>();
+        for (const txn of allTxns) {
+          const date = txn.date || txn.transacted_at || txn.posted_at || "";
+          const monthKey = date.substring(0, 7); // YYYY-MM
+          if (!monthKey) continue;
+          const entry = byMonth.get(monthKey) || { credits: 0, debits: 0 };
+          const amt = Math.abs(parseMoney(txn.amount));
+          const isCredit = txn.type === "CREDIT" || txn.is_income === true || txn.is_direct_deposit === true;
+          if (isCredit) {
+            entry.credits += amt;
+          } else {
+            entry.debits += amt;
+          }
+          byMonth.set(monthKey, entry);
+        }
+
+        monthsAnalyzed = byMonth.size;
+        if (monthsAnalyzed > 0) {
+          let totalCredits = 0, totalDebits = 0;
+          for (const [, v] of byMonth) {
+            totalCredits += v.credits;
+            totalDebits += v.debits;
+          }
+          monthlyRevenue = totalCredits / monthsAnalyzed;
+          monthlyExpenses = totalDebits / monthsAnalyzed;
+        }
+
+        // Current balance = sum of all account balances
+        if (accounts.length > 0) {
+          currentBalance = accounts.reduce((s: number, a: any) => s + parseMoney(a.balance ?? a.available_balance ?? 0), 0);
+          avgBalance = currentBalance / accounts.length;
+        }
+
+        console.log(`[CHIRP] Computed from ${allTxns.length} txns over ${monthsAnalyzed} months: revenue=$${Math.round(monthlyRevenue)}, expenses=$${Math.round(monthlyExpenses)}, balance=$${Math.round(currentBalance)}`);
+      }
+
+      const netCashFlow = monthlyRevenue - monthlyExpenses;
+
+      // Compute revenue trend from month-over-month data
+      let revenueTrend: "growing" | "stable" | "declining" | null = null;
+      if (perMonth.length >= 2) {
+        // perMonth from summary is typically sorted newest-first; compare recent vs older half
+        const half = Math.floor(perMonth.length / 2);
+        const recentAvg = perMonth.slice(0, half).reduce((s, m) => s + parseMoney(m.totalCredit), 0) / half;
+        const olderAvg = perMonth.slice(half).reduce((s, m) => s + parseMoney(m.totalCredit), 0) / (perMonth.length - half);
+        const changePercent = olderAvg > 0 ? ((recentAvg - olderAvg) / olderAvg) * 100 : 0;
+        revenueTrend = changePercent > 5 ? "growing" : changePercent < -5 ? "declining" : "stable";
+      }
+
+      // Compute financial health score (0-100)
+      // Factors: positive cash flow, balance cushion, revenue consistency
+      const cashFlowRatio = monthlyRevenue > 0 ? netCashFlow / monthlyRevenue : 0;
+      const balanceCushion = monthlyExpenses > 0 ? currentBalance / monthlyExpenses : 0;
+      const cashFlowScore = Math.min(40, Math.max(0, cashFlowRatio * 100)); // 0-40 pts
+      const balanceScore = Math.min(30, Math.max(0, balanceCushion * 10));   // 0-30 pts
+      const trendScore = revenueTrend === "growing" ? 30 : revenueTrend === "stable" ? 20 : 10; // 10-30 pts
+      const healthScore = Math.round(Math.min(100, cashFlowScore + balanceScore + trendScore));
+
+      const snapshot = await storage.upsertMerchantBankSnapshot({
+        merchantEmail,
+        chirpRequestCode: requestCode,
+        institutionName,
+        status: status?.status || null,
+        isAccountConnected: Boolean(status?.isAccountConnected),
+        accountsData: accounts.map((a: any) => ({
+          accountName: a.name || a.accountName || "Account",
+          type: a.type || a.accountType || "",
+          subtype: a.subtype || "",
+          balance: parseMoney(a.balance ?? a.available_balance ?? 0),
+          chirpAccountId: a.chirpAccountId || a.guid || null,
+        })),
+        summaryData: summary || null,
+        metrics: {
+          monthlyRevenue: Math.round(monthlyRevenue * 100) / 100,
+          monthlyExpenses: Math.round(monthlyExpenses * 100) / 100,
+          netCashFlow: Math.round(netCashFlow * 100) / 100,
+          avgBalance: Math.round(avgBalance * 100) / 100,
+          currentBalance: Math.round(currentBalance * 100) / 100,
+          monthsAnalyzed,
+          revenueTrend,
+          healthScore,
+        },
+        lastSyncedAt: new Date(),
+      });
+      return snapshot;
+    } catch (err: any) {
+      console.error(`[CHIRP] syncMerchantSnapshotFromChirp upsert failed for ${merchantEmail}:`, err?.message || err);
+      return null;
+    }
+  }
+
+  // POST /api/merchant/chirp/connect — create a verification request for the
+  // authenticated merchant and stash a stub snapshot so we can look up the
+  // request code later by merchant email.
+  app.post("/api/merchant/chirp/connect", async (req: Request, res: Response) => {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      // Pull contact info from the business underwriting decision so the merchant doesn't re-enter it.
+      const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(merchantEmail);
+      const primary = decisions[0];
+      const fullName = (req.session.user as any).merchantName || primary?.businessName || "";
+      const [firstGuess, ...restGuess] = fullName.trim().split(/\s+/);
+      const firstName = (req.body?.firstName || firstGuess || "Merchant").toString();
+      const lastName = (req.body?.lastName || restGuess.join(" ") || "Owner").toString();
+      const phone = (req.body?.phone || primary?.businessPhone || "").toString();
+
+      if (!phone) {
+        return res.status(400).json({ error: "We need a phone number on file to connect your bank. Please update your profile or contact your rep." });
+      }
+
+      const result = await chirpService.createVerificationRequest({
+        cusFirstName: firstName,
+        cusLastName: lastName,
+        cusEmail: merchantEmail,
+        cusPhone: phone,
+        customerId: primary?.id,
+        leadId: primary?.id,
+        leadProvider: "TodayCapitalMerchantPortal",
+      });
+
+      // Persist a stub snapshot tied to merchant email so we can look up the
+      // request code later without trusting the client.
+      await storage.upsertMerchantBankSnapshot({
+        merchantEmail,
+        chirpRequestCode: result.requestCode,
+        status: "Unverified",
+        isAccountConnected: false,
+      });
+
+      // Also persist on the loan application for cross-compat with existing admin views.
+      storage.saveChirpRequestCode(merchantEmail, phone, result.requestCode).catch(e =>
+        console.warn("[CHIRP] Failed to mirror requestCode on loan_applications:", e)
+      );
+
+      // Best-effort: register a webhook notification so Chirp pushes us status/refresh updates.
+      if (process.env.PUBLIC_BASE_URL) {
+        const webhookUrl = `${process.env.PUBLIC_BASE_URL.replace(/\/$/, "")}/api/chirp/webhook`;
+        chirpService.createCustomerNotification({
+          name: `merchant-portal-${result.requestCode}`,
+          requestCode: result.requestCode,
+          type: "REQUEST_STATUS",
+          rule: "GREATER_THAN",
+          webhookUrl: [webhookUrl],
+          notifyViaWebhook: true,
+          notifyViaEmail: false,
+          active: true,
+        }).catch(e => console.warn("[CHIRP] Failed to register REQUEST_STATUS webhook:", e?.message || e));
+        chirpService.createCustomerNotification({
+          name: `merchant-portal-refresh-${result.requestCode}`,
+          requestCode: result.requestCode,
+          type: "REFRESH",
+          rule: "GREATER_THAN",
+          webhookUrl: [webhookUrl],
+          notifyViaWebhook: true,
+          notifyViaEmail: false,
+          active: true,
+        }).catch(e => console.warn("[CHIRP] Failed to register REFRESH webhook:", e?.message || e));
+      }
+
+      // Sanitize URLs — Chirp sandbox sometimes returns "NA" as a placeholder
+      const sanitizeUrl = (u?: string) =>
+        u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
+      const safeWidget = sanitizeUrl(result.widgetUrl)
+        || `https://chirp.digital/api/widget?requestCode=${result.requestCode}`;
+      const safeVerification = sanitizeUrl(result.verificationUrl) || safeWidget;
+
+      res.json({
+        success: true,
+        widgetUrl: safeWidget,
+        verificationUrl: safeVerification,
+        requestCode: result.requestCode,
+      });
+    } catch (err: any) {
+      console.error("[CHIRP] merchant connect error:", err);
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message || "Failed to start bank connection" });
+    }
+  });
+
+  // GET /api/merchant/banking/insights — pure DB read, called on every portal
+  // view. Returns our cached snapshot; never hits Chirp.
+  app.get("/api/merchant/banking/insights", async (req: Request, res: Response) => {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const snapshot = await storage.getMerchantBankSnapshot(merchantEmail);
+      if (!snapshot) {
+        return res.json({ connected: false, hasPendingConnection: false });
+      }
+      const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
+      const metrics = (snapshot.metrics as any) || {};
+      // hasPendingConnection = we have a requestCode but bank isn't confirmed connected yet
+      const hasPendingConnection = Boolean(snapshot.chirpRequestCode) && !snapshot.isAccountConnected;
+      res.json({
+        connected: Boolean(snapshot.isAccountConnected),
+        hasPendingConnection,
+        status: snapshot.status,
+        institutionName: snapshot.institutionName,
+        connectedAt: snapshot.connectedAt,
+        lastSyncedAt: snapshot.lastSyncedAt,
+        accounts: accounts.map(a => ({
+          name: a.accountName || "Account",
+          type: a.type || "",
+          balance: Number(a.balance) || 0,
+        })),
+        metrics: {
+          monthlyRevenue: Number(metrics.monthlyRevenue) || 0,
+          monthlyExpenses: Number(metrics.monthlyExpenses) || 0,
+          netCashFlow: Number(metrics.netCashFlow) || 0,
+          avgBalance: Number(metrics.avgBalance) || 0,
+          currentBalance: Number(metrics.currentBalance) || 0,
+          monthsAnalyzed: Number(metrics.monthsAnalyzed) || 0,
+          revenueTrend: metrics.revenueTrend || null,
+          healthScore: Number(metrics.healthScore) || 0,
+        },
+      });
+    } catch (err: any) {
+      console.error("[CHIRP] banking insights error:", err);
+      res.status(500).json({ error: "Failed to load banking insights" });
+    }
+  });
+
+  // POST /api/merchant/chirp/sync — explicit sync. Reads from Chirp's own
+  // cache (getRequestDetails + getSummaryInfoByRequestCode) and does NOT call
+  // /refresh (which would bill a bank sync). Server-side cooldown prevents
+  // back-to-back calls from racing.
+  app.post("/api/merchant/chirp/sync", async (req: Request, res: Response) => {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const existing = await storage.getMerchantBankSnapshot(merchantEmail);
+      if (!existing?.chirpRequestCode) {
+        return res.status(400).json({ error: "No bank connection found. Connect your bank first." });
+      }
+      // Cooldown: once every 10 minutes for already-connected accounts.
+      // Skip cooldown when account is still pending (not yet confirmed connected).
+      const COOLDOWN_MS = 10 * 60 * 1000;
+      const isPending = !existing.isAccountConnected;
+      if (!isPending && existing.lastSyncedAt && Date.now() - new Date(existing.lastSyncedAt).getTime() < COOLDOWN_MS) {
+        return res.status(429).json({ error: "Recently synced — try again in a few minutes." });
+      }
+      const snapshot = await syncMerchantSnapshotFromChirp(merchantEmail, existing.chirpRequestCode);
+      if (!snapshot) {
+        // Sync returned null — could mean WAF block; webhook is already registered.
+        // Return a non-error 200 so the merchant portal doesn't show an error toast.
+        return res.json({ success: true, pending: true, message: "Your bank status will update automatically when Chirp sends us the data." });
+      }
+      res.json({ success: true, lastSyncedAt: snapshot.lastSyncedAt });
+    } catch (err: any) {
+      console.error("[CHIRP] merchant sync error:", err);
+      res.status(500).json({ error: err.message || "Sync failed" });
+    }
+  });
+
+  // POST /api/merchant/chirp/register-webhook — re-registers the Chirp webhook
+  // for the merchant's existing requestCode. Useful when PUBLIC_BASE_URL was not
+  // set at the time the request was created, or after server restart.
+  app.post("/api/merchant/chirp/register-webhook", async (req: Request, res: Response) => {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const snapshot = await storage.getMerchantBankSnapshot(merchantEmail);
+      if (!snapshot?.chirpRequestCode) {
+        return res.status(400).json({ error: "No bank connection found." });
+      }
+      await registerChirpWebhookForCode(snapshot.chirpRequestCode);
+      res.json({ success: true, requestCode: snapshot.chirpRequestCode });
+    } catch (err: any) {
+      console.error("[CHIRP] register-webhook error:", err);
+      res.status(500).json({ error: err.message || "Failed to register webhook" });
+    }
+  });
+
+  // DELETE /api/merchant/chirp/connection — disconnect (removes our cached
+  // snapshot; Chirp side remains subscribed until we call unsubscribeRequest
+  // from an admin flow — keeping this scope tight on purpose).
+  app.delete("/api/merchant/chirp/connection", async (req: Request, res: Response) => {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      await storage.deleteMerchantBankSnapshot(merchantEmail);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[CHIRP] disconnect error:", err);
+      res.status(500).json({ error: "Failed to disconnect" });
+    }
+  });
+
+  // POST /api/chirp/webhook — Chirp pushes REQUEST_STATUS / REFRESH events
+  // here. We extract status from the payload itself so we don't need to
+  // make outbound API calls (which Cloudflare may block on some server IPs).
+  app.post("/api/chirp/webhook", async (req: Request, res: Response) => {
+    try {
+      const secret = process.env.CHIRP_WEBHOOK_SECRET;
+      if (secret) {
+        const header = (req.headers["x-chirp-secret"] || req.headers["authorization"]) as string | undefined;
+        if (!header || !header.includes(secret)) {
+          return res.status(401).json({ error: "Unauthorized webhook" });
+        }
+      }
+      const body = req.body || {};
+      console.log("[CHIRP] webhook received:", JSON.stringify(body).slice(0, 500));
+
+      // Chirp payload shapes vary; flatten nested data/payload wrapper if present
+      const data = body?.data || body?.payload || body;
+      const requestCode: string | undefined =
+        data.requestCode || data.RequestCode || data.request_code ||
+        body?.data?.requestCode || body?.payload?.requestCode;
+      if (!requestCode) {
+        console.warn("[CHIRP] webhook received without requestCode", body);
+        return res.status(400).json({ error: "Missing requestCode" });
+      }
+
+      const snapshot = await storage.getMerchantBankSnapshotByRequestCode(requestCode);
+      if (!snapshot) {
+        console.log(`[CHIRP] webhook for unknown requestCode ${requestCode} — ignoring`);
+        return res.json({ success: true, ignored: true });
+      }
+
+      // --- Extract status info directly from webhook payload ---
+      // Chirp sends various field names depending on notification type.
+      const statusStr: string =
+        data.status || data.Status || data.requestStatus || data.RequestStatus || "";
+      const isVerified = /verif/i.test(statusStr) || statusStr === "1";
+      const isConnected: boolean =
+        data.isAccountConnected ?? data.IsAccountConnected ?? data.accountConnected ?? isVerified;
+      const institutionName: string =
+        data.institutionName || data.InstitutionName || data.selectedBank || data.bank || snapshot.institutionName || "";
+      const accounts: any[] = data.accounts || data.Accounts || [];
+
+      // Persist what we know from the webhook payload immediately so the
+      // merchant portal reflects the new status without waiting for a sync.
+      await storage.upsertMerchantBankSnapshot({
+        merchantEmail: snapshot.merchantEmail,
+        chirpRequestCode: requestCode,
+        status: statusStr || snapshot.status,
+        isAccountConnected: Boolean(isConnected),
+        institutionName: institutionName || snapshot.institutionName,
+        connectedAt: isConnected && !snapshot.connectedAt ? new Date() : snapshot.connectedAt,
+        accountsData: accounts.length > 0 ? accounts : (snapshot.accountsData as any[]),
+        // Preserve existing metrics if the webhook doesn't include them
+        metrics: snapshot.metrics,
+        lastSyncedAt: new Date(),
+      });
+      console.log(`[CHIRP] webhook updated snapshot for ${snapshot.merchantEmail}: connected=${isConnected}, status="${statusStr}"`);
+
+      // Also attempt a full data sync (gets financial metrics if API is reachable).
+      // Fire-and-forget — don't let API errors block the webhook 200 response.
+      syncMerchantSnapshotFromChirp(snapshot.merchantEmail, requestCode).catch(e =>
+        console.warn("[CHIRP] webhook-triggered full sync failed (may be WAF block):", e?.message || e)
+      );
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[CHIRP] webhook error:", err);
+      res.status(500).json({ error: "Webhook handler failed" });
+    }
+  });
+
+  // ========================================
   // LENDERS API
   // ========================================
   
@@ -2615,16 +3847,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { 
-        email, businessName, applicationId, receivedAt, approvalStatus, approvalNotes, 
+        applicationId, receivedAt, approvalStatus, approvalNotes, 
         lenderId, lenderName,
         // Approval form fields
         advanceAmount, term, paymentFrequency, factorRate, totalPayback, netAfterFees, approvalDate,
         // Internal upload flag (skips GHL webhook)
         isInternal
       } = req.body;
-      
+
+      // If the request comes from an authenticated lead session, always use the session
+      // email (overrides body) and tag the upload as "lead-portal" to keep it identifiable
+      // for the team. Skip the GHL webhook — leads are internal, not public intake forms.
+      const leadSessionEmail = (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail)
+        ? req.session.user.merchantEmail as string
+        : null;
+      const isLeadPortalUpload = Boolean(leadSessionEmail);
+
+      let email: string = leadSessionEmail || req.body.email;
+      let businessName: string = req.body.businessName;
+
       if (!email) {
         return res.status(400).json({ error: "Email is required" });
+      }
+
+      // For lead portal uploads, look up business name from their account if not supplied
+      if (isLeadPortalUpload && !businessName) {
+        try {
+          const acct = await db.execute(sql`SELECT business_name FROM lead_portal_accounts WHERE email = ${email} LIMIT 1`);
+          businessName = (acct.rows[0] as any)?.business_name || businessName;
+        } catch (_) {}
       }
       
       // Parse receivedAt date if provided (for internal uploads with custom date)
@@ -2688,6 +3939,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storedFileName: storedFileName,
         mimeType: file.mimetype,
         fileSize: file.size,
+        source: isLeadPortalUpload ? "lead-portal" : undefined,
         viewToken,
         receivedAt: receivedAtDate,
         approvalStatus: approvalStatus || null,
@@ -2732,8 +3984,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Session-based throttling: only sends one webhook per email per 15-minute session
       // This prevents spam when users upload multiple PDFs at once
       // DISABLED for internal uploads (isInternal flag) - will be re-enabled with new webhook URL later
-      if (isInternal === 'true') {
-        console.log(`[BANK UPLOAD] Webhook DISABLED for internal upload (${email}) - functionality preserved for future use`);
+      // Also DISABLED for lead-portal uploads — leads are internal users, not public intake form submissions
+      if (isInternal === 'true' || isLeadPortalUpload) {
+        console.log(`[BANK UPLOAD] Webhook DISABLED for ${isLeadPortalUpload ? 'lead-portal' : 'internal'} upload (${email})`);
       } else {
         const nameParts = (matchingApp?.fullName || '').trim().split(' ');
         ghlService.sendBankStatementUploadedWebhook({
@@ -3199,14 +4452,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const agentName = req.session.user.agentName;
         const agentEmail = (req.session.user.agentEmail || '').toLowerCase();
 
-        // Build set of business emails from apps assigned to this agent
-        const allApps = await storage.getAllLoanApplications();
-        const agentBusinessEmails = new Set<string>();
-        for (const app of allApps) {
-          if (app.agentEmail && app.agentEmail.toLowerCase() === agentEmail && app.email) {
-            agentBusinessEmails.add(app.email.toLowerCase());
-          }
-        }
+        // Build set of business emails from apps assigned to this agent —
+        // use a targeted query instead of scanning all 1,300+ applications.
+        const agentApps = await storage.getApplicationEmailsByAgentEmail(agentEmail);
+        const agentBusinessEmails = new Set<string>(agentApps);
 
         const agentDecisions = decisions.filter(d => {
           // Direct assignment
@@ -3403,16 +4652,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateBusinessUnderwritingDecision(decision.id, {
             sfSynced: sfResult.synced,
             sfSyncedAt: new Date(),
-            sfSyncMessage: sfResult.error || sfResult.action || null,
+            sfSyncMessage: sfResult.error || (sfResult.action || 'ok'),
             sfOpportunityId: sfResult.oppId || null,
           });
-          console.log(`[UNDERWRITING] SF sync for ${businessEmail}: ${sfResult.synced ? 'success' : 'failed'} - ${sfResult.error || sfResult.action}`);
+          console.log(`[UNDERWRITING] SF sync for ${businessEmail}: ${sfResult.synced ? 'success' : 'skipped'} - ${sfResult.action || sfResult.error || 'no-op'}`);
+
+          // Alert on sync failure via SMS
+          if (!sfResult.synced && process.env.SMS_MIDDLEWARE_URL) {
+            try {
+              const alertPhone = process.env.SYNC_ALERT_PHONE || "+18189174757";
+              await fetch(`${process.env.SMS_MIDDLEWARE_URL.replace('/stage-event', '')}/webhooks/ghl/workflow-trigger`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  phone: alertPhone,
+                  message: `[TCG Sync Alert] Decision for ${decision.businessName || businessEmail} failed to sync to SF: ${sfResult.error || sfResult.reason || 'unknown'}`,
+                }),
+              }).catch(() => {});
+            } catch {}
+          }
         } catch (dbErr) {
           console.error(`[UNDERWRITING] Failed to save SF sync status for ${businessEmail}:`, dbErr);
         }
       }).catch(err => {
         console.error(`[UNDERWRITING] SF sync error for ${businessEmail}:`, err);
       });
+
+      // Sync decision to dialer_contacts (async, non-blocking)
+      syncDecisionToDialer(decision).catch(err =>
+        console.error(`[UNDERWRITING] Dialer sync error for ${businessEmail}:`, err)
+      );
 
       // SMS: approval_issued + auto congratulations message
       if (status === 'approved' && businessPhone) {
@@ -3568,16 +4837,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateBusinessUnderwritingDecision(id, {
             sfSynced: sfResult.synced,
             sfSyncedAt: new Date(),
-            sfSyncMessage: sfResult.error || sfResult.action || null,
+            sfSyncMessage: sfResult.error || (sfResult.action || 'ok'),
             sfOpportunityId: sfResult.oppId || null,
           });
-          console.log(`[UNDERWRITING] SF sync for decision ${id}: ${sfResult.synced ? 'success' : 'failed'} - ${sfResult.error || sfResult.action}`);
+          console.log(`[UNDERWRITING] SF sync for decision ${id}: ${sfResult.synced ? 'success' : 'skipped'} - ${sfResult.action || sfResult.error || 'no-op'}`);
         } catch (dbErr) {
           console.error(`[UNDERWRITING] Failed to save SF sync status for decision ${id}:`, dbErr);
         }
       }).catch(err => {
         console.error(`[UNDERWRITING] SF sync error for decision ${id}:`, err);
       });
+
+      // Sync updated decision to dialer_contacts (async, non-blocking)
+      syncDecisionToDialer(updated).catch(err =>
+        console.error(`[UNDERWRITING] Dialer sync error for decision ${id}:`, err)
+      );
 
       // SMS: approval_issued + auto congratulations (PATCH path)
       if (updates.status === 'approved' && updated.businessPhone) {
@@ -4018,6 +5292,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (f.includes('biweekly') || f.includes('bi-weekly')) return 'biweekly';
     return 'weekly';
   }
+
+  // Accept Offer click tracking — fires GHL webhook then redirects to /congratulations
+  app.get("/api/approval-letter/:slug/accept", async (req, res) => {
+    const { slug } = req.params;
+
+    try {
+      const decision = await storage.getBusinessUnderwritingDecisionBySlug(slug);
+
+      // Build /congratulations redirect params from whatever we have
+      const params = new URLSearchParams();
+      if (decision?.businessEmail) params.set("email", decision.businessEmail);
+      if (decision?.businessName) params.set("businessName", decision.businessName);
+      if (decision?.businessPhone) params.set("phone", decision.businessPhone);
+      if (decision?.ghlOpportunityId) params.set("opportunityId", decision.ghlOpportunityId);
+
+      // Fire GHL webhook in background (don't block the redirect)
+      if (decision) {
+        const GHL_ACCEPT_WEBHOOK_URL =
+          "https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/52ad2d89-b393-4f32-a102-5b835e7f6db7";
+
+        const payload = {
+          event: "accept_offer_clicked",
+          email: decision.businessEmail,
+          businessName: decision.businessName || null,
+          phone: decision.businessPhone || null,
+          lender: decision.lender || null,
+          advanceAmount: decision.advanceAmount ? String(decision.advanceAmount) : null,
+          term: decision.term || null,
+          ghlOpportunityId: decision.ghlOpportunityId || null,
+          slug,
+          clickedAt: new Date().toISOString(),
+        };
+
+        console.log(`[ACCEPT OFFER] Firing GHL webhook for ${decision.businessEmail}`, payload);
+
+        fetch(GHL_ACCEPT_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then((r) => {
+            if (!r.ok) r.text().then((t) => console.error(`[ACCEPT OFFER] GHL webhook failed (${r.status}): ${t}`));
+            else console.log(`[ACCEPT OFFER] GHL webhook sent for ${decision.businessEmail}`);
+          })
+          .catch((e) => console.error("[ACCEPT OFFER] GHL webhook error:", e));
+      }
+
+      res.redirect(302, `/congratulations${params.toString() ? `?${params.toString()}` : ""}`);
+    } catch (error) {
+      console.error("[ACCEPT OFFER] Error:", error);
+      res.redirect(302, "/congratulations");
+    }
+  });
 
   // Get approval letter by slug (public route for approved businesses)
   app.get("/api/approval-letter/:slug", async (req, res) => {
@@ -4931,10 +6258,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Download blank application template as PDF (matching completed application style)
   app.get("/api/application-template", async (req, res) => {
     try {
+      const templateType = (req.query.type as string) || 'standard';
+      const isRedacted   = templateType === 'redacted';
+      const includeLingo = templateType === 'lcg';
+      const includeSignature = templateType === 'signature';
+      const typeLabels: Record<string, string> = {
+        standard: 'Standard', signature: 'Signature', lcg: 'LCG', redacted: 'Redacted',
+      };
+      const typeLabel = typeLabels[templateType] || 'Standard';
+
       const doc = new PDFDocument({ margin: 0, size: 'A4' });
       
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", 'attachment; filename="Application-Template.pdf"');
+      res.setHeader("Content-Disposition", `attachment; filename="Application-Template-${typeLabel}.pdf"`);
       
       doc.pipe(res);
       
@@ -5032,10 +6368,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       yPos += rowSpacing;
       
       addField('Phone:', leftCol, yPos, fieldWidth);
-      addField('SSN:', rightCol, yPos, fieldWidth);
+      if (isRedacted) {
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('SSN:', rightCol, yPos);
+        doc.rect(rightCol, yPos + 10, fieldWidth, fieldHeight).fillAndStroke('#F0F0F0', '#E5E7EB');
+        doc.fillColor('#C0C0C0').fontSize(9).font('Helvetica').text('[REDACTED]', rightCol + 8, yPos + 17);
+      } else {
+        addField('SSN:', rightCol, yPos, fieldWidth);
+      }
       yPos += rowSpacing;
       
-      addField('Date of Birth:', leftCol, yPos, fieldWidth);
+      if (isRedacted) {
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Date of Birth:', leftCol, yPos);
+        doc.rect(leftCol, yPos + 10, fieldWidth, fieldHeight).fillAndStroke('#F0F0F0', '#E5E7EB');
+        doc.fillColor('#C0C0C0').fontSize(9).font('Helvetica').text('[REDACTED]', leftCol + 8, yPos + 17);
+      } else {
+        addField('Date of Birth:', leftCol, yPos, fieldWidth);
+      }
       addField('FICO Score:', rightCol, yPos, fieldWidth);
       yPos += rowSpacing;
       
@@ -5046,6 +6394,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       addField('City:', leftCol, yPos, fieldWidth);
       addField('State:', rightCol, yPos, smallFieldWidth);
       addField('ZIP:', rightCol + 120, yPos, smallFieldWidth);
+      yPos += 50;
+
+      // — Signature section (signature template only) —
+      if (includeSignature) {
+        if (yPos > 680) { doc.addPage(); yPos = 50; }
+        doc.strokeColor(teal).lineWidth(2).moveTo(leftCol, yPos).lineTo(leftCol + 160, yPos).stroke();
+        yPos += 8;
+        doc.fillColor(darkNavy).fontSize(14).font('Helvetica-Bold').text('Applicant Signature', leftCol, yPos);
+        yPos += 28;
+        // Signature line
+        doc.strokeColor('#9CA3AF').lineWidth(1)
+          .moveTo(leftCol, yPos + 30).lineTo(leftCol + 230, yPos + 30).stroke();
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Signature', leftCol, yPos + 33);
+        // Date line
+        doc.strokeColor('#9CA3AF').lineWidth(1)
+          .moveTo(rightCol, yPos + 30).lineTo(rightCol + 140, yPos + 30).stroke();
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Date', rightCol, yPos + 33);
+        yPos += 60;
+        // Printed name line
+        doc.strokeColor('#9CA3AF').lineWidth(1)
+          .moveTo(leftCol, yPos).lineTo(leftCol + 230, yPos).stroke();
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Printed Name', leftCol, yPos + 3);
+        // Title line
+        doc.strokeColor('#9CA3AF').lineWidth(1)
+          .moveTo(rightCol, yPos).lineTo(rightCol + 140, yPos).stroke();
+        doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text('Title', rightCol, yPos + 3);
+      }
+
+      // — Authorization & Consent block (LCG template only) —
+      if (includeLingo) {
+        if (yPos > 620) { doc.addPage(); yPos = 50; }
+        doc.fillColor(darkNavy).fontSize(14).font('Helvetica-Bold').text('Authorization & Consent', leftCol, yPos);
+        doc.strokeColor(teal).lineWidth(2).moveTo(leftCol, yPos + 18).lineTo(leftCol + 160, yPos + 18).stroke();
+        yPos += 32;
+        const lingoText = 'The Merchant and Owner(s)/Officer(s) identified above (individually, and "Applicant") each represents, acknowledges and agrees that (1) all the information and documents provided to Today Capital Group LLC ("Representative") including credit card processor statements are true, accurate and complete, (2) Applicant will immediately notify Representative of any change in such information or financial condition, (3) Applicant authorizes Representative to disclose all information and documents that Representative may obtain including credit reports to the other persons or entities (collectively, "Assignees") that may be involved with or acquire commercial funding having daily repayment features or purchases of future receivables, including Merchant Cash Advance transactions, including without limitation the application therefor (collectively, "Transactions"), and each Assignee is authorized to use such information and documents, and share such information and documents with other Assignees, in connection with potential Transactions, (4) Representative and each Assignee will rely upon the accuracy and completeness of such information and documents, (5) Representative, Assignees, and each of their representatives, successors, assigns and designees (collectively, "Recipients") are authorized to request and receive and investigative reports, credit reports, statements from creditors or financial institutions, verification information, or any other information that a Recipient deems necessary, (6) Applicant waives and releases and claims against Recipients and any other information-providers arising from any act or omission relating to the requesting, receiving, or release of information, (7) each Owner/Officer represents that he or she is authorized to sign this form on behalf of Merchant and (8) Applicant consents to receive marketing calls and texts from Representative and its affiliates or assigns using automated technology. Consent is not a condition of funding. A copy of this authorization may be accepted as an original. Applicant further agrees to the use of electronic signatures for the execution of this document, including, but not limited to, the use of specialized electronic signature platforms.';
+        doc.fontSize(8).font('Helvetica').fillColor('#3C3C3C');
+        const lines = doc.heightOfString(lingoText, { width: 481 });
+        if (yPos + lines > 750) { doc.addPage(); yPos = 50; }
+        doc.text(lingoText, leftCol, yPos, { width: 481, lineGap: 2 });
+      }
       
       doc.end();
     } catch (error) {
@@ -5223,6 +6611,769 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching bot attempts count:", error);
       res.status(500).json({ error: "Failed to fetch count" });
+    }
+  });
+
+  // ========================================
+  // ACH AUTHORIZATION FORM
+  // ========================================
+
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS ach_authorizations (
+      id SERIAL PRIMARY KEY,
+      bank_name TEXT NOT NULL,
+      bank_address TEXT,
+      bank_city TEXT,
+      bank_state TEXT,
+      bank_zip TEXT,
+      account_type TEXT DEFAULT 'checking',
+      routing_number TEXT NOT NULL,
+      account_number TEXT NOT NULL,
+      debit_date TEXT,
+      amount TEXT,
+      business_name TEXT NOT NULL,
+      business_address TEXT,
+      business_city TEXT,
+      business_state TEXT,
+      business_zip TEXT,
+      contact_name TEXT,
+      contact_email TEXT,
+      contact_phone TEXT,
+      signature_data TEXT,
+      signed_at TIMESTAMP,
+      ip_address TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+  } catch (err) {
+    console.error("[ACH] Failed to ensure table:", err);
+  }
+
+  // POST /api/ach-form/submit — public endpoint for ACH form submission
+  app.post("/api/ach-form/submit", async (req: Request, res: Response) => {
+    try {
+      const {
+        bankName, bankAddress, bankCity, bankState, bankZip,
+        accountType, routingNumber, accountNumber,
+        debitDate, amount,
+        businessName, businessAddress, businessCity, businessState, businessZip,
+        contactName, contactEmail, contactPhone,
+        signatureData, signedAt,
+      } = req.body;
+
+      if (!bankName || !routingNumber || !accountNumber || !businessName) {
+        return res.status(400).json({ error: "Bank name, routing number, account number, and business name are required" });
+      }
+
+      if (routingNumber.length !== 9) {
+        return res.status(400).json({ error: "Routing number must be 9 digits" });
+      }
+
+      const ipAddress = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
+
+      await db.execute(sql`INSERT INTO ach_authorizations (
+        bank_name, bank_address, bank_city, bank_state, bank_zip,
+        account_type, routing_number, account_number,
+        debit_date, amount,
+        business_name, business_address, business_city, business_state, business_zip,
+        contact_name, contact_email, contact_phone,
+        signature_data, signed_at, ip_address
+      ) VALUES (
+        ${bankName}, ${bankAddress || null}, ${bankCity || null}, ${bankState || null}, ${bankZip || null},
+        ${accountType || 'checking'}, ${routingNumber}, ${accountNumber},
+        ${debitDate || null}, ${amount || null},
+        ${businessName}, ${businessAddress || null}, ${businessCity || null}, ${businessState || null}, ${businessZip || null},
+        ${contactName || null}, ${contactEmail || null}, ${contactPhone || null},
+        ${signatureData || null}, ${signedAt ? new Date(signedAt) : new Date()}, ${String(ipAddress)}
+      )`);
+
+      console.log(`[ACH] Authorization submitted: ${businessName} | ${contactEmail || bankName} | $${amount || '?'}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[ACH] Submit error:", err);
+      res.status(500).json({ error: "Failed to submit authorization" });
+    }
+  });
+
+  // GET /api/ach-form/submissions — admin view
+  app.get("/api/ach-form/submissions", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`SELECT id, bank_name, account_type, routing_number, account_number, debit_date, amount, business_name, contact_name, contact_email, contact_phone, signed_at, ip_address, created_at FROM ach_authorizations ORDER BY created_at DESC`);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[ACH] Fetch error:", err);
+      res.status(500).json({ error: "Failed to fetch submissions" });
+    }
+  });
+
+  // ========================================
+  // SERVICES INTEREST TRACKING
+  // ========================================
+
+  // ========================================
+  // ADS LEADS — seed CSV contacts on first run
+  // (Table is defined in shared/schema.ts and managed by Drizzle/publish flow)
+  // ========================================
+  try {
+    // Normalize any existing contacts: all non-form-submission leads → "Clicked through Email"
+    await db.execute(sql`UPDATE ads_leads SET lead_type = 'Clicked through Email' WHERE lead_type != 'Form Submission'`);
+
+    const countRes = await db.execute(sql`SELECT COUNT(*) FROM ads_leads WHERE lead_type != 'Form Submission'`);
+    if (String(countRes.rows[0]?.count ?? '0') === '0') {
+      const csvContacts = [
+        ['deniseb@burgessservices.com','Denise','Burgess','+13035882573','Burgess Services LLC','','','62031.50','','','Clicked through Email','2025-10-07'],
+        ['mochs@wclh.com','Mikel','Ochs','+14068024104','1978 LLC','Billings','MT','374011.00','SMA','SMA1','Clicked through Email','2025-10-03'],
+        ['todd@kingprecisionsolutions.com','Todd','King','+18773123858','King Precision Solutions','','','1169618.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['jed@fastpaypartners.com','Jed','Simon','+13109862048','Fast Pay Partners','','CA','216000.00','','','Clicked through Email','2026-04-14'],
+        ['jim.blair@aberdean.com','James','Blair','+16082049619','DOKKOBRAZIL, INC.','','','2395916.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['bl@specializedcrane.com','Brian','Lambrix','+19189913260','Specialized Hoisting and Hauling LLC','Tulsa','OK','42562.03','L4C','L4C14','Clicked through Email','2025-10-07'],
+        ['mcastaldo@mactecpackaging.com','Michael','Castaldo','+17324168525','MACTEC PACKAGING TECHNOLOGIES','','','1788716.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['joyce@se-oc.com','Joyce','Cumbo','+15055037228','GRANDVIEW TAVERN','','','1642214.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['terry@energytechhvac.com','Terry','Dipoma','+18015801230','TERRY DIPOMA','','','186796.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['bobfaia@mks-corp.com','Robert','Faia','+19787772196','MK SERVICES CORP.','','','10342450.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['emayfield@healthsourcechiro.com','Eric','Mayfield','+16128740705','MAYFIELD CHIROPRACTIC','','','357903.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['kleatherman@fitnessforumonline.com','Karen','Leatherman','+18436613800','KAL, INC.','','','1460051.00','UCC','UCC 4.6.26','Clicked through Email','2026-04-06'],
+        ['docvroom@advancedcarechiro.com','Brian','Vroom','+15033581417','ADVANCED CARE CHIROPRACTIC, P.C.','','','163981.00','','','Clicked through Email','2025-10-07'],
+        ['jvalore@wandynamics.com','Jason','Valore','+18774009490','WAN DYNAMICS, INC.','','','1031011.00','UCC','UCC 4.6.26','Clicked through Email','2026-03-31'],
+        ['ervin.redd@cruiseplanners.com','Ervin','Redd','+18582291356','Wayfare Travel','San Diego','CA','337000.00','SMA','SMA1','Clicked through Email','2025-10-20'],
+        ['david.cabral@elsequip.com','David','Cabral','+16173121765','469 LINCOLN STREET LLC','Boston','MA','133622.00','L4C','L4C14','Clicked through Email','2025-10-07'],
+        ['mark.edfort@evolutionmedcom.com','Mark','Edfort','+16109559621','Evolution Medical Communications','Allentown','PA','2637464.00','EGTML','EGTML1','Clicked through Email','2025-10-15'],
+        ['greg.plummer@enjoyrepeat.com','Gregory','Plummer','+13107173150','Enjoy Repeat, Inc.','Los Angeles','CA','128730.00','L4C','L4C14','Clicked through Email','2025-10-07'],
+      ];
+      for (const [email, firstName, lastName, phone, businessName, city, state, monthlyRevenue, source, leadBatch, leadType, createdDate] of csvContacts) {
+        await db.execute(sql`INSERT INTO ads_leads (email, first_name, last_name, phone, business_name, city, state, monthly_revenue, source, lead_batch, lead_type, last_activity, created_at)
+          VALUES (${email}, ${firstName}, ${lastName}, ${phone}, ${businessName}, ${city || null}, ${state || null}, ${monthlyRevenue}, ${source || null}, ${leadBatch || null}, ${leadType}, ${new Date('2026-04-30')}, ${new Date(createdDate)})
+          ON CONFLICT (email) DO NOTHING`);
+      }
+      console.log("[ADS-LEADS] Seeded 18 CSV contacts");
+    }
+
+    // Always upsert new batch contacts (ON CONFLICT DO NOTHING keeps existing rows safe)
+    const batchMay2026 = [
+      ['info@epiccg.com','Andrew','Painter','Clicked through Email','2026-05-04 20:25:00'],
+      ['noah@bnastaffing.com','Noah','Nielsen','Clicked through Email','2026-05-04 17:10:00'],
+      ['ncaron@macairgroup.com','Nicole','Caron','Clicked through Email','2026-05-04 18:49:00'],
+      ['daynah@microsoft.com','Dayna','Hailey','Clicked through Email','2026-05-04 17:09:00'],
+      ['rcastiglione@wnyasset.com','Rob','Castiglione','Clicked through Email','2026-05-04 17:07:00'],
+      ['lbarnes@eyeboston.com','Lisa','Barnes','Clicked through Email','2026-05-04 16:08:00'],
+      ['sara.b.wilson@cummins.com','Sara','Wilson','Clicked through Email','2026-05-04 16:08:00'],
+      ['nadkarni@dell.com','Nadkarni','Sachit','Clicked through Email','2026-05-04 16:08:00'],
+      ['minh.ly.2011@marshall.usc.edu','Mike','Ly','Clicked through Email','2026-05-04 20:53:00'],
+      ['todd@earthtrades.com','Todd','Henderson','Clicked through Email','2026-05-04 13:52:00'],
+      ['pete.eskew@id.me','Peter','Eskew','Clicked through Email','2026-05-04 12:07:00'],
+      ['tniles@negllc.us','Tim','Niles','Clicked through Email','2026-05-04 12:08:00'],
+      ['miljan.petkovic@roamingnetworks.com','Roaming','Networks','Clicked through Email','2026-05-04 12:08:00'],
+      ['marc@americandoor.com','Marc','Jurman','Clicked through Email','2026-05-04 11:09:00'],
+      ['kkoch1@psusd.us','Kevin','Koch','Clicked through Email','2026-05-04 11:09:00'],
+      ['lsutherland@vsi360.com','Len','Sutherland','Clicked through Email','2026-05-04 11:07:00'],
+      ['hfleishman@gtglobal.com','Herman','Fleishman','Clicked through Email','2026-05-04 11:29:00'],
+    ];
+    for (const [email, firstName, lastName, leadType, createdAt] of batchMay2026) {
+      await db.execute(sql`INSERT INTO ads_leads (email, first_name, last_name, lead_type, last_activity, created_at)
+        VALUES (${email}, ${firstName}, ${lastName}, ${leadType}, ${new Date('2026-05-04')}, ${new Date(createdAt)})
+        ON CONFLICT (email) DO NOTHING`);
+    }
+    // Update Denise Burgess last_activity — she clicked again May 4
+    await db.execute(sql`UPDATE ads_leads SET last_activity = ${new Date('2026-05-04 20:26:00')} WHERE email = 'deniseb@burgessservices.com'`);
+  } catch (err) {
+    console.error("[ADS-LEADS] Failed to seed contacts:", err);
+  }
+
+  // Ensure table exists
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS service_interests (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
+      phone TEXT,
+      business_name TEXT,
+      service TEXT NOT NULL,
+      other_details TEXT,
+      source TEXT,
+      utm_campaign TEXT,
+      utm_source TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+  } catch (err) {
+    console.error("[SERVICES] Failed to ensure table:", err);
+  }
+
+  // POST /api/services/interest — record a service interest click (no auth required)
+  app.post("/api/services/interest", async (req: Request, res: Response) => {
+    try {
+      const { email, firstName, lastName, phone, businessName, service, otherDetails, source, utmCampaign, utmSource } = req.body;
+      if (!email || !service) return res.status(400).json({ error: "Email and service are required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Check for duplicate click (same email + service in last 24 hours)
+      const existing = await db.execute(sql`SELECT id FROM service_interests WHERE email = ${normalizedEmail} AND service = ${service} AND created_at >= NOW() - INTERVAL '24 hours'`);
+      if (existing.rows.length > 0) {
+        return res.json({ success: true, message: "Already recorded" });
+      }
+
+      await db.execute(sql`INSERT INTO service_interests (email, first_name, last_name, phone, business_name, service, other_details, source, utm_campaign, utm_source)
+        VALUES (${normalizedEmail}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${service}, ${otherDetails || null}, ${source || 'direct'}, ${utmCampaign || null}, ${utmSource || null})`);
+
+      console.log(`[SERVICES] Interest recorded: ${normalizedEmail} -> ${service}`);
+      const { subject: svcSub, html: svcHtml } = buildServicesInterestEmail({ email: normalizedEmail, firstName, lastName, phone, businessName, service, otherDetails, source });
+      sendMarketingNotification(svcSub, svcHtml).catch(() => {});
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[SERVICES] interest error:", err);
+      res.status(500).json({ error: "Failed to record interest" });
+    }
+  });
+
+  // GET /api/services/interests — admin view of all interest clicks
+  app.get("/api/services/interests", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT service, COUNT(*) as clicks, COUNT(DISTINCT email) as unique_contacts,
+          array_agg(DISTINCT email ORDER BY email) as emails
+        FROM service_interests
+        GROUP BY service
+        ORDER BY clicks DESC
+      `);
+      const recent = await db.execute(sql`SELECT * FROM service_interests ORDER BY created_at DESC`);
+      res.json({ summary: result.rows, recent: recent.rows });
+    } catch (err: any) {
+      console.error("[SERVICES] interests fetch error:", err);
+      res.status(500).json({ error: "Failed to fetch interests" });
+    }
+  });
+
+  // GET /api/services/lookup — lookup contact info from loan_applications by email (for pre-filling)
+  app.get("/api/services/lookup", async (req: Request, res: Response) => {
+    const email = (req.query.email as string || "").toLowerCase().trim();
+    if (!email) return res.json({});
+    try {
+      const result = await db.execute(sql`SELECT full_name, phone, business_name FROM loan_applications WHERE email = ${email} ORDER BY created_at DESC LIMIT 1`);
+      if (result.rows.length > 0) {
+        const r = result.rows[0] as any;
+        const parts = (r.full_name || "").trim().split(/\s+/);
+        res.json({ firstName: parts[0] || "", lastName: parts.slice(1).join(" ") || "", phone: r.phone || "", businessName: r.business_name || "" });
+      } else {
+        res.json({});
+      }
+    } catch (_) {
+      res.json({});
+    }
+  });
+
+  // ========================================
+  // ANALYTICS DASHBOARD API
+  // ========================================
+
+  // GET /api/analytics/overview — top-level KPIs
+  app.get("/api/analytics/overview", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const [apps, decisions, statements, funded] = await Promise.all([
+        db.execute(sql`SELECT COUNT(*) as total, COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as week, COUNT(CASE WHEN created_at >= NOW() - INTERVAL '30 days' THEN 1 END) as month FROM loan_applications`),
+        db.execute(sql`SELECT status, COUNT(*) as c, COALESCE(SUM(advance_amount::numeric), 0) as total_value FROM business_underwriting_decisions GROUP BY status`),
+        db.execute(sql`SELECT COUNT(*) as total, COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) as week FROM bank_statement_uploads`),
+        db.execute(sql`SELECT COALESCE(SUM(advance_amount::numeric), 0) as total_funded, COUNT(*) as count, COALESCE(AVG(advance_amount::numeric), 0) as avg_deal FROM business_underwriting_decisions WHERE status = 'funded'`),
+      ]);
+
+      const statusMap: Record<string, { count: number; value: number }> = {};
+      for (const r of decisions.rows as any[]) {
+        statusMap[r.status] = { count: Number(r.c), value: Number(r.total_value) };
+      }
+
+      const appRow = apps.rows[0] as any;
+      const fundedRow = funded.rows[0] as any;
+      const stmtRow = statements.rows[0] as any;
+
+      res.json({
+        applications: { total: Number(appRow.total), thisWeek: Number(appRow.week), thisMonth: Number(appRow.month) },
+        pipeline: {
+          approved: statusMap.approved || { count: 0, value: 0 },
+          funded: statusMap.funded || { count: 0, value: 0 },
+          declined: statusMap.declined || { count: 0, value: 0 },
+          unqualified: statusMap.unqualified || { count: 0, value: 0 },
+        },
+        statements: { total: Number(stmtRow.total), thisWeek: Number(stmtRow.week) },
+        funding: { totalFunded: Number(fundedRow.total_funded), dealCount: Number(fundedRow.count), avgDeal: Number(fundedRow.avg_deal) },
+      });
+    } catch (err: any) {
+      console.error("[ANALYTICS] overview error:", err);
+      res.status(500).json({ error: "Failed to load analytics" });
+    }
+  });
+
+  // GET /api/analytics/timeline — weekly/monthly deal flow over time
+  app.get("/api/analytics/timeline", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const [appsByWeek, decisionsByWeek, fundedByWeek] = await Promise.all([
+        db.execute(sql`SELECT DATE_TRUNC('week', created_at) as week, COUNT(*) as c FROM loan_applications WHERE created_at >= NOW() - INTERVAL '6 months' GROUP BY week ORDER BY week`),
+        db.execute(sql`SELECT DATE_TRUNC('week', created_at) as week, status, COUNT(*) as c, COALESCE(SUM(advance_amount::numeric), 0) as value FROM business_underwriting_decisions WHERE created_at >= NOW() - INTERVAL '6 months' GROUP BY week, status ORDER BY week`),
+        db.execute(sql`SELECT DATE_TRUNC('month', COALESCE(funded_date::timestamp, created_at)) as month, COUNT(*) as c, COALESCE(SUM(advance_amount::numeric), 0) as value FROM business_underwriting_decisions WHERE status = 'funded' AND created_at >= NOW() - INTERVAL '12 months' GROUP BY month ORDER BY month`),
+      ]);
+
+      res.json({
+        applicationsByWeek: appsByWeek.rows,
+        decisionsByWeek: decisionsByWeek.rows,
+        fundedByMonth: fundedByWeek.rows,
+      });
+    } catch (err: any) {
+      console.error("[ANALYTICS] timeline error:", err);
+      res.status(500).json({ error: "Failed to load timeline" });
+    }
+  });
+
+  // GET /api/analytics/reps — rep performance comparison
+  app.get("/api/analytics/reps", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          COALESCE(assigned_rep, 'Unassigned') as rep,
+          COUNT(*) as total_deals,
+          COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved,
+          COUNT(CASE WHEN status = 'funded' THEN 1 END) as funded,
+          COUNT(CASE WHEN status = 'declined' THEN 1 END) as declined,
+          COUNT(CASE WHEN status = 'unqualified' THEN 1 END) as unqualified,
+          COALESCE(SUM(CASE WHEN status = 'funded' THEN advance_amount::numeric END), 0) as funded_value,
+          COALESCE(SUM(CASE WHEN status = 'approved' THEN advance_amount::numeric END), 0) as approved_value,
+          COALESCE(AVG(CASE WHEN status = 'funded' THEN advance_amount::numeric END), 0) as avg_funded_deal,
+          ROUND(COUNT(CASE WHEN status = 'funded' THEN 1 END)::numeric / NULLIF(COUNT(*)::numeric, 0) * 100, 1) as close_rate
+        FROM business_underwriting_decisions
+        GROUP BY assigned_rep
+        ORDER BY funded_value DESC
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[ANALYTICS] reps error:", err);
+      res.status(500).json({ error: "Failed to load rep data" });
+    }
+  });
+
+  // GET /api/analytics/lenders — lender breakdown
+  app.get("/api/analytics/lenders", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          COALESCE(lender, 'Unknown') as lender,
+          COUNT(*) as total,
+          COUNT(CASE WHEN status = 'funded' THEN 1 END) as funded,
+          COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved,
+          COALESCE(SUM(CASE WHEN status = 'funded' THEN advance_amount::numeric END), 0) as funded_value,
+          COALESCE(SUM(CASE WHEN status = 'approved' THEN advance_amount::numeric END), 0) as approved_value
+        FROM business_underwriting_decisions
+        WHERE lender IS NOT NULL AND lender != ''
+        GROUP BY lender
+        ORDER BY funded_value DESC
+        LIMIT 20
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[ANALYTICS] lenders error:", err);
+      res.status(500).json({ error: "Failed to load lender data" });
+    }
+  });
+
+  // GET /api/analytics/recent — recent activity feed
+  app.get("/api/analytics/recent", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT id, business_name, business_email, status, advance_amount, lender, assigned_rep, created_at, funded_date
+        FROM business_underwriting_decisions
+        ORDER BY created_at DESC
+        LIMIT 25
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[ANALYTICS] recent error:", err);
+      res.status(500).json({ error: "Failed to load recent activity" });
+    }
+  });
+
+  // ========================================
+  // LEAD PORTAL ROUTES
+  // ========================================
+
+  // Ensure lead tables exist
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS lead_portal_accounts (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      phone TEXT,
+      business_name TEXT,
+      industry TEXT,
+      monthly_revenue TEXT,
+      time_in_business TEXT,
+      referral_source TEXT,
+      qualification_score INTEGER,
+      qualification_tier TEXT,
+      is_qualified BOOLEAN DEFAULT false,
+      assigned_rep TEXT,
+      notes TEXT,
+      status TEXT DEFAULT 'active',
+      last_active_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS lead_positions (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      lead_email TEXT NOT NULL,
+      funder_name TEXT NOT NULL,
+      product_type TEXT,
+      funded_amount DECIMAL(12,2),
+      payback_amount DECIMAL(12,2),
+      factor_rate TEXT,
+      payment_amount DECIMAL(12,2),
+      payment_frequency TEXT,
+      funded_date TEXT,
+      estimated_payoff_date TEXT,
+      remaining_balance DECIMAL(12,2),
+      status TEXT DEFAULT 'active',
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )`);
+    console.log("[LEAD] Lead portal tables ensured");
+  } catch (err) {
+    console.error("[LEAD] Failed to ensure lead tables:", err);
+  }
+
+  // Helper: get lead email from session
+  function getLeadEmail(req: Request): string | null {
+    if (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail) {
+      return req.session.user.merchantEmail;
+    }
+    return null;
+  }
+
+  // POST /api/lead/signup
+  app.post("/api/lead/signup", async (req: Request, res: Response) => {
+    try {
+      const { email, password, firstName, lastName, phone, businessName } = req.body;
+      if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+      if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Check if account already exists
+      const existing = await db.execute(sql`SELECT id FROM lead_portal_accounts WHERE email = ${normalizedEmail}`);
+      if (existing.rows.length > 0) {
+        return res.status(409).json({ error: "An account with this email already exists. Try signing in." });
+      }
+
+      const passwordHash = hashPassword(password);
+      await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name)
+        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null})`);
+
+      // Auto-login
+      req.session.user = {
+        isAuthenticated: true,
+        role: 'lead',
+        merchantEmail: normalizedEmail,
+        merchantName: [firstName, lastName].filter(Boolean).join(" ") || undefined,
+      };
+
+      const { subject: leadSub, html: leadHtml } = buildLeadPortalSignupEmail({ email: normalizedEmail, firstName, lastName, phone, businessName });
+      sendMarketingNotification(leadSub, leadHtml).catch(() => {});
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[LEAD] signup error:", err);
+      res.status(500).json({ error: "Signup failed. Please try again." });
+    }
+  });
+
+  // POST /api/lead/login
+  app.post("/api/lead/login", async (req: Request, res: Response) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+      const result = await db.execute(sql`SELECT password_hash, first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${normalizedEmail}`);
+      if (result.rows.length === 0) return res.status(401).json({ error: "Invalid email or password" });
+
+      const row = result.rows[0] as any;
+      if (!row.password_hash || !verifyPassword(password, row.password_hash)) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      const name = [row.first_name, row.last_name].filter(Boolean).join(" ");
+      req.session.user = {
+        isAuthenticated: true,
+        role: 'lead',
+        merchantEmail: normalizedEmail,
+        merchantName: name || undefined,
+      };
+
+      // Update last active
+      await db.execute(sql`UPDATE lead_portal_accounts SET last_active_at = NOW() WHERE email = ${normalizedEmail}`);
+
+      res.json({ success: true, name, businessName: row.business_name });
+    } catch (err: any) {
+      console.error("[LEAD] login error:", err);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // GET /api/lead/auth/check
+  app.get("/api/lead/auth/check", async (req: Request, res: Response) => {
+    if (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail) {
+      const result = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
+      const row = result.rows[0] as any;
+      res.json({
+        isAuthenticated: true,
+        email: req.session.user.merchantEmail,
+        name: row ? [row.first_name, row.last_name].filter(Boolean).join(" ") : req.session.user.merchantName,
+        businessName: row?.business_name || "",
+      });
+    } else {
+      res.json({ isAuthenticated: false });
+    }
+  });
+
+  // POST /api/lead/auth/logout
+  app.post("/api/lead/auth/logout", (req: Request, res: Response) => {
+    req.session.destroy(() => {});
+    res.json({ success: true });
+  });
+
+  // ── Lead Positions CRUD ──
+
+  // GET /api/lead/positions
+  app.get("/api/lead/positions", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const result = await db.execute(sql`SELECT * FROM lead_positions WHERE lead_email = ${email} ORDER BY created_at DESC`);
+    res.json(result.rows);
+  });
+
+  // POST /api/lead/positions
+  app.post("/api/lead/positions", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const { funderName, productType, fundedAmount, paybackAmount, factorRate, paymentAmount, paymentFrequency, fundedDate, remainingBalance } = req.body;
+    if (!funderName) return res.status(400).json({ error: "Funder name is required" });
+
+    await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, factor_rate, payment_amount, payment_frequency, funded_date, remaining_balance)
+      VALUES (${email}, ${funderName}, ${productType || null}, ${fundedAmount || null}, ${paybackAmount || null}, ${factorRate || null}, ${paymentAmount || null}, ${paymentFrequency || null}, ${fundedDate || null}, ${remainingBalance || null})`);
+
+    res.json({ success: true });
+  });
+
+  // DELETE /api/lead/positions/:id
+  app.delete("/api/lead/positions/:id", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    await db.execute(sql`DELETE FROM lead_positions WHERE id = ${req.params.id} AND lead_email = ${email}`);
+    res.json({ success: true });
+  });
+
+  // POST /api/lead/positions/extract — AI-powered term extraction from text or PDF
+  {
+    const multerMemory = (await import("multer")).default({ storage: (await import("multer")).default.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+    app.post("/api/lead/positions/extract", (req, res, next) => {
+      multerMemory.single("file")(req, res, next);
+    }, async (req: Request, res: Response) => {
+      const email = getLeadEmail(req);
+      if (!email) return res.status(401).json({ error: "Authentication required" });
+      if (!isOpenAIConfigured()) return res.status(503).json({ error: "AI extraction is not configured." });
+
+      try {
+        const pdfBuffer: Buffer | null = req.file?.buffer || null;
+        const text: string = req.body?.text || "";
+
+        if (pdfBuffer) {
+          // For any PDF upload (text-based or image-based), send directly to GPT-4o
+          // which can read both text-layer PDFs and scanned/image PDFs natively
+          console.log(`[EXTRACT] PDF upload (${pdfBuffer.length} bytes), sending to GPT-4o`);
+          const terms = await extractPositionTermsFromPdfBuffer(pdfBuffer);
+          return res.json(terms);
+        }
+
+        // Pasted text path
+        if (!text || text.trim().length < 10) {
+          return res.status(400).json({ error: "No content to analyze. Please paste some text or upload a PDF." });
+        }
+
+        const terms = await extractPositionTerms(text);
+        res.json(terms);
+      } catch (err: any) {
+        console.error("[EXTRACT] extraction error:", err);
+        res.status(500).json({ error: err.message || "Extraction failed" });
+      }
+    });
+  }
+
+  // ── Lead Banking (reuses merchant Chirp infrastructure) ──
+
+  // GET /api/lead/banking/insights
+  app.get("/api/lead/banking/insights", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const snapshot = await storage.getMerchantBankSnapshot(email);
+    if (!snapshot) return res.json({ connected: false, hasPendingConnection: false });
+
+    const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
+    const metrics = (snapshot.metrics as any) || {};
+    const hasPendingConnection = Boolean(snapshot.chirpRequestCode) && !snapshot.isAccountConnected;
+    res.json({
+      connected: Boolean(snapshot.isAccountConnected),
+      hasPendingConnection,
+      status: snapshot.status,
+      institutionName: snapshot.institutionName,
+      connectedAt: snapshot.connectedAt,
+      lastSyncedAt: snapshot.lastSyncedAt,
+      accounts: accounts.map(a => ({ name: a.accountName || "Account", type: a.type || "", balance: Number(a.balance) || 0 })),
+      metrics: {
+        monthlyRevenue: Number(metrics.monthlyRevenue) || 0,
+        monthlyExpenses: Number(metrics.monthlyExpenses) || 0,
+        netCashFlow: Number(metrics.netCashFlow) || 0,
+        avgBalance: Number(metrics.avgBalance) || 0,
+        currentBalance: Number(metrics.currentBalance) || 0,
+        monthsAnalyzed: Number(metrics.monthsAnalyzed) || 0,
+        revenueTrend: metrics.revenueTrend || null,
+        healthScore: Number(metrics.healthScore) || 0,
+      },
+    });
+  });
+
+  // POST /api/lead/chirp/connect
+  app.post("/api/lead/chirp/connect", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    try {
+      const leadAccount = await db.execute(sql`SELECT first_name, last_name, phone FROM lead_portal_accounts WHERE email = ${email}`);
+      const lead = leadAccount.rows[0] as any;
+
+      const phone = req.body?.phone || lead?.phone;
+      if (!phone) return res.status(400).json({ error: "A phone number is required to connect your bank. Please update your profile." });
+
+      const result = await chirpService.createVerificationRequest({
+        cusFirstName: lead?.first_name || "Lead",
+        cusLastName: lead?.last_name || "User",
+        cusEmail: email,
+        cusPhone: phone,
+      });
+
+      // Save stub snapshot
+      await storage.upsertMerchantBankSnapshot({
+        merchantEmail: email,
+        chirpRequestCode: result.requestCode,
+        status: "Unverified",
+        isAccountConnected: false,
+        lastSyncedAt: new Date(),
+      });
+
+      res.json({ requestCode: result.requestCode, widgetUrl: result.widgetUrl, verificationUrl: result.verificationUrl });
+    } catch (err: any) {
+      console.error("[LEAD] chirp connect error:", err);
+      res.status(500).json({ error: err.message || "Failed to start bank connection" });
+    }
+  });
+
+  // POST /api/lead/chirp/sync
+  app.post("/api/lead/chirp/sync", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const existing = await storage.getMerchantBankSnapshot(email);
+    if (!existing?.chirpRequestCode) return res.status(400).json({ error: "No bank connection found." });
+
+    const snapshot = await syncMerchantSnapshotFromChirp(email, existing.chirpRequestCode);
+    res.json({ success: true, lastSyncedAt: snapshot?.lastSyncedAt });
+  });
+
+  // DELETE /api/lead/chirp/connection — disconnect (removes cached snapshot)
+  app.delete("/api/lead/chirp/connection", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    try {
+      await storage.deleteMerchantBankSnapshot(email);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[CHIRP][LEAD] disconnect error:", err);
+      res.status(500).json({ error: "Failed to disconnect" });
+    }
+  });
+
+  // POST /api/lead/chirp/register-webhook — registers/refreshes webhook for pending connection
+  app.post("/api/lead/chirp/register-webhook", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const snapshot = await storage.getMerchantBankSnapshot(email);
+      if (!snapshot?.chirpRequestCode) return res.status(400).json({ error: "No bank connection found." });
+      await registerChirpWebhookForCode(snapshot.chirpRequestCode);
+      res.json({ success: true, requestCode: snapshot.chirpRequestCode });
+    } catch (err: any) {
+      console.error("[CHIRP][LEAD] register-webhook error:", err);
+      res.status(500).json({ error: err.message || "Failed to register webhook" });
+    }
+  });
+
+  // GET /api/lead/bank-statements — list uploaded statements for this lead
+  app.get("/api/lead/bank-statements", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const uploads = await storage.getBankStatementUploadsByEmail(email);
+      res.json(uploads.map((s: any) => ({
+        id: s.id,
+        fileName: s.fileName,
+        fileSize: s.fileSize,
+        uploadedAt: s.uploadedAt || s.createdAt,
+        viewToken: s.viewToken,
+      })));
+    } catch (err: any) {
+      console.error("[LEAD] bank-statements list error:", err);
+      res.status(500).json({ error: "Failed to fetch statements" });
+    }
+  });
+
+  // GET /api/admin/lead-portal/leads — admin view of all lead portal signups
+  app.get("/api/admin/lead-portal/leads", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`SELECT l.*,
+        (SELECT COUNT(*) FROM lead_positions WHERE lead_email = l.email) as position_count,
+        (SELECT json_agg(json_build_object('funderName', funder_name, 'productType', product_type, 'fundedAmount', funded_amount, 'status', status))
+         FROM lead_positions WHERE lead_email = l.email) as positions,
+        (SELECT COUNT(*) FROM bank_statement_uploads WHERE email = l.email) as statement_count,
+        (SELECT json_agg(json_build_object('id', id, 'fileName', original_file_name, 'uploadedAt', created_at, 'source', source) ORDER BY created_at DESC)
+         FROM bank_statement_uploads WHERE email = l.email) as statements
+        FROM lead_portal_accounts l ORDER BY l.created_at DESC`);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[LEAD] admin leads fetch error:", err);
+      res.status(500).json({ error: "Failed to fetch leads" });
     }
   });
 
@@ -7585,11 +9736,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       oauth2Client.setCredentials({ access_token: accessToken });
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+      const baseUrl = process.env.PUBLIC_BASE_URL
+        ? process.env.PUBLIC_BASE_URL.replace(/\/$/, '')
+        : process.env.NODE_ENV === 'production'
+        ? 'https://app.todaycapitalgroup.com'
+        : process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-        : 'https://todaycapitalgroup.com';
+        : 'http://localhost:5000';
 
       const activateUrl = `${baseUrl}/merchant/activate?token=${token}`;
 
@@ -7703,11 +9856,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       oauth2Client.setCredentials({ access_token: accessToken });
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+      const baseUrl = process.env.PUBLIC_BASE_URL
+        ? process.env.PUBLIC_BASE_URL.replace(/\/$/, '')
+        : process.env.NODE_ENV === 'production'
+        ? 'https://app.todaycapitalgroup.com'
+        : process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-        : 'https://todaycapitalgroup.com';
+        : 'http://localhost:5000';
 
       const resetUrl = `${baseUrl}/merchant/reset-password?token=${token}`;
 
@@ -7782,11 +9937,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       oauth2Client.setCredentials({ access_token: accessToken });
       const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+      const baseUrl = process.env.PUBLIC_BASE_URL
+        ? process.env.PUBLIC_BASE_URL.replace(/\/$/, '')
+        : process.env.NODE_ENV === 'production'
+        ? 'https://app.todaycapitalgroup.com'
+        : process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-        : 'https://todaycapitalgroup.com';
+        : 'http://localhost:5000';
 
       const truncatedMsg = messagePreview.length > 200 ? messagePreview.slice(0, 200) + '...' : messagePreview;
 
@@ -8629,13 +10786,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Route 3b: Merchant/lead portal statement upload
+  app.post("/api/merchant/bank-statements/upload", (req, res, next) => {
+    bankStatementUpload.single("file")(req, res, (err: any) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: "File too large (25MB max)" });
+        if (err.message === 'Only PDF files are allowed') return res.status(400).json({ error: err.message });
+        return res.status(400).json({ error: "Upload error: " + err.message });
+      }
+      next();
+    });
+  }, async (req, res) => {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) return res.status(401).json({ error: "Authentication required" });
+
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+      let storedFileName: string;
+      let storageType = "local";
+
+      if (objectStorage.isConfigured()) {
+        storedFileName = await objectStorage.uploadFile(
+          file.buffer,
+          `bank-statements/${merchantEmail}/${Date.now()}_${file.originalname}`,
+          file.mimetype,
+        );
+        storageType = "object";
+      } else {
+        storedFileName = `${Date.now()}_${file.originalname}`;
+        const localPath = path.join(UPLOAD_DIR, storedFileName);
+        fs.writeFileSync(localPath, file.buffer);
+      }
+
+      const viewToken = randomUUID();
+      await storage.createBankStatementUpload({
+        email: merchantEmail,
+        originalFileName: file.originalname,
+        storedFileName,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        storageType,
+        viewToken,
+      });
+
+      console.log(`[MERCHANT UPLOAD] ${merchantEmail} uploaded ${file.originalname} (${(file.size / 1024).toFixed(0)} KB)`);
+      res.json({ success: true, fileName: file.originalname, fileSize: file.size });
+    } catch (err: any) {
+      console.error("[MERCHANT UPLOAD] error:", err);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
   // Route 4: Analyze merchant's uploaded PDF bank statements
   app.post("/api/merchant/bank-statements/analyze", async (req, res) => {
-    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+    const merchantEmail = getMerchantEmailFromRequest(req);
+    if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
     try {
-      const email = req.session.user.merchantEmail;
+      const email = merchantEmail;
       const uploads = await storage.getBankStatementUploadsByEmail(email);
 
       if (!uploads || uploads.length === 0) {
@@ -8740,18 +10951,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         pdfInsights = {
           cashFlowHealth,
+          overallScore: score,
+          scoreExplanation: pdfData.scoreExplanation || "",
           estimatedMonthlyRevenue: pdfData.estimatedMonthlyRevenue || 0,
+          estimatedMonthlyExpenses: pdfData.estimatedMonthlyExpenses || 0,
+          netCashFlow: pdfData.netCashFlow || 0,
           averageDailyBalance: pdfData.averageDailyBalance || 0,
-          positiveIndicators: (pdfData.positiveIndicators || []).map((p: any) =>
-            typeof p === 'string' ? p : p.indicator || p.details || ''
-          ),
-          concerns: (pdfData.redFlags || []).map((f: any) => {
-            const issue = typeof f === 'string' ? f : f.issue || '';
-            // Reword underwriting jargon
-            if (issue.toLowerCase().includes('nsf')) return 'Some transactions were returned — consider maintaining a higher buffer';
-            if (issue.toLowerCase().includes('negative')) return 'Account balance dipped below zero on some days — try to keep a cushion';
-            return typeof f === 'string' ? f : f.details || f.issue || '';
-          }),
+          currentBalance: pdfData.currentBalance || 0,
+          revenueConsistency: pdfData.revenueConsistency || null,
+          cashRunwayDays: pdfData.cashRunwayDays || 0,
+          monthlyBreakdown: pdfData.monthlyBreakdown || [],
+          positiveIndicators: (pdfData.positiveIndicators || [])
+            .sort((a: any, b: any) => (a.priority || 99) - (b.priority || 99))
+            .map((p: any) => ({
+              label: typeof p === 'string' ? p : p.indicator || "",
+              details: typeof p === 'string' ? "" : p.details || "",
+            })),
+          concerns: (pdfData.redFlags || [])
+            .sort((a: any, b: any) => (a.priority || 99) - (b.priority || 99))
+            .map((f: any) => ({
+              label: typeof f === 'string' ? f : f.issue || "",
+              details: typeof f === 'string' ? "" : f.details || "",
+              severity: typeof f === 'string' ? "medium" : f.severity || "medium",
+            })),
           tips: pdfData.improvementSuggestions || [],
           summary: pdfData.summary || '',
           analyzedAt: pdfCache?.generatedAt?.toISOString() || new Date().toISOString(),
@@ -9191,6 +11413,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/gigfi/submissions — all leads that have been submitted to GigFi
+  app.get("/api/gigfi/submissions", async (req: Request, res: Response) => {
+    if (!req.session.user || !['admin', 'agent', 'user'].includes(req.session.user.role)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const submissions = await storage.getGigFiSubmissions();
+      return res.json({ submissions });
+    } catch (err) {
+      console.error("[GIGFI SUBMISSIONS]", err);
+      return res.status(500).json({ error: "Failed to load submissions" });
+    }
+  });
+
+  // POST /api/gigfi/record — record a pre-existing GigFi result without re-submitting to GigFi
+  app.post("/api/gigfi/record", async (req: Request, res: Response) => {
+    const { applicationId, status, decisionId, redirectUrl } = req.body;
+    if (!applicationId || !status) {
+      return res.status(400).json({ error: "applicationId and status are required" });
+    }
+    try {
+      await storage.saveGigFiResult(applicationId, status, decisionId, redirectUrl);
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[GIGFI RECORD]", err);
+      return res.status(500).json({ error: "Failed to record result" });
+    }
+  });
+
+  // Helper: validate external API key (Bearer token = ADMIN_PASSWORD)
+  function validateExternalApiKey(req: Request, res: Response): boolean {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    const adminPassword = process.env.ADMIN_PASSWORD || "Tcg1!tcg";
+    if (!token || token !== adminPassword) {
+      res.status(401).json({ error: "Unauthorized — provide a valid Bearer token" });
+      return false;
+    }
+    return true;
+  }
+
+  // GET /api/gigfi/external/pending
+  // Returns declined/unqualified underwriting decisions with linked application data.
+  // Intended for external programs that want to pull new candidates and submit them to GigFi.
+  // Auth: Bearer token = ADMIN_PASSWORD
+  // Query params: lookbackDays (default 30) — how many days back to search
+  app.get("/api/gigfi/external/pending", async (req: Request, res: Response) => {
+    if (!validateExternalApiKey(req, res)) return;
+    const lookbackDays = Math.min(parseInt((req.query.lookbackDays as string) || "30", 10), 365);
+    try {
+      const decisions = await storage.getDeclinedDecisionsForExternalGigFi(lookbackDays);
+      return res.json({
+        count: decisions.length,
+        lookbackDays,
+        decisions,
+      });
+    } catch (err) {
+      console.error("[GIGFI EXTERNAL PENDING]", err);
+      return res.status(500).json({ error: "Failed to fetch pending decisions" });
+    }
+  });
+
+  // POST /api/gigfi/external/record
+  // Records a GigFi submission result from an external program.
+  // Accepts applicationId OR email (will find the most recent unsubmitted application for that email).
+  // On success, the submission appears in the GigFi Submissions page immediately.
+  // Auth: Bearer token = ADMIN_PASSWORD
+  // Body: { applicationId?, email?, status, decisionId?, redirectUrl? }
+  app.post("/api/gigfi/external/record", async (req: Request, res: Response) => {
+    if (!validateExternalApiKey(req, res)) return;
+    const { applicationId, email, status, decisionId, redirectUrl } = req.body;
+
+    if (!status || !["ACCEPTED", "REJECTED", "ERROR"].includes(status.toUpperCase())) {
+      return res.status(400).json({ error: "status is required and must be ACCEPTED, REJECTED, or ERROR" });
+    }
+    if (!applicationId && !email) {
+      return res.status(400).json({ error: "Provide either applicationId or email" });
+    }
+
+    try {
+      const normalizedStatus = status.toUpperCase();
+      if (applicationId) {
+        await storage.saveGigFiResult(applicationId, normalizedStatus, decisionId, redirectUrl);
+        console.log(`[GIGFI EXTERNAL] Recorded result for applicationId=${applicationId} status=${normalizedStatus}`);
+        return res.json({ ok: true, applicationId });
+      } else {
+        const result = await storage.saveGigFiResultByEmail(email, normalizedStatus, decisionId, redirectUrl);
+        if (!result) {
+          return res.status(404).json({
+            error: "No un-submitted application found for that email. It may already have a GigFi result recorded, or may not exist in the database.",
+          });
+        }
+        console.log(`[GIGFI EXTERNAL] Recorded result for email=${email} applicationId=${result.applicationId} status=${normalizedStatus}`);
+        return res.json({ ok: true, applicationId: result.applicationId });
+      }
+    } catch (err) {
+      console.error("[GIGFI EXTERNAL RECORD]", err);
+      return res.status(500).json({ error: "Failed to record GigFi result" });
+    }
+  });
+
   // Internal GigFi applicant search — admin/agent only
   app.get("/api/gigfi/search", async (req: Request, res: Response) => {
     if (!req.session.user || !['admin', 'agent', 'user'].includes(req.session.user.role)) {
@@ -9285,16 +11608,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result = await submitToGigFi(leadData, applicationId || `anon-${Date.now()}`);
 
-      // Log GigFi result against the application for tracking
-      if (applicationId) {
-        try {
-          const app = await storage.getLoanApplication(applicationId);
-          if (app) {
-            console.log(`[GIGFI] Application ${applicationId} submitted to GigFi: ${result.status}`);
-          }
-        } catch (lookupErr) {
-          console.error("[GIGFI] Failed to look up application:", lookupErr);
-        }
+      // Persist GigFi decision to the loan application record
+      if (applicationId && result.status) {
+        storage.saveGigFiResult(
+          applicationId,
+          result.status,
+          result.decisionId,
+          result.redirectUrl,
+        ).catch(err => console.error("[GIGFI] Failed to save result to DB:", err));
       }
 
       res.json(result);
@@ -9733,6 +12054,414 @@ export async function registerRoutes(app: Express): Promise<Server> {
       retryFailedSfSyncs();
     }
   }, 10 * 60 * 1000); // Check every 10 minutes
+
+  // Diagnostic: outbound IP + live Chirp token/connection test (admin only)
+  app.get("/api/debug/chirp-diagnostics", async (req: Request, res: Response) => {
+    if (!req.session.user || req.session.user.role !== "admin") {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { execFile } = await import("child_process");
+    const token = process.env.CHIRP_API_TOKEN || "";
+    const sandboxToken = process.env.CHIRP_SANDBOX_API_TOKEN || "";
+    const isProd = process.env.NODE_ENV === "production";
+    const activeToken = isProd ? token : (sandboxToken || token);
+
+    // 1. Get outbound IPv4
+    const outboundIp: string = await new Promise((resolve) => {
+      execFile("curl", ["-4", "-s", "https://api.ipify.org", "--max-time", "5"], { timeout: 8000 }, (_e, stdout) => {
+        resolve(stdout?.trim() || "unknown");
+      });
+    });
+
+    const sessionCookie = process.env.CHIRP_SESSION_COOKIE || "";
+
+    // 2. Make a live test call to Chirp using getRequestStatus on a known code
+    const chirpTestUrl = (process.env.CHIRP_BASE_URL || "https://chirp.digital/api") + "/getRequestStatus/KYILOA";
+    const chirpResult: { status: number; body: string } = await new Promise((resolve) => {
+      const args = [
+        "-4", "-s",
+        "-X", "POST",
+        "-w", "\n__STATUS__%{http_code}",
+        "-H", `Authorization: ${activeToken}`,
+        "-H", "Content-Type: application/json",
+        "-H", "User-Agent: PostmanRuntime/7.49.1",
+        "--max-time", "10",
+        chirpTestUrl,
+      ];
+      if (sessionCookie) {
+        args.push("-H", `Cookie: ${sessionCookie}`);
+      }
+      execFile("curl", args, { timeout: 12000 }, (_e, stdout) => {
+        const statusMatch = (stdout || "").match(/__STATUS__(\d+)$/);
+        const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+        const body = (stdout || "").replace(/__STATUS__\d+$/, "").trim();
+        resolve({ status, body });
+      });
+    });
+
+    const note = chirpResult.status === 403
+      ? sessionCookie
+        ? "403 despite cookie — cookie may be expired or belong to wrong account"
+        : "403 — IP not whitelisted. Set CHIRP_SESSION_COOKIE to bypass."
+      : (chirpResult.status === 200 || chirpResult.status === 404 || chirpResult.status === 400)
+      ? "Chirp connection OK (token accepted)"
+      : `HTTP ${chirpResult.status}`;
+
+    res.json({
+      outboundIpv4: outboundIp,
+      environment: isProd ? "production" : "development",
+      productionTokenConfigured: !!token,
+      productionTokenEnds: token ? `...${token.slice(-4)}` : "NOT SET",
+      sandboxTokenConfigured: !!sandboxToken,
+      activeTokenEnds: activeToken ? `...${activeToken.slice(-4)}` : "NOT SET",
+      sessionCookieConfigured: !!sessionCookie,
+      chirpBaseUrl: process.env.CHIRP_BASE_URL || "https://chirp.digital/api",
+      chirpTestHttpStatus: chirpResult.status,
+      chirpTestResponseBody: chirpResult.body.slice(0, 300),
+      note,
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // ADMIN BATCH GIGFI SUBMISSION — one-time batch for specific businesses
+  // ═══════════════════════════════════════════════════════════════
+  app.post("/api/admin/gigfi-batch-submit", async (req: Request, res: Response) => {
+    if (!req.session.user || req.session.user.role !== "admin") {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    if (!isGigFiConfigured()) {
+      return res.status(503).json({ error: "GigFi not configured" });
+    }
+
+    const BATCH_BUSINESSES: Array<{ name: string; knownEmail?: string }> = [
+      { name: "ONELLA HOME CARE", knownEmail: "jtndumbe@gmail.com" },
+      { name: "Generations Group Home" },
+      { name: "Wormac Group", knownEmail: "gil@thewormacgroup.com" },
+      { name: "Argyle Executive Forum", knownEmail: "pprice@argyleforum.com" },
+      { name: "Bfields Investment", knownEmail: "tbutter22@icloud.com" },
+      { name: "Arco Petroleum Transport", knownEmail: "gsmall443322@gmail.com" },
+      { name: "Top Flight Transportation", knownEmail: "topflightdispatch1@gmail.com" },
+      { name: "WESTIN", knownEmail: "ramonher71@gmail.com" },
+      { name: "pure and healthy hair", knownEmail: "isaacisaac1972@yahoo.com" },
+      { name: "ESCAPADEUSA", knownEmail: "maxi@escapadeusa.com" },
+      { name: "Andromel Estates", knownEmail: "romelhilaire@yahoo.com" },
+    ];
+
+    function isValidEmail(e: string): boolean {
+      return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e || "");
+    }
+    function normalizePhone(p: string): string {
+      return (p || "").replace(/\D/g, "").slice(0, 10);
+    }
+    function isValidPhone(p: string): boolean {
+      return normalizePhone(p).length === 10;
+    }
+    function parseNameParts(fullName: string): { firstName: string; lastName: string } {
+      const parts = (fullName || "").trim().split(/\s+/);
+      if (parts.length === 0) return { firstName: "Unknown", lastName: "Unknown" };
+      if (parts.length === 1) return { firstName: parts[0], lastName: parts[0] };
+      return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+    }
+
+    const results: Array<{
+      searchTerm: string;
+      businessName: string;
+      appId: string | null;
+      status: string;
+      gigfiStatus?: string;
+      decisionId?: string;
+      redirectUrl?: string;
+      skippedReason?: string;
+    }> = [];
+
+    for (const biz of BATCH_BUSINESSES) {
+      try {
+        const pattern = `%${biz.name}%`;
+        const found = await db
+          .select()
+          .from(loanApplications)
+          .where(
+            or(
+              ilike(loanApplications.businessName, pattern),
+              ilike(loanApplications.legalBusinessName, pattern)
+            )
+          )
+          .orderBy(desc(loanApplications.createdAt))
+          .limit(5);
+
+        if (found.length === 0) {
+          results.push({ searchTerm: biz.name, businessName: "(not found)", appId: null, status: "NOT_FOUND", skippedReason: "No application found in DB" });
+          continue;
+        }
+
+        // Use the most recent matching application
+        const app = found[0];
+        const appId = app.id;
+        const businessName = app.businessName || app.legalBusinessName || biz.name;
+
+        // Resolve email: prefer known valid, fall back to DB
+        const resolvedEmail = isValidEmail(biz.knownEmail || "") ? biz.knownEmail! :
+                              isValidEmail(app.email) ? app.email : "";
+        if (!resolvedEmail) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: "No valid email" });
+          continue;
+        }
+
+        // Require SSN
+        const ssn = (app.socialSecurityNumber || "").replace(/\D/g, "");
+        if (ssn.length !== 9) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: `SSN missing or invalid (found: "${app.socialSecurityNumber || "none"}")` });
+          continue;
+        }
+
+        // Require DOB
+        const dob = app.dateOfBirth || "";
+        if (!dob) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: "Date of birth missing" });
+          continue;
+        }
+
+        // Address — prefer owner address, fall back to business address
+        const homeAddress = app.ownerAddress1 || app.businessStreetAddress || app.businessAddress || "";
+        const homeCity = app.ownerCity || app.city || "";
+        const homeState = (app.ownerState || app.state || "").toUpperCase().slice(0, 2);
+        const homeZip = (app.ownerZip || app.zipCode || "").replace(/\D/g, "").slice(0, 5);
+
+        if (!homeAddress || !homeCity || homeState.length !== 2 || homeZip.length !== 5) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: `Incomplete address (addr="${homeAddress}" city="${homeCity}" state="${homeState}" zip="${homeZip}")` });
+          continue;
+        }
+
+        // Phone — normalize
+        const rawPhone = app.phone || "";
+        const phone = isValidPhone(rawPhone) ? rawPhone : "";
+        if (!phone) {
+          results.push({ searchTerm: biz.name, businessName, appId, status: "SKIPPED", skippedReason: `Invalid phone: "${rawPhone}"` });
+          continue;
+        }
+
+        const { firstName, lastName } = parseNameParts(app.fullName || "");
+        const monthlyRevenue = parseFloat(app.monthlyRevenue || app.averageMonthlyRevenue || "3000");
+
+        const leadData: GigFiLeadData = {
+          firstName,
+          lastName,
+          email: resolvedEmail,
+          phone,
+          businessName,
+          monthlyRevenue,
+          financingAmount: 10000,   // hard-capped at $10k per admin request
+          businessAge: app.timeInBusiness || undefined,
+          ssn,
+          dob,
+          homeAddress,
+          homeCity,
+          homeState,
+          homeZip,
+          ...(app.bankName && { bankName: app.bankName }),
+          payFrequency: "4",        // Monthly — hardcoded per admin request
+          nextPayDay: "05/01/2026", // Next upcoming pay date
+          cellPhone: phone,
+        };
+
+        const gigfiResult = await submitToGigFi(leadData, appId);
+
+        // Persist result
+        storage.saveGigFiResult(appId, gigfiResult.status, gigfiResult.decisionId, gigfiResult.redirectUrl)
+          .catch(err => console.error("[GIGFI-BATCH] Failed to save result:", err));
+
+        results.push({
+          searchTerm: biz.name,
+          businessName,
+          appId,
+          status: "SUBMITTED",
+          gigfiStatus: gigfiResult.status,
+          decisionId: gigfiResult.decisionId,
+          redirectUrl: gigfiResult.redirectUrl,
+          skippedReason: gigfiResult.errorMessage,
+        });
+      } catch (err: any) {
+        results.push({ searchTerm: biz.name, businessName: biz.name, appId: null, status: "ERROR", skippedReason: err.message });
+      }
+    }
+
+    const submitted = results.filter(r => r.status === "SUBMITTED");
+    const accepted = submitted.filter(r => r.gigfiStatus === "ACCEPTED");
+    const rejected = submitted.filter(r => r.gigfiStatus === "REJECTED");
+    const skipped = results.filter(r => r.status === "SKIPPED" || r.status === "NOT_FOUND" || r.status === "ERROR");
+
+    res.json({
+      summary: { total: BATCH_BUSINESSES.length, submitted: submitted.length, accepted: accepted.length, rejected: rejected.length, skipped: skipped.length },
+      results,
+    });
+  });
+
+  // POST /api/admin/gigfi-csv-submit — submit a list of leads from CSV (App ID used to pull SSN from DB)
+  app.post("/api/admin/gigfi-csv-submit", async (req: Request, res: Response) => {
+    if (!req.session.user || req.session.user.role !== "admin") {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    if (!isGigFiConfigured()) {
+      return res.status(503).json({ error: "GigFi not configured" });
+    }
+
+    // Each lead: { appId, firstName, lastName, email, phone, businessName, dob, address, city, state, zip, revenue?, businessAge? }
+    const leads: Array<{
+      appId: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      businessName: string;
+      dob: string;
+      address: string;
+      city: string;
+      state: string;
+      zip: string;
+      revenue?: number;
+      businessAge?: string;
+    }> = req.body.leads;
+
+    if (!Array.isArray(leads) || leads.length === 0) {
+      return res.status(400).json({ error: "leads array required" });
+    }
+
+    function normalizePhone(p: string): string { return (p || "").replace(/\D/g, "").slice(0, 10); }
+    function isValidPhone(p: string): boolean { return normalizePhone(p).length === 10; }
+
+    const results: Array<{
+      appId: string;
+      name: string;
+      email: string;
+      status: string;
+      gigfiStatus?: string;
+      redirectUrl?: string;
+      decisionId?: string;
+      skippedReason?: string;
+    }> = [];
+
+    for (const lead of leads) {
+      const fullName = `${lead.firstName} ${lead.lastName}`.trim();
+      try {
+        // Look up SSN from DB by App ID
+        const app = await storage.getLoanApplication(lead.appId);
+        if (!app) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: "App ID not found in DB" });
+          continue;
+        }
+
+        const ssn = (app.socialSecurityNumber || "").replace(/\D/g, "");
+        if (ssn.length !== 9) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `SSN missing or invalid (found: "${app.socialSecurityNumber || "none"}")` });
+          continue;
+        }
+
+        // Validate phone
+        const phone = isValidPhone(lead.phone) ? lead.phone : "";
+        if (!phone) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `Invalid phone: "${lead.phone}"` });
+          continue;
+        }
+
+        // Validate address
+        const zip = (lead.zip || "").replace(/\D/g, "").slice(0, 5);
+        const state = (lead.state || "").toUpperCase().slice(0, 2);
+        if (!lead.address || !lead.city || state.length !== 2 || zip.length !== 5) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `Incomplete address (addr="${lead.address}" city="${lead.city}" state="${state}" zip="${zip}")` });
+          continue;
+        }
+
+        // Validate DOB
+        if (!lead.dob) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: "DOB missing" });
+          continue;
+        }
+
+        // Sanity-check DOB year (must be 1900–2010 for an adult applicant)
+        const dobYear = parseInt((lead.dob || "").slice(0, 4), 10);
+        if (isNaN(dobYear) || dobYear < 1900 || dobYear > 2010) {
+          results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "SKIPPED", skippedReason: `DOB year looks invalid: "${lead.dob}"` });
+          continue;
+        }
+
+        const leadData: GigFiLeadData = {
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          email: lead.email,
+          phone,
+          businessName: lead.businessName,
+          monthlyRevenue: lead.revenue || 3000,
+          financingAmount: 10000,
+          businessAge: lead.businessAge,
+          ssn,
+          dob: lead.dob,
+          homeAddress: lead.address,
+          homeCity: lead.city,
+          homeState: state,
+          homeZip: zip,
+          payFrequency: "4",         // Monthly
+          nextPayDay: "05/01/2026",
+          cellPhone: phone,
+        };
+
+        const gigfiResult = await submitToGigFi(leadData, lead.appId);
+
+        storage.saveGigFiResult(lead.appId, gigfiResult.status, gigfiResult.decisionId, gigfiResult.redirectUrl)
+          .catch(err => console.error("[GIGFI-CSV] Failed to save result:", err));
+
+        results.push({
+          appId: lead.appId,
+          name: fullName,
+          email: lead.email,
+          status: "SUBMITTED",
+          gigfiStatus: gigfiResult.status,
+          redirectUrl: gigfiResult.redirectUrl,
+          decisionId: gigfiResult.decisionId,
+          skippedReason: gigfiResult.errorMessage,
+        });
+      } catch (err: any) {
+        results.push({ appId: lead.appId, name: fullName, email: lead.email, status: "ERROR", skippedReason: err.message });
+      }
+    }
+
+    const submitted = results.filter(r => r.status === "SUBMITTED");
+    const accepted = submitted.filter(r => r.gigfiStatus === "ACCEPTED");
+    const rejected = submitted.filter(r => r.gigfiStatus === "REJECTED");
+    const skipped = results.filter(r => r.status !== "SUBMITTED");
+
+    res.json({
+      summary: { total: leads.length, submitted: submitted.length, accepted: accepted.length, rejected: rejected.length, skipped: skipped.length },
+      results,
+    });
+  });
+
+  // Legacy: outbound IP only
+  app.get("/api/debug/outbound-ip", async (req: Request, res: Response) => {
+    if (!req.session.user || req.session.user.role !== "admin") {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { execFile } = await import("child_process");
+    execFile("curl", ["-4", "-s", "https://api.ipify.org"], { timeout: 10000 }, (err, stdout) => {
+      if (err) return res.json({ error: err.message });
+      res.json({ outboundIpv4: stdout.trim() });
+    });
+  });
+
+  // ── Ads Leads GHL sync — runs every 2 hours indefinitely ─────────────────
+  (function startAdsLeadsPoll() {
+    const INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
+    adsSyncState.active = true;
+    adsSyncState.nextRunAt = new Date(Date.now() + INTERVAL_MS).toISOString();
+    // Run immediately on startup, then repeat every 2 hours
+    runAdsLeadsSync().then(() => {
+      adsSyncState.nextRunAt = new Date(Date.now() + INTERVAL_MS).toISOString();
+    });
+    setInterval(async () => {
+      await runAdsLeadsSync();
+      adsSyncState.nextRunAt = new Date(Date.now() + INTERVAL_MS).toISOString();
+    }, INTERVAL_MS);
+    console.log("[ADS-SYNC] GHL tag polling started — tag='clicked ads', every 2 hours");
+  })();
 
   return httpServer;
 }

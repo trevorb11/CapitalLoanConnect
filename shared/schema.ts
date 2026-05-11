@@ -99,6 +99,17 @@ export const loanApplications = pgTable("loan_applications", {
   // --- Plaid Integration ---
   plaidItemId: text("plaid_item_id"), // Link to Plaid access token for retrieving statements
 
+  // --- Chirp Integration ---
+  chirpRequestCode: text("chirp_request_code"), // Chirp IFV request code after bank verification
+
+  // --- GigFi Submission ---
+  gigfiStatus: text("gigfi_status"), // "ACCEPTED" or "REJECTED"
+  gigfiDecisionId: text("gigfi_decision_id"), // Taktile decision ID
+  gigfiRedirectUrl: text("gigfi_redirect_url"), // Redirect URL if accepted
+  gigfiSubmittedAt: timestamp("gigfi_submitted_at"), // When the GigFi submission was made
+  gigfiBankConnectedAt: timestamp("gigfi_bank_connected_at"), // When borrower completed IBV (bank connection)
+  gigfiApprovedAt: timestamp("gigfi_approved_at"), // When GigFi approved the deal
+
   // --- Agent Tracking ---
   agentName: text("agent_name"), // Name of the agent who sent the application
   agentEmail: text("agent_email"), // Email of the agent
@@ -111,6 +122,13 @@ export const loanApplications = pgTable("loan_applications", {
   isCompleted: boolean("is_completed").default(false),
   isFullApplicationCompleted: boolean("is_full_application_completed").default(false),
   ghlContactId: text("ghl_contact_id"),
+
+  // --- Salesforce sync tracking (added in migration 0006) ---
+  sfAccountId: text("sf_account_id"),
+  sfContactId: text("sf_contact_id"),
+  sfOpportunityId: text("sf_opportunity_id"),
+  sfSyncedAt: timestamp("sf_synced_at"),
+  sfSyncMessage: text("sf_sync_message"),
 
   // --- Bot Detection ---
   isBotAttempt: boolean("is_bot_attempt").default(false), // Honeypot triggered
@@ -397,6 +415,12 @@ export const lenderApprovals = pgTable("lender_approvals", {
   ghlSyncMessage: text("ghl_sync_message"), // Success/error message from sync attempt
   ghlOpportunityId: text("ghl_opportunity_id"), // The opportunity ID it was synced to
 
+  // Salesforce Sync Tracking (added in migration 0006)
+  sfSynced: boolean("sf_synced").default(false),
+  sfSyncedAt: timestamp("sf_synced_at"),
+  sfSyncMessage: text("sf_sync_message"),
+  sfOpportunityId: text("sf_opportunity_id"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -465,6 +489,17 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   ghlSyncedAt: timestamp("ghl_synced_at"),
   ghlSyncMessage: text("ghl_sync_message"),
   ghlOpportunityId: text("ghl_opportunity_id"),
+
+  // Secondary email for improved SF matching (migration 0007)
+  secondaryEmail: text("secondary_email"),
+
+  // Salesforce sync tracking (added in migration 0006)
+  sfSynced: boolean("sf_synced").default(false),
+  sfSyncedAt: timestamp("sf_synced_at"),
+  sfSyncMessage: text("sf_sync_message"),
+  sfAccountId: text("sf_account_id"),
+  sfContactId: text("sf_contact_id"),
+  sfOpportunityId: text("sf_opportunity_id"),
 
   // Audit fields
   reviewedBy: text("reviewed_by"), // Email of underwriter who made the decision
@@ -638,3 +673,222 @@ export const insertMerchantFinancialInsightSchema = createInsertSchema(merchantF
 
 export type InsertMerchantFinancialInsight = z.infer<typeof insertMerchantFinancialInsightSchema>;
 export type MerchantFinancialInsight = typeof merchantFinancialInsights.$inferSelect;
+
+// Merchant Bank Snapshots - cached snapshot of a merchant's Chirp-connected
+// banking data. All merchant-portal banking views read from here to avoid
+// per-request calls to Chirp (which would incur bank-sync charges on PAYG
+// and rate limits on subscription). Populated on initial connect, refreshed
+// via Chirp webhooks and an explicit "sync" action.
+export const merchantBankSnapshots = pgTable("merchant_bank_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  merchantEmail: text("merchant_email").notNull().unique(),
+  chirpRequestCode: text("chirp_request_code").notNull(),
+  institutionName: text("institution_name"),
+  // Mirrors chirp status: "Verified" | "Attempted" | "Rejected" | "Expired" | "Unverified..."
+  status: text("status"),
+  isAccountConnected: boolean("is_account_connected").default(false),
+  // Raw arrays/objects returned by Chirp, kept for display + future analysis
+  accountsData: jsonb("accounts_data"), // array of { name, type, subtype, balance, accountNumber? }
+  summaryData: jsonb("summary_data"),   // raw `/summary` response (activityByMonth, currentBalance, etc.)
+  // Derived metrics we compute once at sync time so merchant portal views are pure DB reads
+  metrics: jsonb("metrics"), // { monthlyRevenue, monthlyExpenses, netCashFlow, avgBalance, currentBalance, monthsAnalyzed }
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastRefreshAt: timestamp("last_refresh_at"), // Last time we asked Chirp to refresh from the bank (rate-limited)
+  connectedAt: timestamp("connected_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMerchantBankSnapshotSchema = createInsertSchema(merchantBankSnapshots).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertMerchantBankSnapshot = z.infer<typeof insertMerchantBankSnapshotSchema>;
+export type MerchantBankSnapshot = typeof merchantBankSnapshots.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// LEAD PORTAL — free financial dashboard for prospective merchants
+// ═══════════════════════════════════════════════════════════════
+
+// Lead Portal Accounts — self-signup auth for leads
+export const leadPortalAccounts = pgTable("lead_portal_accounts", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  phone: text("phone"),
+  businessName: text("business_name"),
+  industry: text("industry"),
+  monthlyRevenue: text("monthly_revenue"), // self-reported range
+  timeInBusiness: text("time_in_business"), // self-reported
+  referralSource: text("referral_source"), // how they found us
+  // Qualification signals computed from their data
+  qualificationScore: integer("qualification_score"), // 0-100
+  qualificationTier: text("qualification_tier"), // from analysis
+  isQualified: boolean("is_qualified").default(false),
+  // Admin tracking
+  assignedRep: text("assigned_rep"), // rep email if claimed
+  notes: text("notes"), // internal notes
+  status: text("status").default("active"), // active, converted, inactive
+  lastActiveAt: timestamp("last_active_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLeadPortalAccountSchema = createInsertSchema(leadPortalAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLeadPortalAccount = z.infer<typeof insertLeadPortalAccountSchema>;
+export type LeadPortalAccount = typeof leadPortalAccounts.$inferSelect;
+
+// Lead Positions — self-reported funding positions from other sources
+export const leadPositions = pgTable("lead_positions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadEmail: text("lead_email").notNull(),
+  // Position details
+  funderName: text("funder_name").notNull(),
+  productType: text("product_type"), // MCA, LOC, Term Loan, SBA, etc.
+  fundedAmount: decimal("funded_amount", { precision: 12, scale: 2 }),
+  paybackAmount: decimal("payback_amount", { precision: 12, scale: 2 }),
+  factorRate: text("factor_rate"),
+  paymentAmount: decimal("payment_amount", { precision: 12, scale: 2 }),
+  paymentFrequency: text("payment_frequency"), // daily, weekly, bi-weekly, monthly
+  fundedDate: text("funded_date"), // when they received funding
+  estimatedPayoffDate: text("estimated_payoff_date"),
+  remainingBalance: decimal("remaining_balance", { precision: 12, scale: 2 }),
+  status: text("status").default("active"), // active, paid-off, defaulted
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLeadPositionSchema = createInsertSchema(leadPositions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLeadPosition = z.infer<typeof insertLeadPositionSchema>;
+export type LeadPosition = typeof leadPositions.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// SERVICES INTEREST TRACKING
+// ═══════════════════════════════════════════════════════════════
+
+export const serviceInterests = pgTable("service_interests", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  phone: text("phone"),
+  businessName: text("business_name"),
+  service: text("service").notNull(), // payments, website, crm, other
+  otherDetails: text("other_details"), // free text if "other"
+  source: text("source"), // email, direct, etc.
+  utmCampaign: text("utm_campaign"),
+  utmSource: text("utm_source"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type ServiceInterest = typeof serviceInterests.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// PAGE VISIT TRACKING (email-link click-throughs)
+// ═══════════════════════════════════════════════════════════════
+
+export const pageVisits = pgTable("page_visits", {
+  id: serial("id").primaryKey(),
+  email: text("email"),
+  phone: text("phone"),
+  interest: text("interest"),          // e.g. "payments", "website" from ?interest= param
+  pagePath: text("page_path"),         // e.g. "/services"
+  fullUrl: text("full_url"),           // full URL with all query params
+  referrer: text("referrer"),
+  utmSource: text("utm_source"),
+  utmCampaign: text("utm_campaign"),
+  utmMedium: text("utm_medium"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PageVisit = typeof pageVisits.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// ACH DEBIT AUTHORIZATION FORMS
+// ═══════════════════════════════════════════════════════════════
+
+export const achAuthorizations = pgTable("ach_authorizations", {
+  id: serial("id").primaryKey(),
+
+  // Financial institution
+  bankName: text("bank_name").notNull(),
+  bankAddress: text("bank_address"),
+  bankCity: text("bank_city"),
+  bankState: text("bank_state"),
+  bankZip: text("bank_zip"),
+
+  // Account details
+  accountType: text("account_type").default("checking"), // "checking" | "savings"
+  routingNumber: text("routing_number").notNull(),
+  accountNumber: text("account_number").notNull(),
+
+  // Debit details
+  debitDate: text("debit_date"),   // stored as YYYY-MM-DD string
+  amount: text("amount"),           // stored as string e.g. "1500.00"
+
+  // Business / consumer info
+  businessName: text("business_name").notNull(),
+  businessAddress: text("business_address"),
+  businessCity: text("business_city"),
+  businessState: text("business_state"),
+  businessZip: text("business_zip"),
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+
+  // Signature
+  signatureData: text("signature_data"),  // base64 PNG data URL
+  signedAt: timestamp("signed_at"),
+
+  // Metadata
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAchAuthorizationSchema = createInsertSchema(achAuthorizations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAchAuthorization = z.infer<typeof insertAchAuthorizationSchema>;
+export type AchAuthorization = typeof achAuthorizations.$inferSelect;
+
+// ADS LEADS — contacts who clicked through ads/emails + form submissions from /ads page
+export const adsLeads = pgTable("ads_leads", {
+  id: serial("id").primaryKey(),
+  email: text("email").unique(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  phone: text("phone"),
+  businessName: text("business_name"),
+  city: text("city"),
+  state: text("state"),
+  monthlyRevenue: text("monthly_revenue"),
+  source: text("source"),
+  leadBatch: text("lead_batch"),
+  leadType: text("lead_type").notNull().default("Clicked through Email"),
+  notes: text("notes"),
+  lastActivity: timestamp("last_activity"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAdsLeadSchema = createInsertSchema(adsLeads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAdsLead = z.infer<typeof insertAdsLeadSchema>;
+export type AdsLead = typeof adsLeads.$inferSelect;

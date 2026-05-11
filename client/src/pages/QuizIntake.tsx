@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { Loader2, CheckCircle, ArrowLeft } from "lucide-react";
+import { Loader2, CheckCircle, ArrowLeft, TrendingUp, Trophy, ArrowRight } from "lucide-react";
 import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 import GigFiPartnerFlow from "./GigFiPartnerFlow";
@@ -107,6 +107,8 @@ export default function QuizIntake() {
   const [showNotBusinessOwnerMessage, setShowNotBusinessOwnerMessage] = useState(false);
   const [showLowRevenueOutcome, setShowLowRevenueOutcome] = useState(false);
   const [showGigFiFlow, setShowGigFiFlow] = useState(false);
+  const [showPrequalScreen, setShowPrequalScreen] = useState(false);
+  const [prequalResult, setPrequalResult] = useState<{ applicationId: string; businessName: string; monthlyRevenue: number } | null>(null);
   const [applicationId, setApplicationId] = useState<string>("");
   const [ghlFormLoaded, setGhlFormLoaded] = useState(false);
   const [ghlFormSubmitted, setGhlFormSubmitted] = useState(false);
@@ -211,10 +213,14 @@ export default function QuizIntake() {
       } else if (quizData.monthlyRevenue < GIGFI_MIN_REVENUE) {
         // Below GigFi minimum — show original low revenue outcome
         setShowLowRevenueOutcome(true);
-      } else if (data.id) {
-        navigate(`/?applicationId=${data.id}`);
       } else {
-        navigate("/");
+        // Revenue >= $10K — show pre-qualification screen before full application
+        setPrequalResult({
+          applicationId: data.id || "",
+          businessName: data.businessName || quizData.businessName || "",
+          monthlyRevenue: quizData.monthlyRevenue,
+        });
+        setShowPrequalScreen(true);
       }
     },
     onError: (error: Error) => {
@@ -368,6 +374,137 @@ export default function QuizIntake() {
         }}
         onBack={() => setShowGigFiFlow(false)}
       />
+    );
+  }
+
+  // Pre-qualification screen — shown after quiz submission for revenue >= $10K
+  if (showPrequalScreen && prequalResult) {
+    const isPrequalified = prequalResult.monthlyRevenue > 40000;
+    const formattedRevenue = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(prequalResult.monthlyRevenue);
+
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center p-4"
+        style={{ background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)" }}
+        data-testid="prequal-screen"
+      >
+        <div
+          className="w-full max-w-[600px] p-8 md:p-12 rounded-2xl text-center relative overflow-hidden"
+          style={{
+            background: "linear-gradient(to bottom, #192F56 0%, #19112D 100%)",
+            boxShadow: "0 12px 30px rgba(25, 47, 86, 0.3), 0 4px 15px rgba(0, 0, 0, 0.2)",
+          }}
+        >
+          {isPrequalified ? (
+            <>
+              {/* Congratulations — revenue > $40K */}
+              <div className="relative w-24 h-24 mx-auto mb-6">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-yellow-400/30 to-amber-500/20 animate-pulse" />
+                <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-yellow-400/20 to-amber-500/10 border border-yellow-400/40 flex items-center justify-center">
+                  <Trophy className="w-12 h-12 text-yellow-400" />
+                </div>
+              </div>
+
+              <div className="inline-block px-4 py-1.5 rounded-full bg-yellow-400/15 border border-yellow-400/30 mb-5">
+                <span className="text-yellow-400 text-sm font-semibold tracking-wide uppercase">Pre-Qualified</span>
+              </div>
+
+              <h2 className="text-white text-3xl md:text-4xl font-bold mb-4 leading-tight" data-testid="prequal-heading">
+                Congratulations!
+              </h2>
+
+              <p className="text-white/80 text-base md:text-lg leading-relaxed mb-3 max-w-md mx-auto">
+                With{" "}
+                {prequalResult.businessName ? (
+                  <span className="text-white font-semibold">{prequalResult.businessName}</span>
+                ) : (
+                  "your business"
+                )}{" "}
+                generating{" "}
+                <span className="text-yellow-400 font-bold">{formattedRevenue}/month</span>{" "}
+                in revenue, you are <span className="text-white font-semibold">pre-qualified for funding</span>.
+              </p>
+
+              <p className="text-white/60 text-sm mb-8 max-w-sm mx-auto">
+                Complete your application to lock in your offer and get connected with a funding specialist.
+              </p>
+
+              <div className="relative group max-w-sm mx-auto mb-4">
+                <div className="absolute -inset-1 bg-gradient-to-r from-yellow-400 via-amber-400 to-yellow-500 rounded-xl blur-md opacity-60 group-hover:opacity-90 transition duration-300" />
+                <button
+                  onClick={() =>
+                    prequalResult.applicationId
+                      ? navigate(`/?applicationId=${prequalResult.applicationId}`)
+                      : navigate("/")
+                  }
+                  className="relative w-full bg-gradient-to-r from-yellow-400 to-amber-500 text-[#19112D] py-4 px-8 rounded-xl font-bold text-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl flex items-center justify-center gap-3"
+                  data-testid="button-prequal-continue"
+                >
+                  Complete Your Application
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-white/40 text-xs max-w-sm mx-auto">
+                Takes less than 5 minutes. No hard credit pull required.
+              </p>
+            </>
+          ) : (
+            <>
+              {/* May qualify — revenue $10K–$40K */}
+              <div className="relative w-24 h-24 mx-auto mb-6">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-400/30 to-blue-500/20 animate-pulse" />
+                <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-cyan-400/20 to-blue-500/10 border border-cyan-400/40 flex items-center justify-center">
+                  <TrendingUp className="w-12 h-12 text-cyan-400" />
+                </div>
+              </div>
+
+              <div className="inline-block px-4 py-1.5 rounded-full bg-cyan-400/15 border border-cyan-400/30 mb-5">
+                <span className="text-cyan-400 text-sm font-semibold tracking-wide uppercase">Good News</span>
+              </div>
+
+              <h2 className="text-white text-3xl md:text-4xl font-bold mb-4 leading-tight" data-testid="prequal-heading">
+                Thank You for Your Interest!
+              </h2>
+
+              <p className="text-white/80 text-base md:text-lg leading-relaxed mb-3 max-w-md mx-auto">
+                With your monthly revenue of{" "}
+                <span className="text-cyan-400 font-bold">{formattedRevenue}</span>,{" "}
+                you <span className="text-white font-semibold">may qualify for financing</span>.
+              </p>
+
+              <p className="text-white/60 text-sm mb-8 max-w-sm mx-auto">
+                Complete your application so our team can review your full profile and find the best options for your business.
+              </p>
+
+              <div className="relative group max-w-sm mx-auto mb-4">
+                <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-500 rounded-xl blur-md opacity-60 group-hover:opacity-90 transition duration-300" />
+                <button
+                  onClick={() =>
+                    prequalResult.applicationId
+                      ? navigate(`/?applicationId=${prequalResult.applicationId}`)
+                      : navigate("/")
+                  }
+                  className="relative w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white py-4 px-8 rounded-xl font-bold text-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl flex items-center justify-center gap-3"
+                  data-testid="button-prequal-continue"
+                >
+                  Continue to Application
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-white/40 text-xs max-w-sm mx-auto">
+                Takes less than 5 minutes. No hard credit pull required.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
     );
   }
 

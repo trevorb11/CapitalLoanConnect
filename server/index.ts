@@ -1,11 +1,17 @@
+import dns from "dns";
+dns.setDefaultResultOrder("ipv4first");
+
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { Pool } from "@neondatabase/serverless";
 import { registerRoutes } from "./routes";
+import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { registerMcpRoutes } from "./mcp";
 import { setupVite, serveStatic, log } from "./vite";
 import { startScheduledTriggers } from "./messaging-triggers";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 const app = express();
 
@@ -16,7 +22,7 @@ declare module 'express-session' {
   interface SessionData {
     user?: {
       isAuthenticated: boolean;
-      role: 'admin' | 'agent' | 'partner' | 'underwriting' | 'user' | 'merchant';
+      role: 'admin' | 'agent' | 'partner' | 'underwriting' | 'user' | 'merchant' | 'lead';
       agentEmail?: string;
       agentName?: string;
       partnerId?: string;
@@ -147,6 +153,26 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
+    // Run lightweight startup migrations (idempotent — safe to run on every boot)
+    try {
+      await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_submitted_at TIMESTAMP`);
+      await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_bank_connected_at TIMESTAMP`);
+      await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_approved_at TIMESTAMP`);
+      console.log('[STARTUP] Migration: gigfi columns ensured');
+      // Backfill submitted_at from UUID v7 decision IDs for any rows missing it
+      const backfill = await db.execute(sql`
+        UPDATE loan_applications
+        SET gigfi_submitted_at = to_timestamp(
+          ('x' || left(replace(gigfi_decision_id, '-', ''), 12))::bit(48)::bigint / 1000.0
+        )
+        WHERE gigfi_decision_id IS NOT NULL AND gigfi_submitted_at IS NULL
+      `);
+      const count = (backfill as any).rowCount ?? 0;
+      if (count > 0) console.log(`[STARTUP] Migration: backfilled gigfi_submitted_at for ${count} rows`);
+    } catch (migErr) {
+      console.warn('[STARTUP] Migration warning (non-fatal):', migErr);
+    }
+
     console.log('[STARTUP] Registering routes...');
     const server = await registerRoutes(app);
     registerMcpRoutes(app);
@@ -176,6 +202,26 @@ app.use((req, res, next) => {
 
       // Start scheduled messaging triggers (stale approval reminders, incomplete app nudges)
       startScheduledTriggers();
+
+      // Auto-poll Salesforce for inbound changes every 5 minutes
+      const SF_POLL_INTERVAL_MS = 5 * 60 * 1000;
+      if (process.env.SF_INSTANCE_URL && (process.env.SF_REFRESH_TOKEN || process.env.SF_ACCESS_TOKEN)) {
+        console.log(`[STARTUP] SF auto-poll enabled (every ${SF_POLL_INTERVAL_MS / 1000}s)`);
+        // Initial poll after 30s delay (let server fully warm up)
+        setTimeout(() => {
+          pollSalesforceChanges().catch(err =>
+            console.error("[SF Poll] Initial poll error:", err.message)
+          );
+        }, 30000);
+        // Then every 5 minutes
+        setInterval(() => {
+          pollSalesforceChanges().catch(err =>
+            console.error("[SF Poll] Scheduled poll error:", err.message)
+          );
+        }, SF_POLL_INTERVAL_MS);
+      } else {
+        console.log("[STARTUP] SF auto-poll disabled — no SF credentials configured");
+      }
     });
   } catch (error) {
     console.error('[STARTUP] Failed to start server:', error);

@@ -1,5 +1,5 @@
 import {
-  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings, merchantPortalAccounts, merchantPlaidConnections, merchantFinancialInsights,
+  users, loanApplications, plaidItems, fundingAnalyses, bankStatementUploads, botAttempts, partners, lenderApprovals, businessUnderwritingDecisions, lenders, visitLogs, plaidStatements, congratulationsUploads, merchantMessages, systemSettings, merchantPortalAccounts, merchantPlaidConnections, merchantFinancialInsights, merchantBankSnapshots,
   type User, type InsertUser, type LoanApplication, type InsertLoanApplication,
   type PlaidItem, type InsertPlaidItem, type FundingAnalysis, type InsertFundingAnalysis,
   type BankStatementUpload, type InsertBankStatementUpload,
@@ -16,9 +16,10 @@ import {
   type MerchantPortalAccount, type InsertMerchantPortalAccount,
   type MerchantPlaidConnection, type InsertMerchantPlaidConnection,
   type MerchantFinancialInsight, type InsertMerchantFinancialInsight,
+  type MerchantBankSnapshot, type InsertMerchantBankSnapshot,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, desc, sql, ilike } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, getTableColumns, isNotNull, isNull, gte } from "drizzle-orm";
 
 // Retry wrapper for database operations to handle connection drops
 async function withRetry<T>(
@@ -68,8 +69,28 @@ export interface IStorage {
   createLoanApplication(application: Partial<InsertLoanApplication>): Promise<LoanApplication>;
   updateLoanApplication(id: string, application: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined>;
   getAllLoanApplications(): Promise<LoanApplication[]>;
+  getAllLoanApplicationsSummary(): Promise<Omit<LoanApplication, 'applicantSignature'>[]>;
+  getApplicationsSummaryFiltered(opts: { search?: string; limit?: number; agentEmail?: string }): Promise<Omit<LoanApplication, 'applicantSignature'>[]>;
+  getApplicationsCount(opts?: { search?: string; agentEmail?: string }): Promise<number>;
+  getApplicationEmailsByAgentEmail(agentEmail: string): Promise<string[]>;
   searchFullApplicationsForGigFi(query: string): Promise<LoanApplication[]>;
   
+  // Chirp methods
+  saveChirpRequestCode(email: string, phone: string, requestCode: string): Promise<void>;
+  getApplicationsWithChirpCode(): Promise<LoanApplication[]>;
+
+  // Merchant bank snapshot (Chirp cache) methods
+  getMerchantBankSnapshot(merchantEmail: string): Promise<MerchantBankSnapshot | undefined>;
+  getMerchantBankSnapshotByRequestCode(chirpRequestCode: string): Promise<MerchantBankSnapshot | undefined>;
+  upsertMerchantBankSnapshot(data: InsertMerchantBankSnapshot): Promise<MerchantBankSnapshot>;
+  deleteMerchantBankSnapshot(merchantEmail: string): Promise<void>;
+
+  // GigFi methods
+  saveGigFiResult(applicationId: string, status: string, decisionId?: string, redirectUrl?: string): Promise<void>;
+  saveGigFiResultByEmail(email: string, status: string, decisionId?: string, redirectUrl?: string): Promise<{ applicationId: string } | null>;
+  getGigFiSubmissions(): Promise<LoanApplication[]>;
+  getDeclinedDecisionsForExternalGigFi(lookbackDays: number): Promise<Array<BusinessUnderwritingDecision & { applicationId?: string; applicationData?: Record<string, unknown> }>>;
+
   // Plaid methods
   createPlaidItem(item: InsertPlaidItem): Promise<PlaidItem>;
   getPlaidItem(itemId: string): Promise<PlaidItem | undefined>;
@@ -292,6 +313,83 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(loanApplications.createdAt));
   }
 
+  // Lightweight list for the dashboard — excludes the heavy applicantSignature column
+  // (base64 image ~272KB total across all records). Signature is only needed on single-app view.
+  async getAllLoanApplicationsSummary(): Promise<Omit<LoanApplication, 'applicantSignature'>[]> {
+    const { applicantSignature, ...cols } = getTableColumns(loanApplications);
+    return await db
+      .select(cols)
+      .from(loanApplications)
+      .orderBy(desc(loanApplications.createdAt));
+  }
+
+  async getApplicationsSummaryFiltered(opts: {
+    search?: string;
+    limit?: number;
+    offset?: number;
+    agentEmail?: string;
+  }): Promise<Omit<LoanApplication, 'applicantSignature'>[]> {
+    const { applicantSignature, ...cols } = getTableColumns(loanApplications);
+    const conditions: any[] = [];
+    if (opts.agentEmail) {
+      conditions.push(sql`LOWER(${loanApplications.agentEmail}) = ${opts.agentEmail.toLowerCase()}`);
+    }
+    if (opts.search) {
+      const pattern = `%${opts.search}%`;
+      conditions.push(or(
+        ilike(loanApplications.fullName, pattern),
+        ilike(loanApplications.email, pattern),
+        ilike(loanApplications.businessName, pattern),
+        ilike(loanApplications.legalBusinessName, pattern),
+        ilike(loanApplications.phone, pattern),
+      ));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const base = db.select(cols).from(loanApplications);
+    const ordered = where
+      ? base.where(where).orderBy(desc(loanApplications.createdAt))
+      : base.orderBy(desc(loanApplications.createdAt));
+    const limited  = opts.limit  ? ordered.limit(opts.limit)   : ordered;
+    const paginated = opts.offset ? limited.offset(opts.offset) : limited;
+    return await paginated;
+  }
+
+  async getApplicationsCount(opts: { search?: string; agentEmail?: string } = {}): Promise<number> {
+    const conditions: any[] = [];
+    if (opts.agentEmail) {
+      conditions.push(sql`LOWER(${loanApplications.agentEmail}) = ${opts.agentEmail.toLowerCase()}`);
+    }
+    if (opts.search) {
+      const pattern = `%${opts.search}%`;
+      conditions.push(or(
+        ilike(loanApplications.fullName, pattern),
+        ilike(loanApplications.email, pattern),
+        ilike(loanApplications.businessName, pattern),
+        ilike(loanApplications.legalBusinessName, pattern),
+        ilike(loanApplications.phone, pattern),
+      ));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const base = db.select({ count: sql<number>`count(*)` }).from(loanApplications);
+    const [row] = where ? await base.where(where) : await base;
+    return Number(row.count);
+  }
+
+  // Returns only the applicant emails for a given agent — avoids full table scans when
+  // checking which underwriting decisions belong to an agent.
+  async getApplicationEmailsByAgentEmail(agentEmail: string): Promise<string[]> {
+    const rows = await db
+      .select({ email: loanApplications.email })
+      .from(loanApplications)
+      .where(
+        and(
+          sql`LOWER(${loanApplications.agentEmail}) = ${agentEmail.toLowerCase()}`,
+          sql`${loanApplications.email} IS NOT NULL`
+        )
+      );
+    return rows.map(r => (r.email || '').toLowerCase()).filter(Boolean);
+  }
+
   async searchFullApplicationsForGigFi(query: string): Promise<LoanApplication[]> {
     const pattern = `%${query}%`;
     return await db
@@ -398,6 +496,196 @@ export class DatabaseStorage implements IStorage {
       .where(eq(loanApplications.email, email))
       .orderBy(desc(loanApplications.createdAt));
     return application || undefined;
+  }
+
+  // Chirp methods
+  async saveChirpRequestCode(email: string, phone: string, requestCode: string): Promise<void> {
+    // Normalise phone to digits only for matching
+    const digitsOnly = (p: string) => p.replace(/\D/g, "");
+    const phoneDigits = digitsOnly(phone);
+
+    // Try email match first (most reliable), then phone
+    const all = await db.select().from(loanApplications).orderBy(desc(loanApplications.createdAt));
+    const match = all.find(a =>
+      (a.email && a.email.toLowerCase() === email.toLowerCase()) ||
+      (a.phone && digitsOnly(a.phone) === phoneDigits)
+    );
+
+    if (match) {
+      await db
+        .update(loanApplications)
+        .set({ chirpRequestCode: requestCode } as any)
+        .where(eq(loanApplications.id, match.id));
+      console.log(`[CHIRP] Saved requestCode ${requestCode} to application ${match.id} (${match.email})`);
+    } else {
+      console.warn(`[CHIRP] No application found for email=${email} phone=${phone} — requestCode ${requestCode} not stored`);
+    }
+  }
+
+  async getApplicationsWithChirpCode(): Promise<LoanApplication[]> {
+    return await db
+      .select()
+      .from(loanApplications)
+      .where(sql`chirp_request_code IS NOT NULL AND chirp_request_code != ''`)
+      .orderBy(desc(loanApplications.createdAt));
+  }
+
+  // Merchant bank snapshot (Chirp cache) methods
+  async getMerchantBankSnapshot(merchantEmail: string): Promise<MerchantBankSnapshot | undefined> {
+    const [row] = await db
+      .select()
+      .from(merchantBankSnapshots)
+      .where(eq(merchantBankSnapshots.merchantEmail, merchantEmail.toLowerCase()))
+      .limit(1);
+    return row || undefined;
+  }
+
+  async getMerchantBankSnapshotByRequestCode(chirpRequestCode: string): Promise<MerchantBankSnapshot | undefined> {
+    const [row] = await db
+      .select()
+      .from(merchantBankSnapshots)
+      .where(eq(merchantBankSnapshots.chirpRequestCode, chirpRequestCode))
+      .limit(1);
+    return row || undefined;
+  }
+
+  async upsertMerchantBankSnapshot(data: InsertMerchantBankSnapshot): Promise<MerchantBankSnapshot> {
+    const normalized = { ...data, merchantEmail: data.merchantEmail.toLowerCase() };
+    const [row] = await db
+      .insert(merchantBankSnapshots)
+      .values(normalized)
+      .onConflictDoUpdate({
+        target: merchantBankSnapshots.merchantEmail,
+        set: {
+          chirpRequestCode: normalized.chirpRequestCode,
+          institutionName: normalized.institutionName ?? null,
+          status: normalized.status ?? null,
+          isAccountConnected: normalized.isAccountConnected ?? false,
+          accountsData: normalized.accountsData ?? null,
+          summaryData: normalized.summaryData ?? null,
+          metrics: normalized.metrics ?? null,
+          lastSyncedAt: normalized.lastSyncedAt ?? null,
+          lastRefreshAt: normalized.lastRefreshAt ?? null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async deleteMerchantBankSnapshot(merchantEmail: string): Promise<void> {
+    await db
+      .delete(merchantBankSnapshots)
+      .where(eq(merchantBankSnapshots.merchantEmail, merchantEmail.toLowerCase()));
+  }
+
+  async saveGigFiResult(applicationId: string, status: string, decisionId?: string, redirectUrl?: string): Promise<void> {
+    await db
+      .update(loanApplications)
+      .set({
+        gigfiStatus: status,
+        gigfiDecisionId: decisionId || null,
+        gigfiRedirectUrl: redirectUrl || null,
+        gigfiSubmittedAt: new Date(),
+      } as any)
+      .where(eq(loanApplications.id, applicationId));
+    console.log(`[GIGFI] Saved result status=${status} decisionId=${decisionId} to application ${applicationId}`);
+  }
+
+  async getGigFiSubmissions(): Promise<LoanApplication[]> {
+    return await db
+      .select()
+      .from(loanApplications)
+      .where(isNotNull(loanApplications.gigfiStatus))
+      .orderBy(sql`gigfi_submitted_at DESC NULLS LAST, gigfi_decision_id DESC NULLS LAST, created_at DESC`);
+  }
+
+  async saveGigFiResultByEmail(email: string, status: string, decisionId?: string, redirectUrl?: string): Promise<{ applicationId: string } | null> {
+    const normalizedEmail = email.toLowerCase().trim();
+    const [app] = await db
+      .select({ id: loanApplications.id })
+      .from(loanApplications)
+      .where(and(
+        eq(loanApplications.email, normalizedEmail),
+        isNull(loanApplications.gigfiStatus),
+      ))
+      .orderBy(desc(loanApplications.createdAt))
+      .limit(1);
+
+    if (!app) {
+      console.warn(`[GIGFI] No un-submitted application found for email: ${normalizedEmail}`);
+      return null;
+    }
+
+    await db
+      .update(loanApplications)
+      .set({
+        gigfiStatus: status,
+        gigfiDecisionId: decisionId || null,
+        gigfiRedirectUrl: redirectUrl || null,
+        gigfiSubmittedAt: new Date(),
+      } as any)
+      .where(eq(loanApplications.id, app.id));
+
+    console.log(`[GIGFI] Saved external result status=${status} decisionId=${decisionId} to application ${app.id} (by email ${normalizedEmail})`);
+    return { applicationId: app.id };
+  }
+
+  async getDeclinedDecisionsForExternalGigFi(lookbackDays: number): Promise<Array<BusinessUnderwritingDecision & { applicationId?: string; applicationData?: Record<string, unknown> }>> {
+    const lookbackDate = new Date();
+    lookbackDate.setDate(lookbackDate.getDate() - lookbackDays);
+
+    const decisions = await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(and(
+        or(
+          eq(businessUnderwritingDecisions.status, 'declined'),
+          eq(businessUnderwritingDecisions.status, 'unqualified'),
+        ),
+        gte(businessUnderwritingDecisions.createdAt, lookbackDate),
+      ))
+      .orderBy(desc(businessUnderwritingDecisions.createdAt));
+
+    const enriched = await Promise.all(decisions.map(async (dec) => {
+      const [app] = await db
+        .select()
+        .from(loanApplications)
+        .where(and(
+          eq(loanApplications.email, dec.businessEmail.toLowerCase()),
+          isNull(loanApplications.gigfiStatus),
+        ))
+        .orderBy(desc(loanApplications.createdAt))
+        .limit(1);
+
+      return {
+        ...dec,
+        applicationId: app?.id || undefined,
+        applicationData: app ? {
+          id: app.id,
+          email: app.email,
+          fullName: app.fullName,
+          businessName: app.businessName,
+          legalBusinessName: app.legalBusinessName,
+          phone: app.phone,
+          monthlyRevenue: app.monthlyRevenue,
+          averageMonthlyRevenue: app.averageMonthlyRevenue,
+          requestedAmount: app.requestedAmount,
+          timeInBusiness: app.timeInBusiness,
+          socialSecurityNumber: app.socialSecurityNumber,
+          dateOfBirth: app.dateOfBirth,
+          ownerAddress1: app.ownerAddress1,
+          ownerCity: app.ownerCity,
+          ownerState: app.ownerState,
+          ownerZip: app.ownerZip,
+          businessStreetAddress: app.businessStreetAddress,
+          businessCsz: app.businessCsz,
+          creditScore: app.creditScore,
+        } : undefined,
+      };
+    }));
+
+    return enriched;
   }
 
   // Plaid Statements methods
@@ -766,9 +1054,19 @@ export class DatabaseStorage implements IStorage {
         .update(businessUnderwritingDecisions)
         .set({
           ...decision,
-          additionalFundings: mergedFundings,
-          approvalSlug: approvalSlug ?? existing.approvalSlug,
-          updatedAt: new Date(),
+          // Preserve existing approval packages and approval columns when not explicitly
+          // provided — adding a funded deal should never wipe what was approved.
+          additionalApprovals: decision.additionalApprovals ?? existing.additionalApprovals,
+          advanceAmount:       decision.advanceAmount       ?? existing.advanceAmount,
+          lender:              decision.lender              ?? existing.lender,
+          term:                decision.term                ?? existing.term,
+          paymentFrequency:    decision.paymentFrequency    ?? existing.paymentFrequency,
+          factorRate:          decision.factorRate          ?? existing.factorRate,
+          totalPayback:        decision.totalPayback        ?? existing.totalPayback,
+          netAfterFees:        decision.netAfterFees        ?? existing.netAfterFees,
+          additionalFundings:  mergedFundings,
+          approvalSlug:        approvalSlug ?? existing.approvalSlug,
+          updatedAt:           new Date(),
         })
         .where(eq(businessUnderwritingDecisions.id, existing.id))
         .returning();

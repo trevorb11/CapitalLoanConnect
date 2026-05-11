@@ -56,16 +56,19 @@ export interface GigFiResponse {
 }
 
 function deriveEmploymentLength(businessAge?: string): number {
-  if (!businessAge) return 12;
+  if (!businessAge) return 18;
   const mapping: Record<string, number> = {
     "Less than 3 months": 2,
     "3-5 months": 4,
+    "3-6 months": 4,
     "6-12 months": 9,
     "1-2 years": 18,
+    "2-3 years": 30,
     "2-5 years": 42,
+    "3-5 years": 48,
     "More than 5 years": 72,
   };
-  return mapping[businessAge] ?? 12;
+  return mapping[businessAge] ?? 18;
 }
 
 function formatPhoneForGigFi(phone: string): string {
@@ -100,7 +103,7 @@ function buildGigFiPayload(data: GigFiLeadData, refId: string) {
         AccountToUse: "C",
       },
       EmploymentInfo: {
-        MonthlyIncome: data.monthlyRevenue,
+        MonthlyIncome: data.monthlyRevenue || 10000,
         PayFrequency: data.payFrequency,
         IncomeType: "5", // Self-Employed (business owners)
         PayrollType: "3", // Direct Deposit
@@ -119,7 +122,6 @@ function buildGigFiPayload(data: GigFiLeadData, refId: string) {
     control: {
       execution_mode: "sync",
     },
-    ...(GIGFI_ENVIRONMENT === "sandbox" && { mock_data: {} }),
   };
 }
 

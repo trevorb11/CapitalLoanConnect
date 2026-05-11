@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { usePlaidLink } from "react-plaid-link";
 
 // ── CALC ENGINE ──────────────────────────────────────────────────────────
 function isWeekday(date: Date) {
@@ -88,7 +87,16 @@ interface CalcResult {
 function calcDeal(deal: Deal): CalcResult {
   const today = new Date();
   const funded = new Date(deal.fundedDate);
-  const totalPayback = deal.totalPayback || deal.advanceAmount * deal.factorRate;
+  // Payoff timeline must reflect the total amount the merchant owes — i.e.
+  // the funded/advance amount multiplied by the factor rate. Always compute
+  // from advance × factorRate when we have a valid factor rate (> 1) so the
+  // timeline never accidentally shows just the funded amount, and fall back
+  // to the stored totalPayback only when we don't have enough info to derive it.
+  const derivedPayback = deal.advanceAmount * deal.factorRate;
+  const totalPayback =
+    deal.advanceAmount > 0 && deal.factorRate > 1
+      ? derivedPayback
+      : (deal.totalPayback || derivedPayback || 0);
   const isDaily = deal.paymentFrequency === "daily";
 
   let paymentsMade: number, paymentAmount: number, totalPayments: number;
@@ -97,14 +105,58 @@ function calcDeal(deal: Deal): CalcResult {
   const isBiWeekly = deal.paymentFrequency === "bi-weekly" || deal.paymentFrequency === "biweekly";
   const isMonthly = deal.paymentFrequency === "monthly";
 
+  // Parse the term string (e.g. "6 months", "80 days", "52 weeks", "12") into
+  // a { value, unit } pair. Defaults to months if no unit is specified.
+  const parseTerm = (termStr: string | null | undefined): { value: number; unit: 'days' | 'weeks' | 'months' } => {
+    if (!termStr) return { value: 6, unit: 'months' };
+    const s = termStr.toLowerCase().trim();
+    const match = s.match(/(\d+(?:\.\d+)?)/);
+    if (!match) return { value: 6, unit: 'months' };
+    const value = parseFloat(match[1]);
+    if (/day/.test(s)) return { value, unit: 'days' };
+    if (/week/.test(s) || /wk/.test(s)) return { value, unit: 'weeks' };
+    if (/month/.test(s) || /mo\b/.test(s)) return { value, unit: 'months' };
+    // No unit — infer from payment frequency
+    if (isDaily) return { value, unit: 'days' };
+    if (isWeekly || isBiWeekly) return { value, unit: 'weeks' };
+    return { value, unit: 'months' };
+  };
+
+  const parsedTerm = parseTerm(deal.term);
+
+  // Convert parsed term to total number of payments based on payment frequency
+  const termToTotalPayments = (): number => {
+    const { value, unit } = parsedTerm;
+    if (isDaily) {
+      // Daily payments are business days
+      if (unit === 'days') return Math.round(value);
+      if (unit === 'weeks') return Math.round(value * 5); // 5 business days per week
+      if (unit === 'months') return Math.round(value * 21); // ~21 business days per month
+    }
+    if (isWeekly) {
+      if (unit === 'weeks') return Math.round(value);
+      if (unit === 'months') return Math.round(value * 4.33);
+      if (unit === 'days') return Math.round(value / 7);
+    }
+    if (isBiWeekly) {
+      if (unit === 'weeks') return Math.round(value / 2);
+      if (unit === 'months') return Math.round(value * 2);
+      if (unit === 'days') return Math.round(value / 14);
+    }
+    if (isMonthly) {
+      if (unit === 'months') return Math.round(value);
+      if (unit === 'weeks') return Math.round(value / 4.33);
+      if (unit === 'days') return Math.round(value / 30);
+    }
+    return Math.round(value);
+  };
+
   if (isDaily) {
-    totalPayments = businessDaysBetween(funded, new Date(funded.getTime() + 180 * 24 * 60 * 60 * 1000));
+    totalPayments = termToTotalPayments();
     paymentAmount = totalPayback / totalPayments;
     paymentsMade = businessDaysBetween(funded, today);
   } else {
-    const termMonths = deal.term ? parseInt(deal.term) : 6;
-    const paymentsPerMonth = isWeekly ? 4.33 : isBiWeekly ? 2 : 1;
-    totalPayments = Math.round(termMonths * paymentsPerMonth);
+    totalPayments = termToTotalPayments();
     paymentAmount = totalPayback / totalPayments;
 
     if (isMonthly) {
@@ -520,6 +572,13 @@ const CSS = `
   }
 
   .deal-stat-val.teal { color: #2dd4bf; }
+
+  .deal-stat-sub {
+    font-size: 10px;
+    color: #4b5568;
+    margin-top: 3px;
+    letter-spacing: 0.02em;
+  }
 
   .progress-wrap { margin-bottom: 12px; }
 
@@ -1144,6 +1203,141 @@ const CSS = `
     margin-top: 2px;
   }
 
+  /* ── RESOURCES ── */
+  .resources-section {
+    margin-top: 8px;
+  }
+
+  .resources-intro {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 24px 28px;
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(45,212,191,0.15);
+    border-radius: 16px;
+    margin-bottom: 24px;
+  }
+
+  .resources-intro-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .resources-intro-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: #e8eaf0;
+    margin-bottom: 4px;
+  }
+
+  .resources-intro-sub {
+    font-size: 14px;
+    color: #7b8499;
+    line-height: 1.5;
+  }
+
+  .resources-group {
+    margin-bottom: 28px;
+  }
+
+  .resources-group-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    color: #9ba3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .resources-group-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+  }
+
+  .resources-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .resource-card {
+    display: block;
+    background: rgba(15,23,41,0.7);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 20px 24px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+
+  .resource-card:hover {
+    border-color: rgba(45,212,191,0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  }
+
+  .resource-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .resource-card-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    color: #e8eaf0;
+    line-height: 1.3;
+  }
+
+  .resource-tag {
+    flex-shrink: 0;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+
+  .resource-card-desc {
+    font-size: 13px;
+    color: #7b8499;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+
+  .resource-card-link {
+    font-size: 13px;
+    color: #14B8A6;
+    font-weight: 500;
+    transition: color 0.2s;
+  }
+
+  .resource-card:hover .resource-card-link {
+    color: #2dd4bf;
+  }
+
+  @media (min-width: 640px) {
+    .resources-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
   /* ── MESSAGING ── */
   .messaging-section {
     margin-top: 20px;
@@ -1450,6 +1644,125 @@ const CSS = `
     font-size: 10px;
     font-weight: 700;
     color: #fff;
+  }
+
+  /* ── MOBILE: Tab bar scrolls, grids stack ── */
+  @media (max-width: 640px) {
+    .portal-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .portal-nav-btn { flex: none; min-width: 0; padding: 10px 14px; font-size: 12px; white-space: nowrap; }
+    .page-wrap { padding: 20px 16px 60px; }
+    .page-title { font-size: 22px; }
+    .deal-stats-row { grid-template-columns: repeat(2, 1fr); }
+    .header { padding: 14px 16px; }
+    .header-user { display: none; }
+    .financials-section .insight-card { padding: 14px; }
+  }
+
+  /* ── LOADING SPINNER ── */
+  .portal-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 20px;
+    color: #7b8499;
+    font-size: 14px;
+    gap: 12px;
+  }
+
+  .portal-spinner {
+    width: 28px; height: 28px;
+    border: 3px solid rgba(45,212,191,0.2);
+    border-top-color: #2dd4bf;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── ERROR STATE ── */
+  .portal-error {
+    text-align: center;
+    padding: 32px 20px;
+    background: rgba(239,68,68,0.06);
+    border: 1px solid rgba(239,68,68,0.15);
+    border-radius: 12px;
+    color: #fca5a5;
+    font-size: 14px;
+  }
+
+  .portal-error p { margin-bottom: 12px; }
+
+  .portal-retry-btn {
+    padding: 8px 20px;
+    background: rgba(239,68,68,0.15);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .portal-retry-btn:hover { background: rgba(239,68,68,0.25); }
+
+  /* ── EMPTY STATE ── */
+  .portal-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #4b5568;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .portal-empty strong { color: #94a3b8; display: block; margin-bottom: 6px; font-size: 15px; }
+
+  /* ── STALE DATA WARNING ── */
+  .stale-warning {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(250,204,21,0.08);
+    border: 1px solid rgba(250,204,21,0.2);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #facc15;
+    gap: 12px;
+  }
+
+  .stale-warning button {
+    padding: 5px 14px;
+    background: rgba(250,204,21,0.15);
+    border: 1px solid rgba(250,204,21,0.3);
+    border-radius: 6px;
+    color: #facc15;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ── POPUP BLOCKED FALLBACK ── */
+  .popup-fallback {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: rgba(250,204,21,0.08);
+    border: 1px solid rgba(250,204,21,0.2);
+    border-radius: 8px;
+    font-size: 13px;
+    color: #facc15;
+    text-align: center;
+  }
+
+  .popup-fallback a {
+    color: #2dd4bf;
+    font-weight: 600;
+    text-decoration: underline;
   }
 
   /* ── OFFER BANNER ── */
@@ -2062,15 +2375,22 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
         <div>
           <div className="deal-stat-label">Advance</div>
           <div className="deal-stat-val">{fmt$(deal.advanceAmount)}</div>
+          <div className="deal-stat-sub">Funded amount</div>
         </div>
         <div>
           <div className="deal-stat-label">Total Payback</div>
           <div className="deal-stat-val">{fmt$(calc.totalPayback)}</div>
+          <div className="deal-stat-sub">
+            {fmt$(deal.advanceAmount)} &times; {deal.factorRate}x factor
+          </div>
         </div>
         <div>
           <div className="deal-stat-label">Remaining</div>
           <div className={`deal-stat-val ${!calc.isComplete ? "teal" : ""}`}>
             {calc.isComplete ? "\u2014" : fmt$(calc.remaining)}
+          </div>
+          <div className="deal-stat-sub">
+            {calc.isComplete ? "Paid in full" : "of total owed"}
           </div>
         </div>
       </div>
@@ -2084,11 +2404,33 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
       </div>
 
       <div className="deal-card-footer">
-        <div>
+        <div style={{ display: "flex", gap: 24 }}>
           {!calc.isComplete ? (
             <>
-              <div className="remaining-label">Est. payoff</div>
-              <div className="remaining-amount">{fmtDate(calc.projectedPayoff)}</div>
+              <div>
+                <div className="remaining-label">Next payment</div>
+                <div className="remaining-amount">{(() => {
+                  const today = new Date();
+                  const freq = deal.paymentFrequency;
+                  const next = new Date(today);
+                  if (freq === "daily") {
+                    // Next business day
+                    next.setDate(next.getDate() + 1);
+                    while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
+                  } else if (freq === "weekly") {
+                    next.setDate(next.getDate() + (7 - next.getDay() + 1) % 7 || 7);
+                  } else if (freq === "bi-weekly" || freq === "biweekly") {
+                    next.setDate(next.getDate() + 14);
+                  } else {
+                    next.setMonth(next.getMonth() + 1, 1);
+                  }
+                  return fmtDate(next);
+                })()}</div>
+              </div>
+              <div>
+                <div className="remaining-label">Est. payoff</div>
+                <div className="remaining-amount">{fmtDate(calc.projectedPayoff)}</div>
+              </div>
             </>
           ) : (
             <div className="remaining-label">Position fully paid off</div>
@@ -2160,7 +2502,9 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
               <div className="tracker-paid">
                 <strong>{fmt$(calc.amountPaid)}</strong> paid
               </div>
-              <div className="tracker-total">{fmt$(calc.totalPayback)} total</div>
+              <div className="tracker-total">
+                {fmt$(calc.totalPayback)} total owed ({fmt$(deal.advanceAmount)} &times; {deal.factorRate}x)
+              </div>
             </div>
 
             <div className="tracker-metrics">
@@ -2186,7 +2530,10 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
             <div>
               <div className="balance-left-label">Remaining Balance</div>
               <div className="balance-amount">{fmt$(calc.remaining)}</div>
-              <div className="balance-sub">{fmt$(calc.amountPaid)} paid of {fmt$(calc.totalPayback)} total</div>
+              <div className="balance-sub">
+                {fmt$(calc.amountPaid)} paid of {fmt$(calc.totalPayback)} total owed
+                {" "}({fmt$(deal.advanceAmount)} funded &times; {deal.factorRate}x factor)
+              </div>
             </div>
             <div className="payoff-date-wrap">
               <div className="payoff-date-label">Projected Payoff</div>
@@ -2199,6 +2546,9 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
 
       {/* Payoff Countdown */}
       <PayoffCountdownWidget deal={deal} />
+
+      {/* Payoff coverage from bank revenue (only shown if merchant has connected via Chirp) */}
+      <PayoffCoverageInsight deal={deal} />
 
       {/* Renewal Eligibility Tracker */}
       <RenewalEligibilityTracker deal={deal} />
@@ -2656,59 +3006,175 @@ function PreQualifiedOfferBanner({ deals }: { deals: Deal[] }) {
   );
 }
 
-// ── PLAID LINK BUTTON ─────────────────────────────────────────────────────
-function PlaidLinkButton({ onSuccess, label = "Connect Your Bank", previewToken }: { onSuccess: () => void; label?: string; previewToken?: string | null }) {
-  const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+// ── CHIRP CONNECT BUTTON ──────────────────────────────────────────────────
+// Replaces the previous PlaidLinkButton. Opens Chirp's hosted verification
+// widget in a popup and polls our server for connection status. Once the
+// merchant finishes verifying their bank on Chirp's side, we trigger a sync
+// to populate our local snapshot so subsequent portal views are cheap.
+function ChirpConnectButton({ onSuccess, label = "Connect Your Bank", previewToken }: { onSuccess: () => void; label?: string; previewToken?: string | null }) {
+  const [starting, setStarting] = useState(false);
+  const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Phone capture: shown when server tells us a phone number is needed
+  const [needsPhone, setNeedsPhone] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [popupBlocked, setPopupBlocked] = useState<string | null>(null);
+  const pollRef = useRef<number | null>(null);
+  const popupRef = useRef<Window | null>(null);
+  const pvHeaders: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
-  const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
+  useEffect(() => () => {
+    if (pollRef.current) window.clearInterval(pollRef.current);
+  }, []);
 
-  const fetchLinkToken = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/merchant/plaid/create-link-token", { method: "POST", credentials: "include", headers: previewHeaders });
-      if (!res.ok) throw new Error("Failed to create link token");
-      const data = await res.json();
-      setLinkToken(data.link_token);
-    } catch (e) {
-      setError("Could not initialize bank connection. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }, [previewToken]);
-
-  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
-    try {
-      const res = await fetch("/api/merchant/plaid/exchange-token", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...previewHeaders },
-        body: JSON.stringify({ publicToken, metadata }),
-      });
-      if (!res.ok) throw new Error("Failed to exchange token");
-      onSuccess();
-    } catch (e) {
-      setError("Bank connection failed. Please try again.");
-    }
+  const startPolling = useCallback(() => {
+    setWaiting(true);
+    let attempts = 0;
+    const MAX_ATTEMPTS = 60; // ~5 minutes at 5s interval
+    pollRef.current = window.setInterval(async () => {
+      attempts += 1;
+      try {
+        const res = await fetch("/api/merchant/banking/insights", { credentials: "include", headers: pvHeaders });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.connected) {
+            if (pollRef.current) window.clearInterval(pollRef.current);
+            pollRef.current = null;
+            setWaiting(false);
+            onSuccess();
+            return;
+          }
+        }
+      } catch (_) { /* ignore transient errors */ }
+      // If the popup was closed and we still have no connection, bail out.
+      if (popupRef.current && popupRef.current.closed && attempts > 2) {
+        // Try one sync pull before giving up, in case status just flipped.
+        try {
+          await fetch("/api/merchant/chirp/sync", { method: "POST", credentials: "include", headers: pvHeaders });
+        } catch (_) { /* ignore */ }
+        const finalRes = await fetch("/api/merchant/banking/insights", { credentials: "include", headers: pvHeaders });
+        if (finalRes.ok) {
+          const data = await finalRes.json();
+          if (data.connected) {
+            onSuccess();
+          }
+        }
+        if (pollRef.current) window.clearInterval(pollRef.current);
+        pollRef.current = null;
+        setWaiting(false);
+        return;
+      }
+      if (attempts >= MAX_ATTEMPTS) {
+        if (pollRef.current) window.clearInterval(pollRef.current);
+        pollRef.current = null;
+        setWaiting(false);
+      }
+    }, 5000);
   }, [onSuccess]);
 
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
-    onSuccess: onPlaidSuccess,
-  });
+  const doConnect = useCallback(async (phoneOverride?: string) => {
+    setStarting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/merchant/chirp/connect", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...pvHeaders },
+        body: JSON.stringify(phoneOverride ? { phone: phoneOverride } : {}),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        // If the server says we need a phone number, show the inline form
+        if (res.status === 400 && err.error?.toLowerCase().includes("phone")) {
+          setNeedsPhone(true);
+          setStarting(false);
+          return;
+        }
+        throw new Error(err.error || "Could not start bank connection.");
+      }
+      const data = await res.json();
+      const url = data.widgetUrl || data.verificationUrl;
+      if (!url) throw new Error("Chirp did not return a connection URL.");
+
+      setNeedsPhone(false);
+      setPopupBlocked(null);
+      popupRef.current = window.open(url, "chirp-connect", "width=480,height=720,menubar=no,toolbar=no");
+      if (!popupRef.current || popupRef.current.closed) {
+        // Popup blocked — show a direct link so they can click through
+        setPopupBlocked(url);
+      }
+      startPolling();
+    } catch (e: any) {
+      setError(e.message || "Could not start bank connection.");
+    } finally {
+      setStarting(false);
+    }
+  }, [startPolling]);
+
+  const handleConnect = useCallback(() => doConnect(), [doConnect]);
+
+  const handlePhoneSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 10) {
+      setError("Please enter a valid 10-digit phone number.");
+      return;
+    }
+    setError(null);
+    doConnect(digits.length === 10 ? `+1${digits}` : `+${digits}`);
+  }, [phone, doConnect]);
+
+  if (needsPhone) {
+    return (
+      <div style={{ maxWidth: 340 }}>
+        <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 10 }}>
+          We need a phone number to verify your identity with Chirp. This won't be shared with anyone else.
+        </p>
+        <form onSubmit={handlePhoneSubmit} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input
+            type="tel"
+            placeholder="(555) 000-0000"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              border: "1.5px solid #334155",
+              background: "#1e293b",
+              color: "#f8fafc",
+              fontSize: 14,
+              outline: "none",
+            }}
+            autoFocus
+          />
+          {error && <p style={{ color: "#f87171", fontSize: 12, margin: 0 }}>{error}</p>}
+          <button
+            type="submit"
+            className="connect-bank-cta"
+            disabled={starting}
+            style={{ marginTop: 4 }}
+          >
+            {starting ? "Connecting..." : "Continue →"}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div>
-      {!linkToken ? (
-        <button className="connect-bank-cta" onClick={fetchLinkToken} disabled={loading}>
-          {loading ? "Initializing..." : label}
-        </button>
-      ) : (
-        <button className="connect-bank-cta" onClick={() => open()} disabled={!ready}>
-          {ready ? label : "Loading..."}
-        </button>
+      <button className="connect-bank-cta" onClick={handleConnect} disabled={starting || waiting}>
+        {starting ? "Initializing..." : waiting ? "Waiting for Chirp..." : label}
+      </button>
+      {waiting && !popupBlocked && (
+        <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 8 }}>
+          Finish connecting in the Chirp window — we'll update this page automatically.
+        </p>
+      )}
+      {popupBlocked && (
+        <div className="popup-fallback">
+          Your browser blocked the popup. <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here to connect your bank</a>, then come back to this page.
+        </div>
       )}
       {error && <p style={{ color: "#f87171", fontSize: 13, marginTop: 8 }}>{error}</p>}
     </div>
@@ -2729,10 +3195,18 @@ interface FinancialInsights {
   hasPlaidConnection: boolean;
   pdfInsights: {
     cashFlowHealth: 'strong' | 'moderate' | 'needs-attention';
+    overallScore?: number;
+    scoreExplanation?: string;
     estimatedMonthlyRevenue: number;
+    estimatedMonthlyExpenses: number;
+    netCashFlow: number;
     averageDailyBalance: number;
-    positiveIndicators: string[];
-    concerns: string[];
+    currentBalance: number;
+    revenueConsistency?: string | null;
+    cashRunwayDays?: number;
+    monthlyBreakdown?: Array<{ month: string; revenue: number; expenses: number }>;
+    positiveIndicators: Array<string | { label: string; details: string }>;
+    concerns: Array<string | { label: string; details: string; severity: string }>;
     tips: string[];
     summary: string;
     analyzedAt: string;
@@ -2748,40 +3222,238 @@ interface FinancialInsights {
   statements: StatementFile[];
 }
 
-interface PlaidConnection {
-  id: string;
-  institutionName: string | null;
-  connectedAt: string | null;
-  isActive: boolean;
-  source: 'portal' | 'intake';
+interface BankingInsights {
+  connected: boolean;
+  hasPendingConnection?: boolean;
+  status?: string | null;
+  institutionName?: string | null;
+  connectedAt?: string | null;
+  lastSyncedAt?: string | null;
+  accounts?: Array<{ name: string; type: string; balance: number }>;
+  metrics?: {
+    monthlyRevenue: number;
+    monthlyExpenses: number;
+    netCashFlow: number;
+    avgBalance: number;
+    currentBalance: number;
+    monthsAnalyzed: number;
+    revenueTrend?: "growing" | "stable" | "declining" | null;
+    healthScore?: number;
+  };
 }
 
-function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken, uploadedStatements }: {
+type DataSource = "chirp" | "statements";
+
+// Statement upload drop zone
+function StatementUploadZone({ previewHeaders, onUploadComplete }: { previewHeaders: Record<string, string>; onUploadComplete: () => void }) {
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (file: File) => {
+    if (file.type !== "application/pdf") {
+      setUploadResult({ success: false, message: "Only PDF files are supported." });
+      return;
+    }
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/merchant/bank-statements/upload", {
+        method: "POST", credentials: "include", headers: previewHeaders, body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Upload failed");
+      }
+      setUploadResult({ success: true, message: `${file.name} uploaded successfully. Click "Analyze" to generate insights.` });
+      onUploadComplete();
+    } catch (e: any) {
+      setUploadResult({ success: false, message: e.message || "Upload failed" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleUpload(file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleUpload(file);
+  };
+
+  return (
+    <div
+      className="insight-card"
+      onDragOver={e => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      style={{
+        textAlign: "center", padding: "20px",
+        border: dragging ? "2px dashed #2dd4bf" : "1px solid rgba(255,255,255,0.08)",
+        background: dragging ? "rgba(45,212,191,0.06)" : undefined,
+        transition: "all 0.2s", cursor: "pointer",
+      }}
+      onClick={() => fileInputRef.current?.click()}
+    >
+      <input ref={fileInputRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={handleFileSelect} />
+      {uploading ? (
+        <div className="portal-loading" style={{ padding: 12 }}><div className="portal-spinner" /><span>Uploading...</span></div>
+      ) : (
+        <>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 8px", display: "block" }}>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p style={{ color: "#94a3b8", fontSize: 13 }}>
+            {dragging ? "Drop your PDF here" : "Drop a bank statement PDF here, or click to browse"}
+          </p>
+          <p style={{ color: "#4b5568", fontSize: 11, marginTop: 4 }}>PDF files up to 25MB</p>
+        </>
+      )}
+      {uploadResult && (
+        <p style={{ color: uploadResult.success ? "#2dd4bf" : "#f87171", fontSize: 12, marginTop: 8 }}>
+          {uploadResult.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Categorized insight cards with collapsible sections
+function InsightCategories({ pdf }: { pdf: any }) {
+  const [expandedSection, setExpandedSection] = useState<string | null>("summary");
+  const toggle = (section: string) => setExpandedSection(prev => prev === section ? null : section);
+
+  // Normalize items — handle both old string format and new {label, details} format
+  const normalizeItems = (items: any[]): Array<{ label: string; details: string }> =>
+    (items || []).map((item: any) => typeof item === "string"
+      ? { label: item.length <= 50 ? item : item.substring(0, 50) + "...", details: item.length > 50 ? item : "" }
+      : { label: item.label || item.indicator || item.issue || "", details: item.details || "" });
+
+  const strengths = normalizeItems(pdf.positiveIndicators);
+  const concerns = normalizeItems(pdf.concerns);
+
+  const renderItems = (items: Array<{ label: string; details: string }>, color: string) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {items.map((item, i) => (
+        <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <span style={{ color, fontSize: 16, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>{color === "#2dd4bf" ? "\u2713" : "\u2022"}</span>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: 13, color: "#e8eaf0" }}>{item.label}</span>
+            {item.details && <p style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5, marginTop: 2 }}>{item.details}</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const sections = [
+    {
+      key: "summary", label: "Overview", color: "#94a3b8",
+      show: !!pdf.summary,
+      content: <p style={{ lineHeight: 1.7, fontSize: 13, color: "#94a3b8" }}>{pdf.summary}</p>,
+    },
+    {
+      key: "strengths", label: "What\u2019s Working", color: "#2dd4bf",
+      count: strengths.length, show: strengths.length > 0,
+      content: renderItems(strengths, "#2dd4bf"),
+    },
+    {
+      key: "concerns", label: "Keep an Eye On", color: "#facc15",
+      count: concerns.length, show: concerns.length > 0,
+      content: renderItems(concerns, "#facc15"),
+    },
+    {
+      key: "tips", label: "Ways to Improve", color: "#60a5fa",
+      count: (pdf.tips || []).length, show: (pdf.tips || []).length > 0,
+      content: (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {(pdf.tips || []).map((tip: string, i: number) => (
+            <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13, flexShrink: 0, minWidth: 18 }}>{i + 1}.</span>
+              <span style={{ fontSize: 13, color: "#c8cdd5", lineHeight: 1.5 }}>{tip}</span>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  ].filter(s => s.show);
+
+  return (
+    <div className="insight-card" style={{ padding: 0 }}>
+      <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, padding: "16px 20px 8px" }}>
+        Financial Insights
+      </h3>
+      {sections.map(section => (
+        <div key={section.key} style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={() => toggle(section.key)}
+            style={{
+              width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+              background: expandedSection === section.key ? "rgba(255,255,255,0.02)" : "none",
+              border: "none", cursor: "pointer", padding: "12px 20px", textAlign: "left",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#e8eaf0" }}>{section.label}</span>
+              {"count" in section && (section as any).count > 0 && (
+                <span style={{
+                  background: `${section.color}20`, color: section.color, borderRadius: 20,
+                  padding: "1px 8px", fontSize: 11, fontWeight: 600,
+                }}>{(section as any).count}</span>
+              )}
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ transform: expandedSection === section.key ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {expandedSection === section.key && (
+            <div style={{ padding: "0 20px 16px" }}>{section.content}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMessages, previewToken, uploadedStatements, deals = [] }: {
   merchantEmail: string;
   merchantName: string;
   assignedRep: string | null;
   onSwitchToMessages: () => void;
   previewToken?: string | null;
+  deals?: Deal[];
   uploadedStatements?: VaultDocument[];
 }) {
   const [insights, setInsights] = useState<FinancialInsights | null>(null);
-  const [connections, setConnections] = useState<PlaidConnection[]>([]);
+  const [banking, setBanking] = useState<BankingInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [showBanks, setShowBanks] = useState(false);
+  const [dataSource, setDataSource] = useState<DataSource>("chirp");
 
   const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [insightsRes, connectionsRes] = await Promise.all([
+      const [insightsRes, bankingRes] = await Promise.all([
         fetch("/api/merchant/financial-insights", { credentials: "include", headers: previewHeaders }),
-        fetch("/api/merchant/plaid/connections", { credentials: "include", headers: previewHeaders }),
+        fetch("/api/merchant/banking/insights", { credentials: "include", headers: previewHeaders }),
       ]);
       if (insightsRes.ok) setInsights(await insightsRes.json());
-      if (connectionsRes.ok) setConnections(await connectionsRes.json());
+      if (bankingRes.ok) setBanking(await bankingRes.json());
     } catch (e) {
       console.error("Failed to load financial data:", e);
     } finally {
@@ -2789,7 +3461,46 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
     }
   }, []);
 
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await fetch("/api/merchant/chirp/sync", { method: "POST", credentials: "include", headers: previewHeaders });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Sync failed");
+      }
+      await fetchData();
+    } catch (e: any) {
+      setSyncError(e.message || "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }, [fetchData]);
+
+  const handleDisconnectChirp = useCallback(async () => {
+    try {
+      await fetch("/api/merchant/chirp/connection", { method: "DELETE", credentials: "include", headers: previewHeaders });
+      await fetchData();
+    } catch (e) {
+      console.error("Failed to disconnect Chirp:", e);
+    }
+  }, [fetchData]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // When the portal loads and we have a pending connection (requestCode exists
+  // but not yet confirmed), auto-register the webhook so Chirp can push the
+  // status update to us even if the server can't poll Chirp's read API.
+  useEffect(() => {
+    if (banking?.hasPendingConnection) {
+      fetch("/api/merchant/chirp/register-webhook", {
+        method: "POST",
+        credentials: "include",
+        headers: previewHeaders,
+      }).catch(() => {});
+    }
+  }, [banking?.hasPendingConnection]);
 
   const handleAnalyze = async () => {
     setAnalyzing(true);
@@ -2798,6 +3509,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       const res = await fetch("/api/merchant/bank-statements/analyze", {
         method: "POST",
         credentials: "include",
+        headers: previewHeaders,
       });
       if (!res.ok) {
         const data = await res.json();
@@ -2811,30 +3523,19 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
     }
   };
 
-  const handleDisconnect = async (id: string) => {
-    try {
-      await fetch(`/api/merchant/plaid/connections/${id}`, { method: "DELETE", credentials: "include", headers: previewHeaders });
-      await fetchData();
-    } catch (e) {
-      console.error("Failed to disconnect:", e);
-    }
-  };
-
   if (loading) {
     return (
       <div className="financials-section">
-        <div className="insight-card" style={{ textAlign: "center", padding: 40 }}>
-          <div className="skeleton-line" style={{ width: "60%", margin: "0 auto 12px" }} />
-          <div className="skeleton-line" style={{ width: "40%", margin: "0 auto 12px" }} />
-          <div className="skeleton-line" style={{ width: "50%", margin: "0 auto" }} />
-        </div>
+        <div className="portal-loading"><div className="portal-spinner" /><span>Loading financial data...</span></div>
       </div>
     );
   }
 
-  const hasAnyData = insights?.pdfInsights || insights?.plaidInsights;
+  const hasAnyData = insights?.pdfInsights || insights?.plaidInsights || (banking?.connected && banking?.metrics);
   const pdf = insights?.pdfInsights;
   const plaid = insights?.plaidInsights;
+  const chirpConnected = Boolean(banking?.connected);
+  const chirpMetrics = banking?.metrics;
 
   // Merge statement sources: prefer vault docs passed from parent (already verified working),
   // fall back to what financial-insights returned
@@ -2849,14 +3550,61 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
     vaultStatements.length > 0 ? vaultStatements : (insights?.statements || []);
   const showStatementsSection = displayStatements.length > 0 || insights?.hasStatements;
 
-  // Use Plaid data when available, fall back to PDF
-  const monthlyRevenue = plaid?.monthlyRevenue || pdf?.estimatedMonthlyRevenue || 0;
-  const avgBalance = plaid?.avgBalance || pdf?.averageDailyBalance || 0;
-  const cashFlowHealth = pdf?.cashFlowHealth || (plaid ? 'moderate' : null);
+  // Determine which data sources are available
+  const hasChirpData = chirpConnected && chirpMetrics && chirpMetrics.monthlyRevenue > 0;
+  const hasPdfData = Boolean(pdf?.estimatedMonthlyRevenue);
+  const hasBothSources = hasChirpData && hasPdfData;
+
+  // Auto-select best source if user hasn't toggled, or if selected source has no data
+  const activeSource = hasBothSources ? dataSource : hasChirpData ? "chirp" : hasPdfData ? "statements" : "chirp";
+
+  // Compute metrics based on active data source
+  const useChirp = activeSource === "chirp" && (hasChirpData || chirpConnected);
+  const monthlyRevenue = useChirp
+    ? (chirpMetrics?.monthlyRevenue || plaid?.monthlyRevenue || 0)
+    : (pdf?.estimatedMonthlyRevenue || plaid?.monthlyRevenue || 0);
+  const monthlyExpenses = useChirp
+    ? (chirpMetrics?.monthlyExpenses || 0)
+    : (pdf?.estimatedMonthlyExpenses || 0);
+  const netCashFlow = useChirp
+    ? (chirpMetrics?.netCashFlow || 0)
+    : (pdf?.netCashFlow || 0);
+  const avgBalance = useChirp
+    ? (chirpMetrics?.avgBalance || plaid?.avgBalance || 0)
+    : (pdf?.averageDailyBalance || plaid?.avgBalance || 0);
+  const currentBalance = useChirp
+    ? (chirpMetrics?.currentBalance || 0)
+    : (pdf?.currentBalance || 0);
+  const revenueTrend = useChirp ? (chirpMetrics?.revenueTrend || plaid?.revenueTrend || null) : (plaid?.revenueTrend || null);
+  const healthScore = useChirp ? (chirpMetrics?.healthScore || 0) : 0;
+  const monthsAnalyzed = useChirp ? (chirpMetrics?.monthsAnalyzed || 0) : 0;
+  const cashFlowHealth = useChirp
+    ? (chirpConnected || plaid ? 'moderate' : null)
+    : (pdf?.cashFlowHealth || null);
+  const dataSourceLabel = useChirp ? "Live Bank Data" : "Statement Analysis";
+
+  // Relative time helper for data freshness
+  const timeAgoShort = (ts: string | null | undefined) => {
+    if (!ts) return null;
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  };
+
+  // Health score label
+  const healthLabel = healthScore >= 70 ? "Strong" : healthScore >= 45 ? "Moderate" : healthScore > 0 ? "Needs Attention" : null;
+  const healthColor = healthScore >= 70 ? "#2dd4bf" : healthScore >= 45 ? "#facc15" : "#f87171";
+  const trendIcon = revenueTrend === "growing" ? "\u2197" : revenueTrend === "declining" ? "\u2198" : revenueTrend === "stable" ? "\u2192" : "";
+  const trendColor = revenueTrend === "growing" ? "#2dd4bf" : revenueTrend === "declining" ? "#f87171" : "#94a3b8";
 
   return (
     <div className="financials-section">
-      {/* ── Connected Banks ── */}
+      {/* ── Bank Connection (Chirp) ── */}
       <div className="insight-card" style={{ padding: 0 }}>
         <button
           onClick={() => setShowBanks(prev => !prev)}
@@ -2865,11 +3613,16 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
-              Connected Banks
+              Bank Connection
             </h3>
-            {connections.length > 0 && (
-              <span style={{ background: "rgba(45,212,191,0.15)", color: "#2dd4bf", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 600 }}>
-                {connections.length}
+            {chirpConnected && (
+              <span style={{ background: "rgba(45,212,191,0.15)", color: "#2dd4bf", borderRadius: 20, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>
+                Connected
+              </span>
+            )}
+            {!chirpConnected && banking?.hasPendingConnection && (
+              <span style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", borderRadius: 20, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>
+                Pending
               </span>
             )}
           </div>
@@ -2882,39 +3635,105 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
         </button>
         {showBanks && (
           <div style={{ padding: "0 20px 20px" }}>
-            {connections.length > 0 ? (
+            {chirpConnected ? (
               <>
-                {connections.map(conn => (
-                  <div key={conn.id} className="plaid-connection-row">
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span className="health-indicator health-strong" style={{ width: 8, height: 8 }} />
-                      <span style={{ fontWeight: 500 }}>{conn.institutionName || "Connected Bank"}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: "#94a3b8" }}>
-                      {conn.connectedAt && <span>Connected {new Date(conn.connectedAt).toLocaleDateString()}</span>}
-                      {conn.source === 'portal' && (
-                        <button onClick={() => handleDisconnect(conn.id)} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12 }}>
-                          Disconnect
-                        </button>
-                      )}
-                    </div>
+                <div className="plaid-connection-row">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span className="health-indicator health-strong" style={{ width: 8, height: 8 }} />
+                    <span style={{ fontWeight: 500 }}>{banking?.institutionName || "Connected Bank"}</span>
                   </div>
-                ))}
-                <div style={{ marginTop: 12 }}>
-                  <PlaidLinkButton onSuccess={fetchData} label="Connect Another Bank" previewToken={previewToken} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: "#94a3b8" }}>
+                    {banking?.lastSyncedAt && (
+                      <span>Updated {new Date(banking.lastSyncedAt).toLocaleDateString()}</span>
+                    )}
+                  </div>
                 </div>
+                {banking?.accounts && banking.accounts.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    {banking.accounts.map((acct, i) => (
+                      <div key={i} className="plaid-connection-row" style={{ padding: "6px 0" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13 }}>{acct.name}</span>
+                          {acct.type && (
+                            <span style={{ color: "#94a3b8", fontSize: 11 }}>{acct.type}</span>
+                          )}
+                        </div>
+                        <span style={{ fontWeight: 600, color: "#2dd4bf", fontSize: 13 }}>
+                          ${Number(acct.balance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+                  <button
+                    className="analyze-btn"
+                    onClick={handleSync}
+                    disabled={syncing}
+                    style={{ fontSize: 12, padding: "8px 14px" }}
+                  >
+                    {syncing ? "Syncing..." : "Sync now"}
+                  </button>
+                  <button
+                    onClick={handleDisconnectChirp}
+                    style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12 }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+                {syncError && <p style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{syncError}</p>}
               </>
+            ) : banking?.hasPendingConnection ? (
+              <div style={{ textAlign: "center", padding: "24px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </div>
+                <p style={{ color: "#e8eaf0", fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+                  Awaiting Bank Verification
+                </p>
+                <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, marginBottom: 16, maxWidth: 320, margin: "0 auto 16px" }}>
+                  You started linking your bank account. Once Chirp confirms the connection, your financial data will appear here automatically.
+                </p>
+                <p style={{ color: "#64748b", fontSize: 12, marginBottom: 16 }}>
+                  Status: <span style={{ color: "#fbbf24" }}>{banking.status || "Unverified"}</span>
+                </p>
+                <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                  <ChirpConnectButton onSuccess={fetchData} label="Reconnect Bank" previewToken={previewToken} />
+                  <button
+                    className="analyze-btn"
+                    onClick={handleSync}
+                    disabled={syncing}
+                    style={{ fontSize: 12, padding: "8px 14px" }}
+                    data-testid="button-retry-sync"
+                  >
+                    {syncing ? "Checking..." : "Check Status"}
+                  </button>
+                </div>
+                {syncError && <p style={{ color: "#f87171", fontSize: 12, marginTop: 8 }}>{syncError}</p>}
+              </div>
             ) : (
               <div style={{ textAlign: "center", padding: "20px 0" }}>
-                <p style={{ color: "#94a3b8", marginBottom: 16, fontSize: 14, lineHeight: 1.6 }}>
-                  Connect your bank to get live financial insights and make future funding faster.
+                <p style={{ color: "#e8eaf0", marginBottom: 8, fontSize: 14, lineHeight: 1.6, fontWeight: 500 }}>
+                  Connect your bank to unlock your financial dashboard.
                 </p>
-                <PlaidLinkButton onSuccess={fetchData} previewToken={previewToken} />
+                <ul style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.8, textAlign: "left", display: "inline-block", margin: "8px 0 16px", paddingLeft: 18 }}>
+                  <li>Live revenue &amp; expense tracking</li>
+                  <li>Cash flow trends month over month</li>
+                  <li>See how your deposits stack up against your payments</li>
+                  <li>Faster approvals on renewals &mdash; no re-uploading statements</li>
+                </ul>
+                <ChirpConnectButton onSuccess={fetchData} previewToken={previewToken} />
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* ── Upload Statement Drop Zone ── */}
+      <StatementUploadZone previewHeaders={previewHeaders} onUploadComplete={fetchData} />
 
       {/* ── Uploaded Statements ── */}
       {showStatementsSection && (
@@ -2982,34 +3801,243 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       {/* ── Financial Insights ── */}
       {hasAnyData ? (
         <>
-          {/* Cash Flow Health */}
-          {cashFlowHealth && (
-            <div className="insight-card" style={{ textAlign: "center" }}>
-              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
-                Cash Flow Health
-              </h3>
-              <div className={`health-indicator health-${cashFlowHealth}`} />
-              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 600, marginTop: 8, textTransform: "capitalize" }}>
-                {cashFlowHealth === 'needs-attention' ? 'Needs Attention' : cashFlowHealth}
-              </p>
+          {/* Stale data warning */}
+          {chirpConnected && banking?.lastSyncedAt && (() => {
+            const daysSinceSync = Math.floor((Date.now() - new Date(banking.lastSyncedAt!).getTime()) / (1000 * 60 * 60 * 24));
+            return daysSinceSync >= 7 ? (
+              <div className="stale-warning">
+                <span>Your financial data is {daysSinceSync} days old.</span>
+                <button onClick={handleSync} disabled={syncing}>{syncing ? "Syncing..." : "Update Now"}</button>
+              </div>
+            ) : null;
+          })()}
+
+          {/* Data Source Toggle — only shown when both Chirp and PDF data exist */}
+          {hasBothSources && (
+            <div className="insight-card" style={{ padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ color: "#94a3b8", fontSize: 13 }}>Data Source</span>
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+                <button
+                  onClick={() => setDataSource("chirp")}
+                  style={{
+                    padding: "6px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                    background: activeSource === "chirp" ? "#2dd4bf" : "transparent",
+                    color: activeSource === "chirp" ? "#0f172a" : "#94a3b8",
+                  }}
+                >
+                  Live Bank Data
+                </button>
+                <button
+                  onClick={() => setDataSource("statements")}
+                  style={{
+                    padding: "6px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                    background: activeSource === "statements" ? "#2dd4bf" : "transparent",
+                    color: activeSource === "statements" ? "#0f172a" : "#94a3b8",
+                  }}
+                >
+                  Statement Analysis
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Revenue & Balance Cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div className="insight-card" style={{ textAlign: "center" }}>
-              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Est. Monthly Revenue</p>
-              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
-                ${monthlyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
+          {/* Financial Health Score + Data Freshness */}
+          {(healthScore > 0 || cashFlowHealth || monthlyRevenue > 0) && (
+            <div className="insight-card">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
+                  Financial Health
+                  {hasBothSources && (
+                    <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400, marginLeft: 8 }}>
+                      ({dataSourceLabel})
+                    </span>
+                  )}
+                </h3>
+                {banking?.lastSyncedAt && useChirp && (
+                  <span style={{ color: "#64748b", fontSize: 11 }}>
+                    Updated {timeAgoShort(banking.lastSyncedAt)}
+                    {monthsAnalyzed > 0 && ` \u00B7 ${monthsAnalyzed} mo analyzed`}
+                  </span>
+                )}
+              </div>
+              {healthScore > 0 ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  {/* Score circle */}
+                  <div style={{
+                    width: 72, height: 72, borderRadius: "50%",
+                    border: `3px solid ${healthColor}`,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}>
+                    <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 700, color: healthColor, lineHeight: 1 }}>
+                      {healthScore}
+                    </span>
+                    <span style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>/ 100</span>
+                  </div>
+                  <div>
+                    <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, color: healthColor, marginBottom: 4 }}>
+                      {healthLabel}
+                    </p>
+                    <p style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
+                      {pdf?.scoreExplanation || (healthScore >= 70
+                        ? "Your cash flow and balances show a healthy financial position."
+                        : healthScore >= 45
+                        ? "Your financials are in a reasonable range with room for improvement."
+                        : "There may be some areas to focus on to strengthen your position.")}
+                    </p>
+                    {revenueTrend && (
+                      <p style={{ fontSize: 12, marginTop: 6 }}>
+                        Revenue trend: <span style={{ color: trendColor, fontWeight: 600 }}>{trendIcon} {revenueTrend}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : cashFlowHealth ? (
+                <div style={{ textAlign: "center" }}>
+                  <div className={`health-indicator health-${cashFlowHealth}`} />
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 600, marginTop: 8, textTransform: "capitalize" }}>
+                    {cashFlowHealth === 'needs-attention' ? 'Needs Attention' : cashFlowHealth}
+                  </p>
+                </div>
+              ) : null}
             </div>
-            <div className="insight-card" style={{ textAlign: "center" }}>
-              <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 4 }}>Avg. Daily Balance</p>
-              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#2dd4bf" }}>
-                ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </p>
+          )}
+
+          {/* Hero: Monthly Revenue */}
+          <div className="insight-card" style={{ textAlign: "center" }}>
+            <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 4 }}>What You're Bringing In</p>
+            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 32, fontWeight: 700, color: "#2dd4bf" }}>
+              ${monthlyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+            <p style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>per month</p>
+            <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 10 }}>
+              {revenueTrend && (
+                <span style={{ color: trendColor, fontSize: 12, fontWeight: 600 }}>{trendIcon} {revenueTrend}</span>
+              )}
+              {pdf?.revenueConsistency && (
+                <span style={{ color: "#94a3b8", fontSize: 12 }}>{pdf.revenueConsistency}</span>
+              )}
             </div>
           </div>
+
+          {/* Supporting metrics: 3-column */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <p style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Going Out</p>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: monthlyExpenses > 0 ? "#e8eaf0" : "#64748b" }}>
+                {monthlyExpenses > 0 ? `$${monthlyExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "\u2014"}
+              </p>
+              <p style={{ color: "#4b5568", fontSize: 10, marginTop: 2 }}>expenses / mo</p>
+            </div>
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <p style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>What's Left</p>
+              <p style={{
+                fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700,
+                color: netCashFlow > 0 ? "#2dd4bf" : netCashFlow < 0 ? "#f87171" : "#64748b",
+              }}>
+                {netCashFlow !== 0
+                  ? `${netCashFlow >= 0 ? "+" : "-"}$${Math.abs(netCashFlow).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                  : "\u2014"}
+              </p>
+              <p style={{ color: "#4b5568", fontSize: 10, marginTop: 2 }}>after expenses</p>
+            </div>
+            <div className="insight-card" style={{ textAlign: "center" }}>
+              <p style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>In the Bank</p>
+              <p style={{
+                fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700,
+                color: currentBalance > 0 ? "#2dd4bf" : currentBalance < 0 ? "#f87171" : "#64748b",
+              }}>
+                {currentBalance !== 0 ? `$${currentBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "\u2014"}
+              </p>
+              {avgBalance > 0 && <p style={{ color: "#4b5568", fontSize: 10, marginTop: 2 }}>avg: ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>}
+            </div>
+          </div>
+
+          {/* Cash Runway */}
+          {(() => {
+            const runway = pdf?.cashRunwayDays || (monthlyExpenses > 0 ? Math.round(currentBalance / (monthlyExpenses / 30)) : 0);
+            if (runway <= 0 && currentBalance <= 0) return null;
+            const runwayColor = runway >= 60 ? "#2dd4bf" : runway >= 30 ? "#facc15" : "#f87171";
+            const runwayLabel = runway >= 90 ? "Healthy cushion" : runway >= 60 ? "Solid buffer" : runway >= 30 ? "Getting tight" : "Very thin";
+            return (
+              <div className="insight-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px" }}>
+                <div>
+                  <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 2 }}>Cash Runway</p>
+                  <p style={{ color: "#64748b", fontSize: 11 }}>How long your balance covers expenses</p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: runwayColor }}>{runway}</span>
+                  <span style={{ color: "#94a3b8", fontSize: 12, marginLeft: 4 }}>days</span>
+                  <p style={{ color: runwayColor, fontSize: 11, fontWeight: 600, marginTop: 2 }}>{runwayLabel}</p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Month-over-Month Breakdown (from PDF analysis) */}
+          {pdf?.monthlyBreakdown && pdf.monthlyBreakdown.length >= 2 && (
+            <div className="insight-card">
+              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Month by Month</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {pdf.monthlyBreakdown.slice(0, 6).map((m: any, i: number) => {
+                  const net = (m.revenue || 0) - (m.expenses || 0);
+                  const prev = pdf.monthlyBreakdown[i + 1];
+                  const delta = prev ? ((m.revenue - prev.revenue) / (prev.revenue || 1)) * 100 : null;
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: i < pdf.monthlyBreakdown.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+                      <span style={{ color: "#94a3b8", fontSize: 13, minWidth: 80 }}>{m.month}</span>
+                      <div style={{ display: "flex", gap: 16, alignItems: "center", fontSize: 13 }}>
+                        <span style={{ color: "#2dd4bf" }}>+${(m.revenue || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                        <span style={{ color: "#94a3b8" }}>-${(m.expenses || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                        <span style={{ color: net >= 0 ? "#2dd4bf" : "#f87171", fontWeight: 600, minWidth: 70, textAlign: "right" }}>
+                          {net >= 0 ? "+" : "-"}${Math.abs(net).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
+                        {delta !== null && (
+                          <span style={{ color: delta >= 0 ? "#2dd4bf" : "#f87171", fontSize: 11, minWidth: 45, textAlign: "right" }}>
+                            {delta >= 0 ? "\u2191" : "\u2193"}{Math.abs(delta).toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Debt Service Ratio — shows what % of revenue goes to funding payments */}
+          {(() => {
+            const activeDeals = deals.filter(d => d.status === "active" || d.status === "Active");
+            if (activeDeals.length === 0 || monthlyRevenue <= 0) return null;
+
+            const totalMonthlyDebt = activeDeals.reduce((sum, deal) => {
+              const freq = deal.paymentFrequency;
+              const ppm = freq === "daily" ? 21 : freq === "weekly" ? 4.33 : freq === "bi-weekly" || freq === "biweekly" ? 2.17 : 1;
+              const calc = calcDeal(deal);
+              return sum + (calc.paymentAmount * ppm);
+            }, 0);
+
+            const ratio = (totalMonthlyDebt / monthlyRevenue) * 100;
+            const remaining = monthlyRevenue - totalMonthlyDebt - monthlyExpenses;
+            const ratioColor = ratio <= 15 ? "#2dd4bf" : ratio <= 25 ? "#facc15" : "#f87171";
+            const ratioLabel = ratio <= 15 ? "Healthy" : ratio <= 25 ? "Moderate" : "Heavy";
+
+            return (
+              <div className="insight-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px" }}>
+                <div>
+                  <p style={{ color: "#94a3b8", fontSize: 12, marginBottom: 2 }}>Funding Payments vs Revenue</p>
+                  <p style={{ color: "#64748b", fontSize: 11 }}>
+                    {fmt$(totalMonthlyDebt)}/mo across {activeDeals.length} position{activeDeals.length > 1 ? "s" : ""}
+                    {remaining > 0 && ` \u00B7 ${fmt$(remaining)} left after all expenses`}
+                  </p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: ratioColor }}>{ratio.toFixed(0)}%</span>
+                  <p style={{ color: ratioColor, fontSize: 11, fontWeight: 600, marginTop: 2 }}>{ratioLabel}</p>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Account Balances (Plaid) */}
           {plaid && plaid.accounts.length > 0 && (
@@ -3028,65 +4056,53 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                   </span>
                 </div>
               ))}
-              {plaid.revenueTrend && (
-                <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>
-                  Revenue trend: <span style={{ color: plaid.revenueTrend === 'growing' ? '#2dd4bf' : plaid.revenueTrend === 'declining' ? '#f87171' : '#94a3b8', fontWeight: 500, textTransform: 'capitalize' }}>{plaid.revenueTrend}</span>
-                </p>
-              )}
             </div>
           )}
 
-          {/* Key Observations */}
-          {pdf && (pdf.positiveIndicators.length > 0 || pdf.concerns.length > 0) && (
+          {/* Transaction History (scaffold — populates once Chirp details endpoint is unblocked) */}
+          {chirpConnected && (
             <div className="insight-card">
-              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
-                Key Observations
-              </h3>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {pdf.positiveIndicators.map((item, i) => (
-                  <span key={`pos-${i}`} className="observation-badge observation-positive">{item}</span>
-                ))}
-                {pdf.concerns.map((item, i) => (
-                  <span key={`warn-${i}`} className="observation-badge observation-warning">{item}</span>
-                ))}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
+                  Recent Transactions
+                </h3>
+              </div>
+              <div style={{ textAlign: "center", padding: "20px 0", color: "#64748b", fontSize: 13 }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4b5568" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8, display: "block", margin: "0 auto 8px" }}>
+                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                </svg>
+                <p>Transaction details will appear here once your bank data finishes syncing.</p>
+                <button
+                  className="analyze-btn"
+                  onClick={handleSync}
+                  disabled={syncing}
+                  style={{ fontSize: 12, padding: "8px 14px", marginTop: 12 }}
+                >
+                  {syncing ? "Syncing..." : "Sync Now"}
+                </button>
               </div>
             </div>
           )}
 
-          {/* Tips */}
-          {pdf && pdf.tips.length > 0 && (
-            <div className="insight-card">
-              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
-                Tips to Strengthen Your Position
-              </h3>
-              <ul style={{ paddingLeft: 18, lineHeight: 1.8, color: "#94a3b8", fontSize: 14 }}>
-                {pdf.tips.map((tip, i) => <li key={i}>{tip}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {/* Summary */}
-          {pdf?.summary && (
-            <div className="insight-card">
-              <p style={{ lineHeight: 1.7, fontSize: 14, color: "#94a3b8" }}>{pdf.summary}</p>
-            </div>
+          {/* Insights Summary + Categorized Observations */}
+          {pdf && (pdf.summary || pdf.positiveIndicators.length > 0 || pdf.concerns.length > 0 || pdf.tips.length > 0) && (
+            <InsightCategories pdf={pdf} />
           )}
         </>
       ) : (
-        <div className="insight-card" style={{ textAlign: "center", padding: "32px 20px" }}>
-          <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7 }}>
-            {showStatementsSection
-              ? "Click 'Analyze' above to generate insights from your bank statements."
-              : "Upload bank statements or connect your bank to see financial insights."}
-          </p>
+        <div className="portal-empty">
+          <strong>{showStatementsSection ? "Ready to analyze" : "Start with your finances"}</strong>
+          {showStatementsSection
+            ? "You've uploaded statements — click \"Analyze\" above to generate your financial insights."
+            : "Connect your bank for live tracking, or drop a PDF statement above for an instant analysis."}
         </div>
       )}
 
       {/* ── Renewal Nudge ── */}
-      {insights?.renewalNudge?.eligible && (
+      {(insights?.renewalNudge?.eligible || (chirpConnected && monthlyRevenue > 10000 && healthScore >= 60)) && (
         <div className="renewal-nudge" onClick={onSwitchToMessages} role="button" tabIndex={0}>
-          <span>{insights.renewalNudge.message}</span>
-          <span style={{ color: "#2dd4bf", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>Talk to your rep →</span>
+          <span>{insights?.renewalNudge?.message || "Your financials look great! You may qualify for additional funding."}</span>
+          <span style={{ color: "#2dd4bf", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>Talk to your rep &rarr;</span>
         </div>
       )}
     </div>
@@ -3176,7 +4192,117 @@ function PayoffCountdownWidget({ deal }: { deal: Deal }) {
         Estimated payoff: <strong>{fmtDate(payoff)}</strong>
       </div>
       <div className="payoff-countdown-sub">
-        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} left
+        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} of {fmt$(calc.totalPayback)} owed ({deal.factorRate}x factor)
+      </div>
+    </div>
+  );
+}
+
+// ── PAYOFF COVERAGE INSIGHT ───────────────────────────────────────────────
+// Uses cached Chirp banking data to show how well the merchant's typical
+// monthly revenue covers this deal's monthly payment load. Renders nothing
+// until the merchant has connected their bank.
+function PayoffCoverageInsight({ deal }: { deal: Deal }) {
+  const [banking, setBanking] = useState<BankingInsights | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/merchant/banking/insights", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setBanking(data); })
+      .catch(() => { /* silent — tile just won't render */ })
+      .finally(() => setLoaded(true));
+  }, []);
+
+  if (!loaded) return null;
+  if (!banking?.connected || !banking.metrics?.monthlyRevenue) return null;
+
+  const calc = calcDeal(deal);
+  if (calc.isComplete) return null;
+
+  // Normalize the payment amount to a monthly equivalent so the comparison
+  // works regardless of payment frequency (daily ACH vs. monthly ACH).
+  const freq = deal.paymentFrequency;
+  const paymentsPerMonth =
+    freq === "daily" ? 21 :
+    freq === "weekly" ? 4.33 :
+    freq === "bi-weekly" || freq === "biweekly" ? 2.17 :
+    1;
+  const monthlyPaymentLoad = calc.paymentAmount * paymentsPerMonth;
+  const monthlyRevenue = banking.metrics.monthlyRevenue;
+  const coverageMultiple = monthlyPaymentLoad > 0 ? monthlyRevenue / monthlyPaymentLoad : 0;
+  const paymentShareOfRevenue = monthlyRevenue > 0 ? (monthlyPaymentLoad / monthlyRevenue) * 100 : 0;
+
+  // Simple health label — not financial advice, just a visual cue.
+  const health: "strong" | "moderate" | "tight" =
+    coverageMultiple >= 10 ? "strong" :
+    coverageMultiple >= 5 ? "moderate" :
+    "tight";
+  const healthColor = health === "strong" ? "#2dd4bf" : health === "moderate" ? "#facc15" : "#f87171";
+  const healthLabel = health === "strong" ? "Healthy coverage" : health === "moderate" ? "Comfortable coverage" : "Tight coverage";
+
+  return (
+    <div className="insight-card" style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600, margin: 0 }}>
+          Payment Coverage
+        </h3>
+        <span style={{ color: healthColor, fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {healthLabel}
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <div>
+          <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+            Monthly Revenue
+          </div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: "#2dd4bf" }}>
+            {fmt$(monthlyRevenue)}
+          </div>
+        </div>
+        <div>
+          <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+            Monthly Payment Load
+          </div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: "#e8eaf0" }}>
+            {fmt$(monthlyPaymentLoad)}
+          </div>
+        </div>
+        <div>
+          <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+            Coverage
+          </div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: healthColor }}>
+            {coverageMultiple.toFixed(1)}&times;
+          </div>
+        </div>
+      </div>
+      {/* Expenses context — show how much revenue is left after both expenses and loan payments */}
+      {banking.metrics.monthlyExpenses > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+          <div>
+            <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+              Operating Expenses
+            </div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, color: "#e8eaf0" }}>
+              {fmt$(banking.metrics.monthlyExpenses)}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
+              After Expenses + Payment
+            </div>
+            <div style={{
+              fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700,
+              color: (monthlyRevenue - banking.metrics.monthlyExpenses - monthlyPaymentLoad) >= 0 ? "#2dd4bf" : "#f87171",
+            }}>
+              {fmt$(Math.max(0, monthlyRevenue - banking.metrics.monthlyExpenses - monthlyPaymentLoad))}
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
+        Your payments on this position take up about <strong style={{ color: "#e8eaf0" }}>{paymentShareOfRevenue.toFixed(1)}%</strong> of your average monthly revenue. Based on bank data from {banking.institutionName || "your connected bank"}.
       </div>
     </div>
   );
@@ -3277,6 +4403,137 @@ function ApplicationStatusBanner({ appStatus }: {
           </a>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── RESOURCES TAB ────────────────────────────────────────────────────────
+function ResourcesTab() {
+  const resources = [
+    {
+      category: "Credit Monitoring",
+      items: [
+        {
+          title: "Nav.com — Free Business Credit Scores",
+          description: "See your Dun & Bradstreet and Experian business credit scores for free. Understand what lenders see when they review your business.",
+          url: "https://www.nav.com/business-credit-scores/",
+          tag: "Free",
+          tagColor: "#34d399",
+        },
+        {
+          title: "Experian Business Credit",
+          description: "Monitor your Experian business credit profile. Get alerts when your score changes and see what factors are impacting it.",
+          url: "https://www.experian.com/business/check-business-credit.html",
+          tag: "Free Report",
+          tagColor: "#60a5fa",
+        },
+        {
+          title: "Dun & Bradstreet — Get Your D-U-N-S Number",
+          description: "A D-U-N-S number is essential for building business credit. Get yours for free if you don't have one yet.",
+          url: "https://www.dnb.com/duns-number/get-a-duns.html",
+          tag: "Free",
+          tagColor: "#34d399",
+        },
+      ],
+    },
+    {
+      category: "SBA & Government Programs",
+      items: [
+        {
+          title: "SBA Loan Programs Overview",
+          description: "Explore SBA 7(a), 504, and Microloan programs. Government-backed loans with lower rates and longer terms for qualifying businesses.",
+          url: "https://www.sba.gov/funding-programs/loans",
+          tag: "Gov",
+          tagColor: "#a78bfa",
+        },
+        {
+          title: "Grants.gov — Federal Business Grants",
+          description: "Search for federal grant opportunities. Unlike loans, grants don't need to be repaid.",
+          url: "https://www.grants.gov/",
+          tag: "Grants",
+          tagColor: "#fbbf24",
+        },
+      ],
+    },
+    {
+      category: "Financial Tools",
+      items: [
+        {
+          title: "Wave — Free Accounting Software",
+          description: "Free invoicing, accounting, and receipt scanning for small businesses. No credit card required.",
+          url: "https://www.waveapps.com/",
+          tag: "Free",
+          tagColor: "#34d399",
+        },
+        {
+          title: "IRS Tax Calendar for Businesses",
+          description: "Never miss a tax deadline. See all federal tax due dates for your business type at a glance.",
+          url: "https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendars",
+          tag: "IRS",
+          tagColor: "#a78bfa",
+        },
+      ],
+    },
+    {
+      category: "Business Growth",
+      items: [
+        {
+          title: "Google Business Profile",
+          description: "Claim and optimize your free Google Business listing. Show up in local search results and Google Maps.",
+          url: "https://business.google.com/",
+          tag: "Free",
+          tagColor: "#34d399",
+        },
+        {
+          title: "NEXT Insurance — Business Insurance",
+          description: "Get affordable business insurance in minutes. General liability, professional liability, workers' comp, and more.",
+          url: "https://www.nextinsurance.com/",
+          tag: "Quote",
+          tagColor: "#60a5fa",
+        },
+      ],
+    },
+  ];
+
+  return (
+    <div className="resources-section">
+      <div className="resources-intro">
+        <div className="resources-intro-icon">&#128218;</div>
+        <div>
+          <div className="resources-intro-title">Business Resources</div>
+          <div className="resources-intro-sub">
+            Free tools and resources to help you monitor credit, find funding programs, and grow your business.
+          </div>
+        </div>
+      </div>
+
+      {resources.map((group) => (
+        <div key={group.category} className="resources-group">
+          <div className="resources-group-title">{group.category}</div>
+          <div className="resources-grid">
+            {group.items.map((item) => (
+              <a
+                key={item.title}
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="resource-card"
+              >
+                <div className="resource-card-header">
+                  <div className="resource-card-title">{item.title}</div>
+                  <div className="resource-tag" style={{ background: `${item.tagColor}20`, color: item.tagColor, borderColor: `${item.tagColor}40` }}>
+                    {item.tag}
+                  </div>
+                </div>
+                <div className="resource-card-desc">{item.description}</div>
+                <div className="resource-card-link">
+                  Visit &rarr;
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -3482,6 +4739,7 @@ function fmtFileSize(bytes: number) {
 export default function MerchantPortal() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [isAdminPreview, setIsAdminPreview] = useState(false);
   const [adminPreviewToken, setAdminPreviewToken] = useState<string | null>(null);
   const [merchantEmail, setMerchantEmail] = useState("");
@@ -3493,7 +4751,8 @@ export default function MerchantPortal() {
   const [loadingStatements, setLoadingStatements] = useState(false);
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [loadingVault, setLoadingVault] = useState(false);
-  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials'>('positions');
+  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials' | 'resources'>('positions');
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [appStatus, setAppStatus] = useState<{
     hasApplication: boolean;
     applicationId?: number;
@@ -3544,6 +4803,38 @@ export default function MerchantPortal() {
       })
       .catch(() => setAuthChecked(true));
   }, []);
+
+  // Session expiry detection — re-check auth every 5 minutes
+  useEffect(() => {
+    if (!loggedIn || isAdminPreview) return;
+    const interval = setInterval(() => {
+      fetch("/api/merchant/auth/check", { credentials: "include" })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.isAuthenticated) {
+            setSessionExpired(true);
+            setLoggedIn(false);
+          }
+        })
+        .catch(() => {});
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loggedIn, isAdminPreview]);
+
+  // Poll unread message count for tab badge
+  useEffect(() => {
+    if (!loggedIn) return;
+    const headers = adminPreviewToken ? { "x-admin-preview-token": adminPreviewToken } : {};
+    const checkUnread = () => {
+      fetch("/api/merchant/messages/unread", { credentials: "include", headers })
+        .then(r => r.ok ? r.json() : { count: 0 })
+        .then(data => setUnreadMessages(data.count || 0))
+        .catch(() => {});
+    };
+    checkUnread();
+    const interval = setInterval(checkUnread, 30000);
+    return () => clearInterval(interval);
+  }, [loggedIn, adminPreviewToken]);
 
   // Fetch deals and statements when logged in (skip in admin preview — data already loaded)
   useEffect(() => {
@@ -3622,7 +4913,14 @@ export default function MerchantPortal() {
 
       <div className="portal-root">
         {!loggedIn ? (
-          <LoginScreen onLogin={handleLogin} />
+          <>
+            {sessionExpired && (
+              <div style={{ background: "rgba(250,204,21,0.1)", border: "1px solid rgba(250,204,21,0.3)", borderRadius: 0, padding: "12px 24px", textAlign: "center", color: "#facc15", fontSize: 14 }}>
+                Your session has expired. Please sign in again.
+              </div>
+            )}
+            <LoginScreen onLogin={handleLogin} />
+          </>
         ) : (
           <>
             {isAdminPreview && (
@@ -3678,9 +4976,12 @@ export default function MerchantPortal() {
                     </button>
                     <button
                       className={`portal-nav-btn ${activeTab === 'messages' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('messages')}
+                      onClick={() => { setActiveTab('messages'); setUnreadMessages(0); }}
                     >
                       Messages
+                      {unreadMessages > 0 && activeTab !== 'messages' && (
+                        <span className="nav-badge">{unreadMessages}</span>
+                      )}
                     </button>
                     <button
                       className={`portal-nav-btn ${activeTab === 'documents' ? 'active' : ''}`}
@@ -3693,6 +4994,12 @@ export default function MerchantPortal() {
                       onClick={() => setActiveTab('financials')}
                     >
                       Financials
+                    </button>
+                    <button
+                      className={`portal-nav-btn ${activeTab === 'resources' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('resources')}
+                    >
+                      Resources
                     </button>
                   </div>
 
@@ -3727,12 +5034,13 @@ export default function MerchantPortal() {
                       )}
 
                       {loadingDeals ? (
-                        <div className="loading-wrap" style={{ minHeight: "200px" }}>Loading your positions...</div>
+                        <div className="portal-loading"><div className="portal-spinner" /><span>Loading your positions...</span></div>
                       ) : deals.length === 0 ? (
-                        <div className="no-documents" style={{ marginTop: appStatus?.hasApplication ? "8px" : "0" }}>
+                        <div className="portal-empty" style={{ marginTop: appStatus?.hasApplication ? "8px" : "0" }}>
+                          <strong>{appStatus?.hasApplication ? "Almost there!" : "No positions yet"}</strong>
                           {appStatus?.hasApplication
                             ? "Your funded positions will appear here once your deal closes."
-                            : "No funded deals found for your account yet."}
+                            : "No funded deals found for your account yet. Your positions will show up here once you're funded."}
                         </div>
                       ) : (
                         <>
@@ -3787,7 +5095,13 @@ export default function MerchantPortal() {
                       onSwitchToMessages={() => setActiveTab('messages')}
                       previewToken={adminPreviewToken}
                       uploadedStatements={vaultDocs.filter(d => d.category === 'statements')}
+                      deals={deals}
                     />
+                  )}
+
+                  {/* ── RESOURCES TAB ── */}
+                  {activeTab === 'resources' && (
+                    <ResourcesTab />
                   )}
                 </>
               )}
