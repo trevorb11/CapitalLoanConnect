@@ -18,13 +18,14 @@ import { notifyMerchantNewMessage } from "./services/twilio";
 import { fireSmsStageEvent } from "./sms-middleware";
 import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
-import { pool, neonPool } from "./db";
+import { pool, neonPool, db } from "./db";
+import { sql as drizzleSql } from "drizzle-orm";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
-import { syncApplicationToSalesforce } from "./services/salesforce";
+import { syncApplicationToSalesforce, syncDecisionToSalesforce } from "./services/salesforce";
 import { z } from "zod";
 import type { LoanApplication } from "@shared/schema";
 
@@ -3396,6 +3397,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[UNDERWRITING] GHL sync error for ${businessEmail}:`, err);
       });
 
+      // Sync to Salesforce (async, non-blocking)
+      syncDecisionToSalesforce(decision).then(async (sfResult) => {
+        try {
+          await storage.updateBusinessUnderwritingDecision(decision.id, {
+            sfSynced: sfResult.synced,
+            sfSyncedAt: new Date(),
+            sfSyncMessage: sfResult.error || sfResult.action || null,
+            sfOpportunityId: sfResult.oppId || null,
+          });
+          console.log(`[UNDERWRITING] SF sync for ${businessEmail}: ${sfResult.synced ? 'success' : 'failed'} - ${sfResult.error || sfResult.action}`);
+        } catch (dbErr) {
+          console.error(`[UNDERWRITING] Failed to save SF sync status for ${businessEmail}:`, dbErr);
+        }
+      }).catch(err => {
+        console.error(`[UNDERWRITING] SF sync error for ${businessEmail}:`, err);
+      });
+
       // SMS: approval_issued + auto congratulations message
       if (status === 'approved' && businessPhone) {
         const _proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
@@ -3542,6 +3560,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }).catch(err => {
         console.error(`[UNDERWRITING] GHL sync error for decision ${id}:`, err);
+      });
+
+      // Sync updated decision to Salesforce (async, non-blocking)
+      syncDecisionToSalesforce(updated).then(async (sfResult) => {
+        try {
+          await storage.updateBusinessUnderwritingDecision(id, {
+            sfSynced: sfResult.synced,
+            sfSyncedAt: new Date(),
+            sfSyncMessage: sfResult.error || sfResult.action || null,
+            sfOpportunityId: sfResult.oppId || null,
+          });
+          console.log(`[UNDERWRITING] SF sync for decision ${id}: ${sfResult.synced ? 'success' : 'failed'} - ${sfResult.error || sfResult.action}`);
+        } catch (dbErr) {
+          console.error(`[UNDERWRITING] Failed to save SF sync status for decision ${id}:`, dbErr);
+        }
+      }).catch(err => {
+        console.error(`[UNDERWRITING] SF sync error for decision ${id}:`, err);
       });
 
       // SMS: approval_issued + auto congratulations (PATCH path)
@@ -9640,6 +9675,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Search failed" });
     }
   });
+
+  // ========================================
+  // SALESFORCE SCHEDULED SYNC (3x daily)
+  // Retries all decisions where sf_synced = false
+  // Runs at 8am, 1pm, 8pm EST (12:00, 17:00, 00:00 UTC)
+  // ========================================
+  async function retryFailedSfSyncs() {
+    try {
+      const failedDecisions = await db.execute(
+        drizzleSql`SELECT * FROM business_underwriting_decisions WHERE sf_synced = false OR sf_synced IS NULL ORDER BY created_at DESC`
+      );
+      const rows = failedDecisions.rows as any[];
+      if (rows.length === 0) {
+        console.log("[SF Scheduled Sync] No unsynced decisions found");
+        return;
+      }
+      console.log(`[SF Scheduled Sync] Retrying ${rows.length} unsynced decisions...`);
+      let synced = 0;
+      let failed = 0;
+      for (const d of rows) {
+        try {
+          const result = await syncDecisionToSalesforce(d);
+          await storage.updateBusinessUnderwritingDecision(d.id, {
+            sfSynced: result.synced,
+            sfSyncedAt: new Date(),
+            sfSyncMessage: result.error || result.action || null,
+            sfOpportunityId: result.oppId || null,
+          });
+          if (result.synced) synced++;
+          else failed++;
+        } catch (err: any) {
+          failed++;
+          console.error(`[SF Scheduled Sync] Error syncing ${d.business_name}: ${err.message}`);
+        }
+      }
+      console.log(`[SF Scheduled Sync] Done: ${synced} synced, ${failed} failed out of ${rows.length}`);
+    } catch (err: any) {
+      console.error(`[SF Scheduled Sync] Error: ${err.message}`);
+    }
+  }
+
+  // Manual trigger endpoint
+  app.post("/api/admin/sf-retry-failed", claudeAuth, async (_req, res) => {
+    retryFailedSfSyncs();
+    res.json({ status: "retry started" });
+  });
+
+  // Schedule: check every hour, run at 8am/1pm/8pm EST
+  const SF_SYNC_HOURS_UTC = [12, 17, 0]; // 8am, 1pm, 8pm EST (UTC-4 EDT)
+  let lastSfSyncHour = -1;
+  setInterval(() => {
+    const nowUtc = new Date().getUTCHours();
+    if (SF_SYNC_HOURS_UTC.includes(nowUtc) && lastSfSyncHour !== nowUtc) {
+      lastSfSyncHour = nowUtc;
+      console.log(`[SF Scheduled Sync] Triggered at UTC hour ${nowUtc}`);
+      retryFailedSfSyncs();
+    }
+  }, 10 * 60 * 1000); // Check every 10 minutes
 
   return httpServer;
 }

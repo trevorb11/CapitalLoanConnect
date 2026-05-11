@@ -132,7 +132,7 @@ export interface IStorage {
   getBusinessUnderwritingDecisionByMerchantToken(token: string): Promise<BusinessUnderwritingDecision | undefined>;
   getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined>;
   getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]>;
-  updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision>): Promise<BusinessUnderwritingDecision | undefined>;
+  updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision> & { ghlSynced?: boolean; ghlSyncedAt?: Date | null; ghlSyncMessage?: string | null; ghlOpportunityId?: string | null; sfSynced?: boolean; sfSyncedAt?: Date | null; sfSyncMessage?: string | null; sfOpportunityId?: string | null }): Promise<BusinessUnderwritingDecision | undefined>;
   deleteBusinessUnderwritingDecision(id: string): Promise<boolean>;
 
   // Lender methods
@@ -853,7 +853,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(businessUnderwritingDecisions.updatedAt));
   }
 
-  async updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision> & { ghlSynced?: boolean; ghlSyncedAt?: Date | null; ghlSyncMessage?: string | null; ghlOpportunityId?: string | null }): Promise<BusinessUnderwritingDecision | undefined> {
+  async updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision> & { ghlSynced?: boolean; ghlSyncedAt?: Date | null; ghlSyncMessage?: string | null; ghlOpportunityId?: string | null; sfSynced?: boolean; sfSyncedAt?: Date | null; sfSyncMessage?: string | null; sfOpportunityId?: string | null }): Promise<BusinessUnderwritingDecision | undefined> {
     const [updated] = await db
       .update(businessUnderwritingDecisions)
       .set({
