@@ -120,9 +120,7 @@ export default function ConsolSBA() {
 
         <div className="flex flex-wrap gap-4 animate-[fadeUp_0.8s_0.4s_both]" data-testid="consol-sba-ctas">
           <a
-            href="https://bit.ly/4aLcV3i"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/intake/quiz"
             className="inline-flex items-center gap-2.5 px-8 py-4 rounded-lg bg-teal-400 text-[#0d1f3c] font-bold text-base hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(45,212,191,0.35)] transition-all duration-200"
             data-testid="consol-sba-cta-primary"
           >
@@ -130,9 +128,7 @@ export default function ConsolSBA() {
             <ArrowRight className="w-4 h-4" />
           </a>
           <a
-            href="https://bit.ly/3ZnW1kS"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/intake/quiz"
             className="inline-flex items-center gap-2.5 px-8 py-4 rounded-lg border border-white/20 text-white font-semibold text-base hover:border-teal-400/50 hover:text-teal-400 transition-all duration-200"
             data-testid="consol-sba-cta-secondary"
           >
@@ -424,9 +420,7 @@ export default function ConsolSBA() {
           </p>
           <div className="relative flex flex-wrap justify-center gap-4">
             <a
-              href="https://bit.ly/4aLcV3i"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/intake/quiz"
               className="inline-flex items-center gap-2.5 px-8 py-4 rounded-lg bg-teal-400 text-[#0d1f3c] font-bold text-base hover:-translate-y-0.5 hover:shadow-[0_12px_32px_rgba(45,212,191,0.35)] transition-all duration-200"
               data-testid="consol-sba-final-cta-primary"
             >
@@ -434,7 +428,7 @@ export default function ConsolSBA() {
               <ArrowRight className="w-4 h-4" />
             </a>
             <a
-              href="tel:+18183510225"
+              href="/intake/quiz"
               className="inline-flex items-center gap-2.5 px-8 py-4 rounded-lg border border-white/20 text-white font-semibold text-base hover:border-teal-400/50 hover:text-teal-400 transition-all duration-200"
               data-testid="consol-sba-final-cta-phone"
             >
