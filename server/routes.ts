@@ -7077,9 +7077,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/lead/signup
   app.post("/api/lead/signup", async (req: Request, res: Response) => {
     try {
-      const { email, password, firstName, lastName, phone, businessName } = req.body;
-      if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
-      if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+      const { email, firstName, lastName, phone, businessName } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
 
       const normalizedEmail = email.toLowerCase().trim();
 
@@ -7089,9 +7088,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ error: "An account with this email already exists. Try signing in." });
       }
 
-      const passwordHash = hashPassword(password);
+      // No password on signup — user sets one later via the SetPasswordBanner
       await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name)
-        VALUES (${normalizedEmail}, ${passwordHash}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null})`);
+        VALUES (${normalizedEmail}, ${null}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null})`);
 
       // Auto-login
       req.session.user = {
