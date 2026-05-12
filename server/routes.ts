@@ -11999,13 +11999,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ========================================
   // SALESFORCE SCHEDULED SYNC (3x daily)
-  // Retries all decisions where sf_synced = false
+  // Syncs decisions created/updated today that haven't synced to SF yet
   // Runs at 8am, 1pm, 8pm EST (12:00, 17:00, 00:00 UTC)
   // ========================================
   async function retryFailedSfSyncs() {
     try {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
       const failedDecisions = await db.execute(
-        drizzleSql`SELECT * FROM business_underwriting_decisions WHERE sf_synced = false OR sf_synced IS NULL ORDER BY created_at DESC`
+        drizzleSql`SELECT * FROM business_underwriting_decisions WHERE (sf_synced = false OR sf_synced IS NULL) AND (created_at >= ${todayStart} OR updated_at >= ${todayStart}) ORDER BY created_at DESC`
       );
       const rows = failedDecisions.rows as any[];
       if (rows.length === 0) {
