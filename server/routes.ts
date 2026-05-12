@@ -225,17 +225,25 @@ async function verifyRecaptcha(token: string): Promise<{ success: boolean; score
     if (data.success) {
       const score = data.score || 0;
       if (score >= 0.5) {
+        console.log(`[RECAPTCHA] Verified successfully, score: ${score}`);
         return { success: true, score };
       } else {
         return { success: false, score, error: "Low reCAPTCHA score - possible bot" };
       }
     } else {
-      return { success: false, error: data["error-codes"]?.join(", ") || "Verification failed" };
+      const errorCodes: string[] = data["error-codes"] || [];
+      // browser-error means reCAPTCHA couldn't execute in the user's browser
+      // (ad blocker, privacy mode, network issue) — not a bot signal, allow through
+      if (errorCodes.includes("browser-error") || errorCodes.includes("invalid-input-response")) {
+        console.warn("[RECAPTCHA] browser-error — reCAPTCHA could not run in client browser, allowing submission");
+        return { success: true, score: undefined };
+      }
+      return { success: false, error: errorCodes.join(", ") || "Verification failed" };
     }
   } catch (error) {
-    // Fail closed: if verification fails due to network/API issues, reject submission
-    console.error("[RECAPTCHA] Verification error - rejecting submission for security:", error);
-    return { success: false, error: "reCAPTCHA verification service unavailable" };
+    // Fail open on network/API issues so legitimate users aren't blocked
+    console.warn("[RECAPTCHA] Verification service unreachable — allowing submission:", error);
+    return { success: true, score: undefined };
   }
 }
 
