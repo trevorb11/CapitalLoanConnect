@@ -498,8 +498,11 @@ interface LeadPosition {
 
 interface BankingInsights {
   connected: boolean;
+  hasPendingConnection?: boolean;
+  status?: string | null;
   institutionName?: string | null;
   lastSyncedAt?: string | null;
+  connectedAt?: string | null;
   accounts?: Array<{ name: string; type: string; balance: number }>;
   metrics?: {
     monthlyRevenue: number;
@@ -511,6 +514,13 @@ interface BankingInsights {
     revenueTrend?: string | null;
     healthScore?: number;
   };
+  activityByMonth?: Array<{
+    month: string;
+    totalCredit: number;
+    totalDebit: number;
+    averageDailyBalance: number;
+    net: number;
+  }>;
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────
@@ -1218,108 +1228,359 @@ function LeadFinancialsTab() {
   const [banking, setBanking] = useState<BankingInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState<string | null>(null);
+  const [detecting, setDetecting] = useState(false);
+  const [detectMsg, setDetectMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [showMonthly, setShowMonthly] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const pollRef = useRef<number | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try { const r = await fetch("/api/lead/banking/insights", { credentials: "include" }); if (r.ok) setBanking(await r.json()); } catch (_) {}
-    setLoading(false);
+  const fetchInsights = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    try {
+      const r = await fetch("/api/lead/banking/insights", { credentials: "include" });
+      if (r.ok) setBanking(await r.json());
+    } catch (_) {}
+    if (!quiet) setLoading(false);
   }, []);
-  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleSync = async () => { setSyncing(true); try { await fetch("/api/lead/chirp/sync", { method: "POST", credentials: "include" }); await fetchData(); } catch (_) {} setSyncing(false); };
+  useEffect(() => { fetchInsights(); }, [fetchInsights]);
+
+  // Auto-poll every 30 s when a connection is pending but not yet confirmed
+  useEffect(() => {
+    if (banking?.hasPendingConnection && !banking?.connected) {
+      if (pollRef.current) return;
+      pollRef.current = window.setInterval(async () => {
+        try {
+          await fetch("/api/lead/chirp/sync", { method: "POST", credentials: "include" });
+          const r = await fetch("/api/lead/banking/insights", { credentials: "include" });
+          if (r.ok) {
+            const data: BankingInsights = await r.json();
+            setBanking(data);
+            if (data.connected) {
+              if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+            }
+          }
+        } catch (_) {}
+      }, 30000);
+      // Also register webhook so Chirp can push status proactively
+      fetch("/api/lead/chirp/register-webhook", { method: "POST", credentials: "include" }).catch(() => {});
+    } else {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [banking?.hasPendingConnection, banking?.connected]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await fetch("/api/lead/chirp/sync", { method: "POST", credentials: "include" });
+      await fetchInsights();
+    } catch (_) {}
+    setSyncing(false);
+  };
 
   const handleConnect = async () => {
     setPopupBlocked(null);
+    setConnecting(true);
     try {
-      const res = await fetch("/api/lead/chirp/connect", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" });
-      if (res.ok) {
-        const data = await res.json();
-        const url = data.widgetUrl || data.verificationUrl;
-        if (url) {
-          const popup = window.open(url, "chirp-connect", "width=480,height=720");
-          if (!popup || popup.closed) setPopupBlocked(url);
+      const res = await fetch("/api/lead/chirp/connect", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Failed to start bank connection.");
+        setConnecting(false);
+        return;
+      }
+      const data = await res.json();
+      const url = data.widgetUrl || data.verificationUrl;
+      if (url) {
+        const popup = window.open(url, "chirp-connect", "width=520,height=760");
+        if (!popup || popup.closed) {
+          setPopupBlocked(url);
+        } else {
+          // After popup opens, refresh insights to get hasPendingConnection=true
+          await fetchInsights(true);
+          // Poll via message from popup
+          const onMsg = (e: MessageEvent) => {
+            if (e.data === "chirp-connected" || e.data?.type === "chirp-connected") {
+              fetchInsights();
+              window.removeEventListener("message", onMsg);
+            }
+          };
+          window.addEventListener("message", onMsg);
         }
       }
     } catch (_) {}
+    setConnecting(false);
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm("Disconnect your bank? You can reconnect anytime.")) return;
+    setDisconnecting(true);
+    try {
+      await fetch("/api/lead/chirp/connection", { method: "DELETE", credentials: "include" });
+      setBanking({ connected: false, hasPendingConnection: false });
+    } catch (_) {}
+    setDisconnecting(false);
+  };
+
+  const handleDetect = async () => {
+    setDetecting(true); setDetectMsg(null);
+    try {
+      const r = await fetch("/api/lead/detect-positions", { method: "POST", credentials: "include" });
+      const data = await r.json();
+      if (r.ok) setDetectMsg({ text: data.message || `Found ${data.detected} position(s).`, ok: true });
+      else setDetectMsg({ text: data.error || "Detection failed.", ok: false });
+    } catch (_) { setDetectMsg({ text: "Failed to scan transactions.", ok: false }); }
+    setDetecting(false);
   };
 
   if (loading) return <div className="loading"><div className="spinner" /><p style={{ marginTop: 12 }}>Loading financial data...</p></div>;
 
   const m = banking?.metrics;
+  const hasMetrics = banking?.connected && m && m.monthlyRevenue > 0;
+  const healthColor = (m?.healthScore ?? 0) >= 70 ? "#2dd4bf" : (m?.healthScore ?? 0) >= 40 ? "#facc15" : "#f87171";
+  const healthLabel = (m?.healthScore ?? 0) >= 70 ? "Strong" : (m?.healthScore ?? 0) >= 45 ? "Moderate" : (m?.healthScore ?? 0) > 0 ? "Needs Attention" : null;
+  const trendColor = m?.revenueTrend === "growing" ? "#2dd4bf" : m?.revenueTrend === "declining" ? "#f87171" : "#94a3b8";
+  const trendIcon = m?.revenueTrend === "growing" ? "↗" : m?.revenueTrend === "declining" ? "↘" : "→";
 
   return (
     <div>
+      {/* ── Bank Connection Card ── */}
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600 }}>Bank Connection</h3>
-          {banking?.connected && <span className="badge badge-active">Connected</span>}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {banking?.connected && <span className="badge badge-active">Connected</span>}
+            {!banking?.connected && banking?.hasPendingConnection && (
+              <span style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>Pending</span>
+            )}
+          </div>
         </div>
+
         {banking?.connected ? (
           <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2dd4bf" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2dd4bf", flexShrink: 0 }} />
               <span style={{ fontWeight: 500 }}>{banking.institutionName || "Connected Bank"}</span>
-              {banking.lastSyncedAt && <span style={{ color: "#64748b", fontSize: 11 }}>Last synced {fmtDate(banking.lastSyncedAt)}</span>}
+              {banking.lastSyncedAt && (
+                <span style={{ color: "#64748b", fontSize: 11, marginLeft: "auto" }}>
+                  Synced {fmtDate(banking.lastSyncedAt)}
+                </span>
+              )}
             </div>
-            {banking.accounts && banking.accounts.length > 0 && banking.accounts.map((a, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 13 }}>
-                <span>{a.name} <span style={{ color: "#64748b", fontSize: 11 }}>{a.type}</span></span>
-                <span style={{ fontWeight: 600, color: "#2dd4bf" }}>{fmt$(a.balance)}</span>
+            {banking.accounts && banking.accounts.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                {banking.accounts.map((a, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 13 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                      <span>{a.name}</span>
+                      {a.type && <span style={{ color: "#64748b", fontSize: 11, textTransform: "capitalize" }}>{a.type}</span>}
+                    </span>
+                    <span style={{ fontWeight: 700, color: "#2dd4bf" }}>{fmt$(a.balance)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-            <button className="btn-secondary" onClick={handleSync} disabled={syncing} style={{ marginTop: 14 }}>{syncing ? "Syncing..." : "Sync Now"}</button>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn-secondary" onClick={handleSync} disabled={syncing} style={{ flex: 1, minWidth: 120 }}>
+                {syncing ? "Syncing..." : "Sync Now"}
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                style={{ background: "none", border: "1px solid rgba(248,113,113,0.25)", color: "#f87171", borderRadius: 10, padding: "8px 14px", fontSize: 13, cursor: "pointer" }}
+              >
+                {disconnecting ? "Disconnecting..." : "Disconnect"}
+              </button>
+            </div>
           </>
+        ) : banking?.hasPendingConnection ? (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <p style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Awaiting Bank Verification</p>
+            <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, marginBottom: 16 }}>
+              You started linking your bank. Once Chirp confirms the connection, your financial data will appear here automatically.
+            </p>
+            <p style={{ color: "#64748b", fontSize: 12, marginBottom: 14 }}>
+              Status: <span style={{ color: "#fbbf24" }}>{banking.status || "Unverified"}</span>
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              <button className="btn-primary" onClick={handleConnect} disabled={connecting} style={{ maxWidth: 220 }}>
+                {connecting ? "Opening..." : "Reconnect Bank"}
+              </button>
+              <button className="btn-secondary" onClick={handleSync} disabled={syncing} style={{ maxWidth: 180 }}>
+                {syncing ? "Checking..." : "Check Status"}
+              </button>
+            </div>
+            {popupBlocked && <div className="popup-fallback" style={{ marginTop: 12 }}>Browser blocked the popup. <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here</a>, then return.</div>}
+          </div>
         ) : (
           <div style={{ textAlign: "center", padding: "16px 0" }}>
-            <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 14, lineHeight: 1.6 }}>Connect your bank to unlock live cash flow tracking, auto-detect funding positions, and get personalized insights.</p>
-            <button className="btn-primary" onClick={handleConnect} style={{ maxWidth: 300, margin: "0 auto" }}>Connect Your Bank</button>
-            {popupBlocked && <div className="popup-fallback">Your browser blocked the popup. <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here to connect</a>, then come back.</div>}
+            <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 8, lineHeight: 1.6, fontWeight: 500 }}>
+              Connect your bank to unlock live cash flow insights.
+            </p>
+            <ul style={{ color: "#64748b", fontSize: 13, lineHeight: 1.8, textAlign: "left", display: "inline-block", margin: "0 0 16px", paddingLeft: 18 }}>
+              <li>Live revenue &amp; expense tracking</li>
+              <li>Cash flow trends month over month</li>
+              <li>Auto-detect existing MCA positions</li>
+              <li>Faster renewal approvals — no re-uploading statements</li>
+            </ul>
+            <button className="btn-primary" onClick={handleConnect} disabled={connecting} style={{ maxWidth: 300, margin: "0 auto" }}>
+              {connecting ? "Opening..." : "Connect Your Bank"}
+            </button>
+            {popupBlocked && <div className="popup-fallback" style={{ marginTop: 12 }}>Browser blocked the popup. <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here to connect</a>, then come back.</div>}
           </div>
         )}
       </div>
 
-      {banking?.connected && m && m.monthlyRevenue > 0 && (
+      {/* ── Cash Flow Metrics ── */}
+      {hasMetrics && m && (
         <>
-          <div className="card" style={{ textAlign: "center" }}>
-            <p style={{ color: "#7b8499", fontSize: 12, marginBottom: 4 }}>Monthly Revenue</p>
-            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 32, fontWeight: 800, color: "#2dd4bf" }}>{fmt$(m.monthlyRevenue)}</p>
-            {m.revenueTrend && <p style={{ color: m.revenueTrend === "growing" ? "#2dd4bf" : m.revenueTrend === "declining" ? "#f87171" : "#94a3b8", fontSize: 12, fontWeight: 600, marginTop: 4 }}>{m.revenueTrend === "growing" ? "\u2197 Growing" : m.revenueTrend === "declining" ? "\u2198 Declining" : "\u2192 Stable"}</p>}
+          {/* Hero revenue + trend */}
+          <div className="card" style={{ textAlign: "center", position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(45,212,191,0.07) 0%, transparent 70%)", pointerEvents: "none" }} />
+            <p style={{ color: "#7b8499", fontSize: 12, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Avg Monthly Revenue</p>
+            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 36, fontWeight: 800, color: "#2dd4bf", lineHeight: 1.1 }}>{fmt$(m.monthlyRevenue)}</p>
+            {m.revenueTrend && (
+              <p style={{ color: trendColor, fontSize: 12, fontWeight: 600, marginTop: 6 }}>
+                {trendIcon} {m.revenueTrend.charAt(0).toUpperCase() + m.revenueTrend.slice(1)}
+                {m.monthsAnalyzed > 0 && <span style={{ color: "#64748b", fontWeight: 400 }}> · {m.monthsAnalyzed} months analyzed</span>}
+              </p>
+            )}
           </div>
-          <div className="stat-grid stat-grid-3">
+
+          {/* 4-stat grid */}
+          <div className="stat-grid stat-grid-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="stat-card">
-              <div className="stat-label">Expenses</div>
-              <div className="stat-val">{m.monthlyExpenses > 0 ? fmt$(m.monthlyExpenses) : "\u2014"}</div>
-              <div className="stat-sub">per month</div>
+              <div className="stat-label">Monthly Expenses</div>
+              <div className="stat-val" style={{ color: "#f87171" }}>{m.monthlyExpenses > 0 ? fmt$(m.monthlyExpenses) : "—"}</div>
+              <div className="stat-sub">avg per month</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Net Cash Flow</div>
               <div className="stat-val" style={{ color: m.netCashFlow >= 0 ? "#2dd4bf" : "#f87171" }}>
-                {m.netCashFlow >= 0 ? "+" : "-"}{fmt$(m.netCashFlow)}
+                {m.netCashFlow >= 0 ? "+" : "−"}{fmt$(m.netCashFlow)}
               </div>
-              <div className="stat-sub">per month</div>
+              <div className="stat-sub">avg per month</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Current Balance</div>
-              <div className="stat-val">{m.currentBalance > 0 ? fmt$(m.currentBalance) : "\u2014"}</div>
+              <div className="stat-val">{m.currentBalance > 0 ? fmt$(m.currentBalance) : "—"}</div>
               <div className="stat-sub">in the bank</div>
             </div>
+            <div className="stat-card">
+              <div className="stat-label">Avg Daily Balance</div>
+              <div className="stat-val">{m.avgBalance > 0 ? fmt$(m.avgBalance) : "—"}</div>
+              <div className="stat-sub">over analyzed period</div>
+            </div>
           </div>
-          {m.healthScore && (
+
+          {/* Health Score */}
+          {(m.healthScore ?? 0) > 0 && (
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <p style={{ fontWeight: 600, fontSize: 14 }}>Financial Health Score</p>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: m.healthScore >= 70 ? "#2dd4bf" : m.healthScore >= 40 ? "#facc15" : "#f87171" }}>{m.healthScore}/100</p>
+                <div>
+                  <p style={{ fontWeight: 600, fontSize: 14 }}>Financial Health Score</p>
+                  {healthLabel && <p style={{ color: healthColor, fontSize: 12, marginTop: 2 }}>{healthLabel}</p>}
+                </div>
+                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 26, fontWeight: 800, color: healthColor }}>{m.healthScore}/100</p>
               </div>
               <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${m.healthScore}%`, background: m.healthScore >= 70 ? "linear-gradient(90deg, #2dd4bf, #14b8a6)" : m.healthScore >= 40 ? "linear-gradient(90deg, #facc15, #f59e0b)" : "linear-gradient(90deg, #f87171, #ef4444)" }} />
+                <div className="progress-fill" style={{
+                  width: `${m.healthScore}%`,
+                  background: (m.healthScore ?? 0) >= 70
+                    ? "linear-gradient(90deg, #2dd4bf, #14b8a6)"
+                    : (m.healthScore ?? 0) >= 40
+                      ? "linear-gradient(90deg, #facc15, #f59e0b)"
+                      : "linear-gradient(90deg, #f87171, #ef4444)",
+                }} />
               </div>
+              <p style={{ color: "#64748b", fontSize: 11, marginTop: 8 }}>
+                Score factors: cash flow ratio, balance cushion, revenue trend
+              </p>
             </div>
           )}
+
+          {/* Month-by-Month Breakdown */}
+          {banking?.activityByMonth && banking.activityByMonth.length > 0 && (
+            <div className="card" style={{ padding: 0 }}>
+              <button
+                onClick={() => setShowMonthly(p => !p)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "16px 20px", color: "#e8eaf0" }}
+              >
+                <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600 }}>Monthly Breakdown</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ transform: showMonthly ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+              {showMonthly && (
+                <div style={{ padding: "0 20px 20px" }}>
+                  {/* Column headers */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 4, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: 4 }}>
+                    <span style={{ color: "#64748b", fontSize: 11, fontWeight: 600 }}>MONTH</span>
+                    <span style={{ color: "#64748b", fontSize: 11, fontWeight: 600, textAlign: "right" }}>REVENUE</span>
+                    <span style={{ color: "#64748b", fontSize: 11, fontWeight: 600, textAlign: "right" }}>EXPENSES</span>
+                    <span style={{ color: "#64748b", fontSize: 11, fontWeight: 600, textAlign: "right" }}>NET</span>
+                  </div>
+                  {banking.activityByMonth.slice(0, 12).map((row, i) => {
+                    const net = row.net || (row.totalCredit - row.totalDebit);
+                    return (
+                      <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 4, padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 12 }}>
+                        <span style={{ color: "#94a3b8" }}>{row.month}</span>
+                        <span style={{ color: "#2dd4bf", textAlign: "right", fontWeight: 500 }}>
+                          {row.totalCredit > 0 ? fmt$(row.totalCredit) : "—"}
+                        </span>
+                        <span style={{ color: "#f87171", textAlign: "right" }}>
+                          {row.totalDebit > 0 ? fmt$(row.totalDebit) : "—"}
+                        </span>
+                        <span style={{ color: net >= 0 ? "#2dd4bf" : "#f87171", textAlign: "right", fontWeight: 600 }}>
+                          {net !== 0 ? (net >= 0 ? "+" : "−") + fmt$(net) : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Auto-detect MCA Positions */}
+          <div className="card" style={{ background: "rgba(45,212,191,0.04)", border: "1px solid rgba(45,212,191,0.12)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Auto-Detect MCA Positions</p>
+                <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6 }}>
+                  Scan your bank transactions for recurring payments that look like MCA advances and add them automatically to your Positions tab.
+                </p>
+              </div>
+            </div>
+            <button className="btn-primary" onClick={handleDetect} disabled={detecting} style={{ width: "100%" }}>
+              {detecting ? "Scanning transactions..." : "Scan for MCA Positions"}
+            </button>
+            {detectMsg && (
+              <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, fontSize: 13, background: detectMsg.ok ? "rgba(45,212,191,0.08)" : "rgba(248,113,113,0.08)", color: detectMsg.ok ? "#2dd4bf" : "#f87171", border: `1px solid ${detectMsg.ok ? "rgba(45,212,191,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+                {detectMsg.text}
+              </div>
+            )}
+          </div>
         </>
       )}
 
-      {/* PDF Upload */}
+      {/* ── PDF Upload ── */}
       <div className="card">
         <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Upload Bank Statements</h3>
         <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>

@@ -7270,7 +7270,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
     const metrics = (snapshot.metrics as any) || {};
+    const summaryData = (snapshot.summaryData as any) || {};
     const hasPendingConnection = Boolean(snapshot.chirpRequestCode) && !snapshot.isAccountConnected;
+
+    const parseMoney = (v: unknown): number => {
+      if (typeof v === "number") return v;
+      if (typeof v !== "string") return 0;
+      const n = Number.parseFloat(v.replace(/[^0-9.\-]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const fmtMoney = (v: unknown) => {
+      const n = parseMoney(v);
+      return n > 0 ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : null;
+    };
+
+    const activityByMonth: any[] = (summaryData.activityByMonth || [])
+      .filter((m: any) => (m.month || "").toLowerCase() !== "all")
+      .map((m: any) => ({
+        month: m.month,
+        totalCredit: parseMoney(m.totalCredit),
+        totalDebit: parseMoney(m.totalDebit),
+        averageDailyBalance: parseMoney(m.averageDailyBalance ?? m.averageMonthlyBalance),
+        net: parseMoney(m.net ?? m.totalNet ?? (parseMoney(m.totalCredit) - parseMoney(m.totalDebit))),
+      }));
+
     res.json({
       connected: Boolean(snapshot.isAccountConnected),
       hasPendingConnection,
@@ -7289,7 +7312,160 @@ export async function registerRoutes(app: Express): Promise<Server> {
         revenueTrend: metrics.revenueTrend || null,
         healthScore: Number(metrics.healthScore) || 0,
       },
+      activityByMonth,
     });
+  });
+
+  // POST /api/lead/detect-positions — scan Chirp transactions for MCA payment patterns
+  app.post("/api/lead/detect-positions", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    try {
+      const snapshot = await storage.getMerchantBankSnapshot(email);
+      if (!snapshot?.chirpRequestCode) {
+        return res.status(400).json({ error: "No bank connection found. Connect your bank in the Financials tab first." });
+      }
+
+      // Fetch transaction details from Chirp
+      let details: any = null;
+      try {
+        details = await chirpService.getRequestDetails(snapshot.chirpRequestCode, { numberOfDays: 90, sort: "DESCENDING" });
+      } catch (e: any) {
+        console.warn("[LEAD] detect-positions: Chirp fetch failed:", e?.message);
+        return res.status(503).json({ error: "Unable to read bank transactions right now. Try again shortly." });
+      }
+
+      const allTxns: any[] = (details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || [];
+      if (allTxns.length === 0) {
+        return res.json({ detected: 0, added: 0, message: "No transactions found in your connected bank. Try syncing your bank first." });
+      }
+
+      // Filter to debit transactions only, within reasonable MCA range
+      const parseMoney = (v: unknown): number => {
+        if (typeof v === "number") return Math.abs(v);
+        if (typeof v !== "string") return 0;
+        const n = Number.parseFloat(v.replace(/[^0-9.\-]/g, ""));
+        return Number.isFinite(n) ? Math.abs(n) : 0;
+      };
+      const normalize = (s: string) =>
+        s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+
+      const debits = allTxns.filter((t: any) => {
+        const type = (t.type || "").toUpperCase();
+        const isDebit = type === "DEBIT" || type === "WITHDRAWAL" || type === "ACH_DEBIT";
+        const notIncome = !t.is_income && !t.is_direct_deposit;
+        const amt = parseMoney(t.amount);
+        return (isDebit || notIncome) && amt >= 50 && amt <= 100000;
+      });
+
+      // Group by normalized description
+      const groups = new Map<string, { desc: string; amounts: number[]; dates: string[] }>();
+      for (const t of debits) {
+        const rawDesc = t.description || t.desc || t.memo || t.name || "Unknown";
+        const key = normalize(rawDesc);
+        const amt = parseMoney(t.amount);
+        const date = t.date || t.transacted_at || t.posted_at || "";
+        const g = groups.get(key) || { desc: rawDesc, amounts: [], dates: [] };
+        g.amounts.push(amt);
+        g.dates.push(date);
+        groups.set(key, g);
+      }
+
+      // Find recurring patterns: 3+ occurrences with consistent amounts (±15%)
+      const patterns: Array<{
+        desc: string; amount: number; frequency: string; count: number; firstDate: string;
+      }> = [];
+
+      for (const [, g] of groups) {
+        if (g.amounts.length < 3) continue;
+        const avg = g.amounts.reduce((s, a) => s + a, 0) / g.amounts.length;
+        const allConsistent = g.amounts.every(a => Math.abs(a - avg) / avg < 0.15);
+        if (!allConsistent) continue;
+
+        const sortedDates = g.dates.filter(d => d).sort();
+        if (sortedDates.length < 2) continue;
+
+        const diffs: number[] = [];
+        for (let i = 1; i < sortedDates.length; i++) {
+          const a = new Date(sortedDates[i - 1]);
+          const b = new Date(sortedDates[i]);
+          if (!isNaN(a.getTime()) && !isNaN(b.getTime())) {
+            diffs.push(Math.abs(b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+          }
+        }
+        if (diffs.length < 2) continue;
+        const avgDiff = diffs.reduce((s, d) => s + d, 0) / diffs.length;
+
+        let frequency = "monthly";
+        if (avgDiff <= 2) frequency = "daily";
+        else if (avgDiff <= 10) frequency = "weekly";
+        else if (avgDiff <= 18) frequency = "bi-weekly";
+        else if (avgDiff <= 35) frequency = "monthly";
+        else continue; // not frequent enough to be an MCA
+
+        patterns.push({
+          desc: g.desc.slice(0, 80),
+          amount: Math.round(avg * 100) / 100,
+          frequency,
+          count: g.amounts.length,
+          firstDate: sortedDates[0],
+        });
+      }
+
+      if (patterns.length === 0) {
+        return res.json({
+          detected: 0, added: 0,
+          message: "No recurring MCA payment patterns detected in your transactions. You can add positions manually.",
+        });
+      }
+
+      // Get existing positions to avoid duplicates
+      const existingRows = await db.execute(
+        sql`SELECT funder_name, payment_amount FROM lead_positions WHERE lead_email = ${email}`
+      );
+      const existingKeys = new Set(
+        existingRows.rows.map((r: any) => `${normalize(String(r.funder_name))}:${Math.round(Number(r.payment_amount))}`)
+      );
+
+      let added = 0;
+      for (const p of patterns) {
+        const key = `${normalize(p.desc)}:${Math.round(p.amount)}`;
+        if (existingKeys.has(key)) continue;
+
+        // Estimate remaining balance: based on frequency and count seen so far
+        const paymentsPerMonth = p.frequency === "daily" ? 21 : p.frequency === "weekly" ? 4 : p.frequency === "bi-weekly" ? 2 : 1;
+        const estimatedTotalPayments = paymentsPerMonth * 6; // assume 6-month advance
+        const estimatedRemaining = Math.round(p.amount * Math.max(estimatedTotalPayments - p.count, paymentsPerMonth));
+
+        await db.execute(sql`
+          INSERT INTO lead_positions (lead_email, funder_name, product_type, payment_amount, payment_frequency, remaining_balance, funded_date, notes, status)
+          VALUES (
+            ${email},
+            ${p.desc.slice(0, 60)},
+            'MCA',
+            ${p.amount},
+            ${p.frequency},
+            ${estimatedRemaining},
+            ${p.firstDate || null},
+            ${'Auto-detected from bank transactions (' + p.count + ' payments found)'},
+            'active'
+          )
+        `);
+        added++;
+      }
+
+      res.json({
+        detected: patterns.length,
+        added,
+        message: added > 0
+          ? `Found ${patterns.length} recurring payment pattern${patterns.length !== 1 ? "s" : ""}. Added ${added} new position${added !== 1 ? "s" : ""} — review them in the Positions tab.`
+          : `Found ${patterns.length} pattern${patterns.length !== 1 ? "s" : ""} but they are already tracked.`,
+      });
+    } catch (err: any) {
+      console.error("[LEAD] detect-positions error:", err);
+      res.status(500).json({ error: err.message || "Detection failed" });
+    }
   });
 
   // POST /api/lead/chirp/connect
@@ -7320,7 +7496,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lastSyncedAt: new Date(),
       });
 
-      res.json({ requestCode: result.requestCode, widgetUrl: result.widgetUrl, verificationUrl: result.verificationUrl });
+      // Register webhooks so Chirp pushes status/refresh events to us
+      if (process.env.PUBLIC_BASE_URL) {
+        const webhookUrl = `${process.env.PUBLIC_BASE_URL.replace(/\/$/, "")}/api/chirp/webhook`;
+        chirpService.createCustomerNotification({
+          name: `lead-portal-status-${result.requestCode}`,
+          requestCode: result.requestCode,
+          type: "REQUEST_STATUS",
+          rule: "GREATER_THAN",
+          webhookUrl: [webhookUrl],
+          notifyViaWebhook: true,
+          notifyViaEmail: false,
+          active: true,
+        }).catch(e => console.warn("[CHIRP][LEAD] webhook register error:", e?.message));
+        chirpService.createCustomerNotification({
+          name: `lead-portal-refresh-${result.requestCode}`,
+          requestCode: result.requestCode,
+          type: "REFRESH",
+          rule: "GREATER_THAN",
+          webhookUrl: [webhookUrl],
+          notifyViaWebhook: true,
+          notifyViaEmail: false,
+          active: true,
+        }).catch(e => console.warn("[CHIRP][LEAD] refresh webhook register error:", e?.message));
+      }
+
+      // Sanitize URLs — Chirp sandbox sometimes returns "NA" as a placeholder
+      const sanitizeUrl = (u?: string) =>
+        u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
+      const safeWidget = sanitizeUrl(result.widgetUrl)
+        || `https://chirp.digital/api/widget?requestCode=${result.requestCode}`;
+      const safeVerification = sanitizeUrl(result.verificationUrl) || safeWidget;
+
+      res.json({ requestCode: result.requestCode, widgetUrl: safeWidget, verificationUrl: safeVerification });
     } catch (err: any) {
       console.error("[LEAD] chirp connect error:", err);
       res.status(500).json({ error: err.message || "Failed to start bank connection" });
