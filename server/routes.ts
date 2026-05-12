@@ -7121,7 +7121,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (result.rows.length === 0) return res.status(401).json({ error: "Invalid email or password" });
 
       const row = result.rows[0] as any;
-      if (!row.password_hash || !verifyPassword(password, row.password_hash)) {
+      if (!row.password_hash) {
+        return res.status(401).json({ error: "no_password_set", message: "You haven't set a password yet. Sign in with your email to get access, then set a password from your dashboard." });
+      }
+      if (!verifyPassword(password, row.password_hash)) {
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
@@ -7146,13 +7149,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/lead/auth/check
   app.get("/api/lead/auth/check", async (req: Request, res: Response) => {
     if (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail) {
-      const result = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
+      const result = await db.execute(sql`SELECT first_name, last_name, business_name, password_hash, referral_code, onboarding_step FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
       const row = result.rows[0] as any;
       res.json({
         isAuthenticated: true,
         email: req.session.user.merchantEmail,
         name: row ? [row.first_name, row.last_name].filter(Boolean).join(" ") : req.session.user.merchantName,
         businessName: row?.business_name || "",
+        hasPassword: !!row?.password_hash,
+        referralCode: row?.referral_code || "",
+        onboardingStep: row?.onboarding_step || "add_position",
       });
     } else {
       res.json({ isAuthenticated: false });
@@ -7187,6 +7193,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, factor_rate, payment_amount, payment_frequency, funded_date, remaining_balance)
       VALUES (${email}, ${funderName}, ${productType || null}, ${fundedAmount || null}, ${paybackAmount || null}, ${factorRate || null}, ${paymentAmount || null}, ${paymentFrequency || null}, ${fundedDate || null}, ${remainingBalance || null})`);
 
+    res.json({ success: true });
+  });
+
+  // PATCH /api/lead/positions/:id
+  app.patch("/api/lead/positions/:id", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+
+    const { remainingBalance, status, paymentAmount, paymentFrequency } = req.body;
+    await db.execute(sql`
+      UPDATE lead_positions SET
+        remaining_balance = COALESCE(${remainingBalance ?? null}, remaining_balance),
+        status = COALESCE(${status ?? null}, status),
+        payment_amount = COALESCE(${paymentAmount ?? null}, payment_amount),
+        payment_frequency = COALESCE(${paymentFrequency ?? null}, payment_frequency)
+      WHERE id = ${req.params.id} AND lead_email = ${email}
+    `);
     res.json({ success: true });
   });
 

@@ -575,7 +575,18 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
       const res = await fetch(endpoint, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Something went wrong");
+        // Auto-switch to login if account already exists
+        if (data.error?.includes("already exists")) {
+          setMode("login");
+          setError("You already have an account. Sign in below.");
+          return;
+        }
+        // Better message when no password has been set yet
+        if (data.error === "no_password_set") {
+          setError("You haven't set a password yet. Check your dashboard after signing in to set one, or contact us for help.");
+          return;
+        }
+        throw new Error(data.message || data.error || "Something went wrong");
       }
       onAuth();
     } catch (e: any) {
@@ -745,9 +756,48 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
 }
 
 // ── POSITION DETAIL VIEW ─────────────────────────────────────────────────
-function PositionDetail({ pos, onBack }: { pos: LeadPosition; onBack: () => void }) {
+function PositionDetail({ pos: initialPos, onBack, onDeleted }: { pos: LeadPosition; onBack: () => void; onDeleted: () => void }) {
+  const [pos, setPos] = useState(initialPos);
+  const [editingBalance, setEditingBalance] = useState(false);
+  const [newBalance, setNewBalance] = useState(String(initialPos.remaining_balance || ""));
+  const [savingBalance, setSavingBalance] = useState(false);
+  const [balanceMsg, setBalanceMsg] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const c = calcPosition(pos);
   const isRenewalReady = c.progress >= 50 && pos.status === "active";
+
+  const handleUpdateBalance = async () => {
+    setSavingBalance(true); setBalanceMsg(null);
+    try {
+      const res = await fetch(`/api/lead/positions/${pos.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remainingBalance: parseFloat(newBalance) }) });
+      if (!res.ok) throw new Error("Failed");
+      setPos(p => ({ ...p, remaining_balance: parseFloat(newBalance) }));
+      setEditingBalance(false);
+      setBalanceMsg("Balance updated.");
+    } catch { setBalanceMsg("Failed to update."); }
+    finally { setSavingBalance(false); }
+  };
+
+  const handleMarkPaid = async () => {
+    setSavingBalance(true); setBalanceMsg(null);
+    try {
+      const res = await fetch(`/api/lead/positions/${pos.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "paid", remainingBalance: 0 }) });
+      if (!res.ok) throw new Error("Failed");
+      setPos(p => ({ ...p, status: "paid", remaining_balance: 0 }));
+      setBalanceMsg("Position marked as paid off.");
+    } catch { setBalanceMsg("Failed to update."); }
+    finally { setSavingBalance(false); }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await fetch(`/api/lead/positions/${pos.id}`, { method: "DELETE", credentials: "include" });
+      onDeleted();
+    } catch { setDeleting(false); }
+  };
 
   return (
     <div>
@@ -760,11 +810,11 @@ function PositionDetail({ pos, onBack }: { pos: LeadPosition; onBack: () => void
             {pos.product_type}
             {pos.factor_rate ? ` \u00B7 ${pos.factor_rate}x factor` : ""}
             {pos.funded_date ? ` \u00B7 Funded ${fmtDate(pos.funded_date)}` : ""}
-            {` \u00B7 ${pos.payment_frequency.charAt(0).toUpperCase() + pos.payment_frequency.slice(1)} payments`}
+            {pos.payment_frequency ? ` \u00B7 ${pos.payment_frequency.charAt(0).toUpperCase() + pos.payment_frequency.slice(1)} payments` : ""}
           </div>
         </div>
         <span className={`badge ${pos.status === "active" ? "badge-active" : "badge-complete"}`}>
-          {pos.status === "active" ? "Active" : pos.status}
+          {pos.status === "active" ? "Active" : pos.status === "paid" ? "Paid Off" : pos.status}
         </span>
       </div>
 
@@ -869,7 +919,43 @@ function PositionDetail({ pos, onBack }: { pos: LeadPosition; onBack: () => void
         <p style={{ fontSize: 12, color: "#64748b", marginTop: 8, fontStyle: "italic", textAlign: "center" }}>This position was auto-detected from your bank transactions</p>
       )}
 
-      <div className="contact-strip">
+      {/* Update Balance / Mark Paid */}
+      {pos.status === "active" && (
+        <div className="card">
+          <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>Update Position</p>
+          {balanceMsg && <p style={{ fontSize: 13, color: balanceMsg.includes("Failed") ? "#f87171" : "#2dd4bf", marginBottom: 10 }}>{balanceMsg}</p>}
+          {editingBalance ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input className="field-input" type="number" value={newBalance} onChange={e => setNewBalance(e.target.value)} placeholder="Remaining balance" style={{ flex: 1 }} />
+              <button className="btn-secondary" onClick={handleUpdateBalance} disabled={savingBalance}>{savingBalance ? "Saving..." : "Save"}</button>
+              <button className="btn-ghost" onClick={() => setEditingBalance(false)}>Cancel</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn-secondary" onClick={() => { setEditingBalance(true); setBalanceMsg(null); }}>Update Remaining Balance</button>
+              <button className="btn-ghost" onClick={handleMarkPaid} disabled={savingBalance}>Mark as Paid Off</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Delete */}
+      <div style={{ marginTop: 8 }}>
+        {confirmDelete ? (
+          <div className="card" style={{ background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)" }}>
+            <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Delete this position?</p>
+            <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 14 }}>This cannot be undone.</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: "rgba(248,113,113,0.2)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, color: "#f87171", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{deleting ? "Deleting..." : "Yes, Delete"}</button>
+              <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", color: "#4b5568", fontSize: 12, cursor: "pointer", padding: "4px 0" }}>Remove this position</button>
+        )}
+      </div>
+
+      <div className="contact-strip" style={{ marginTop: 16 }}>
         <div className="contact-strip-text">
           Questions about this position? <a href={`mailto:trevor@todaycapitalgroup.com?subject=Question about my ${pos.funder_name} position`}>Reach out to our team</a>
         </div>
@@ -1446,6 +1532,7 @@ function OnboardingGuide({ step, onAdvance }: { step: string; onAdvance: (tab: s
       ))}
       <button onClick={() => {
         fetch("/api/lead/onboarding/advance", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ step: "done" }) });
+        onAdvance("__skip__");
       }} style={{ background: "none", border: "none", color: "#4b5568", fontSize: 11, cursor: "pointer", marginTop: 8 }}>
         Skip setup
       </button>
@@ -1494,8 +1581,12 @@ export default function LeadPortal() {
   const [businessName, setBusinessName] = useState("");
   const [hasPassword, setHasPassword] = useState(true);
   const [referralCode, setReferralCode] = useState("");
-  const [onboardingStep, setOnboardingStep] = useState("done");
-  const [activeTab, setActiveTab] = useState<"overview" | "positions" | "financials" | "qualify" | "resources">("overview");
+  const [onboardingStep, setOnboardingStep] = useState("add_position");
+  const [activeTab, setActiveTab] = useState<"overview" | "positions" | "financials" | "qualify" | "resources">(() => {
+    const saved = sessionStorage.getItem("lp_tab");
+    if (saved && ["overview","positions","financials","qualify","resources"].includes(saved)) return saved as any;
+    return "overview";
+  });
   const [positions, setPositions] = useState<LeadPosition[]>([]);
   const [banking, setBanking] = useState<BankingInsights | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<LeadPosition | null>(null);
@@ -1560,7 +1651,7 @@ export default function LeadPortal() {
           </div>
         </header>
         <div className="lp-wrap">
-          <PositionDetail pos={selectedPosition} onBack={() => setSelectedPosition(null)} />
+          <PositionDetail pos={selectedPosition} onBack={() => setSelectedPosition(null)} onDeleted={() => { setSelectedPosition(null); }} />
         </div>
       </div>
     );
@@ -1599,7 +1690,9 @@ export default function LeadPortal() {
 
         {onboardingStep !== "done" && (
           <OnboardingGuide step={onboardingStep} onAdvance={(tab) => {
+            if (tab === "__skip__") { setOnboardingStep("done"); return; }
             setActiveTab(tab as any);
+            sessionStorage.setItem("lp_tab", tab);
             const nextStep = tab === "positions" ? "connect_bank" : tab === "financials" ? "view_qualify" : "done";
             fetch("/api/lead/onboarding/advance", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ step: nextStep }) });
             setOnboardingStep(nextStep);
@@ -1609,7 +1702,7 @@ export default function LeadPortal() {
         {/* Navigation */}
         <div className="lp-nav">
           {tabs.map(([key, label]) => (
-            <button key={key} className={`lp-nav-btn ${activeTab === key ? "active" : ""}`} onClick={() => setActiveTab(key)}>
+            <button key={key} className={`lp-nav-btn ${activeTab === key ? "active" : ""}`} onClick={() => { setActiveTab(key); sessionStorage.setItem("lp_tab", key); }}>
               {label}
             </button>
           ))}
