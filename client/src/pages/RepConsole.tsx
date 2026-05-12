@@ -74,6 +74,7 @@ import {
   Circle,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
+import { LoginForm } from "@/components/auth/LoginForm";
 import type {
   Contact360,
   RepConsoleContact,
@@ -95,84 +96,7 @@ interface AuthState {
   agentName?: string;
 }
 
-function LoginForm({ onLoginSuccess }: { onLoginSuccess: () => void }) {
-  const [credential, setCredential] = useState("");
-  const [error, setError] = useState("");
-
-  const loginMutation = useMutation({
-    mutationFn: async (cred: string) => {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credential: cred }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Login failed");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      onLoginSuccess();
-    },
-    onError: (err: any) => {
-      setError(err.message || "Invalid credentials");
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    loginMutation.mutate(credential);
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#192F56] to-[#19112D] p-4">
-      <Card className="w-full max-w-md p-8 bg-card/95 backdrop-blur">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold mb-2">Rep Console</h1>
-          <p className="text-muted-foreground text-sm">
-            Enter your credentials to access the rep console
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Password or Agent Email
-            </label>
-            <Input
-              type="password"
-              value={credential}
-              onChange={(e) => setCredential(e.target.value)}
-              placeholder="Enter password or email..."
-              className="w-full"
-              autoComplete="off"
-            />
-          </div>
-
-          {error && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          )}
-
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={!credential || loginMutation.isPending}
-          >
-            {loginMutation.isPending ? "Logging in..." : "Login"}
-          </Button>
-        </form>
-      </Card>
-    </div>
-  );
-}
+// LoginForm imported from @/components/auth/LoginForm
 
 // ========================================
 // HELPER FUNCTIONS

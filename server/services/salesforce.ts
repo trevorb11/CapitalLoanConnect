@@ -763,14 +763,43 @@ export async function syncLenderSubmissionsToSalesforce(
     status: string;
     amount: any;
     factorRate: any;
+    buyRate?: any;
     term: any;
     declineReason?: string;
     date?: any;
     notes?: string;
+    paymentFrequency?: string;
   }> = [];
 
-  // Primary decision
-  if (decision.lender) {
+  // Use additional_approvals as the source of truth when available —
+  // it contains per-lender details including the primary (isPrimary: true)
+  const additionalApprovals = decision.additional_approvals || decision.additionalApprovals;
+  const seenLenders = new Set<string>();
+
+  if (Array.isArray(additionalApprovals) && additionalApprovals.length > 0) {
+    for (const aa of additionalApprovals) {
+      if (!aa.lender) continue;
+      const lenderKey = aa.lender.toLowerCase().trim();
+      if (seenLenders.has(lenderKey)) continue;
+      seenLenders.add(lenderKey);
+
+      submissions.push({
+        lender: aa.lender,
+        status: aa.isPrimary ? (decision.status || "approved") : "approved",
+        amount: aa.advanceAmount || aa.amount || aa.advance_amount,
+        factorRate: aa.factorRate || aa.factor_rate,
+        buyRate: aa.buyRate || aa.buy_rate,
+        term: aa.term,
+        date: aa.approvalDate || aa.approval_date || aa.date || decision.approval_date || decision.approvalDate,
+        notes: aa.notes || null,
+        paymentFrequency: aa.paymentFrequency || aa.payment_frequency,
+        declineReason: aa.declineReason || aa.decline_reason,
+      });
+    }
+  }
+
+  // Fallback: if no additional_approvals, use the top-level decision fields
+  if (submissions.length === 0 && decision.lender) {
     submissions.push({
       lender: decision.lender,
       status: decision.status || "approved",
@@ -780,25 +809,8 @@ export async function syncLenderSubmissionsToSalesforce(
       declineReason: decision.decline_reason || decision.declineReason,
       date: decision.approval_date || decision.approvalDate || decision.created_at || decision.createdAt,
       notes: decision.notes,
+      paymentFrequency: decision.payment_frequency || decision.paymentFrequency,
     });
-  }
-
-  // Additional approvals (JSONB array) — skip if same lender as primary to avoid duplicates
-  const primaryLender = (decision.lender || "").toLowerCase().trim();
-  const additionalApprovals = decision.additional_approvals || decision.additionalApprovals;
-  if (Array.isArray(additionalApprovals)) {
-    for (const aa of additionalApprovals) {
-      if (aa.lender && aa.lender.toLowerCase().trim() !== primaryLender) {
-        submissions.push({
-          lender: aa.lender,
-          status: "approved",
-          amount: aa.amount || aa.advanceAmount,
-          factorRate: aa.factorRate || aa.factor_rate,
-          term: aa.term,
-          date: aa.date || decision.approval_date || decision.approvalDate,
-        });
-      }
-    }
   }
 
   if (submissions.length === 0) return results;
@@ -825,6 +837,7 @@ export async function syncLenderSubmissionsToSalesforce(
         Status__c: submissionStatus,
         Offer_Amount__c: parseNum(sub.amount),
         Factor_Rate__c: parseNum(sub.factorRate),
+        Buy_Rate__c: parseNum(sub.buyRate),
         Term_Months__c: parseTermMonths(sub.term),
         Submitted_Date__c: dateStr,
         Response_Date__c: dateStr,

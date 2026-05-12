@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy, Phone } from "lucide-react";
 import { Link } from "wouter";
+import { LoginForm } from "@/components/auth/LoginForm";
+import { BotAttemptsTab } from "@/components/dashboard/BotAttemptsTab";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
@@ -29,94 +31,7 @@ interface AuthState {
   agentName?: string;
 }
 
-function LoginForm({ onLoginSuccess }: { onLoginSuccess: () => void }) {
-  const [credential, setCredential] = useState("");
-  const [error, setError] = useState("");
-
-  const loginMutation = useMutation({
-    mutationFn: async (cred: string) => {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credential: cred }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Login failed");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      onLoginSuccess();
-    },
-    onError: (err: any) => {
-      setError(err.message || "Invalid credentials. Please try again.");
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    loginMutation.mutate(credential);
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#192F56] to-[#19112D] p-4">
-      <Card className="w-full max-w-md p-8 bg-card/95 backdrop-blur">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Lock className="w-8 h-8 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold mb-2">Dashboard Login</h1>
-          <p className="text-muted-foreground text-sm">
-            Enter your credentials to access the dashboard
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Password or Agent Email
-            </label>
-            <Input
-              type="password"
-              value={credential}
-              onChange={(e) => setCredential(e.target.value)}
-              placeholder="Enter password or email..."
-              className="w-full"
-              data-testid="input-login-password"
-              autoComplete="off"
-            />
-          </div>
-
-          {error && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md" data-testid="text-login-error">
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          )}
-
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={!credential || loginMutation.isPending}
-            data-testid="button-login"
-          >
-            {loginMutation.isPending ? "Logging in..." : "Login"}
-          </Button>
-        </form>
-
-        <div className="mt-6 pt-6 border-t">
-          <p className="text-xs text-muted-foreground text-center">
-            Admin users use the admin password.
-            <br />
-            Agents login with their email address.
-          </p>
-        </div>
-      </Card>
-    </div>
-  );
-}
+// LoginForm imported from @/components/auth/LoginForm
 
 interface BankStatement {
   accounts: Array<{
@@ -3419,100 +3334,7 @@ function BankStatementsTab() {
   );
 }
 
-function BotAttemptsTab() {
-  const { data: botAttempts, isLoading } = useQuery<BotAttempt[]>({
-    queryKey: ['/api/bot-attempts'],
-    queryFn: async () => {
-      const res = await fetch('/api/bot-attempts', {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        if (res.status === 403) return [];
-        throw new Error('Failed to fetch bot attempts');
-      }
-      return res.json();
-    },
-  });
-
-  if (isLoading) {
-    return (
-      <Card className="p-8">
-        <div className="flex items-center justify-center gap-2">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Loading bot attempts...</span>
-        </div>
-      </Card>
-    );
-  }
-
-  if (!botAttempts || botAttempts.length === 0) {
-    return (
-      <Card className="p-8">
-        <div className="text-center text-muted-foreground">
-          <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p className="text-lg font-medium">No Bot Attempts Detected</p>
-          <p className="text-sm mt-2">
-            The honeypot system is active. Any bots that fill out the hidden fax field will appear here.
-          </p>
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <AlertTriangle className="w-5 h-5 text-amber-500" />
-        <h3 className="text-lg font-semibold">Bot Attempts Detected</h3>
-        <Badge variant="destructive">{botAttempts.length}</Badge>
-      </div>
-
-      <div className="space-y-4">
-        {botAttempts.map((attempt) => (
-          <div
-            key={attempt.id}
-            className="p-4 border rounded-lg bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-muted-foreground">Email:</span>{" "}
-                <span className="font-mono">{attempt.email || "N/A"}</span>
-              </div>
-              <div>
-                <span className="font-medium text-muted-foreground">Fax Value:</span>{" "}
-                <span className="font-mono text-red-600 dark:text-red-400">"{attempt.honeypotValue}"</span>
-              </div>
-              <div>
-                <span className="font-medium text-muted-foreground">Form Type:</span>{" "}
-                <Badge variant="outline">{attempt.formType || "unknown"}</Badge>
-              </div>
-              <div>
-                <span className="font-medium text-muted-foreground">Timestamp:</span>{" "}
-                {attempt.createdAt ? format(new Date(attempt.createdAt), "MMM d, yyyy h:mm a") : "N/A"}
-              </div>
-              <div className="md:col-span-2">
-                <span className="font-medium text-muted-foreground">IP Address:</span>{" "}
-                <span className="font-mono text-xs">{attempt.ipAddress || "N/A"}</span>
-              </div>
-              <div className="md:col-span-2">
-                <span className="font-medium text-muted-foreground">User Agent:</span>{" "}
-                <span className="font-mono text-xs truncate block">{attempt.userAgent || "N/A"}</span>
-              </div>
-              {attempt.additionalData && Object.keys(attempt.additionalData).length > 0 && (
-                <div className="md:col-span-2">
-                  <span className="font-medium text-muted-foreground">Additional Data:</span>{" "}
-                  <pre className="text-xs mt-1 bg-white/50 dark:bg-black/20 p-2 rounded overflow-x-auto">
-                    {JSON.stringify(attempt.additionalData, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
+// BotAttemptsTab imported from @/components/dashboard/BotAttemptsTab
 
 export default function Dashboard() {
   const { toast } = useToast();
