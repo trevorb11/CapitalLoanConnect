@@ -7171,6 +7171,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true });
   });
 
+  // ── Magic Link Auth ──
+  // In-memory store: token → { email, expires }
+  const _magicTokens = new Map<string, { email: string; expires: number }>();
+
+  // POST /api/lead/request-magic-link
+  app.post("/api/lead/request-magic-link", async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+      const normalizedEmail = email.toLowerCase().trim();
+
+      const result = await db.execute(sql`SELECT first_name FROM lead_portal_accounts WHERE email = ${normalizedEmail}`);
+      if (result.rows.length === 0) {
+        // Don't reveal whether account exists
+        return res.json({ success: true });
+      }
+
+      const token = randomBytes(24).toString("hex");
+      _magicTokens.set(token, { email: normalizedEmail, expires: Date.now() + 15 * 60 * 1000 });
+
+      const firstName = (result.rows[0] as any).first_name || "there";
+      const origin = (req.headers.origin as string) || "https://app.todaycapitalgroup.com";
+      const magicUrl = `${origin}/track?magic=${token}`;
+
+      await sendMarketingNotification(
+        "Your sign-in link — Today Capital Group",
+        `<div style="font-family:'DM Sans',Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#080d18;color:#e8eaf0;border-radius:16px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;">
+            <div style="width:32px;height:32px;background:linear-gradient(135deg,#14B8A6,#2dd4bf);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#080d18;">TCG</div>
+            <span style="font-weight:700;font-size:14px;">Today Capital Group</span>
+          </div>
+          <h2 style="font-size:22px;font-weight:700;margin-bottom:10px;color:#fff;">Hi ${firstName}, here's your sign-in link</h2>
+          <p style="color:#94a3b8;font-size:14px;line-height:1.7;margin-bottom:24px;">Click the button below to sign in to your funding dashboard. This link expires in <strong style="color:#e8eaf0;">15 minutes</strong> and can only be used once.</p>
+          <a href="${magicUrl}" style="display:inline-block;background:linear-gradient(135deg,#14B8A6,#0d9488);color:#080d18;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;margin-bottom:20px;">Sign In to My Dashboard</a>
+          <p style="color:#64748b;font-size:12px;margin-top:16px;">Or copy this URL into your browser:<br><span style="color:#2dd4bf;">${magicUrl}</span></p>
+          <p style="color:#4b5568;font-size:11px;margin-top:24px;border-top:1px solid rgba(255,255,255,0.06);padding-top:16px;">If you didn't request this, you can safely ignore this email. Your account will not be affected.</p>
+        </div>`
+      ).catch(() => {});
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[LEAD] magic-link request error:", err);
+      res.status(500).json({ error: "Failed to send sign-in link. Please try again." });
+    }
+  });
+
+  // GET /api/lead/verify-magic-link?token=XXX
+  app.get("/api/lead/verify-magic-link", async (req: Request, res: Response) => {
+    try {
+      const token = req.query.token as string;
+      if (!token) return res.status(400).json({ error: "Token is required" });
+
+      const entry = _magicTokens.get(token);
+      if (!entry || Date.now() > entry.expires) {
+        _magicTokens.delete(token);
+        return res.status(401).json({ error: "This link has expired or already been used. Please request a new one." });
+      }
+
+      _magicTokens.delete(token); // one-time use
+
+      const result = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${entry.email}`);
+      if (result.rows.length === 0) return res.status(404).json({ error: "Account not found" });
+
+      const row = result.rows[0] as any;
+      const name = [row.first_name, row.last_name].filter(Boolean).join(" ");
+
+      req.session.user = {
+        isAuthenticated: true,
+        role: "lead",
+        merchantEmail: entry.email,
+        merchantName: name || undefined,
+      };
+
+      await db.execute(sql`UPDATE lead_portal_accounts SET last_active_at = NOW() WHERE email = ${entry.email}`);
+
+      res.json({ success: true, name, businessName: row.business_name });
+    } catch (err: any) {
+      console.error("[LEAD] magic-link verify error:", err);
+      res.status(500).json({ error: "Verification failed. Please try again." });
+    }
+  });
+
   // ── Lead Positions CRUD ──
 
   // GET /api/lead/positions

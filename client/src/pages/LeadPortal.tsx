@@ -464,6 +464,112 @@ const LEAD_CSS = `
     margin: 16px 0;
   }
 
+  /* ── AVATAR ── */
+  .lead-portal .lp-avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px;
+    color: #080d18; flex-shrink: 0; letter-spacing: 0.02em;
+  }
+
+  .lead-portal .lp-header-name {
+    font-size: 12px; color: #9ba3b8; font-weight: 500;
+  }
+
+  /* ── MAGIC LINK ── */
+  .lead-portal .magic-link-area {
+    margin-top: 20px; padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    text-align: center;
+  }
+
+  .lead-portal .magic-link-btn {
+    background: none; border: none;
+    color: #2dd4bf; font-size: 13px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    text-decoration: underline; text-underline-offset: 3px;
+    opacity: 0.85; transition: opacity 0.2s;
+  }
+
+  .lead-portal .magic-link-btn:hover { opacity: 1; }
+
+  /* ── DROP ZONE ── */
+  .lead-portal .drop-zone {
+    border: 2px dashed rgba(45,212,191,0.3);
+    border-radius: 12px; padding: 32px 20px;
+    text-align: center; cursor: pointer;
+    transition: all 0.2s; background: rgba(45,212,191,0.03);
+  }
+
+  .lead-portal .drop-zone:hover,
+  .lead-portal .drop-zone.dragover {
+    border-color: rgba(45,212,191,0.6);
+    background: rgba(45,212,191,0.07);
+  }
+
+  .lead-portal .drop-zone-icon {
+    width: 40px; height: 40px;
+    background: rgba(45,212,191,0.1);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 12px;
+  }
+
+  .lead-portal .drop-zone-text {
+    font-size: 14px; font-weight: 600; color: #e8eaf0; margin-bottom: 4px;
+  }
+
+  .lead-portal .drop-zone-sub {
+    font-size: 12px; color: #64748b;
+  }
+
+  /* ── WELCOME CARD ── */
+  .lead-portal .welcome-card {
+    background: linear-gradient(135deg, rgba(45,212,191,0.07) 0%, rgba(20,184,166,0.02) 100%);
+    border: 1px solid rgba(45,212,191,0.15);
+    border-radius: 16px; padding: 28px 24px; margin-bottom: 16px;
+    text-align: center;
+  }
+
+  .lead-portal .welcome-card-title {
+    font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700;
+    color: #fff; margin-bottom: 8px;
+  }
+
+  .lead-portal .welcome-card-sub {
+    font-size: 14px; color: #94a3b8; line-height: 1.6; margin-bottom: 20px;
+  }
+
+  .lead-portal .value-props {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin-bottom: 20px; text-align: left;
+  }
+
+  .lead-portal .value-prop {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 12px 14px;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+
+  .lead-portal .value-prop-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #2dd4bf; flex-shrink: 0; margin-top: 6px;
+  }
+
+  .lead-portal .value-prop-text {
+    font-size: 12px; color: #94a3b8; line-height: 1.5;
+  }
+
+  .lead-portal .value-prop-text strong {
+    display: block; color: #e8eaf0; font-weight: 600; margin-bottom: 2px; font-size: 13px;
+  }
+
+  /* ── PULSE ── */
+  @keyframes lead-pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+  .lead-portal .pulse { animation: lead-pulse 2s ease-in-out infinite; }
+
   @media (max-width: 640px) {
     .lead-portal .lp-nav-btn { flex: none; padding: 10px 14px; font-size: 12px; }
     .lead-portal .lp-wrap { padding: 24px 16px 60px; }
@@ -476,6 +582,7 @@ const LEAD_CSS = `
     .lead-portal .lp-header { padding: 14px 16px; }
     .lead-portal .detail-header { flex-direction: column; align-items: flex-start; gap: 10px; }
     .lead-portal .contact-strip { flex-direction: column; gap: 10px; text-align: center; }
+    .lead-portal .value-props { grid-template-columns: 1fr; }
   }
 `;
 
@@ -563,7 +670,7 @@ function calcPosition(pos: LeadPosition) {
 
 // ── LOGIN / SIGNUP ───────────────────────────────────────────────────────
 function LeadAuth({ onAuth }: { onAuth: () => void }) {
-  const [mode, setMode] = useState<"login" | "signup">("signup");
+  const [mode, setMode] = useState<"login" | "signup" | "magic-request" | "magic-sent">("signup");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -571,6 +678,32 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
+
+  // Check for magic link token in URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const magic = params.get("magic");
+    if (!magic) return;
+    // Strip token from URL immediately
+    window.history.replaceState({}, "", "/track");
+    setLoading(true);
+    fetch(`/api/lead/verify-magic-link?token=${encodeURIComponent(magic)}`, { credentials: "include" })
+      .then(async r => {
+        if (r.ok) {
+          onAuth();
+        } else {
+          const d = await r.json().catch(() => ({}));
+          setMode("login");
+          setError(d.error || "This sign-in link is invalid or has expired. Please try again.");
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        setMode("login");
+        setError("Failed to verify sign-in link. Please try again.");
+        setLoading(false);
+      });
+  }, [onAuth]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -585,15 +718,14 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
       const res = await fetch(endpoint, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        // Auto-switch to login if account already exists
         if (data.error?.includes("already exists")) {
           setMode("login");
-          setError("You already have an account. Sign in below.");
+          setError("You already have an account — sign in below.");
           return;
         }
-        // Better message when no password has been set yet
         if (data.error === "no_password_set") {
-          setError("You haven't set a password yet. Check your dashboard after signing in to set one, or contact us for help.");
+          setMode("magic-request");
+          setError("You haven't set a password yet. Enter your email below and we'll send you a sign-in link.");
           return;
         }
         throw new Error(data.message || data.error || "Something went wrong");
@@ -606,55 +738,129 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
     }
   };
 
+  const handleMagicRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/lead/request-magic-link", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to send link. Please try again.");
+      }
+      setMode("magic-sent");
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading && !error) {
+    return (
+      <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <style>{LEAD_CSS}</style>
+        <div style={{ textAlign: "center" }}>
+          <div className="spinner" style={{ margin: "0 auto 16px" }} />
+          <p style={{ color: "#7b8499", fontSize: 14 }}>Signing you in...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 24 }}>
       <style>{LEAD_CSS}</style>
       <div style={{ maxWidth: 440, width: "100%" }}>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
+        {/* Brand */}
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
             <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, #14B8A6, #2dd4bf)", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 14, color: "#080d18" }}>TCG</div>
             <div style={{ textAlign: "left" }}>
               <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14 }}>Today Capital Group</div>
-              <div style={{ fontSize: 10, color: "#14B8A6", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Financial Command Center</div>
+              <div style={{ fontSize: 10, color: "#2dd4bf", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Funding Dashboard</div>
             </div>
           </div>
         </div>
-        <div className="card" style={{ padding: "40px 32px" }}>
-          <div style={{ textAlign: "center", marginBottom: 28 }}>
-            <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
-              {mode === "signup" ? "Start tracking your funding" : "Welcome back"}
-            </h1>
-            <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
-              {mode === "signup"
-                ? "Monitor your positions, track cash flow, and see when you qualify for better terms. Free to use."
-                : "Sign in to your dashboard."}
-            </p>
-          </div>
-          {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
-          <form onSubmit={handleSubmit}>
-            {mode === "signup" ? (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-                  <div><label className="field-label">First Name</label><input className="field-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" required /></div>
-                  <div><label className="field-label">Last Name</label><input className="field-input" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" required /></div>
+
+        <div className="card" style={{ padding: "36px 32px" }}>
+          {/* Magic-sent state */}
+          {mode === "magic-sent" ? (
+            <div style={{ textAlign: "center" }}>
+              <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              </div>
+              <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Check your inbox</h2>
+              <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+                We sent a sign-in link to <strong style={{ color: "#e8eaf0" }}>{email}</strong>. Click it to access your dashboard. The link expires in 15 minutes.
+              </p>
+              <p style={{ color: "#64748b", fontSize: 12, marginBottom: 16 }}>Didn't get it? Check your spam folder.</p>
+              <button className="btn-ghost" onClick={() => { setMode("magic-request"); setError(null); }} style={{ width: "100%", marginBottom: 8 }}>Resend Link</button>
+              <button onClick={() => { setMode("login"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", fontSize: 13, cursor: "pointer" }}>Sign in with password instead</button>
+            </div>
+          ) : mode === "magic-request" ? (
+            <>
+              <div style={{ marginBottom: 24 }}>
+                <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Get a sign-in link</h1>
+                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Enter your email and we'll send you a link to sign in instantly — no password needed.</p>
+              </div>
+              {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
+              <form onSubmit={handleMagicRequest}>
+                <div style={{ marginBottom: 18 }}><label className="field-label">Email Address</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required autoFocus /></div>
+                <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Sending..." : "Send Sign-In Link"}</button>
+              </form>
+              <div className="magic-link-area">
+                <button className="magic-link-btn" onClick={() => { setMode("login"); setError(null); }}>I have a password — sign in instead</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ textAlign: "center", marginBottom: 24 }}>
+                <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>
+                  {mode === "signup" ? "Access your funding dashboard" : "Welcome back"}
+                </h1>
+                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
+                  {mode === "signup"
+                    ? "Track your payoffs, monitor cash flow, and see when you qualify for better terms. Free to use."
+                    : "Sign in to pick up where you left off."}
+                </p>
+              </div>
+              {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
+              <form onSubmit={handleSubmit}>
+                {mode === "signup" ? (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                      <div><label className="field-label">First Name</label><input className="field-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" required /></div>
+                      <div><label className="field-label">Last Name</label><input className="field-input" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" required /></div>
+                    </div>
+                    <div style={{ marginBottom: 14 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
+                    <div style={{ marginBottom: 20 }}><label className="field-label">Phone</label><input className="field-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 555-5555" /></div>
+                    <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Setting up your dashboard..." : "Get Started — Free"}</button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ marginBottom: 14 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
+                    <div style={{ marginBottom: 20 }}><label className="field-label">Password</label><input className="field-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} /></div>
+                    <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Signing in..." : "Sign In"}</button>
+                  </>
+                )}
+              </form>
+
+              {mode === "login" && (
+                <div className="magic-link-area">
+                  <p style={{ color: "#64748b", fontSize: 12, marginBottom: 8 }}>Forgot your password or never set one?</p>
+                  <button className="magic-link-btn" onClick={() => { setMode("magic-request"); setEmail(email); setError(null); }}>
+                    Send me a sign-in link instead
+                  </button>
                 </div>
-                <div style={{ marginBottom: 14 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
-                <div style={{ marginBottom: 20 }}><label className="field-label">Phone</label><input className="field-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 555-5555" required /></div>
-                <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Setting up your dashboard..." : "Get Started — It's Free"}</button>
-              </>
-            ) : (
-              <>
-                <div style={{ marginBottom: 14 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
-                <div style={{ marginBottom: 20 }}><label className="field-label">Password</label><input className="field-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} /></div>
-                <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Please wait..." : "Sign In"}</button>
-              </>
-            )}
-          </form>
-          <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
-            {mode === "signup"
-              ? <span>Already have an account? <button onClick={() => { setMode("login"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button></span>
-              : <span>No account? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create one free</button></span>}
-          </div>
+              )}
+
+              <div style={{ textAlign: "center", marginTop: mode === "login" ? 12 : 16, color: "#7b8499", fontSize: 13 }}>
+                {mode === "signup"
+                  ? <span>Already have an account? <button onClick={() => { setMode("login"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button></span>
+                  : <span>New here? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create a free account</button></span>}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -1046,6 +1252,46 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
   const totalMonthlyLoad = positions.reduce((s, p) => s + calcPosition(p).monthlyLoad, 0);
   const revenue = banking?.metrics?.monthlyRevenue || 0;
   const renewalReady = activePositions.filter(p => calcPosition(p).progress >= 50);
+  const isFirstTime = positions.length === 0 && !banking?.connected;
+
+  if (isFirstTime) {
+    return (
+      <div>
+        <div className="welcome-card">
+          <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
+          <div className="welcome-card-title">Your dashboard is ready</div>
+          <div className="welcome-card-sub">
+            This is your private portal for tracking your MCA positions, monitoring cash flow, and knowing exactly when you're ready to refinance or take on additional capital.
+          </div>
+          <div className="value-props">
+            <div className="value-prop">
+              <div className="value-prop-dot" />
+              <div className="value-prop-text"><strong>Payoff tracking</strong>See exactly how far along each position is and when it'll be done.</div>
+            </div>
+            <div className="value-prop">
+              <div className="value-prop-dot" />
+              <div className="value-prop-text"><strong>Cash flow insights</strong>Connect your bank for live revenue and expense analysis.</div>
+            </div>
+            <div className="value-prop">
+              <div className="value-prop-dot" />
+              <div className="value-prop-text"><strong>Renewal timing</strong>Know the moment you're eligible for better terms or additional capital.</div>
+            </div>
+            <div className="value-prop">
+              <div className="value-prop-dot" />
+              <div className="value-prop-text"><strong>Auto-detect positions</strong>Link your bank and we'll find your MCA payments automatically.</div>
+            </div>
+          </div>
+          <p style={{ color: "#64748b", fontSize: 13, marginBottom: 14 }}>Start by adding your current funding position or connecting your bank.</p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" as const }}>
+            <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ flex: 1, maxWidth: 200 }}>Add a Position</button>
+            <button className="btn-secondary" onClick={() => onSwitchTab("financials")} style={{ flex: 1, maxWidth: 200 }}>Connect Bank</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -1077,21 +1323,19 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
       {revenue > 0 && totalMonthlyLoad > 0 && (
         <div className="card">
           <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Payment Coverage</p>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
-                <span style={{ color: "#7b8499" }}>Payments as % of revenue</span>
-                <span style={{ color: (totalMonthlyLoad / revenue * 100) < 20 ? "#2dd4bf" : "#facc15", fontWeight: 600 }}>{(totalMonthlyLoad / revenue * 100).toFixed(1)}%</span>
-              </div>
-              <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${Math.min(100, totalMonthlyLoad / revenue * 100)}%`, background: (totalMonthlyLoad / revenue * 100) < 20 ? "linear-gradient(90deg, #2dd4bf, #14b8a6)" : "linear-gradient(90deg, #facc15, #f59e0b)" }} />
-              </div>
-              <p style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
-                {(totalMonthlyLoad / revenue * 100) < 15 ? "Your payment load is very manageable. You have room for additional capital if needed." :
-                 (totalMonthlyLoad / revenue * 100) < 25 ? "Your payment load is moderate. Consider refinancing to free up cash flow." :
-                 "Your payment load is heavy. Consolidation or refinancing could significantly reduce your monthly burden."}
-              </p>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
+              <span style={{ color: "#7b8499" }}>Payments as % of revenue</span>
+              <span style={{ color: (totalMonthlyLoad / revenue * 100) < 20 ? "#2dd4bf" : "#facc15", fontWeight: 600 }}>{(totalMonthlyLoad / revenue * 100).toFixed(1)}%</span>
             </div>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${Math.min(100, totalMonthlyLoad / revenue * 100)}%`, background: (totalMonthlyLoad / revenue * 100) < 20 ? "linear-gradient(90deg, #2dd4bf, #14b8a6)" : "linear-gradient(90deg, #facc15, #f59e0b)" }} />
+            </div>
+            <p style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+              {(totalMonthlyLoad / revenue * 100) < 15 ? "Your payment load is very manageable. You may have room for additional capital." :
+               (totalMonthlyLoad / revenue * 100) < 25 ? "Your payment load is moderate. Refinancing could free up meaningful cash flow." :
+               "Your payment load is heavy. Consolidation or refinancing could significantly reduce your monthly burden."}
+            </p>
           </div>
         </div>
       )}
@@ -1114,24 +1358,19 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
         </div>
       )}
 
-      {/* Quick Actions */}
-      {(positions.length === 0 || !banking?.connected) && (
-        <div className="card">
-          <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Get the most out of your dashboard</p>
-          <div style={{ display: "grid", gap: 10 }}>
-            {positions.length === 0 && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div><p style={{ fontWeight: 600, fontSize: 13 }}>Add a funding position</p><p style={{ color: "#7b8499", fontSize: 12 }}>Track payoffs, see renewal timing, and monitor your progress.</p></div>
-                <button className="btn-secondary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, whiteSpace: "nowrap" }}>Add Position</button>
+      {/* Setup nudge — only show individual items not yet done */}
+      {(!banking?.connected) && positions.length > 0 && (
+        <div className="card" style={{ padding: "16px 20px" }}>
+          <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: "#94a3b8" }}>Complete your setup</p>
+          {!banking?.connected && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: 13 }}>Connect your bank</p>
+                <p style={{ color: "#7b8499", fontSize: 12 }}>Unlock live cash flow data and auto-detect MCA payments.</p>
               </div>
-            )}
-            {!banking?.connected && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div><p style={{ fontWeight: 600, fontSize: 13 }}>Connect your bank</p><p style={{ color: "#7b8499", fontSize: 12 }}>Get live cash flow tracking and auto-detect funding positions.</p></div>
-                <button className="btn-secondary" onClick={() => onSwitchTab("financials")} style={{ fontSize: 12, whiteSpace: "nowrap" }}>Connect</button>
-              </div>
-            )}
-          </div>
+              <button className="btn-secondary" onClick={() => onSwitchTab("financials")} style={{ fontSize: 12, whiteSpace: "nowrap" as const }}>Connect</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1159,7 +1398,7 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [detecting, setDetecting] = useState(false);
-  const [detectMsg, setDetectMsg] = useState<string | null>(null);
+  const [detectMsg, setDetectMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   const fetch_ = useCallback(async () => {
     try { const r = await fetch("/api/lead/positions", { credentials: "include" }); if (r.ok) setPositions(await r.json()); } catch (_) {}
@@ -1172,9 +1411,9 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
     try {
       const r = await fetch("/api/lead/detect-positions", { method: "POST", credentials: "include" });
       const data = await r.json();
-      if (r.ok) { setDetectMsg(data.message || `Found ${data.detected} position(s).`); if (data.added > 0) fetch_(); }
-      else { setDetectMsg(data.error || "Detection failed."); }
-    } catch (_) { setDetectMsg("Failed to scan transactions."); }
+      if (r.ok) { setDetectMsg({ text: data.message || `Found ${data.detected} position(s).`, ok: true }); if (data.added > 0) fetch_(); }
+      else { setDetectMsg({ text: data.error || "Detection failed.", ok: false }); }
+    } catch (_) { setDetectMsg({ text: "Failed to scan transactions.", ok: false }); }
     setDetecting(false);
   };
 
@@ -1197,8 +1436,11 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
       )}
 
       {detectMsg && (
-        <div className="card" style={{ padding: "12px 16px", fontSize: 13, color: "#2dd4bf", background: "rgba(45,212,191,0.08)", border: "1px solid rgba(45,212,191,0.2)" }}>
-          {detectMsg}
+        <div style={{ padding: "12px 16px", fontSize: 13, borderRadius: 10, marginBottom: 14,
+          color: detectMsg.ok ? "#2dd4bf" : "#f87171",
+          background: detectMsg.ok ? "rgba(45,212,191,0.08)" : "rgba(248,113,113,0.08)",
+          border: `1px solid ${detectMsg.ok ? "rgba(45,212,191,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+          {detectMsg.text}
         </div>
       )}
 
@@ -1597,31 +1839,64 @@ function LeadFinancialsTab() {
 // ── STATEMENT UPLOADER ───────────────────────────────────────────────────
 function StatementUploader() {
   const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<string | null>(null);
+  const [uploadResult, setUploadResult] = useState<{ text: string; ok: boolean } | null>(null);
+  const [dragover, setDragover] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.pdf')) { setUploadResult("Only PDF files are accepted."); return; }
+  const processFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf')) { setUploadResult({ text: "Only PDF files are accepted.", ok: false }); return; }
     setUploading(true); setUploadResult(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/lead/upload-statement", { method: "POST", credentials: "include", body: formData });
-      if (res.ok) { const data = await res.json(); setUploadResult(`Uploaded: ${data.fileName}`); }
-      else { const data = await res.json().catch(() => ({})); setUploadResult(data.error || "Upload failed."); }
-    } catch (_) { setUploadResult("Upload failed. Please try again."); }
+      if (res.ok) { const data = await res.json(); setUploadResult({ text: `Statement uploaded: ${data.fileName}`, ok: true }); }
+      else { const data = await res.json().catch(() => ({})); setUploadResult({ text: data.error || "Upload failed.", ok: false }); }
+    } catch (_) { setUploadResult({ text: "Upload failed. Please try again.", ok: false }); }
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragover(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
   };
 
   return (
     <div>
-      <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleUpload} style={{ display: "none" }} />
-      <button className="btn-ghost" onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ width: "100%" }}>
-        {uploading ? "Uploading..." : "Choose PDF File"}
-      </button>
-      {uploadResult && <p style={{ fontSize: 12, color: uploadResult.startsWith("Uploaded") ? "#2dd4bf" : "#f87171", marginTop: 8 }}>{uploadResult}</p>}
+      <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileChange} style={{ display: "none" }} />
+      <div
+        className={`drop-zone${dragover ? " dragover" : ""}`}
+        onClick={() => !uploading && fileInputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDragover(true); }}
+        onDragLeave={() => setDragover(false)}
+        onDrop={handleDrop}
+      >
+        {uploading ? (
+          <>
+            <div className="spinner" style={{ margin: "0 auto 10px" }} />
+            <div className="drop-zone-text">Uploading...</div>
+          </>
+        ) : (
+          <>
+            <div className="drop-zone-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            </div>
+            <div className="drop-zone-text">Drop a PDF here or click to browse</div>
+            <div className="drop-zone-sub">Bank statements from the last 3 months · PDF only</div>
+          </>
+        )}
+      </div>
+      {uploadResult && (
+        <div style={{ marginTop: 10, padding: "8px 14px", borderRadius: 8, fontSize: 12, background: uploadResult.ok ? "rgba(45,212,191,0.08)" : "rgba(248,113,113,0.08)", color: uploadResult.ok ? "#2dd4bf" : "#f87171", border: `1px solid ${uploadResult.ok ? "rgba(45,212,191,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+          {uploadResult.text}
+        </div>
+      )}
     </div>
   );
 }
@@ -1896,21 +2171,32 @@ export default function LeadPortal() {
   if (!authChecked) return null;
   if (!loggedIn) return <LeadAuth onAuth={checkAuth} />;
 
+  const firstName = leadName ? leadName.split(" ")[0] : "";
+  const initials = leadName
+    ? leadName.split(" ").filter(Boolean).map(w => w[0]).slice(0, 2).join("").toUpperCase()
+    : leadEmail ? leadEmail[0].toUpperCase() : "?";
+
+  // Shared header component
+  const PortalHeader = () => (
+    <header className="lp-header">
+      <div className="lp-header-logo">
+        <div className="lp-header-mark">TCG</div>
+        <div className="lp-header-brand">Today Capital Group</div>
+      </div>
+      <div className="lp-header-right">
+        <div className="lp-avatar">{initials}</div>
+        {firstName && <span className="lp-header-name">{firstName}</span>}
+        <button className="lp-header-out" onClick={handleLogout}>Sign out</button>
+      </div>
+    </header>
+  );
+
   // Position detail view
   if (selectedPosition) {
     return (
       <div className="lead-portal">
         <style>{LEAD_CSS}</style>
-        <header className="lp-header">
-          <div className="lp-header-logo">
-            <div className="lp-header-mark">TCG</div>
-            <div className="lp-header-brand">Today Capital Group</div>
-          </div>
-          <div className="lp-header-right">
-            <span className="lp-header-user">{leadEmail}</span>
-            <button className="lp-header-out" onClick={handleLogout}>Sign out</button>
-          </div>
-        </header>
+        <PortalHeader />
         <div className="lp-wrap">
           <PositionDetail pos={selectedPosition} onBack={() => setSelectedPosition(null)} onDeleted={() => { setSelectedPosition(null); }} />
         </div>
@@ -1922,7 +2208,7 @@ export default function LeadPortal() {
     ["overview", "Overview"],
     ["positions", "Positions"],
     ["financials", "Financials"],
-    ["qualify", "Qualify"],
+    ["qualify", "Get Funded"],
     ["resources", "Resources"],
   ] as const;
 
@@ -1930,21 +2216,16 @@ export default function LeadPortal() {
     <div className="lead-portal">
       <style>{LEAD_CSS}</style>
 
-      <header className="lp-header">
-        <div className="lp-header-logo">
-          <div className="lp-header-mark">TCG</div>
-          <div className="lp-header-brand">Today Capital Group</div>
-        </div>
-        <div className="lp-header-right">
-          <span className="lp-header-user">{leadEmail}</span>
-          <button className="lp-header-out" onClick={handleLogout}>Sign out</button>
-        </div>
-      </header>
+      <PortalHeader />
 
       <div className="lp-wrap">
-        <div className="lp-title">My Portal</div>
+        <div className="lp-title">
+          {firstName ? `Welcome back, ${firstName}` : "My Dashboard"}
+        </div>
         <div className="lp-subtitle">
-          {leadName ? `Welcome, ${leadName.split(" ")[0]}.` : "Welcome."} {businessName || "Track your positions and finances."}
+          {businessName
+            ? businessName
+            : "Track your MCA positions, cash flow, and renewal eligibility."}
         </div>
 
         {!hasPassword && <SetPasswordBanner />}
@@ -1974,7 +2255,7 @@ export default function LeadPortal() {
             positions={positions}
             banking={banking}
             onViewPosition={setSelectedPosition}
-            onSwitchTab={(tab) => setActiveTab(tab as any)}
+            onSwitchTab={(tab) => { setActiveTab(tab as any); sessionStorage.setItem("lp_tab", tab); }}
           />
         )}
         {activeTab === "positions" && <PositionsTab onViewPosition={setSelectedPosition} />}
@@ -1982,15 +2263,17 @@ export default function LeadPortal() {
         {activeTab === "qualify" && <QualifyTab />}
         {activeTab === "resources" && <ResourcesTab />}
 
-        {/* Referral + Contact */}
-        <div style={{ marginTop: 24 }}>
-          <ReferralSection referralCode={referralCode} />
-          <div className="contact-strip" style={{ marginTop: 14 }}>
-            <div className="contact-strip-text">
-              Questions? <a href="mailto:trevor@todaycapitalgroup.com">Reach out to our team</a> and we'll get back to you within 24 hours.
+        {/* Referral + Contact — only on overview to avoid clutter on other tabs */}
+        {activeTab === "overview" && (
+          <div style={{ marginTop: 24 }}>
+            {referralCode && <ReferralSection referralCode={referralCode} />}
+            <div className="contact-strip" style={{ marginTop: referralCode ? 14 : 0 }}>
+              <div className="contact-strip-text">
+                Questions about your funding? <a href="mailto:trevor@todaycapitalgroup.com">Reach out to our team</a> — we typically respond within a few hours.
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
