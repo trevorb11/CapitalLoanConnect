@@ -345,6 +345,27 @@ export default function ServicePayments() {
             <div className="stat-label">Cancellation Fees</div>
           </div>
         </div>
+
+        <div style={{ marginTop: 40, borderRadius: 8, overflow: "hidden", minHeight: 834 }}>
+          <iframe
+            src="https://api.leadconnectorhq.com/widget/form/vsN4RYkBxdiVZK2egV0N"
+            style={{ width: "100%", height: 834, border: "none", borderRadius: 8, display: "block" }}
+            id="inline-vsN4RYkBxdiVZK2egV0N"
+            data-layout='{"id":"INLINE"}'
+            data-trigger-type="alwaysShow"
+            data-trigger-value=""
+            data-activation-type="alwaysActivated"
+            data-activation-value=""
+            data-deactivation-type="neverDeactivate"
+            data-deactivation-value=""
+            data-form-name="Payment Processing"
+            data-height="834"
+            data-layout-iframe-id="inline-vsN4RYkBxdiVZK2egV0N"
+            data-form-id="vsN4RYkBxdiVZK2egV0N"
+            title="Payment Processing"
+          />
+          <script src="https://link.msgsndr.com/js/form_embed.js" />
+        </div>
       </div>
 
       <div className="features">
