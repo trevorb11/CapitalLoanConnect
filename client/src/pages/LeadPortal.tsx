@@ -571,7 +571,7 @@ const LEAD_CSS = `
     min-height: 100vh;
     display: flex;
     align-items: center;
-    padding: 40px 24px;
+    padding: 56px 32px;
   }
 
   .lead-portal .auth-split {
@@ -587,7 +587,7 @@ const LEAD_CSS = `
   .lead-portal .auth-hero { }
 
   .lead-portal .auth-logo {
-    display: inline-flex; align-items: center; gap: 10px; margin-bottom: 32px;
+    display: inline-flex; align-items: center; gap: 10px; margin-bottom: 40px;
   }
 
   .lead-portal .auth-logo-mark {
@@ -609,20 +609,20 @@ const LEAD_CSS = `
 
   .lead-portal .auth-headline {
     font-family: 'Syne', sans-serif;
-    font-size: 36px; font-weight: 800; line-height: 1.18;
-    color: #fff; margin-bottom: 16px;
+    font-size: 42px; font-weight: 800; line-height: 1.2;
+    color: #fff; margin-bottom: 20px;
   }
 
   .lead-portal .auth-headline span { color: #2dd4bf; }
 
   .lead-portal .auth-sub {
-    font-size: 15px; color: #94a3b8; line-height: 1.7; margin-bottom: 32px;
+    font-size: 16px; color: #94a3b8; line-height: 1.8; margin-bottom: 40px;
   }
 
-  .lead-portal .auth-benefits { margin-bottom: 32px; }
+  .lead-portal .auth-benefits { margin-bottom: 40px; }
 
   .lead-portal .auth-benefit {
-    display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px;
+    display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px;
   }
 
   .lead-portal .auth-benefit-icon {
