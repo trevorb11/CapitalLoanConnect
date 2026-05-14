@@ -6,9 +6,9 @@ import { gmailService } from "./gmail";
 
 const NOTIFY_TO = "marketing@todaycapitalgroup.com";
 
-export async function sendMarketingNotification(subject: string, htmlBody: string): Promise<void> {
+export async function sendMarketingNotification(subject: string, htmlBody: string, to?: string): Promise<void> {
   try {
-    await gmailService.sendEmail(NOTIFY_TO, subject, htmlBody);
+    await gmailService.sendEmail(to ?? NOTIFY_TO, subject, htmlBody);
   } catch (err) {
     console.error("[EMAIL] sendMarketingNotification failed:", err);
   }

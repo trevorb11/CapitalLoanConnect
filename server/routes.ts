@@ -7229,7 +7229,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             <a href="${magicUrl}" style="display:inline-block;background:linear-gradient(135deg,#14B8A6,#0d9488);color:#080d18;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;margin-bottom:20px;">Sign In to My Dashboard</a>
             <p style="color:#64748b;font-size:12px;margin-top:16px;">Or copy this link into your browser:<br><span style="color:#2dd4bf;">${magicUrl}</span></p>
             <p style="color:#4b5568;font-size:11px;margin-top:24px;border-top:1px solid rgba(255,255,255,0.06);padding-top:16px;">If you didn't request this, you can safely ignore this email.</p>
-          </div>`
+          </div>`,
+          accountEmail
         ).catch(() => {});
       } else {
         // Send SMS via Twilio
