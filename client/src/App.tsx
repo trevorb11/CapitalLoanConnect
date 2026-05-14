@@ -71,6 +71,7 @@ import LeadsDashboard from "@/pages/LeadsDashboard";
 import ServicePayments from "@/pages/ServicePayments";
 import ServiceWebsite from "@/pages/ServiceWebsite";
 import ServiceCRM from "@/pages/ServiceCRM";
+import WhatWeNeed from "@/pages/WhatWeNeed";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -176,6 +177,7 @@ function Router() {
       <Route path="/leads" component={LeadsDashboard} />
 
       {/* Lead Portal Routes */}
+      <Route path="/what-we-need" component={WhatWeNeed} />
       <Route path="/track" component={LeadPortal} />
       <Route path="/track/signup" component={LeadPortal} />
       <Route path="/track/login" component={LeadPortal} />
