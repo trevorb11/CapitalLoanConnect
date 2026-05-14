@@ -4809,10 +4809,10 @@ export default function Dashboard() {
                       Re-sign Application
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Check this box to update the e-signature date to the current date and time, overriding the original submission date.
+                      Check this box to update the e-signature date to the current date, overriding the original submission date.
                       {resignApplication && (
                         <span className="block mt-1 font-medium text-foreground">
-                          New signature date will be set to: {new Date().toLocaleString()}
+                          New signature date will be set to: {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                         </span>
                       )}
                     </p>
