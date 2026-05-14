@@ -576,9 +576,9 @@ const LEAD_CSS = `
 
   .lead-portal .auth-split {
     display: grid;
-    grid-template-columns: 1.1fr 1fr;
-    gap: 56px;
-    max-width: 980px;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 40px;
+    max-width: 1060px;
     width: 100%;
     margin: 0 auto;
     align-items: center;
