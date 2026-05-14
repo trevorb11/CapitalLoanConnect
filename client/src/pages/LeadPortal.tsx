@@ -566,6 +566,178 @@ const LEAD_CSS = `
     display: block; color: #e8eaf0; font-weight: 600; margin-bottom: 2px; font-size: 13px;
   }
 
+  /* ── AUTH SPLIT LAYOUT ── */
+  .lead-portal .auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 40px 24px;
+  }
+
+  .lead-portal .auth-split {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 56px;
+    max-width: 980px;
+    width: 100%;
+    margin: 0 auto;
+    align-items: center;
+  }
+
+  .lead-portal .auth-hero { }
+
+  .lead-portal .auth-logo {
+    display: inline-flex; align-items: center; gap: 10px; margin-bottom: 32px;
+  }
+
+  .lead-portal .auth-logo-mark {
+    width: 38px; height: 38px;
+    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 14px; color: #080d18;
+  }
+
+  .lead-portal .auth-logo-name {
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px;
+  }
+
+  .lead-portal .auth-logo-tag {
+    font-size: 10px; color: #2dd4bf;
+    text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1px;
+  }
+
+  .lead-portal .auth-headline {
+    font-family: 'Syne', sans-serif;
+    font-size: 36px; font-weight: 800; line-height: 1.18;
+    color: #fff; margin-bottom: 16px;
+  }
+
+  .lead-portal .auth-headline span { color: #2dd4bf; }
+
+  .lead-portal .auth-sub {
+    font-size: 15px; color: #94a3b8; line-height: 1.7; margin-bottom: 32px;
+  }
+
+  .lead-portal .auth-benefits { margin-bottom: 32px; }
+
+  .lead-portal .auth-benefit {
+    display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px;
+  }
+
+  .lead-portal .auth-benefit-icon {
+    width: 22px; height: 22px; flex-shrink: 0;
+    background: rgba(45,212,191,0.12); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; margin-top: 1px;
+  }
+
+  .lead-portal .auth-benefit-text { font-size: 14px; color: #cbd5e1; line-height: 1.5; }
+  .lead-portal .auth-benefit-text strong { color: #e8eaf0; font-weight: 600; }
+
+  .lead-portal .auth-stats {
+    display: flex; gap: 0;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; overflow: hidden;
+    margin-bottom: 28px;
+  }
+
+  .lead-portal .auth-stat {
+    flex: 1; padding: 14px 16px; text-align: center;
+    border-right: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .lead-portal .auth-stat:last-child { border-right: none; }
+
+  .lead-portal .auth-stat-num {
+    font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800;
+    color: #2dd4bf; margin-bottom: 2px;
+  }
+
+  .lead-portal .auth-stat-label {
+    font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+
+  /* ── DASHBOARD PREVIEW CARD ── */
+  .lead-portal .auth-preview {
+    background: rgba(15,23,41,0.8);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px; padding: 18px 20px;
+    position: relative; overflow: hidden;
+  }
+
+  .lead-portal .auth-preview::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, #14B8A6, #2dd4bf, transparent);
+  }
+
+  .lead-portal .auth-preview-label {
+    font-size: 10px; color: #2dd4bf; text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 14px; font-weight: 600;
+  }
+
+  .lead-portal .auth-preview-pos {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+  }
+
+  .lead-portal .auth-preview-pos-name {
+    font-size: 13px; font-weight: 600; color: #e8eaf0;
+  }
+
+  .lead-portal .auth-preview-pos-pct {
+    font-size: 12px; color: #2dd4bf; font-weight: 700;
+  }
+
+  .lead-portal .auth-preview-bar {
+    height: 5px; background: rgba(255,255,255,0.06); border-radius: 99px; margin-bottom: 16px;
+  }
+
+  .lead-portal .auth-preview-bar-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, #14B8A6, #2dd4bf);
+  }
+
+  .lead-portal .auth-preview-metrics {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
+  }
+
+  .lead-portal .auth-preview-metric {
+    background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px;
+  }
+
+  .lead-portal .auth-preview-metric-val {
+    font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 2px;
+  }
+
+  .lead-portal .auth-preview-metric-key {
+    font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  /* ── AUTH FORM PANEL ── */
+  .lead-portal .auth-form-panel .card {
+    padding: 32px 28px; margin-bottom: 0;
+  }
+
+  .lead-portal .auth-trust {
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    margin-top: 14px; flex-wrap: wrap;
+  }
+
+  .lead-portal .auth-trust-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: #64748b;
+  }
+
+  @media (max-width: 720px) {
+    .lead-portal .auth-split {
+      grid-template-columns: 1fr; gap: 32px;
+    }
+    .lead-portal .auth-page { padding: 32px 16px; align-items: flex-start; }
+    .lead-portal .auth-headline { font-size: 26px; }
+    .lead-portal .auth-hero { order: 2; }
+    .lead-portal .auth-form-panel { order: 1; }
+  }
+
   /* ── PULSE ── */
   @keyframes lead-pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
   .lead-portal .pulse { animation: lead-pulse 2s ease-in-out infinite; }
@@ -766,93 +938,197 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
     );
   }
 
-  const Brand = () => (
-    <div style={{ textAlign: "center", marginBottom: 28 }}>
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-        <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, #14B8A6, #2dd4bf)", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 14, color: "#080d18" }}>TCG</div>
-        <div style={{ textAlign: "left" }}>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14 }}>Today Capital Group</div>
-          <div style={{ fontSize: 10, color: "#2dd4bf", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Funding Dashboard</div>
-        </div>
+  const SmallBrand = () => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 24 }}>
+      <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#14B8A6,#2dd4bf)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 13, color: "#080d18" }}>TCG</div>
+      <div>
+        <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 13 }}>Today Capital Group</div>
+        <div style={{ fontSize: 10, color: "#2dd4bf", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Funding Dashboard</div>
       </div>
     </div>
   );
 
-  return (
-    <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 24 }}>
-      <style>{LEAD_CSS}</style>
-      <div style={{ maxWidth: 440, width: "100%" }}>
-        <Brand />
-        <div className="card" style={{ padding: "36px 32px" }}>
+  const Err = () => error ? <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div> : null;
 
-          {/* ── MAGIC SENT ── */}
-          {mode === "magic-sent" ? (
-            <div style={{ textAlign: "center" }}>
-              <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-                {sentVia === "email"
-                  ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                  : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                }
+  // ── Magic-sent & Sign-in: simple centered card ──
+  if (mode === "magic-sent" || mode === "magic-request") {
+    return (
+      <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 24 }}>
+        <style>{LEAD_CSS}</style>
+        <div style={{ maxWidth: 420, width: "100%" }}>
+          <SmallBrand />
+          <div className="card" style={{ padding: "36px 32px" }}>
+            {mode === "magic-sent" ? (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                  {sentVia === "email"
+                    ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  }
+                </div>
+                <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
+                  {sentVia === "email" ? "Check your inbox" : "Check your texts"}
+                </h2>
+                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+                  {sentVia === "email"
+                    ? <>We sent a sign-in link to <strong style={{ color: "#e8eaf0" }}>{contact}</strong>. Click it to access your dashboard.</>
+                    : <>We texted a sign-in link to <strong style={{ color: "#e8eaf0" }}>{contact}</strong>. Tap it to access your dashboard.</>
+                  } The link expires in 15 minutes.
+                </p>
+                {sentVia === "email" && <p style={{ color: "#64748b", fontSize: 12, marginBottom: 16 }}>Didn't get it? Check your spam folder.</p>}
+                <button className="btn-ghost" onClick={() => { setMode("magic-request"); setError(null); }} style={{ width: "100%", marginBottom: 12 }}>Resend link</button>
+                <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, cursor: "pointer" }}>New here? Create a free account</button>
               </div>
-              <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-                {sentVia === "email" ? "Check your inbox" : "Check your texts"}
-              </h2>
-              <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-                {sentVia === "email"
-                  ? <>We sent a sign-in link to <strong style={{ color: "#e8eaf0" }}>{contact}</strong>. Click it to access your dashboard.</>
-                  : <>We texted a sign-in link to <strong style={{ color: "#e8eaf0" }}>{contact}</strong>. Tap it to access your dashboard.</>
-                }
-                {" "}The link expires in 15 minutes.
-              </p>
-              {sentVia === "email" && <p style={{ color: "#64748b", fontSize: 12, marginBottom: 16 }}>Didn't get it? Check your spam folder.</p>}
-              <button className="btn-ghost" onClick={() => { setMode("magic-request"); setError(null); }} style={{ width: "100%", marginBottom: 12 }}>Resend link</button>
-              <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, cursor: "pointer" }}>New here? Create a free account</button>
+            ) : (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Welcome back</h1>
+                  <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Enter your email or phone and we'll text or email you a sign-in link instantly.</p>
+                </div>
+                <Err />
+                <form onSubmit={handleMagicRequest}>
+                  <div style={{ marginBottom: 20 }}>
+                    <label className="field-label">Email or Phone Number</label>
+                    <input className="field-input" value={contact} onChange={e => setContact(e.target.value)} placeholder="you@company.com or (555) 555-5555" required autoFocus />
+                  </div>
+                  <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Sending..." : "Send Sign-In Link"}</button>
+                </form>
+                <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
+                  New here? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create a free account</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Signup: full split layout ──
+  const benefits = [
+    { text: <><strong>See your exact payoff date</strong> — know how many payments remain and when you'll be clear</> },
+    { text: <><strong>Track renewal eligibility in real time</strong> — get notified the moment you qualify for more funding</> },
+    { text: <><strong>Monitor daily cash flow</strong> — connect your bank to see how payments affect your balance</> },
+    { text: <><strong>Compare all your positions in one place</strong> — factor rates, remaining balances, payment schedules</> },
+  ];
+
+  return (
+    <div className="lead-portal auth-page">
+      <style>{LEAD_CSS}</style>
+      <div className="auth-split">
+
+        {/* ── Left: Value proposition ── */}
+        <div className="auth-hero">
+          <div className="auth-logo">
+            <div className="auth-logo-mark">TCG</div>
+            <div>
+              <div className="auth-logo-name">Today Capital Group</div>
+              <div className="auth-logo-tag">Funding Dashboard</div>
+            </div>
+          </div>
+
+          <h1 className="auth-headline">
+            Know exactly when you're ready for <span>more funding.</span>
+          </h1>
+          <p className="auth-sub">
+            Most MCA borrowers don't know their payoff date, their real factor rate, or when they qualify again. Your free dashboard shows you all of it — in real time.
+          </p>
+
+          <div className="auth-benefits">
+            {benefits.map((b, i) => (
+              <div key={i} className="auth-benefit">
+                <div className="auth-benefit-icon">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+                <div className="auth-benefit-text">{b.text}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="auth-stats">
+            <div className="auth-stat">
+              <div className="auth-stat-num">500+</div>
+              <div className="auth-stat-label">Businesses</div>
+            </div>
+            <div className="auth-stat">
+              <div className="auth-stat-num">$47M+</div>
+              <div className="auth-stat-label">Tracked</div>
+            </div>
+            <div className="auth-stat">
+              <div className="auth-stat-num">Free</div>
+              <div className="auth-stat-label">Forever</div>
+            </div>
+          </div>
+
+          {/* Mini dashboard preview */}
+          <div className="auth-preview">
+            <div className="auth-preview-label">Your dashboard preview</div>
+            <div className="auth-preview-pos">
+              <div className="auth-preview-pos-name">Apex Roofing LLC — Funder A</div>
+              <div className="auth-preview-pos-pct">78% paid off</div>
+            </div>
+            <div className="auth-preview-bar">
+              <div className="auth-preview-bar-fill" style={{ width: "78%" }} />
+            </div>
+            <div className="auth-preview-metrics">
+              <div className="auth-preview-metric">
+                <div className="auth-preview-metric-val">$8,400</div>
+                <div className="auth-preview-metric-key">Remaining</div>
+              </div>
+              <div className="auth-preview-metric">
+                <div className="auth-preview-metric-val">Jun 14</div>
+                <div className="auth-preview-metric-key">Payoff Date</div>
+              </div>
+              <div className="auth-preview-metric">
+                <div className="auth-preview-metric-val" style={{ color: "#2dd4bf" }}>Eligible</div>
+                <div className="auth-preview-metric-key">Renewal</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right: Signup form ── */}
+        <div className="auth-form-panel">
+          <div className="card" style={{ padding: "32px 28px", marginBottom: 0 }}>
+            <div style={{ marginBottom: 24 }}>
+              <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Get your free dashboard</h2>
+              <p style={{ color: "#7b8499", fontSize: 13, lineHeight: 1.6 }}>Takes 30 seconds. No credit card. No spam.</p>
+            </div>
+            <Err />
+            <form onSubmit={handleSignup}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                <div><label className="field-label">First Name</label><input className="field-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" required /></div>
+                <div><label className="field-label">Last Name</label><input className="field-input" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" required /></div>
+              </div>
+              <div style={{ marginBottom: 12 }}><label className="field-label">Business Name</label><input className="field-input" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Acme LLC" /></div>
+              <div style={{ marginBottom: 12 }}><label className="field-label">Phone</label><input className="field-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 555-5555" /></div>
+              <div style={{ marginBottom: 20 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
+              <button className="btn-primary" type="submit" disabled={loading} style={{ fontSize: 16 }}>
+                {loading ? "Setting up your dashboard..." : "Get My Free Dashboard"}
+              </button>
+            </form>
+
+            <div className="auth-trust">
+              <div className="auth-trust-item">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                No credit card
+              </div>
+              <div className="auth-trust-item">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Free forever
+              </div>
+              <div className="auth-trust-item">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                No spam
+              </div>
             </div>
 
-          ) : mode === "magic-request" ? (
-            /* ── SIGN IN (returning user) ── */
-            <>
-              <div style={{ textAlign: "center", marginBottom: 24 }}>
-                <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Welcome back</h1>
-                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Enter your email or phone number and we'll send you a sign-in link — no password needed.</p>
-              </div>
-              {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
-              <form onSubmit={handleMagicRequest}>
-                <div style={{ marginBottom: 20 }}>
-                  <label className="field-label">Email or Phone Number</label>
-                  <input className="field-input" value={contact} onChange={e => setContact(e.target.value)} placeholder="you@company.com or (555) 555-5555" required autoFocus />
-                </div>
-                <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Sending..." : "Send Sign-In Link"}</button>
-              </form>
-              <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
-                New here? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create a free account</button>
-              </div>
-            </>
-
-          ) : (
-            /* ── SIGNUP ── */
-            <>
-              <div style={{ textAlign: "center", marginBottom: 24 }}>
-                <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Access your funding dashboard</h1>
-                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Track your payoffs, monitor cash flow, and see when you qualify for better terms. Free to use.</p>
-              </div>
-              {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
-              <form onSubmit={handleSignup}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-                  <div><label className="field-label">First Name</label><input className="field-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" required /></div>
-                  <div><label className="field-label">Last Name</label><input className="field-input" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" required /></div>
-                </div>
-                <div style={{ marginBottom: 14 }}><label className="field-label">Business Name</label><input className="field-input" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Acme LLC" /></div>
-                <div style={{ marginBottom: 14 }}><label className="field-label">Phone</label><input className="field-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 555-5555" /></div>
-                <div style={{ marginBottom: 20 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
-                <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Setting up your dashboard..." : "Get Started — Free"}</button>
-              </form>
-              <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
-                Already have an account? <button onClick={() => { setMode("magic-request"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button>
-              </div>
-            </>
-          )}
+            <div style={{ textAlign: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", color: "#7b8499", fontSize: 13 }}>
+              Already have an account? <button onClick={() => { setMode("magic-request"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button>
+            </div>
+          </div>
         </div>
+
       </div>
     </div>
   );
