@@ -670,89 +670,88 @@ function calcPosition(pos: LeadPosition) {
 
 // ── LOGIN / SIGNUP ───────────────────────────────────────────────────────
 function LeadAuth({ onAuth }: { onAuth: () => void }) {
-  const [mode, setMode] = useState<"login" | "signup" | "magic-request" | "magic-sent">("signup");
+  const [mode, setMode] = useState<"signup" | "magic-request" | "magic-sent">("signup");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+
+  // Signup fields
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
 
-  // Check for magic link token in URL on mount
+  // Magic-link fields
+  const [contact, setContact] = useState(""); // email or phone number
+  const [sentVia, setSentVia] = useState<"email" | "phone">("email");
+
+  // Auto-verify magic token from URL on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const magic = params.get("magic");
     if (!magic) return;
-    // Strip token from URL immediately
     window.history.replaceState({}, "", "/track");
     setLoading(true);
     fetch(`/api/lead/verify-magic-link?token=${encodeURIComponent(magic)}`, { credentials: "include" })
       .then(async r => {
-        if (r.ok) {
-          onAuth();
-        } else {
+        if (r.ok) { onAuth(); }
+        else {
           const d = await r.json().catch(() => ({}));
-          setMode("login");
+          setMode("magic-request");
           setError(d.error || "This sign-in link is invalid or has expired. Please try again.");
           setLoading(false);
         }
       })
       .catch(() => {
-        setMode("login");
+        setMode("magic-request");
         setError("Failed to verify sign-in link. Please try again.");
         setLoading(false);
       });
   }, [onAuth]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const endpoint = mode === "signup" ? "/api/lead/signup" : "/api/lead/login";
       const savedRef = sessionStorage.getItem("lead_referral") || undefined;
-      const body = mode === "signup"
-        ? { email, firstName, lastName, phone, referralCode: savedRef }
-        : { email, password };
-      const res = await fetch(endpoint, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await fetch("/api/lead/signup", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, firstName, lastName, phone, businessName, referralCode: savedRef }),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.error?.includes("already exists")) {
-          setMode("login");
-          setError("You already have an account — sign in below.");
-          return;
-        }
-        if (data.error === "no_password_set") {
+          setContact(email);
           setMode("magic-request");
-          setError("You haven't set a password yet. Enter your email below and we'll send you a sign-in link.");
+          setError("You already have an account — enter your email or phone to get a sign-in link.");
           return;
         }
         throw new Error(data.message || data.error || "Something went wrong");
       }
       onAuth();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
   const handleMagicRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError(null);
+    const isEmail = contact.includes("@");
     try {
-      const res = await fetch("/api/lead/request-magic-link", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const res = await fetch("/api/lead/request-magic-link", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact }),
+      });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || "Failed to send link. Please try again.");
       }
+      setSentVia(isEmail ? "email" : "phone");
       setMode("magic-sent");
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
   if (loading && !error) {
@@ -767,97 +766,89 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
     );
   }
 
+  const Brand = () => (
+    <div style={{ textAlign: "center", marginBottom: 28 }}>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+        <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, #14B8A6, #2dd4bf)", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 14, color: "#080d18" }}>TCG</div>
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14 }}>Today Capital Group</div>
+          <div style={{ fontSize: 10, color: "#2dd4bf", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Funding Dashboard</div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 24 }}>
       <style>{LEAD_CSS}</style>
       <div style={{ maxWidth: 440, width: "100%" }}>
-        {/* Brand */}
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-            <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, #14B8A6, #2dd4bf)", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 14, color: "#080d18" }}>TCG</div>
-            <div style={{ textAlign: "left" }}>
-              <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14 }}>Today Capital Group</div>
-              <div style={{ fontSize: 10, color: "#2dd4bf", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Funding Dashboard</div>
-            </div>
-          </div>
-        </div>
-
+        <Brand />
         <div className="card" style={{ padding: "36px 32px" }}>
-          {/* Magic-sent state */}
+
+          {/* ── MAGIC SENT ── */}
           {mode === "magic-sent" ? (
             <div style={{ textAlign: "center" }}>
               <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                {sentVia === "email"
+                  ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                }
               </div>
-              <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Check your inbox</h2>
+              <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
+                {sentVia === "email" ? "Check your inbox" : "Check your texts"}
+              </h2>
               <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-                We sent a sign-in link to <strong style={{ color: "#e8eaf0" }}>{email}</strong>. Click it to access your dashboard. The link expires in 15 minutes.
+                {sentVia === "email"
+                  ? <>We sent a sign-in link to <strong style={{ color: "#e8eaf0" }}>{contact}</strong>. Click it to access your dashboard.</>
+                  : <>We texted a sign-in link to <strong style={{ color: "#e8eaf0" }}>{contact}</strong>. Tap it to access your dashboard.</>
+                }
+                {" "}The link expires in 15 minutes.
               </p>
-              <p style={{ color: "#64748b", fontSize: 12, marginBottom: 16 }}>Didn't get it? Check your spam folder.</p>
-              <button className="btn-ghost" onClick={() => { setMode("magic-request"); setError(null); }} style={{ width: "100%", marginBottom: 8 }}>Resend Link</button>
-              <button onClick={() => { setMode("login"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", fontSize: 13, cursor: "pointer" }}>Sign in with password instead</button>
+              {sentVia === "email" && <p style={{ color: "#64748b", fontSize: 12, marginBottom: 16 }}>Didn't get it? Check your spam folder.</p>}
+              <button className="btn-ghost" onClick={() => { setMode("magic-request"); setError(null); }} style={{ width: "100%", marginBottom: 12 }}>Resend link</button>
+              <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, cursor: "pointer" }}>New here? Create a free account</button>
             </div>
+
           ) : mode === "magic-request" ? (
+            /* ── SIGN IN (returning user) ── */
             <>
-              <div style={{ marginBottom: 24 }}>
-                <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Get a sign-in link</h1>
-                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Enter your email and we'll send you a link to sign in instantly — no password needed.</p>
+              <div style={{ textAlign: "center", marginBottom: 24 }}>
+                <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Welcome back</h1>
+                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Enter your email or phone number and we'll send you a sign-in link — no password needed.</p>
               </div>
               {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
               <form onSubmit={handleMagicRequest}>
-                <div style={{ marginBottom: 18 }}><label className="field-label">Email Address</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required autoFocus /></div>
+                <div style={{ marginBottom: 20 }}>
+                  <label className="field-label">Email or Phone Number</label>
+                  <input className="field-input" value={contact} onChange={e => setContact(e.target.value)} placeholder="you@company.com or (555) 555-5555" required autoFocus />
+                </div>
                 <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Sending..." : "Send Sign-In Link"}</button>
               </form>
-              <div className="magic-link-area">
-                <button className="magic-link-btn" onClick={() => { setMode("login"); setError(null); }}>I have a password — sign in instead</button>
+              <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
+                New here? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create a free account</button>
               </div>
             </>
+
           ) : (
+            /* ── SIGNUP ── */
             <>
               <div style={{ textAlign: "center", marginBottom: 24 }}>
-                <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>
-                  {mode === "signup" ? "Access your funding dashboard" : "Welcome back"}
-                </h1>
-                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
-                  {mode === "signup"
-                    ? "Track your payoffs, monitor cash flow, and see when you qualify for better terms. Free to use."
-                    : "Sign in to pick up where you left off."}
-                </p>
+                <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Access your funding dashboard</h1>
+                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Track your payoffs, monitor cash flow, and see when you qualify for better terms. Free to use.</p>
               </div>
               {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
-              <form onSubmit={handleSubmit}>
-                {mode === "signup" ? (
-                  <>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-                      <div><label className="field-label">First Name</label><input className="field-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" required /></div>
-                      <div><label className="field-label">Last Name</label><input className="field-input" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" required /></div>
-                    </div>
-                    <div style={{ marginBottom: 14 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
-                    <div style={{ marginBottom: 20 }}><label className="field-label">Phone</label><input className="field-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 555-5555" /></div>
-                    <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Setting up your dashboard..." : "Get Started — Free"}</button>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ marginBottom: 14 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
-                    <div style={{ marginBottom: 20 }}><label className="field-label">Password</label><input className="field-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} /></div>
-                    <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Signing in..." : "Sign In"}</button>
-                  </>
-                )}
-              </form>
-
-              {mode === "login" && (
-                <div className="magic-link-area">
-                  <p style={{ color: "#64748b", fontSize: 12, marginBottom: 8 }}>Forgot your password or never set one?</p>
-                  <button className="magic-link-btn" onClick={() => { setMode("magic-request"); setEmail(email); setError(null); }}>
-                    Send me a sign-in link instead
-                  </button>
+              <form onSubmit={handleSignup}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                  <div><label className="field-label">First Name</label><input className="field-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" required /></div>
+                  <div><label className="field-label">Last Name</label><input className="field-input" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" required /></div>
                 </div>
-              )}
-
-              <div style={{ textAlign: "center", marginTop: mode === "login" ? 12 : 16, color: "#7b8499", fontSize: 13 }}>
-                {mode === "signup"
-                  ? <span>Already have an account? <button onClick={() => { setMode("login"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button></span>
-                  : <span>New here? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create a free account</button></span>}
+                <div style={{ marginBottom: 14 }}><label className="field-label">Business Name</label><input className="field-input" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Acme LLC" /></div>
+                <div style={{ marginBottom: 14 }}><label className="field-label">Phone</label><input className="field-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 555-5555" /></div>
+                <div style={{ marginBottom: 20 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
+                <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Setting up your dashboard..." : "Get Started — Free"}</button>
+              </form>
+              <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
+                Already have an account? <button onClick={() => { setMode("magic-request"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button>
               </div>
             </>
           )}
@@ -867,54 +858,6 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
   );
 }
 
-// ── SET PASSWORD BANNER ──────────────────────────────────────────────────
-function SetPasswordBanner() {
-  const [show, setShow] = useState(true);
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
-
-  if (!show || done) return null;
-
-  const handleSave = async () => {
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
-    if (password !== confirm) { setError("Passwords don't match."); return; }
-    setSaving(true); setError(null);
-    try {
-      const res = await fetch("/api/lead/set-password", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
-      setDone(true);
-    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
-  };
-
-  return (
-    <div className="card" style={{ marginBottom: 16, background: "rgba(45,212,191,0.06)", border: "1px solid rgba(45,212,191,0.2)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>Secure your account</p>
-          <p style={{ color: "#94a3b8", fontSize: 13 }}>Set a password so you can sign in again later.</p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {!expanded && <button className="btn-secondary" onClick={() => setExpanded(true)} style={{ fontSize: 12 }}>Set Password</button>}
-          <button onClick={() => setShow(false)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>{"\u00D7"}</button>
-        </div>
-      </div>
-      {expanded && (
-        <div style={{ marginTop: 14 }}>
-          {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "8px 12px", marginBottom: 10, color: "#f87171", fontSize: 12 }}>{error}</div>}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div><label className="field-label">Password</label><input className="field-input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="6+ characters" /></div>
-            <div><label className="field-label">Confirm</label><input className="field-input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Confirm" /></div>
-          </div>
-          <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ padding: "10px 0" }}>{saving ? "Saving..." : "Save Password"}</button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── ADD POSITION FORM ────────────────────────────────────────────────────
 function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) {
@@ -2115,7 +2058,6 @@ export default function LeadPortal() {
   const [leadName, setLeadName] = useState("");
   const [leadEmail, setLeadEmail] = useState("");
   const [businessName, setBusinessName] = useState("");
-  const [hasPassword, setHasPassword] = useState(true);
   const [referralCode, setReferralCode] = useState("");
   const [onboardingStep, setOnboardingStep] = useState("add_position");
   const [activeTab, setActiveTab] = useState<"overview" | "positions" | "financials" | "qualify" | "resources">(() => {
@@ -2144,7 +2086,6 @@ export default function LeadPortal() {
           setLeadName(data.name || "");
           setLeadEmail(data.email || "");
           setBusinessName(data.businessName || "");
-          setHasPassword(data.hasPassword !== false);
           setReferralCode(data.referralCode || "");
           setOnboardingStep(data.onboardingStep || "done");
         }
@@ -2227,8 +2168,6 @@ export default function LeadPortal() {
             ? businessName
             : "Track your MCA positions, cash flow, and renewal eligibility."}
         </div>
-
-        {!hasPassword && <SetPasswordBanner />}
 
         {onboardingStep !== "done" && (
           <OnboardingGuide step={onboardingStep} onAdvance={(tab) => {

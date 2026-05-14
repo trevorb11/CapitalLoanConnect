@@ -7176,39 +7176,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const _magicTokens = new Map<string, { email: string; expires: number }>();
 
   // POST /api/lead/request-magic-link
+  // Accepts { contact } which can be an email address or phone number
   app.post("/api/lead/request-magic-link", async (req: Request, res: Response) => {
     try {
-      const { email } = req.body;
-      if (!email) return res.status(400).json({ error: "Email is required" });
-      const normalizedEmail = email.toLowerCase().trim();
+      const { contact, email: legacyEmail } = req.body;
+      const raw = (contact || legacyEmail || "").trim();
+      if (!raw) return res.status(400).json({ error: "Email or phone number is required" });
 
-      const result = await db.execute(sql`SELECT first_name FROM lead_portal_accounts WHERE email = ${normalizedEmail}`);
-      if (result.rows.length === 0) {
-        // Don't reveal whether account exists
-        return res.json({ success: true });
+      const isEmail = raw.includes("@");
+      const origin = (req.headers.origin as string) || "https://app.todaycapitalgroup.com";
+
+      let accountEmail: string | null = null;
+      let firstName = "there";
+
+      if (isEmail) {
+        const normalizedEmail = raw.toLowerCase();
+        const result = await db.execute(sql`SELECT email, first_name FROM lead_portal_accounts WHERE email = ${normalizedEmail}`);
+        if (result.rows.length > 0) {
+          const row = result.rows[0] as any;
+          accountEmail = row.email;
+          firstName = row.first_name || "there";
+        }
+      } else {
+        // Normalize phone: strip non-digits, add +1 for US numbers
+        const digits = raw.replace(/\D/g, "");
+        const normalized = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : `+${digits}`;
+        const result = await db.execute(sql`SELECT email, first_name FROM lead_portal_accounts WHERE phone = ${raw} OR phone = ${normalized} OR REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = ${digits} LIMIT 1`);
+        if (result.rows.length > 0) {
+          const row = result.rows[0] as any;
+          accountEmail = row.email;
+          firstName = row.first_name || "there";
+        }
       }
 
-      const token = randomBytes(24).toString("hex");
-      _magicTokens.set(token, { email: normalizedEmail, expires: Date.now() + 15 * 60 * 1000 });
+      // Always respond success to avoid revealing account existence
+      if (!accountEmail) return res.json({ success: true });
 
-      const firstName = (result.rows[0] as any).first_name || "there";
-      const origin = (req.headers.origin as string) || "https://app.todaycapitalgroup.com";
+      const token = randomBytes(24).toString("hex");
+      _magicTokens.set(token, { email: accountEmail, expires: Date.now() + 15 * 60 * 1000 });
       const magicUrl = `${origin}/track?magic=${token}`;
 
-      await sendMarketingNotification(
-        "Your sign-in link — Today Capital Group",
-        `<div style="font-family:'DM Sans',Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#080d18;color:#e8eaf0;border-radius:16px;">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;">
-            <div style="width:32px;height:32px;background:linear-gradient(135deg,#14B8A6,#2dd4bf);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#080d18;">TCG</div>
-            <span style="font-weight:700;font-size:14px;">Today Capital Group</span>
-          </div>
-          <h2 style="font-size:22px;font-weight:700;margin-bottom:10px;color:#fff;">Hi ${firstName}, here's your sign-in link</h2>
-          <p style="color:#94a3b8;font-size:14px;line-height:1.7;margin-bottom:24px;">Click the button below to sign in to your funding dashboard. This link expires in <strong style="color:#e8eaf0;">15 minutes</strong> and can only be used once.</p>
-          <a href="${magicUrl}" style="display:inline-block;background:linear-gradient(135deg,#14B8A6,#0d9488);color:#080d18;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;margin-bottom:20px;">Sign In to My Dashboard</a>
-          <p style="color:#64748b;font-size:12px;margin-top:16px;">Or copy this URL into your browser:<br><span style="color:#2dd4bf;">${magicUrl}</span></p>
-          <p style="color:#4b5568;font-size:11px;margin-top:24px;border-top:1px solid rgba(255,255,255,0.06);padding-top:16px;">If you didn't request this, you can safely ignore this email. Your account will not be affected.</p>
-        </div>`
-      ).catch(() => {});
+      if (isEmail) {
+        await sendMarketingNotification(
+          "Your sign-in link — Today Capital Group",
+          `<div style="font-family:'DM Sans',Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#080d18;color:#e8eaf0;border-radius:16px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;">
+              <div style="width:32px;height:32px;background:linear-gradient(135deg,#14B8A6,#2dd4bf);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#080d18;">TCG</div>
+              <span style="font-weight:700;font-size:14px;">Today Capital Group</span>
+            </div>
+            <h2 style="font-size:22px;font-weight:700;margin-bottom:10px;color:#fff;">Hi ${firstName}, here's your sign-in link</h2>
+            <p style="color:#94a3b8;font-size:14px;line-height:1.7;margin-bottom:24px;">Click the button below to sign in to your funding dashboard. This link expires in <strong style="color:#e8eaf0;">15 minutes</strong> and can only be used once.</p>
+            <a href="${magicUrl}" style="display:inline-block;background:linear-gradient(135deg,#14B8A6,#0d9488);color:#080d18;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;margin-bottom:20px;">Sign In to My Dashboard</a>
+            <p style="color:#64748b;font-size:12px;margin-top:16px;">Or copy this link into your browser:<br><span style="color:#2dd4bf;">${magicUrl}</span></p>
+            <p style="color:#4b5568;font-size:11px;margin-top:24px;border-top:1px solid rgba(255,255,255,0.06);padding-top:16px;">If you didn't request this, you can safely ignore this email.</p>
+          </div>`
+        ).catch(() => {});
+      } else {
+        // Send SMS via Twilio
+        const { sendSms } = await import('./services/twilio');
+        await sendSms(raw, `Hi ${firstName}! Here's your Today Capital Group sign-in link:\n${magicUrl}\n\nExpires in 15 minutes. Tap to access your dashboard.`).catch(() => {});
+      }
 
       res.json({ success: true });
     } catch (err: any) {
