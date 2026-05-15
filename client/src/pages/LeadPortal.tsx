@@ -841,7 +841,7 @@ function calcPosition(pos: LeadPosition) {
 }
 
 // ── LOGIN / SIGNUP ───────────────────────────────────────────────────────
-function LeadAuth({ onAuth }: { onAuth: () => void }) {
+function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
   const [mode, setMode] = useState<"signup" | "magic-request" | "magic-sent">("signup");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
