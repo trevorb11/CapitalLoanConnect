@@ -199,6 +199,16 @@ function Router() {
           {() => <AgentApplication agent={agent} />}
         </Route>
       ))}
+
+      {/* Agent-specific quiz links — /{initials}/quiz */}
+      {AGENTS.map((agent) => (
+        <Route
+          key={`${agent.initials}-quiz`}
+          path={`/${agent.initials}/quiz`}
+        >
+          {() => <QuizIntake agent={agent} />}
+        </Route>
+      ))}
       
       <Route component={NotFound} />
     </Switch>
