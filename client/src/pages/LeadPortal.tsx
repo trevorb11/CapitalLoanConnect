@@ -866,8 +866,10 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
     setLoading(true);
     fetch(`/api/lead/verify-magic-link?token=${encodeURIComponent(magic)}`, { credentials: "include" })
       .then(async r => {
-        if (r.ok) { onAuth(); }
-        else {
+        if (r.ok) {
+          await onAuth();
+          setLoading(false);
+        } else {
           const d = await r.json().catch(() => ({}));
           setMode("magic-request");
           setError(d.error || "This sign-in link is invalid or has expired. Please try again.");
@@ -2385,7 +2387,11 @@ export default function LeadPortal() {
     setLoggedIn(false);
   };
 
-  if (!authChecked) return null;
+  if (!authChecked) return (
+    <div className="lead-portal" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#080d18" }}>
+      <div className="spinner" />
+    </div>
+  );
   if (!loggedIn) return <LeadAuth onAuth={checkAuth} />;
 
   const firstName = leadName ? leadName.split(" ")[0] : "";

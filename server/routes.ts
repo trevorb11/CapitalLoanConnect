@@ -7272,6 +7272,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         merchantName: name || undefined,
       };
 
+      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+
       await db.execute(sql`UPDATE lead_portal_accounts SET last_active_at = NOW() WHERE email = ${entry.email}`);
 
       res.json({ success: true, name, businessName: row.business_name });
