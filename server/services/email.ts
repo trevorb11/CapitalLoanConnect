@@ -141,7 +141,7 @@ export function buildLeadPortalSignupEmail(data: {
 }): { subject: string; html: string } {
   const name = [data.firstName, data.lastName].filter(Boolean).join(" ") || null;
   return {
-    subject: `New /track Signup — ${data.businessName || data.email}`,
+    subject: `New /track Signup - ${data.businessName || data.email}`,
     html: emailWrapper(
       "New Lead Portal Account Created",
       "/track",
