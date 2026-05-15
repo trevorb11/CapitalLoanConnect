@@ -7043,6 +7043,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       last_active_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     )`);
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS referral_code TEXT`);
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS onboarding_step TEXT DEFAULT 'add_position'`);
     await db.execute(sql`CREATE TABLE IF NOT EXISTS lead_positions (
       id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
       lead_email TEXT NOT NULL,
@@ -7149,17 +7151,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/lead/auth/check
   app.get("/api/lead/auth/check", async (req: Request, res: Response) => {
     if (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail) {
-      const result = await db.execute(sql`SELECT first_name, last_name, business_name, password_hash, referral_code, onboarding_step FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
-      const row = result.rows[0] as any;
-      res.json({
-        isAuthenticated: true,
-        email: req.session.user.merchantEmail,
-        name: row ? [row.first_name, row.last_name].filter(Boolean).join(" ") : req.session.user.merchantName,
-        businessName: row?.business_name || "",
-        hasPassword: !!row?.password_hash,
-        referralCode: row?.referral_code || "",
-        onboardingStep: row?.onboarding_step || "add_position",
-      });
+      try {
+        // Try full query first (includes columns added in later migrations)
+        const result = await db.execute(sql`SELECT first_name, last_name, business_name, password_hash, referral_code, onboarding_step FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
+        const row = result.rows[0] as any;
+        return res.json({
+          isAuthenticated: true,
+          email: req.session.user.merchantEmail,
+          name: row ? [row.first_name, row.last_name].filter(Boolean).join(" ") : req.session.user.merchantName,
+          businessName: row?.business_name || "",
+          hasPassword: !!row?.password_hash,
+          referralCode: row?.referral_code || "",
+          onboardingStep: row?.onboarding_step || "add_position",
+        });
+      } catch (err: any) {
+        // Fallback: query only the base columns (handles production DBs missing newer columns)
+        try {
+          const result = await db.execute(sql`SELECT first_name, last_name, business_name, password_hash FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
+          const row = result.rows[0] as any;
+          return res.json({
+            isAuthenticated: true,
+            email: req.session.user.merchantEmail,
+            name: row ? [row.first_name, row.last_name].filter(Boolean).join(" ") : req.session.user.merchantName,
+            businessName: row?.business_name || "",
+            hasPassword: !!row?.password_hash,
+            referralCode: "",
+            onboardingStep: "add_position",
+          });
+        } catch (err2: any) {
+          console.error("[LEAD] auth/check fallback query failed:", err2);
+          return res.json({
+            isAuthenticated: true,
+            email: req.session.user.merchantEmail,
+            name: req.session.user.merchantName || "",
+            businessName: "",
+            hasPassword: false,
+            referralCode: "",
+            onboardingStep: "add_position",
+          });
+        }
+      }
     } else {
       res.json({ isAuthenticated: false });
     }
