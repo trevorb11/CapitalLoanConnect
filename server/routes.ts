@@ -7218,7 +7218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isEmail) {
         await sendMarketingNotification(
-          "Your sign-in link — Today Capital Group",
+          "Your sign-in link - Today Capital Group",
           `<div style="font-family:'DM Sans',Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#080d18;color:#e8eaf0;border-radius:16px;">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;">
               <div style="width:32px;height:32px;background:linear-gradient(135deg,#14B8A6,#2dd4bf);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#080d18;">TCG</div>

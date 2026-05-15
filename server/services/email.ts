@@ -89,7 +89,7 @@ export function buildAdsInquiryEmail(data: {
   utmCampaign?: string | null;
 }): { subject: string; html: string } {
   return {
-    subject: `New /ads Inquiry — ${data.email}`,
+    subject: `New /ads Inquiry - ${data.email}`,
     html: emailWrapper(
       "New Ads Consultation Request",
       "/ads",
@@ -116,7 +116,7 @@ export function buildServicesInterestEmail(data: {
 }): { subject: string; html: string } {
   const name = [data.firstName, data.lastName].filter(Boolean).join(" ") || null;
   return {
-    subject: `New Services Inquiry — ${data.service || "General"} — ${data.email}`,
+    subject: `New Services Inquiry - ${data.service || "General"} - ${data.email}`,
     html: emailWrapper(
       "New Service Interest",
       "/services",
