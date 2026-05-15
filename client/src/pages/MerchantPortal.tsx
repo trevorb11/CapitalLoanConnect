@@ -4538,6 +4538,121 @@ function ResourcesTab() {
   );
 }
 
+// ── SERVICES TAB ─────────────────────────────────────────────────────────
+const MERCHANT_SERVICES_LIST = [
+  {
+    id: "payments",
+    title: "Payment Processing",
+    desc: "Lower your processing fees and get faster deposits. We partner with processors built for small businesses.",
+    bullets: ["Lower rates than standard processors", "Next-day deposits", "No long-term contracts", "Works with your existing POS"],
+  },
+  {
+    id: "website",
+    title: "Website Build",
+    desc: "A professional site that actually brings in customers. Mobile-ready, SEO-optimized, and built to convert.",
+    bullets: ["Custom design, not a template", "Mobile-first & fast loading", "SEO + Google Business setup", "Lead capture forms built in"],
+  },
+  {
+    id: "crm",
+    title: "CRM & Automation",
+    desc: "Stop losing leads. Get a CRM that tracks your pipeline, automates follow-ups, and keeps your team organized.",
+    bullets: ["Pipeline tracking & automation", "Text + email follow-up sequences", "Lead scoring & tagging", "Integrates with your existing tools"],
+  },
+];
+
+function MerchantServicesTab({ email, name }: { email: string; name: string }) {
+  const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState<string | null>(null);
+
+  const handleInterest = async (serviceId: string) => {
+    if (submitting || submitted.has(serviceId)) return;
+    setSubmitting(serviceId);
+    try {
+      await fetch("/api/services/interest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          firstName: name.split(" ")[0] || undefined,
+          lastName: name.split(" ").slice(1).join(" ") || undefined,
+          service: serviceId,
+          source: "merchant_portal",
+        }),
+      });
+      setSubmitted(prev => new Set([...prev, serviceId]));
+    } catch (_) {}
+    setSubmitting(null);
+  };
+
+  return (
+    <div className="resources-section">
+      <div className="resources-intro">
+        <div className="resources-intro-icon">&#128200;</div>
+        <div>
+          <div className="resources-intro-title">Business Services</div>
+          <div className="resources-intro-sub">
+            We've expanded beyond funding. Let us know which services would help your business and we'll reach out with details — no commitment required.
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gap: 14, marginTop: 20 }}>
+        {MERCHANT_SERVICES_LIST.map(svc => (
+          <div
+            key={svc.id}
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: submitted.has(svc.id) ? "1.5px solid rgba(45,212,191,0.4)" : "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 12,
+              padding: "20px 20px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", marginBottom: 6 }}>{svc.title}</div>
+                <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6, marginBottom: 10 }}>{svc.desc}</div>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
+                  {svc.bullets.map(b => (
+                    <li key={b} style={{ fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#14B8A6", display: "inline-block", flexShrink: 0 }} />
+                      {b}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div style={{ flexShrink: 0, paddingTop: 2 }}>
+                {submitted.has(svc.id) ? (
+                  <span style={{ fontSize: 13, color: "#2dd4bf", fontWeight: 600 }}>Noted!</span>
+                ) : (
+                  <button
+                    onClick={() => handleInterest(svc.id)}
+                    disabled={submitting === svc.id}
+                    style={{
+                      padding: "8px 18px",
+                      background: "rgba(20,184,166,0.12)",
+                      border: "1.5px solid rgba(20,184,166,0.4)",
+                      borderRadius: 8,
+                      color: "#2dd4bf",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {submitting === svc.id ? "..." : "I'm Interested"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "#475569", lineHeight: 1.6 }}>
+        No commitment. We'll reach out with details and next steps. Your info is never shared or sold.
+      </div>
+    </div>
+  );
+}
+
 function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -4751,7 +4866,7 @@ export default function MerchantPortal() {
   const [loadingStatements, setLoadingStatements] = useState(false);
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [loadingVault, setLoadingVault] = useState(false);
-  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials' | 'resources'>('positions');
+  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials' | 'resources' | 'services'>('positions');
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [appStatus, setAppStatus] = useState<{
     hasApplication: boolean;
@@ -5001,6 +5116,12 @@ export default function MerchantPortal() {
                     >
                       Resources
                     </button>
+                    <button
+                      className={`portal-nav-btn ${activeTab === 'services' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('services')}
+                    >
+                      Services
+                    </button>
                   </div>
 
                   {/* ── POSITIONS TAB ── */}
@@ -5102,6 +5223,11 @@ export default function MerchantPortal() {
                   {/* ── RESOURCES TAB ── */}
                   {activeTab === 'resources' && (
                     <ResourcesTab />
+                  )}
+
+                  {/* ── SERVICES TAB ── */}
+                  {activeTab === 'services' && (
+                    <MerchantServicesTab email={merchantEmail} name={merchantName} />
                   )}
                 </>
               )}
