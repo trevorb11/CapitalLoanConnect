@@ -1028,7 +1028,7 @@ function LeadAuth({ onAuth }: { onAuth: () => void }) {
           </div>
 
           <h1 className="auth-headline">
-            Know exactly when you're ready for <span>more funding.</span>
+            Track Your <span>Financing Positions</span>
           </h1>
           <p className="auth-sub">
             Most MCA borrowers don't know their payoff date, their real factor rate, or when they qualify again. Your free dashboard shows you all of it — in real time.
