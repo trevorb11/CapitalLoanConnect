@@ -842,7 +842,7 @@ function calcPosition(pos: LeadPosition) {
 
 // ── LOGIN / SIGNUP ───────────────────────────────────────────────────────
 function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
-  const [mode, setMode] = useState<"signup" | "magic-request" | "magic-sent">("signup");
+  const [mode, setMode] = useState<"signup" | "phone-entry" | "code-entry">("signup");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -853,35 +853,19 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
 
-  // Magic-link fields
-  const [contact, setContact] = useState(""); // email or phone number
-  const [sentVia, setSentVia] = useState<"email" | "phone">("email");
+  // OTP sign-in fields
+  const [otpPhone, setOtpPhone] = useState("");
+  const [otp, setOtp] = useState("");
 
-  // Auto-verify magic token from URL on mount
+  // Handle any old magic-link URLs gracefully — redirect to phone sign-in
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const magic = params.get("magic");
     if (!magic) return;
     window.history.replaceState({}, "", "/track");
-    setLoading(true);
-    fetch(`/api/lead/verify-magic-link?token=${encodeURIComponent(magic)}`, { credentials: "include" })
-      .then(async r => {
-        if (r.ok) {
-          await onAuth();
-          setLoading(false);
-        } else {
-          const d = await r.json().catch(() => ({}));
-          setMode("magic-request");
-          setError(d.error || "This sign-in link is invalid or has expired. Please try again.");
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        setMode("magic-request");
-        setError("Failed to verify sign-in link. Please try again.");
-        setLoading(false);
-      });
-  }, [onAuth]);
+    setMode("phone-entry");
+    setError("That sign-in link is no longer valid. Enter your phone number below to get a code instead.");
+  }, []);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -896,9 +880,9 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         if (data.error?.includes("already exists")) {
-          setContact(email);
-          setMode("magic-request");
-          setError("You already have an account — enter your email or phone to get a sign-in link.");
+          setOtpPhone(phone);
+          setMode("phone-entry");
+          setError("You already have an account — enter your phone number to sign in.");
           return;
         }
         throw new Error(data.message || data.error || "Something went wrong");
@@ -908,22 +892,39 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
     finally { setLoading(false); }
   };
 
-  const handleMagicRequest = async (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError(null);
-    const isEmail = contact.includes("@");
     try {
-      const res = await fetch("/api/lead/request-magic-link", {
+      const res = await fetch("/api/lead/request-otp", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contact }),
+        body: JSON.stringify({ phone: otpPhone }),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || "Failed to send link. Please try again.");
+        throw new Error(d.error || "Failed to send code. Please try again.");
       }
-      setSentVia(isEmail ? "email" : "phone");
-      setMode("magic-sent");
+      setOtp("");
+      setMode("code-entry");
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/lead/verify-otp", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: otpPhone, code: otp }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Invalid code. Please try again.");
+      }
+      await onAuth();
     } catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
   };
@@ -952,48 +953,78 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
 
   const Err = () => error ? <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div> : null;
 
-  // ── Magic-sent & Sign-in: simple centered card ──
-  if (mode === "magic-sent" || mode === "magic-request") {
+  // ── Phone-entry & Code-entry: centered card ──
+  if (mode === "phone-entry" || mode === "code-entry") {
     return (
       <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 24 }}>
         <style>{LEAD_CSS}</style>
         <div style={{ maxWidth: 420, width: "100%" }}>
           <SmallBrand />
           <div className="card" style={{ padding: "36px 32px" }}>
-            {mode === "magic-sent" ? (
-              <div style={{ textAlign: "center" }}>
-                <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-                  {sentVia === "email"
-                    ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                    : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  }
+            {mode === "code-entry" ? (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  </div>
+                  <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Check your texts</h2>
+                  <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
+                    We sent a 6-digit code to <strong style={{ color: "#e8eaf0" }}>{otpPhone}</strong>. Enter it below to sign in.
+                  </p>
                 </div>
-                <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-                  {sentVia === "email" ? "Check your inbox" : "Check your texts"}
-                </h2>
-                <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-                  {sentVia === "email"
-                    ? <>We sent a sign-in link to <strong style={{ color: "#e8eaf0" }}>{contact}</strong>. Click it to access your dashboard.</>
-                    : <>We texted a sign-in link to <strong style={{ color: "#e8eaf0" }}>{contact}</strong>. Tap it to access your dashboard.</>
-                  } The link expires in 15 minutes.
-                </p>
-                {sentVia === "email" && <p style={{ color: "#64748b", fontSize: 12, marginBottom: 16 }}>Didn't get it? Check your spam folder.</p>}
-                <button className="btn-ghost" onClick={() => { setMode("magic-request"); setError(null); }} style={{ width: "100%", marginBottom: 12 }}>Resend link</button>
-                <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 13, cursor: "pointer" }}>New here? Create a free account</button>
-              </div>
+                <Err />
+                <form onSubmit={handleVerifyOtp}>
+                  <div style={{ marginBottom: 20 }}>
+                    <label className="field-label">6-Digit Code</label>
+                    <input
+                      className="field-input"
+                      value={otp}
+                      onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="123456"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      required
+                      autoFocus
+                      style={{ fontSize: 24, letterSpacing: "0.3em", textAlign: "center" }}
+                    />
+                  </div>
+                  <button className="btn-primary" type="submit" disabled={loading || otp.length < 6}>
+                    {loading ? "Verifying..." : "Sign In"}
+                  </button>
+                </form>
+                <div style={{ textAlign: "center", marginTop: 16 }}>
+                  <button
+                    onClick={() => { setMode("phone-entry"); setError(null); setOtp(""); }}
+                    style={{ background: "none", border: "none", color: "#7b8499", fontSize: 13, cursor: "pointer" }}
+                  >
+                    Wrong number or didn't receive it? Go back
+                  </button>
+                </div>
+              </>
             ) : (
               <>
                 <div style={{ textAlign: "center", marginBottom: 24 }}>
                   <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Welcome back</h1>
-                  <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Enter your email or phone and we'll text or email you a sign-in link instantly.</p>
+                  <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Enter your phone number and we'll text you a sign-in code.</p>
                 </div>
                 <Err />
-                <form onSubmit={handleMagicRequest}>
+                <form onSubmit={handleSendOtp}>
                   <div style={{ marginBottom: 20 }}>
-                    <label className="field-label">Email or Phone Number</label>
-                    <input className="field-input" value={contact} onChange={e => setContact(e.target.value)} placeholder="you@company.com or (555) 555-5555" required autoFocus />
+                    <label className="field-label">Phone Number</label>
+                    <input
+                      className="field-input"
+                      type="tel"
+                      value={otpPhone}
+                      onChange={e => setOtpPhone(e.target.value)}
+                      placeholder="(555) 555-5555"
+                      required
+                      autoFocus
+                    />
                   </div>
-                  <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Sending..." : "Send Sign-In Link"}</button>
+                  <button className="btn-primary" type="submit" disabled={loading}>
+                    {loading ? "Sending..." : "Send Code"}
+                  </button>
                 </form>
                 <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
                   New here? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create a free account</button>
@@ -1126,7 +1157,7 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
             </div>
 
             <div style={{ textAlign: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", color: "#7b8499", fontSize: 13 }}>
-              Already have an account? <button onClick={() => { setMode("magic-request"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button>
+              Already have an account? <button onClick={() => { setMode("phone-entry"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button>
             </div>
           </div>
         </div>

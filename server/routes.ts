@@ -7202,7 +7202,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true });
   });
 
-  // ── Magic Link Auth ──
+  // ── SMS OTP Auth ──
+  // In-memory store: normalizedPhone → { code, email, expires }
+  const _otpStore = new Map<string, { code: string; email: string; expires: number }>();
+
+  function normalizePhoneForOtp(raw: string): string {
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+    return digits.length > 0 ? `+${digits}` : raw;
+  }
+
+  // POST /api/lead/request-otp
+  app.post("/api/lead/request-otp", async (req: Request, res: Response) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) return res.status(400).json({ error: "Phone number is required" });
+
+      const normalized = normalizePhoneForOtp(phone.trim());
+      const digits10 = normalized.replace(/\D/g, '').slice(-10);
+
+      // Look up account by phone
+      const result = await db.execute(sql`
+        SELECT email, first_name FROM lead_portal_accounts
+        WHERE REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = ${digits10}
+           OR phone = ${normalized}
+           OR phone = ${phone.trim()}
+        LIMIT 1
+      `);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "No account found with that phone number. Please sign up first." });
+      }
+
+      const row = result.rows[0] as any;
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      _otpStore.set(normalized, { code, email: row.email, expires: Date.now() + 10 * 60 * 1000 });
+
+      const { sendSms } = await import('./services/twilio');
+      const smsResult = await sendSms(normalized, `Your Today Capital Group sign-in code is: ${code}\n\nExpires in 10 minutes. Do not share this code.`);
+      if (!smsResult.success) {
+        console.error("[LEAD] OTP SMS failed:", smsResult.error);
+        return res.status(500).json({ error: "Failed to send SMS. Please try again or contact support." });
+      }
+
+      console.log(`[LEAD] OTP sent to ${normalized} for ${row.email}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[LEAD] request-otp error:", err);
+      res.status(500).json({ error: "Failed to send code. Please try again." });
+    }
+  });
+
+  // POST /api/lead/verify-otp
+  app.post("/api/lead/verify-otp", async (req: Request, res: Response) => {
+    try {
+      const { phone, code } = req.body;
+      if (!phone || !code) return res.status(400).json({ error: "Phone and code are required" });
+
+      const normalized = normalizePhoneForOtp(phone.trim());
+      const entry = _otpStore.get(normalized);
+
+      if (!entry || Date.now() > entry.expires) {
+        _otpStore.delete(normalized);
+        return res.status(401).json({ error: "This code has expired. Please request a new one." });
+      }
+
+      if (entry.code !== String(code).trim()) {
+        return res.status(401).json({ error: "Incorrect code. Please check your text and try again." });
+      }
+
+      _otpStore.delete(normalized); // one-time use
+
+      const result = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${entry.email}`);
+      if (result.rows.length === 0) return res.status(404).json({ error: "Account not found" });
+
+      const row = result.rows[0] as any;
+      const name = [row.first_name, row.last_name].filter(Boolean).join(" ");
+
+      req.session.user = {
+        isAuthenticated: true,
+        role: "lead",
+        merchantEmail: entry.email,
+        merchantName: name || undefined,
+      };
+
+      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+      await db.execute(sql`UPDATE lead_portal_accounts SET last_active_at = NOW() WHERE email = ${entry.email}`);
+
+      res.json({ success: true, name, businessName: row.business_name });
+    } catch (err: any) {
+      console.error("[LEAD] verify-otp error:", err);
+      res.status(500).json({ error: "Verification failed. Please try again." });
+    }
+  });
+
+  // ── Magic Link Auth (legacy — kept for any old links still in transit) ──
   // In-memory store: token → { email, expires }
   const _magicTokens = new Map<string, { email: string; expires: number }>();
 
