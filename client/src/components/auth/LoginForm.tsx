@@ -44,25 +44,11 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#192F56] to-[#19112D]">
       <div className="w-full max-w-sm mx-auto px-6">
         <div className="text-center mb-8">
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              background: "linear-gradient(135deg, #14B8A6, #2563EB)",
-              borderRadius: 14,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px",
-              fontSize: 18,
-              fontWeight: 800,
-              color: "#fff",
-              fontFamily: "system-ui, sans-serif",
-            }}
-          >
-            TCG
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-1">Today Capital Group</h1>
+          <img
+            src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c11dae8ddeadf0fc2ffa7_Group%2017.svg"
+            alt="Today Capital Group"
+            style={{ width: 180, height: "auto", margin: "0 auto 16px", display: "block" }}
+          />
           <p className="text-sm text-blue-200/70">Admin Dashboard</p>
         </div>
 
