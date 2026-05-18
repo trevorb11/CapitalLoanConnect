@@ -4748,8 +4748,12 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
 }
 
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [loginMethod, setLoginMethod] = useState<'password' | 'sms'>('password');
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
@@ -4784,6 +4788,46 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
     }
   };
 
+  const requestOtp = async () => {
+    if (!phone) return setError("Please enter your phone number.");
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/merchant/login/request-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (!res.ok) return setError(data.error || "Could not send code.");
+      setOtpSent(true);
+    } catch {
+      setError("Could not send verification code.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    if (!phone || !otpCode) return setError("Please enter your phone number and code.");
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/merchant/login/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, code: otpCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) return setError(data.error || "Invalid code.");
+      onLogin();
+    } catch {
+      setError("Verification failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="login-wrap">
       <div className="login-card">
@@ -4797,35 +4841,39 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 
         <div className="login-title">Welcome back</div>
         <div className="login-sub">Sign in to track your funded position</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <button className={`portal-nav-btn ${loginMethod === 'password' ? 'active' : ''}`} onClick={() => { setLoginMethod('password'); setError(""); }}>
+            Email + Password
+          </button>
+          <button className={`portal-nav-btn ${loginMethod === 'sms' ? 'active' : ''}`} onClick={() => { setLoginMethod('sms'); setError(""); }}>
+            Text Code Login
+          </button>
+        </div>
 
-        <label className="field-label">Email address</label>
-        <input
-          className="field-input"
-          type="email"
-          value={email}
-          onChange={e => { setEmail(e.target.value); setError(""); }}
-          placeholder="you@yourbusiness.com"
-        />
-
-        <label className="field-label">Password</label>
-        <input
-          className="field-input"
-          type="password"
-          value={password}
-          onChange={e => { setPassword(e.target.value); setError(""); }}
-          placeholder="••••••••"
-          onKeyDown={e => e.key === "Enter" && handleLogin()}
-        />
+        {loginMethod === 'password' ? (
+          <>
+            <label className="field-label">Email address</label>
+            <input className="field-input" type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="you@yourbusiness.com" />
+            <label className="field-label">Password</label>
+            <input className="field-input" type="password" value={password} onChange={e => { setPassword(e.target.value); setError(""); }} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleLogin()} />
+          </>
+        ) : (
+          <>
+            <label className="field-label">Phone number</label>
+            <input className="field-input" type="tel" value={phone} onChange={e => { setPhone(e.target.value); setError(""); }} placeholder="(555) 555-1234" />
+            {otpSent && (
+              <>
+                <label className="field-label">Verification code</label>
+                <input className="field-input" type="text" value={otpCode} onChange={e => { setOtpCode(e.target.value); setError(""); }} placeholder="6-digit code" />
+              </>
+            )}
+          </>
+        )}
 
         {error && <div className="login-error">{error}</div>}
 
-        <button
-          className="login-btn"
-          onClick={handleLogin}
-          disabled={loading}
-          style={{ marginTop: error ? "16px" : "0" }}
-        >
-          {loading ? "Signing in..." : "Sign In"}
+        <button className="login-btn" onClick={loginMethod === 'password' ? handleLogin : (otpSent ? verifyOtp : requestOtp)} disabled={loading} style={{ marginTop: error ? "16px" : "0" }}>
+          {loading ? "Please wait..." : loginMethod === 'password' ? "Sign In" : (otpSent ? "Verify Code" : "Send Text Code")}
         </button>
 
         <div className="login-hint" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
@@ -4866,7 +4914,7 @@ export default function MerchantPortal() {
   const [loadingStatements, setLoadingStatements] = useState(false);
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
   const [loadingVault, setLoadingVault] = useState(false);
-  const [activeTab, setActiveTab] = useState<'positions' | 'messages' | 'documents' | 'financials' | 'resources' | 'services'>('positions');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'positions' | 'messages' | 'documents' | 'financials' | 'resources' | 'services'>('dashboard');
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [appStatus, setAppStatus] = useState<{
     hasApplication: boolean;
@@ -5003,7 +5051,7 @@ export default function MerchantPortal() {
       setVaultDocs([]);
       setMerchantEmail("");
       setMerchantName("");
-      setActiveTab('positions');
+      setActiveTab('dashboard');
       setAppStatus(null);
     });
   };
@@ -5084,6 +5132,12 @@ export default function MerchantPortal() {
                   {/* Navigation Tabs */}
                   <div className="portal-nav">
                     <button
+                      className={`portal-nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('dashboard')}
+                    >
+                      Dashboard
+                    </button>
+                    <button
                       className={`portal-nav-btn ${activeTab === 'positions' ? 'active' : ''}`}
                       onClick={() => setActiveTab('positions')}
                     >
@@ -5123,6 +5177,140 @@ export default function MerchantPortal() {
                       Services
                     </button>
                   </div>
+
+                  {activeTab === 'dashboard' && (
+                    <div style={{ display: "grid", gap: 20 }}>
+                      <div style={{
+                        background: "linear-gradient(135deg, rgba(10,15,44,0.95), rgba(26,38,80,0.92))",
+                        border: "1px solid rgba(45,212,191,0.25)",
+                        borderRadius: 16,
+                        padding: "18px 20px"
+                      }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+                          Your Funding Dashboard
+                        </div>
+                        <div style={{ fontSize: 14, color: "#dbeafe" }}>
+                          Everything you need in one place — positions, rep messaging, financial insights, and growth services.
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                        <div className="insight-card">
+                          <div className="insight-title">Active Positions</div>
+                          <div className="insight-value">{activeDeals.length}</div>
+                        </div>
+                        <div className="insight-card">
+                          <div className="insight-title">Completed Positions</div>
+                          <div className="insight-value">{completedDeals.length}</div>
+                        </div>
+                        <div className="insight-card">
+                          <div className="insight-title">Unread Messages</div>
+                          <div className="insight-value">{unreadMessages}</div>
+                        </div>
+                        <div className="insight-card">
+                          <div className="insight-title">Documents in Vault</div>
+                          <div className="insight-value">{vaultDocs.length}</div>
+                        </div>
+                      </div>
+
+                      {!loadingDeals && appStatus && (
+                        <ApplicationStatusBanner appStatus={appStatus} />
+                      )}
+                      {!loadingDeals && deals.length > 0 && (
+                        <PreQualifiedOfferBanner deals={deals} />
+                      )}
+                      {!loadingDeals && activeDeals.length > 0 && (
+                        <PayoffCountdownWidget deal={activeDeals[0]} />
+                      )}
+
+                      <div style={{ display: "grid", gap: 20, gridTemplateColumns: "2fr 1fr" }}>
+                        <div>
+                          {loadingDeals ? (
+                            <div className="portal-loading"><div className="portal-spinner" /><span>Loading your positions...</span></div>
+                          ) : deals.length === 0 ? (
+                            <div className="portal-empty">
+                              <strong>No positions yet</strong>
+                              Your funded deals will appear here once available.
+                            </div>
+                          ) : (
+                            <>
+                              {activeDeals.length > 0 && (
+                                <>
+                                  <div className="section-label">Active Positions</div>
+                                  <div className="deals-grid">
+                                    {activeDeals.map(d => (
+                                      <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        <div style={{ display: "grid", gap: 16 }}>
+                          <div>
+                            <div className="section-label">Quick Access</div>
+                            <div className="insight-card" style={{ display: "grid", gap: 10, border: "1px solid rgba(45,212,191,0.25)" }}>
+                              <button className="portal-nav-btn active" onClick={() => { setActiveTab('messages'); setUnreadMessages(0); }}>
+                                Open Messages {unreadMessages > 0 ? `(${unreadMessages} unread)` : ""}
+                              </button>
+                              <button className="portal-nav-btn" onClick={() => setActiveTab('documents')}>Open Document Vault</button>
+                              <button className="portal-nav-btn" onClick={() => setActiveTab('financials')}>Open Financial Health</button>
+                              <button className="portal-nav-btn" onClick={() => setActiveTab('resources')}>Open Resources</button>
+                              <button className="portal-nav-btn" onClick={() => setActiveTab('services')}>Open Services</button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="section-label">Message Your Rep</div>
+                            <MessagingPanel
+                              merchantEmail={merchantEmail}
+                              merchantName={merchantName}
+                              assignedRep={deals.length > 0 ? deals[0].assignedRep : null}
+                              previewToken={adminPreviewToken}
+                            />
+                          </div>
+                          <div className="insight-card" style={{ display: "grid", gap: 12, border: "1px solid rgba(45,212,191,0.25)" }}>
+                            <div className="insight-title">Financials Preview</div>
+                            <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5 }}>
+                              Connected accounts, revenue trends, cash-flow insights, and statement-based recommendations are available in your Financials tab.
+                            </div>
+                            <button className="portal-nav-btn active" onClick={() => setActiveTab('financials')}>
+                              View Full Financials
+                            </button>
+                          </div>
+
+                          <div className="insight-card" style={{ display: "grid", gap: 10, border: "1px solid rgba(45,212,191,0.25)" }}>
+                            <div className="insight-title">More Services Available</div>
+                            <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5 }}>
+                              Explore CRM integrations, payment solutions, marketing support, and additional growth resources from your Services and Resources tabs.
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                              <button className="portal-nav-btn" onClick={() => setActiveTab('services')}>Services</button>
+                              <button className="portal-nav-btn" onClick={() => setActiveTab('resources')}>Resources</button>
+                            </div>
+                          </div>
+
+                          {vaultDocs.length > 0 && (
+                            <div className="insight-card" style={{ marginTop: 16 }}>
+                              <div className="insight-title">Recent Documents</div>
+                              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                                {vaultDocs.slice(0, 4).map(doc => (
+                                  <div key={doc.id} style={{ fontSize: 13, color: "#cbd5e1", display: "flex", justifyContent: "space-between", gap: 10 }}>
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</span>
+                                    <span style={{ color: "#94a3b8", textTransform: "capitalize" }}>{doc.category}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {!loadingDeals && deals.length > 0 && (
+                        <ActivityFeed merchantEmail={merchantEmail} previewToken={adminPreviewToken} />
+                      )}
+                    </div>
+                  )}
 
                   {/* ── POSITIONS TAB ── */}
                   {activeTab === 'positions' && (

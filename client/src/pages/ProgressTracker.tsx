@@ -189,7 +189,7 @@ export default function ProgressTracker() {
       {/* Progress Results */}
       {progress && (
         <section style={{ padding: '60px 20px' }}>
-          <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+          <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
             
             {/* Welcome Message */}
             <div style={{ 
@@ -207,18 +207,19 @@ export default function ProgressTracker() {
               </p>
             </div>
 
-            {/* Progress Checklist */}
-            <div style={{ 
-              backgroundColor: '#FFFFFF', 
-              borderRadius: '16px', 
-              overflow: 'hidden',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
-            }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gap: '20px', alignItems: 'start' }}>
+              {/* Progress Checklist */}
+              <div style={{ 
+                backgroundColor: '#FFFFFF', 
+                borderRadius: '16px', 
+                overflow: 'hidden',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+              }}>
               <div style={{ padding: '20px 24px', borderBottom: '1px solid #f0f0f0' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1d1d1f', margin: 0 }}>Your Progress</h3>
               </div>
 
-              {/* Intake Form */}
+                {/* Intake Form */}
               <div style={{ 
                 padding: '20px 24px', 
                 display: 'flex', 
@@ -264,7 +265,7 @@ export default function ProgressTracker() {
                 )}
               </div>
 
-              {/* Full Application */}
+                {/* Full Application */}
               <div style={{ 
                 padding: '20px 24px', 
                 display: 'flex', 
@@ -310,7 +311,7 @@ export default function ProgressTracker() {
                 )}
               </div>
 
-              {/* Bank Statements */}
+                {/* Bank Statements */}
               <div style={{ 
                 padding: '20px 24px', 
                 display: 'flex', 
@@ -358,34 +359,53 @@ export default function ProgressTracker() {
                   </Link>
                 )}
               </div>
+
+              {/* Help Section */}
+              <div style={{ 
+                padding: '24px',
+                borderTop: '1px solid #f0f0f0',
+                backgroundColor: '#fafafa'
+              }}>
+                <p style={{ fontSize: '14px', color: '#6e6e73', marginBottom: '12px', textAlign: 'center' }}>
+                  Need help completing your application?
+                </p>
+                <div style={{ textAlign: 'center' }}>
+                  <a 
+                    href="tel:8183510225" 
+                    style={{ 
+                      color: '#0a0f2c', 
+                      fontWeight: 600, 
+                      textDecoration: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <Phone size={16} />
+                    (818) 351-0225
+                  </a>
+                </div>
+              </div>
             </div>
 
-            {/* Help Section */}
-            <div style={{ 
-              marginTop: '24px', 
-              textAlign: 'center', 
-              padding: '24px',
-              backgroundColor: '#FFFFFF',
-              borderRadius: '16px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
-            }}>
-              <p style={{ fontSize: '14px', color: '#6e6e73', marginBottom: '12px' }}>
-                Need help completing your application?
-              </p>
-              <a 
-                href="tel:8183510225" 
-                style={{ 
-                  color: '#0a0f2c', 
-                  fontWeight: 600, 
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                <Phone size={16} />
-                (818) 351-0225
-              </a>
+              <div style={{ display: 'grid', gap: '16px' }}>
+                <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                  <h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Snapshot</h3>
+                  <p style={{ fontSize: '14px', color: '#6e6e73' }}>Application ID: {progress.applicationId || 'Pending'}</p>
+                  <p style={{ fontSize: '14px', color: '#6e6e73' }}>Bank docs uploaded: {progress.bankStatementCount}</p>
+                  <p style={{ fontSize: '14px', color: '#6e6e73', marginBottom: 0 }}>
+                    Bank connected: {progress.hasPlaidConnection ? 'Yes' : 'Not yet'}
+                  </p>
+                </div>
+                <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                  <h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Quick Actions</h3>
+                  <div style={{ display: 'grid', gap: '10px' }}>
+                    <Link href="/intake/quiz" style={{ color: '#1a2650', fontWeight: 500, textDecoration: 'none' }}>Go to Intake</Link>
+                    <Link href="/full-application" style={{ color: '#1a2650', fontWeight: 500, textDecoration: 'none' }}>Open Full Application</Link>
+                    <Link href="/upload-statements" style={{ color: '#1a2650', fontWeight: 500, textDecoration: 'none' }}>Upload Statements</Link>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
