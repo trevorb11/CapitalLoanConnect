@@ -5180,19 +5180,6 @@ export default function MerchantPortal() {
 
                   {activeTab === 'dashboard' && (
                     <div style={{ display: "grid", gap: 20 }}>
-                      <div style={{
-                        background: "linear-gradient(135deg, rgba(10,15,44,0.95), rgba(26,38,80,0.92))",
-                        border: "1px solid rgba(45,212,191,0.25)",
-                        borderRadius: 16,
-                        padding: "18px 20px"
-                      }}>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
-                          Your Funding Dashboard
-                        </div>
-                        <div style={{ fontSize: 14, color: "#dbeafe" }}>
-                          Everything you need in one place — positions, rep messaging, financial insights, and growth services.
-                        </div>
-                      </div>
                       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
                         <div className="insight-card">
                           <div className="insight-title">Active Positions</div>
@@ -5246,48 +5233,16 @@ export default function MerchantPortal() {
                             </>
                           )}
                         </div>
-                        <div style={{ display: "grid", gap: 16 }}>
-                          <div>
-                            <div className="section-label">Quick Access</div>
-                            <div className="insight-card" style={{ display: "grid", gap: 10, border: "1px solid rgba(45,212,191,0.25)" }}>
-                              <button className="portal-nav-btn active" onClick={() => { setActiveTab('messages'); setUnreadMessages(0); }}>
-                                Open Messages {unreadMessages > 0 ? `(${unreadMessages} unread)` : ""}
-                              </button>
-                              <button className="portal-nav-btn" onClick={() => setActiveTab('documents')}>Open Document Vault</button>
-                              <button className="portal-nav-btn" onClick={() => setActiveTab('financials')}>Open Financial Health</button>
-                              <button className="portal-nav-btn" onClick={() => setActiveTab('resources')}>Open Resources</button>
-                              <button className="portal-nav-btn" onClick={() => setActiveTab('services')}>Open Services</button>
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="section-label">Message Your Rep</div>
-                            <MessagingPanel
-                              merchantEmail={merchantEmail}
-                              merchantName={merchantName}
-                              assignedRep={deals.length > 0 ? deals[0].assignedRep : null}
-                              previewToken={adminPreviewToken}
-                            />
-                          </div>
-                          <div className="insight-card" style={{ display: "grid", gap: 12, border: "1px solid rgba(45,212,191,0.25)" }}>
-                            <div className="insight-title">Financials Preview</div>
-                            <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5 }}>
-                              Connected accounts, revenue trends, cash-flow insights, and statement-based recommendations are available in your Financials tab.
-                            </div>
-                            <button className="portal-nav-btn active" onClick={() => setActiveTab('financials')}>
-                              View Full Financials
+                        <div>
+                          <div className="section-label">Quick Access</div>
+                          <div className="insight-card" style={{ display: "grid", gap: 10 }}>
+                            <button className="portal-nav-btn active" onClick={() => { setActiveTab('messages'); setUnreadMessages(0); }}>
+                              Open Messages {unreadMessages > 0 ? `(${unreadMessages} unread)` : ""}
                             </button>
-                          </div>
-
-                          <div className="insight-card" style={{ display: "grid", gap: 10, border: "1px solid rgba(45,212,191,0.25)" }}>
-                            <div className="insight-title">More Services Available</div>
-                            <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5 }}>
-                              Explore CRM integrations, payment solutions, marketing support, and additional growth resources from your Services and Resources tabs.
-                            </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                              <button className="portal-nav-btn" onClick={() => setActiveTab('services')}>Services</button>
-                              <button className="portal-nav-btn" onClick={() => setActiveTab('resources')}>Resources</button>
-                            </div>
+                            <button className="portal-nav-btn" onClick={() => setActiveTab('documents')}>Open Document Vault</button>
+                            <button className="portal-nav-btn" onClick={() => setActiveTab('financials')}>Open Financial Health</button>
+                            <button className="portal-nav-btn" onClick={() => setActiveTab('resources')}>Open Resources</button>
+                            <button className="portal-nav-btn" onClick={() => setActiveTab('services')}>Open Services</button>
                           </div>
 
                           {vaultDocs.length > 0 && (
