@@ -14,6 +14,32 @@ export async function sendMarketingNotification(subject: string, htmlBody: strin
   }
 }
 
+export function buildAdminAlertEmail(data: {
+  title: string;
+  event: string;
+  merchantEmail?: string | null;
+  merchantName?: string | null;
+  businessName?: string | null;
+  details?: Record<string, string | number | null | undefined>;
+}): { subject: string; html: string } {
+  const detailsRows = Object.entries(data.details || {})
+    .map(([k, v]) => row(k, v == null ? "" : String(v)))
+    .join("");
+  return {
+    subject: `[Merchant Alert] ${data.event}${data.businessName ? ` - ${data.businessName}` : data.merchantEmail ? ` - ${data.merchantEmail}` : ""}`,
+    html: emailWrapper(
+      data.title,
+      "Merchant Alert",
+      "#dc2626",
+      row("Event", data.event) +
+      row("Merchant Email", data.merchantEmail) +
+      row("Merchant Name", data.merchantName) +
+      row("Business", data.businessName) +
+      detailsRows,
+    ),
+  };
+}
+
 // ── Shared template ────────────────────────────────────────────────────────
 
 function row(label: string, value: string | null | undefined): string {
