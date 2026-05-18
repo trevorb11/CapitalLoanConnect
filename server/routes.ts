@@ -27,7 +27,7 @@ const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
-import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail } from "./services/email";
+import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail } from "./services/email";
 import { syncApplicationToSalesforce, syncDecisionToSalesforce } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
@@ -2268,6 +2268,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         console.log(`Linked Plaid item ${tokenResponse.item_id} to application ${matchingApp.id}`);
       }
+      if (email && shouldSendMerchantAlert(`plaid_connected:${email.toLowerCase()}`, 6 * 60 * 60 * 1000)) {
+        sendAdminMerchantAlert({
+          title: "Bank Connected via Plaid",
+          event: "plaid_bank_connected",
+          merchantEmail: email.toLowerCase(),
+          merchantName: matchingApp?.fullName || undefined,
+          businessName: businessName || matchingApp?.businessName || undefined,
+          details: { institution: institutionName, plaidItemId: tokenResponse.item_id },
+        }).catch(() => {});
+      }
 
       // C2. Fetch and store statements from Plaid
       try {
@@ -3567,6 +3577,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         leadId: primary?.id,
         leadProvider: "TodayCapitalMerchantPortal",
       });
+      sendAdminMerchantAlert({
+        title: "Bank Connection Started via Chirp",
+        event: "chirp_connection_started",
+        merchantEmail,
+        merchantName: fullName || undefined,
+        businessName: primary?.businessName || undefined,
+        details: { requestCode: result.requestCode },
+      }).catch(() => {});
 
       // Persist a stub snapshot tied to merchant email so we can look up the
       // request code later without trusting the client.
@@ -3800,6 +3818,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lastSyncedAt: new Date(),
       });
       console.log(`[CHIRP] webhook updated snapshot for ${snapshot.merchantEmail}: connected=${isConnected}, status="${statusStr}"`);
+      if (isConnected && shouldSendMerchantAlert(`chirp_connected:${snapshot.merchantEmail}`, 24 * 60 * 60 * 1000)) {
+        sendAdminMerchantAlert({
+          title: "Bank Connected via Chirp",
+          event: "chirp_bank_connected",
+          merchantEmail: snapshot.merchantEmail,
+          businessName: undefined,
+          details: { requestCode, status: statusStr || "connected", institution: institutionName || "Unknown" },
+        }).catch(() => {});
+      }
 
       // Also attempt a full data sync (gets financial metrics if API is reachable).
       // Fire-and-forget — don't let API errors block the webhook 200 response.
@@ -10466,6 +10493,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const merchantLoginAttempts = new Map<string, { count: number; firstAttempt: number }>();
   const MERCHANT_LOGIN_MAX_ATTEMPTS = 5;
   const MERCHANT_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+  const merchantOtpStore = new Map<string, { code: string; email: string; expires: number }>();
+  const merchantAlertDedupe = new Map<string, number>();
+  const shouldSendMerchantAlert = (key: string, cooldownMs = 60 * 60 * 1000) => {
+    const now = Date.now();
+    const prev = merchantAlertDedupe.get(key) || 0;
+    if (now - prev < cooldownMs) return false;
+    merchantAlertDedupe.set(key, now);
+    return true;
+  };
+  const sendAdminMerchantAlert = async (params: {
+    title: string;
+    event: string;
+    merchantEmail?: string | null;
+    merchantName?: string | null;
+    businessName?: string | null;
+    details?: Record<string, string | number | null | undefined>;
+  }) => {
+    const msg = buildAdminAlertEmail(params);
+    await sendMarketingNotification(msg.subject, msg.html, process.env.ADMIN_ALERT_EMAIL || "marketing@todaycapitalgroup.com");
+  };
+
+  // Merchant SMS Login: request one-time code by phone number
+  app.post("/api/merchant/login/request-otp", async (req, res) => {
+    try {
+      const rawPhone = String(req.body?.phone || "");
+      const normalized = rawPhone.replace(/\D/g, "");
+      if (normalized.length !== 10) {
+        return res.status(400).json({ error: "Please enter a valid 10-digit phone number." });
+      }
+
+      // Match by phone in applications table (source of truth for merchant contact phone).
+      const appByPhone = await storage.getLoanApplicationByEmailOrPhone(normalized);
+      if (!appByPhone?.email) {
+        // Deliberately generic response for privacy
+        return res.json({ success: true, masked: "***-***-" + normalized.slice(-4) });
+      }
+
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      merchantOtpStore.set(normalized, { code, email: appByPhone.email.toLowerCase(), expires: Date.now() + 10 * 60 * 1000 });
+
+      const { sendSms } = await import('./services/twilio');
+      const smsResult = await sendSms(normalized, `Your Today Capital Group merchant portal code is: ${code}\n\nExpires in 10 minutes. Do not share this code.`);
+      if (!smsResult.success) {
+        return res.status(500).json({ error: smsResult.error || "Unable to send code right now." });
+      }
+
+      res.json({ success: true, masked: "***-***-" + normalized.slice(-4) });
+    } catch (error) {
+      console.error("[MERCHANT] request-otp error:", error);
+      res.status(500).json({ error: "Failed to send verification code." });
+    }
+  });
+
+  // Merchant SMS Login: verify one-time code
+  app.post("/api/merchant/login/verify-otp", async (req, res) => {
+    try {
+      const rawPhone = String(req.body?.phone || "");
+      const code = String(req.body?.code || "").trim();
+      const normalized = rawPhone.replace(/\D/g, "");
+      const entry = merchantOtpStore.get(normalized);
+      if (!entry || entry.expires < Date.now() || entry.code !== code) {
+        return res.status(400).json({ error: "Invalid or expired code." });
+      }
+      merchantOtpStore.delete(normalized);
+
+      const portalAccount = await storage.getMerchantPortalAccountByEmail(entry.email);
+      const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(entry.email);
+      const merchantName = portalAccount?.name || portalAccount?.businessName || decision?.businessName;
+
+      req.session.user = {
+        isAuthenticated: true,
+        role: 'merchant',
+        merchantEmail: entry.email,
+        merchantName: merchantName || undefined,
+      };
+      sendAdminMerchantAlert({
+        title: "Merchant Portal Login",
+        event: "merchant_login_sms_otp",
+        merchantEmail: entry.email,
+        merchantName: merchantName || undefined,
+        businessName: portalAccount?.businessName || decision?.businessName || undefined,
+        details: { method: "sms_otp" },
+      }).catch(() => {});
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[MERCHANT] verify-otp error:", error);
+      res.status(500).json({ error: "Verification failed." });
+    }
+  });
 
   // Merchant Login
   app.post("/api/merchant/login", async (req, res) => {
@@ -10515,6 +10632,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         merchantEmail: normalizedEmail,
         merchantName: merchantName || undefined,
       };
+      sendAdminMerchantAlert({
+        title: "Merchant Portal Login",
+        event: "merchant_login_password",
+        merchantEmail: normalizedEmail,
+        merchantName: merchantName || undefined,
+        businessName: portalAccount?.businessName || decision?.businessName || undefined,
+        details: { method: "password" },
+      }).catch(() => {});
 
       res.json({ success: true });
     } catch (error) {
@@ -10583,6 +10708,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Merchant Auth Check
   app.get("/api/merchant/auth/check", (req, res) => {
     if (req.session.user?.isAuthenticated && req.session.user.role === 'merchant') {
+      const merchantEmail = req.session.user.merchantEmail;
+      if (merchantEmail && shouldSendMerchantAlert(`portal_access:${merchantEmail}`, 30 * 60 * 1000)) {
+        sendAdminMerchantAlert({
+          title: "Merchant Accessed Portal",
+          event: "merchant_portal_access",
+          merchantEmail,
+          merchantName: req.session.user.merchantName || undefined,
+          details: { source: "auth_check" },
+        }).catch(() => {});
+      }
       return res.json({
         isAuthenticated: true,
         email: req.session.user.merchantEmail,
@@ -10659,6 +10794,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
             assignedRep: decision.assignedRep || null,
             ...sharedFields,
           });
+        }
+      }
+
+      // Alert admins when merchant reaches ~30% paid into a position (first time/day per deal).
+      for (const d of deals) {
+        const funded = new Date(d.fundedDate);
+        if (!funded || Number.isNaN(funded.getTime())) continue;
+        const totalPayback = (Number(d.totalPayback) > 0)
+          ? Number(d.totalPayback)
+          : (Number(d.advanceAmount) > 0 && Number(d.factorRate) > 1 ? Number(d.advanceAmount) * Number(d.factorRate) : 0);
+        if (totalPayback <= 0) continue;
+        const termMatch = String(d.term || "").match(/(\d+(?:\.\d+)?)/);
+        const termCount = termMatch ? Number(termMatch[1]) : 0;
+        if (!termCount) continue;
+        const freq = String(d.paymentFrequency || "daily").toLowerCase();
+        let totalPayments = termCount;
+        if (freq.includes("daily")) totalPayments = termCount;
+        else if (freq.includes("bi")) totalPayments = termCount / 2;
+        else if (freq.includes("week")) totalPayments = termCount;
+        else if (freq.includes("month")) totalPayments = termCount;
+        const paymentAmount = totalPayback / Math.max(1, totalPayments);
+        const elapsedDays = Math.max(0, Math.floor((Date.now() - funded.getTime()) / (1000 * 60 * 60 * 24)));
+        let paymentsMade = elapsedDays;
+        if (freq.includes("week")) paymentsMade = Math.floor(elapsedDays / 7);
+        if (freq.includes("bi")) paymentsMade = Math.floor(elapsedDays / 14);
+        if (freq.includes("month")) paymentsMade = Math.floor(elapsedDays / 30);
+        const pctPaid = Math.min(100, (paymentsMade * paymentAmount / totalPayback) * 100);
+        if (pctPaid >= 30 && shouldSendMerchantAlert(`deal_30pct:${req.session.user.merchantEmail}:${d.id}`, 24 * 60 * 60 * 1000)) {
+          sendAdminMerchantAlert({
+            title: "Merchant Reached 30% Paid Milestone",
+            event: "position_30_percent_paid",
+            merchantEmail: req.session.user.merchantEmail,
+            businessName: d.businessName,
+            details: { dealId: d.id, lender: d.lender, percentPaid: `${pctPaid.toFixed(1)}%` },
+          }).catch(() => {});
         }
       }
 
@@ -11306,6 +11476,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storageType,
         viewToken,
       });
+      if (shouldSendMerchantAlert(`merchant_upload:${merchantEmail}`, 30 * 60 * 1000)) {
+        sendAdminMerchantAlert({
+          title: "Merchant Uploaded Bank Statement",
+          event: "merchant_bank_statement_upload",
+          merchantEmail,
+          details: { fileName: file.originalname, fileSize: `${Math.round(file.size / 1024)} KB` },
+        }).catch(() => {});
+      }
 
       console.log(`[MERCHANT UPLOAD] ${merchantEmail} uploaded ${file.originalname} (${(file.size / 1024).toFixed(0)} KB)`);
       res.json({ success: true, fileName: file.originalname, fileSize: file.size });
