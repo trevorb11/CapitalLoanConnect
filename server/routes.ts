@@ -28,7 +28,7 @@ const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
 import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail } from "./services/email";
-import { syncApplicationToSalesforce, syncDecisionToSalesforce } from "./services/salesforce";
+import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncDecisionToProductionSf } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { z } from "zod";
@@ -4686,6 +4686,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[UNDERWRITING] SF sync error for ${businessEmail}:`, err);
       });
 
+      // Sync to PRODUCTION Salesforce (async, non-blocking)
+      syncDecisionToProductionSf(decision).then(async (prodResult) => {
+        console.log(`[UNDERWRITING] SF PROD sync for ${businessEmail}: ${prodResult.synced ? 'success' : 'skipped'} - ${prodResult.action || prodResult.error || 'no-op'}`);
+      }).catch(err => {
+        console.error(`[UNDERWRITING] SF PROD sync error for ${businessEmail}:`, err);
+      });
+
       // Sync decision to dialer_contacts (async, non-blocking)
       syncDecisionToDialer(decision).catch(err =>
         console.error(`[UNDERWRITING] Dialer sync error for ${businessEmail}:`, err)
@@ -4854,6 +4861,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }).catch(err => {
         console.error(`[UNDERWRITING] SF sync error for decision ${id}:`, err);
+      });
+
+      // Sync updated decision to PRODUCTION Salesforce (async, non-blocking)
+      syncDecisionToProductionSf(updated).then(async (prodResult) => {
+        console.log(`[UNDERWRITING] SF PROD sync for decision ${id}: ${prodResult.synced ? 'success' : 'skipped'} - ${prodResult.action || prodResult.error || 'no-op'}`);
+      }).catch(err => {
+        console.error(`[UNDERWRITING] SF PROD sync error for decision ${id}:`, err);
       });
 
       // Sync updated decision to dialer_contacts (async, non-blocking)
@@ -12028,6 +12042,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const d of rows) {
         try {
           const result = await syncDecisionToSalesforce(d);
+          // Also sync to production
+          syncDecisionToProductionSf(d).catch(err =>
+            console.error(`[SF Scheduled Sync] Prod sync error for ${d.business_name}: ${err.message}`)
+          );
           await storage.updateBusinessUnderwritingDecision(d.id, {
             sfSynced: result.synced,
             sfSyncedAt: new Date(),
