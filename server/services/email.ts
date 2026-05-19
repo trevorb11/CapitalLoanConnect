@@ -141,6 +141,26 @@ export function buildServicesInterestEmail(data: {
   source?: string | null;
 }): { subject: string; html: string } {
   const name = [data.firstName, data.lastName].filter(Boolean).join(" ") || null;
+  const isMemorialDay = data.service === "website-memorial-day";
+
+  if (isMemorialDay) {
+    return {
+      subject: `[Memorial Day Deal] New Website Lead - ${data.businessName || data.email}`,
+      html: emailWrapper(
+        "Memorial Day Website Promo — New Lead",
+        "Memorial Day Sale",
+        "#b8243a",
+        row("Email", data.email) +
+        row("Name", name) +
+        row("Phone", data.phone) +
+        row("Business", data.businessName) +
+        row("Goal", data.otherDetails) +
+        row("Source", data.source) +
+        row("Promo Price", "$499 (was $1,500)"),
+      ),
+    };
+  }
+
   return {
     subject: `New Services Inquiry - ${data.service || "General"} - ${data.email}`,
     html: emailWrapper(
