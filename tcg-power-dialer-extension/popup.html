@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { width: 320px; background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .header { display: flex; align-items: center; gap: 10px; padding: 16px; border-bottom: 1px solid #1e293b; }
+    .logo { width: 32px; height: 32px; background: #059669; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 16px; }
+    .title { font-size: 15px; font-weight: 600; }
+    .subtitle { font-size: 11px; color: #64748b; }
+    .actions { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+    .section-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; margin-top: 6px; display: flex; align-items: center; justify-content: space-between; }
+    .section-label .clear-btn { font-size: 10px; color: #64748b; background: none; border: none; cursor: pointer; padding: 0; text-transform: none; letter-spacing: normal; }
+    .section-label .clear-btn:hover { color: #e2e8f0; }
+    .btn { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid #1e293b; border-radius: 10px; background: #1e293b; color: #e2e8f0; font-size: 13px; cursor: pointer; transition: background 0.15s, border-color 0.15s; text-decoration: none; }
+    .btn:hover { background: #334155; border-color: #334155; }
+    .btn-primary { background: #059669; border-color: #059669; color: white; font-weight: 600; }
+    .btn-primary:hover { background: #047857; border-color: #047857; }
+    .btn-icon { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+    .btn-label { flex: 1; min-width: 0; }
+    .btn-desc { font-size: 10px; color: #94a3b8; font-weight: 400; }
+    .btn-arrow { color: #64748b; font-size: 12px; flex-shrink: 0; }
+    .dial-input { padding: 12px 16px; border-top: 1px solid #1e293b; }
+    .dial-input label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display: block; }
+    .dial-row { display: flex; gap: 6px; }
+    .dial-row input { flex: 1; padding: 8px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 13px; outline: none; }
+    .dial-row input:focus { border-color: #059669; }
+    .dial-row button { padding: 8px 14px; background: #059669; border: none; border-radius: 8px; color: white; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .dial-row button:hover { background: #047857; }
+    .recent-list { display: flex; flex-direction: column; gap: 2px; }
+    .recent-item { display: flex; align-items: center; gap: 10px; padding: 7px 14px; border-radius: 8px; background: transparent; color: #e2e8f0; font-size: 12px; cursor: pointer; border: none; text-align: left; width: 100%; transition: background 0.15s; }
+    .recent-item:hover { background: #1e293b; }
+    .recent-phone { font-weight: 500; font-variant-numeric: tabular-nums; }
+    .recent-name { color: #94a3b8; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .recent-time { color: #475569; font-size: 10px; margin-left: auto; flex-shrink: 0; }
+    .recent-empty { padding: 8px 14px; font-size: 11px; color: #475569; text-align: center; }
+    .shortcut-hint { padding: 4px 16px 8px; text-align: center; font-size: 10px; color: #475569; }
+    .shortcut-hint kbd { background: #1e293b; padding: 1px 5px; border-radius: 3px; font-family: inherit; font-size: 10px; border: 1px solid #334155; }
+    .footer { padding: 8px 16px; text-align: center; font-size: 10px; color: #475569; border-top: 1px solid #1e293b; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">T</div>
+    <div>
+      <div class="title">TCG Power Dialer</div>
+      <div class="subtitle">AI-Powered Sales Dialer</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <a href="#" id="open-dialer" class="btn btn-primary">
+      <span class="btn-icon">&#x1F4DE;</span>
+      <span class="btn-label">Open Dialer</span>
+      <span class="btn-arrow">&rarr;</span>
+    </a>
+    <a href="#" id="open-sidepanel" class="btn">
+      <span class="btn-icon">&#x1F4CB;</span>
+      <span class="btn-label">Open in Side Panel</span>
+      <span class="btn-arrow">&rarr;</span>
+    </a>
+
+    <div class="section-label">Quick Access</div>
+    <a href="#" id="open-rep-console" class="btn">
+      <span class="btn-icon">&#x1F464;</span>
+      <span class="btn-label">
+        Rep Console
+        <div class="btn-desc">Contact 360 view, call logging, tasks</div>
+      </span>
+      <span class="btn-arrow">&rarr;</span>
+    </a>
+    <a href="#" id="open-dashboard" class="btn">
+      <span class="btn-icon">&#x1F4CA;</span>
+      <span class="btn-label">
+        Dashboard
+        <div class="btn-desc">Applications, approvals, pipeline</div>
+      </span>
+      <span class="btn-arrow">&rarr;</span>
+    </a>
+    <a href="#" id="open-messaging" class="btn">
+      <span class="btn-icon">&#x1F4AC;</span>
+      <span class="btn-label">
+        Messaging
+        <div class="btn-desc">SMS inbox and conversations</div>
+      </span>
+      <span class="btn-arrow">&rarr;</span>
+    </a>
+
+    <div class="section-label">
+      <span>Recent</span>
+      <button id="clear-recent" class="clear-btn" style="display:none;">Clear</button>
+    </div>
+    <div id="recent-list" class="recent-list">
+      <div class="recent-empty">No recent calls</div>
+    </div>
+  </div>
+
+  <div class="dial-input">
+    <label>Quick Dial</label>
+    <div class="dial-row">
+      <input type="tel" id="quick-dial" placeholder="Enter phone number..." />
+      <button id="dial-btn">Dial</button>
+    </div>
+  </div>
+
+  <div class="shortcut-hint">
+    <kbd>Alt</kbd> + <kbd>D</kbd> to open side panel from any page
+  </div>
+
+  <div class="footer">v4.5 &middot; Click any phone number on any webpage to dial</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

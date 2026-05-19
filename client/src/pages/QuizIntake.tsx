@@ -6,6 +6,7 @@ import { Loader2, CheckCircle, ArrowLeft, TrendingUp, Trophy, ArrowRight } from 
 import { trackIntakeFormSubmitted, trackFormStepCompleted, trackPageView } from "@/lib/analytics";
 import { initUTMTracking, getStoredUTMParams } from "@/lib/utm";
 import GigFiPartnerFlow from "./GigFiPartnerFlow";
+import type { Agent } from "@shared/agents";
 
 const BUSINESS_AGE_OPTIONS = [
   "Less than 3 months",
@@ -99,7 +100,7 @@ function formatPhone(value: string): string {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
-export default function QuizIntake() {
+export default function QuizIntake({ agent }: { agent?: Agent } = {}) {
   const [, navigate] = useLocation();
   const [currentQuestion, setCurrentQuestion] = useState(1);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -187,6 +188,8 @@ export default function QuizIntake() {
         faxNumber: data.faxNumber,
         // Include referral partner ID if from partner link
         ...(referralPartnerId && { referralPartnerId }),
+        // Include agent attribution if quiz opened via rep-specific link
+        ...(agent && { agentName: agent.name, agentEmail: agent.email, agentGhlId: agent.ghlId }),
         // Include UTM tracking parameters
         ...utmParams,
       });

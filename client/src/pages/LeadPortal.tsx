@@ -464,6 +464,284 @@ const LEAD_CSS = `
     margin: 16px 0;
   }
 
+  /* ── AVATAR ── */
+  .lead-portal .lp-avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px;
+    color: #080d18; flex-shrink: 0; letter-spacing: 0.02em;
+  }
+
+  .lead-portal .lp-header-name {
+    font-size: 12px; color: #9ba3b8; font-weight: 500;
+  }
+
+  /* ── MAGIC LINK ── */
+  .lead-portal .magic-link-area {
+    margin-top: 20px; padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    text-align: center;
+  }
+
+  .lead-portal .magic-link-btn {
+    background: none; border: none;
+    color: #2dd4bf; font-size: 13px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    text-decoration: underline; text-underline-offset: 3px;
+    opacity: 0.85; transition: opacity 0.2s;
+  }
+
+  .lead-portal .magic-link-btn:hover { opacity: 1; }
+
+  /* ── DROP ZONE ── */
+  .lead-portal .drop-zone {
+    border: 2px dashed rgba(45,212,191,0.3);
+    border-radius: 12px; padding: 32px 20px;
+    text-align: center; cursor: pointer;
+    transition: all 0.2s; background: rgba(45,212,191,0.03);
+  }
+
+  .lead-portal .drop-zone:hover,
+  .lead-portal .drop-zone.dragover {
+    border-color: rgba(45,212,191,0.6);
+    background: rgba(45,212,191,0.07);
+  }
+
+  .lead-portal .drop-zone-icon {
+    width: 40px; height: 40px;
+    background: rgba(45,212,191,0.1);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 12px;
+  }
+
+  .lead-portal .drop-zone-text {
+    font-size: 14px; font-weight: 600; color: #e8eaf0; margin-bottom: 4px;
+  }
+
+  .lead-portal .drop-zone-sub {
+    font-size: 12px; color: #64748b;
+  }
+
+  /* ── WELCOME CARD ── */
+  .lead-portal .welcome-card {
+    background: linear-gradient(135deg, rgba(45,212,191,0.07) 0%, rgba(20,184,166,0.02) 100%);
+    border: 1px solid rgba(45,212,191,0.15);
+    border-radius: 16px; padding: 28px 24px; margin-bottom: 16px;
+    text-align: center;
+  }
+
+  .lead-portal .welcome-card-title {
+    font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700;
+    color: #fff; margin-bottom: 8px;
+  }
+
+  .lead-portal .welcome-card-sub {
+    font-size: 14px; color: #94a3b8; line-height: 1.6; margin-bottom: 20px;
+  }
+
+  .lead-portal .value-props {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin-bottom: 20px; text-align: left;
+  }
+
+  .lead-portal .value-prop {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 12px 14px;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+
+  .lead-portal .value-prop-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #2dd4bf; flex-shrink: 0; margin-top: 6px;
+  }
+
+  .lead-portal .value-prop-text {
+    font-size: 12px; color: #94a3b8; line-height: 1.5;
+  }
+
+  .lead-portal .value-prop-text strong {
+    display: block; color: #e8eaf0; font-weight: 600; margin-bottom: 2px; font-size: 13px;
+  }
+
+  /* ── AUTH SPLIT LAYOUT ── */
+  .lead-portal .auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 56px 32px;
+  }
+
+  .lead-portal .auth-split {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 40px;
+    max-width: 1060px;
+    width: 100%;
+    margin: 0 auto;
+    align-items: center;
+  }
+
+  .lead-portal .auth-hero { }
+
+  .lead-portal .auth-logo {
+    display: inline-flex; align-items: center; gap: 10px; margin-bottom: 40px;
+  }
+
+  .lead-portal .auth-logo-mark {
+    width: 38px; height: 38px;
+    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 14px; color: #080d18;
+  }
+
+  .lead-portal .auth-logo-name {
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px;
+  }
+
+  .lead-portal .auth-logo-tag {
+    font-size: 10px; color: #2dd4bf;
+    text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1px;
+  }
+
+  .lead-portal .auth-headline {
+    font-family: 'Syne', sans-serif;
+    font-size: 42px; font-weight: 800; line-height: 1.2;
+    color: #fff; margin-bottom: 20px;
+  }
+
+  .lead-portal .auth-headline span { color: #2dd4bf; }
+
+  .lead-portal .auth-sub {
+    font-size: 16px; color: #94a3b8; line-height: 1.8; margin-bottom: 40px;
+  }
+
+  .lead-portal .auth-benefits { margin-bottom: 40px; }
+
+  .lead-portal .auth-benefit {
+    display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px;
+  }
+
+  .lead-portal .auth-benefit-icon {
+    width: 22px; height: 22px; flex-shrink: 0;
+    background: rgba(45,212,191,0.12); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; margin-top: 1px;
+  }
+
+  .lead-portal .auth-benefit-text { font-size: 14px; color: #cbd5e1; line-height: 1.5; }
+  .lead-portal .auth-benefit-text strong { color: #e8eaf0; font-weight: 600; }
+
+  .lead-portal .auth-stats {
+    display: flex; gap: 0;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; overflow: hidden;
+    margin-bottom: 28px;
+  }
+
+  .lead-portal .auth-stat {
+    flex: 1; padding: 14px 16px; text-align: center;
+    border-right: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .lead-portal .auth-stat:last-child { border-right: none; }
+
+  .lead-portal .auth-stat-num {
+    font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800;
+    color: #2dd4bf; margin-bottom: 2px;
+  }
+
+  .lead-portal .auth-stat-label {
+    font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+
+  /* ── DASHBOARD PREVIEW CARD ── */
+  .lead-portal .auth-preview {
+    background: rgba(15,23,41,0.8);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px; padding: 18px 20px;
+    position: relative; overflow: hidden;
+  }
+
+  .lead-portal .auth-preview::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, #14B8A6, #2dd4bf, transparent);
+  }
+
+  .lead-portal .auth-preview-label {
+    font-size: 10px; color: #2dd4bf; text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 14px; font-weight: 600;
+  }
+
+  .lead-portal .auth-preview-pos {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+  }
+
+  .lead-portal .auth-preview-pos-name {
+    font-size: 13px; font-weight: 600; color: #e8eaf0;
+  }
+
+  .lead-portal .auth-preview-pos-pct {
+    font-size: 12px; color: #2dd4bf; font-weight: 700;
+  }
+
+  .lead-portal .auth-preview-bar {
+    height: 5px; background: rgba(255,255,255,0.06); border-radius: 99px; margin-bottom: 16px;
+  }
+
+  .lead-portal .auth-preview-bar-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, #14B8A6, #2dd4bf);
+  }
+
+  .lead-portal .auth-preview-metrics {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
+  }
+
+  .lead-portal .auth-preview-metric {
+    background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px;
+  }
+
+  .lead-portal .auth-preview-metric-val {
+    font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 2px;
+  }
+
+  .lead-portal .auth-preview-metric-key {
+    font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+
+  /* ── AUTH FORM PANEL ── */
+  .lead-portal .auth-form-panel .card {
+    padding: 32px 28px; margin-bottom: 0;
+  }
+
+  .lead-portal .auth-trust {
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    margin-top: 14px; flex-wrap: wrap;
+  }
+
+  .lead-portal .auth-trust-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: #64748b;
+  }
+
+  @media (max-width: 720px) {
+    .lead-portal .auth-split {
+      grid-template-columns: 1fr; gap: 32px;
+    }
+    .lead-portal .auth-page { padding: 32px 16px; align-items: flex-start; }
+    .lead-portal .auth-headline { font-size: 26px; }
+    .lead-portal .auth-hero { order: 2; }
+    .lead-portal .auth-form-panel { order: 1; }
+  }
+
+  /* ── PULSE ── */
+  @keyframes lead-pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+  .lead-portal .pulse { animation: lead-pulse 2s ease-in-out infinite; }
+
   @media (max-width: 640px) {
     .lead-portal .lp-nav-btn { flex: none; padding: 10px 14px; font-size: 12px; }
     .lead-portal .lp-wrap { padding: 24px 16px 60px; }
@@ -476,6 +754,7 @@ const LEAD_CSS = `
     .lead-portal .lp-header { padding: 14px 16px; }
     .lead-portal .detail-header { flex-direction: column; align-items: flex-start; gap: 10px; }
     .lead-portal .contact-strip { flex-direction: column; gap: 10px; text-align: center; }
+    .lead-portal .value-props { grid-template-columns: 1fr; }
   }
 `;
 
@@ -498,8 +777,11 @@ interface LeadPosition {
 
 interface BankingInsights {
   connected: boolean;
+  hasPendingConnection?: boolean;
+  status?: string | null;
   institutionName?: string | null;
   lastSyncedAt?: string | null;
+  connectedAt?: string | null;
   accounts?: Array<{ name: string; type: string; balance: number }>;
   metrics?: {
     monthlyRevenue: number;
@@ -511,6 +793,13 @@ interface BankingInsights {
     revenueTrend?: string | null;
     healthScore?: number;
   };
+  activityByMonth?: Array<{
+    month: string;
+    totalCredit: number;
+    totalDebit: number;
+    averageDailyBalance: number;
+    net: number;
+  }>;
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────
@@ -552,142 +841,332 @@ function calcPosition(pos: LeadPosition) {
 }
 
 // ── LOGIN / SIGNUP ───────────────────────────────────────────────────────
-function LeadAuth({ onAuth }: { onAuth: () => void }) {
-  const [mode, setMode] = useState<"login" | "signup">("signup");
+function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
+  const [mode, setMode] = useState<"signup" | "phone-entry" | "code-entry">("signup");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+
+  // Signup fields
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // OTP sign-in fields
+  const [otpPhone, setOtpPhone] = useState("");
+  const [otp, setOtp] = useState("");
+
+  // Handle any old magic-link URLs gracefully — redirect to phone sign-in
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const magic = params.get("magic");
+    if (!magic) return;
+    window.history.replaceState({}, "", "/track");
+    setMode("phone-entry");
+    setError("That sign-in link is no longer valid. Enter your phone number below to get a code instead.");
+  }, []);
+
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const endpoint = mode === "signup" ? "/api/lead/signup" : "/api/lead/login";
       const savedRef = sessionStorage.getItem("lead_referral") || undefined;
-      const body = mode === "signup"
-        ? { email, firstName, lastName, phone, referralCode: savedRef }
-        : { email, password };
-      const res = await fetch(endpoint, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await fetch("/api/lead/signup", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, firstName, lastName, phone, businessName, referralCode: savedRef }),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Something went wrong");
+        if (data.error?.includes("already exists")) {
+          setOtpPhone(phone);
+          setMode("phone-entry");
+          setError("You already have an account — enter your phone number to sign in.");
+          return;
+        }
+        throw new Error(data.message || data.error || "Something went wrong");
       }
       onAuth();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
-  return (
-    <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <style>{LEAD_CSS}</style>
-      <div style={{ maxWidth: 440, width: "100%" }}>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
-            <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, #14B8A6, #2dd4bf)", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 14, color: "#080d18" }}>TCG</div>
-            <div style={{ textAlign: "left" }}>
-              <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14 }}>Today Capital Group</div>
-              <div style={{ fontSize: 10, color: "#14B8A6", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Financial Command Center</div>
-            </div>
-          </div>
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/lead/request-otp", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: otpPhone }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to send code. Please try again.");
+      }
+      setOtp("");
+      setMode("code-entry");
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/lead/verify-otp", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: otpPhone, code: otp }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Invalid code. Please try again.");
+      }
+      await onAuth();
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  if (loading && !error) {
+    return (
+      <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <style>{LEAD_CSS}</style>
+        <div style={{ textAlign: "center" }}>
+          <div className="spinner" style={{ margin: "0 auto 16px" }} />
+          <p style={{ color: "#7b8499", fontSize: 14 }}>Signing you in...</p>
         </div>
-        <div className="card" style={{ padding: "40px 32px" }}>
-          <div style={{ textAlign: "center", marginBottom: 28 }}>
-            <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
-              {mode === "signup" ? "Start tracking your funding" : "Welcome back"}
-            </h1>
-            <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
-              {mode === "signup"
-                ? "Monitor your positions, track cash flow, and see when you qualify for better terms. Free to use."
-                : "Sign in to your dashboard."}
-            </p>
-          </div>
-          {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div>}
-          <form onSubmit={handleSubmit}>
-            {mode === "signup" ? (
+      </div>
+    );
+  }
+
+  const SmallBrand = () => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 24 }}>
+      <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#14B8A6,#2dd4bf)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 13, color: "#080d18" }}>TCG</div>
+      <div>
+        <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 13 }}>Today Capital Group</div>
+        <div style={{ fontSize: 10, color: "#2dd4bf", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Funding Dashboard</div>
+      </div>
+    </div>
+  );
+
+  const Err = () => error ? <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div> : null;
+
+  // ── Phone-entry & Code-entry: centered card ──
+  if (mode === "phone-entry" || mode === "code-entry") {
+    return (
+      <div className="lead-portal" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 24 }}>
+        <style>{LEAD_CSS}</style>
+        <div style={{ maxWidth: 420, width: "100%" }}>
+          <SmallBrand />
+          <div className="card" style={{ padding: "36px 32px" }}>
+            {mode === "code-entry" ? (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
-                  <div><label className="field-label">First Name</label><input className="field-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" required /></div>
-                  <div><label className="field-label">Last Name</label><input className="field-input" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" required /></div>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  </div>
+                  <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Check your texts</h2>
+                  <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
+                    We sent a 6-digit code to <strong style={{ color: "#e8eaf0" }}>{otpPhone}</strong>. Enter it below to sign in.
+                  </p>
                 </div>
-                <div style={{ marginBottom: 14 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
-                <div style={{ marginBottom: 20 }}><label className="field-label">Phone</label><input className="field-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 555-5555" required /></div>
-                <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Setting up your dashboard..." : "Get Started — It's Free"}</button>
+                <Err />
+                <form onSubmit={handleVerifyOtp}>
+                  <div style={{ marginBottom: 20 }}>
+                    <label className="field-label">6-Digit Code</label>
+                    <input
+                      className="field-input"
+                      value={otp}
+                      onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="123456"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      required
+                      autoFocus
+                      style={{ fontSize: 24, letterSpacing: "0.3em", textAlign: "center" }}
+                    />
+                  </div>
+                  <button className="btn-primary" type="submit" disabled={loading || otp.length < 6}>
+                    {loading ? "Verifying..." : "Sign In"}
+                  </button>
+                </form>
+                <div style={{ textAlign: "center", marginTop: 16 }}>
+                  <button
+                    onClick={() => { setMode("phone-entry"); setError(null); setOtp(""); }}
+                    style={{ background: "none", border: "none", color: "#7b8499", fontSize: 13, cursor: "pointer" }}
+                  >
+                    Wrong number or didn't receive it? Go back
+                  </button>
+                </div>
               </>
             ) : (
               <>
-                <div style={{ marginBottom: 14 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
-                <div style={{ marginBottom: 20 }}><label className="field-label">Password</label><input className="field-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} /></div>
-                <button className="btn-primary" type="submit" disabled={loading}>{loading ? "Please wait..." : "Sign In"}</button>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Welcome back</h1>
+                  <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Enter your phone number and we'll text you a sign-in code.</p>
+                </div>
+                <Err />
+                <form onSubmit={handleSendOtp}>
+                  <div style={{ marginBottom: 20 }}>
+                    <label className="field-label">Phone Number</label>
+                    <input
+                      className="field-input"
+                      type="tel"
+                      value={otpPhone}
+                      onChange={e => setOtpPhone(e.target.value)}
+                      placeholder="(555) 555-5555"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <button className="btn-primary" type="submit" disabled={loading}>
+                    {loading ? "Sending..." : "Send Code"}
+                  </button>
+                </form>
+                <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
+                  New here? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create a free account</button>
+                </div>
               </>
             )}
-          </form>
-          <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
-            {mode === "signup"
-              ? <span>Already have an account? <button onClick={() => { setMode("login"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button></span>
-              : <span>No account? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create one free</button></span>}
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-// ── SET PASSWORD BANNER ──────────────────────────────────────────────────
-function SetPasswordBanner() {
-  const [show, setShow] = useState(true);
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
-
-  if (!show || done) return null;
-
-  const handleSave = async () => {
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
-    if (password !== confirm) { setError("Passwords don't match."); return; }
-    setSaving(true); setError(null);
-    try {
-      const res = await fetch("/api/lead/set-password", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Failed");
-      setDone(true);
-    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
-  };
+  // ── Signup: full split layout ──
+  const benefits = [
+    { text: <><strong>See your exact payoff date</strong> — know how many payments remain and when you'll be clear</> },
+    { text: <><strong>Track renewal eligibility in real time</strong> — get notified the moment you qualify for more funding</> },
+    { text: <><strong>Monitor daily cash flow</strong> — connect your bank to see how payments affect your balance</> },
+    { text: <><strong>Compare all your positions in one place</strong> — factor rates, remaining balances, payment schedules</> },
+  ];
 
   return (
-    <div className="card" style={{ marginBottom: 16, background: "rgba(45,212,191,0.06)", border: "1px solid rgba(45,212,191,0.2)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>Secure your account</p>
-          <p style={{ color: "#94a3b8", fontSize: 13 }}>Set a password so you can sign in again later.</p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {!expanded && <button className="btn-secondary" onClick={() => setExpanded(true)} style={{ fontSize: 12 }}>Set Password</button>}
-          <button onClick={() => setShow(false)} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>{"\u00D7"}</button>
-        </div>
-      </div>
-      {expanded && (
-        <div style={{ marginTop: 14 }}>
-          {error && <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "8px 12px", marginBottom: 10, color: "#f87171", fontSize: 12 }}>{error}</div>}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div><label className="field-label">Password</label><input className="field-input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="6+ characters" /></div>
-            <div><label className="field-label">Confirm</label><input className="field-input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Confirm" /></div>
+    <div className="lead-portal auth-page">
+      <style>{LEAD_CSS}</style>
+      <div className="auth-split">
+
+        {/* ── Left: Value proposition ── */}
+        <div className="auth-hero">
+          <div className="auth-logo">
+            <div className="auth-logo-mark">TCG</div>
+            <div>
+              <div className="auth-logo-name">Today Capital Group</div>
+              <div className="auth-logo-tag">Funding Dashboard</div>
+            </div>
           </div>
-          <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ padding: "10px 0" }}>{saving ? "Saving..." : "Save Password"}</button>
+
+          <h1 className="auth-headline">
+            Track Your <span>Financing Positions</span>
+          </h1>
+          <p className="auth-sub">
+            Most MCA borrowers don't know their payoff date, their real factor rate, or when they qualify again. Your free dashboard shows you all of it — in real time.
+          </p>
+
+          <div className="auth-benefits">
+            {benefits.map((b, i) => (
+              <div key={i} className="auth-benefit">
+                <div className="auth-benefit-icon">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+                <div className="auth-benefit-text">{b.text}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="auth-stats">
+            <div className="auth-stat">
+              <div className="auth-stat-num">500+</div>
+              <div className="auth-stat-label">Businesses</div>
+            </div>
+            <div className="auth-stat">
+              <div className="auth-stat-num">$47M+</div>
+              <div className="auth-stat-label">Tracked</div>
+            </div>
+            <div className="auth-stat">
+              <div className="auth-stat-num">Free</div>
+              <div className="auth-stat-label">Forever</div>
+            </div>
+          </div>
+
+          {/* Mini dashboard preview */}
+          <div className="auth-preview">
+            <div className="auth-preview-label">Your dashboard preview</div>
+            <div className="auth-preview-pos">
+              <div className="auth-preview-pos-name">Apex Roofing LLC — Funder A</div>
+              <div className="auth-preview-pos-pct">78% paid off</div>
+            </div>
+            <div className="auth-preview-bar">
+              <div className="auth-preview-bar-fill" style={{ width: "78%" }} />
+            </div>
+            <div className="auth-preview-metrics">
+              <div className="auth-preview-metric">
+                <div className="auth-preview-metric-val">$8,400</div>
+                <div className="auth-preview-metric-key">Remaining</div>
+              </div>
+              <div className="auth-preview-metric">
+                <div className="auth-preview-metric-val">Jun 14</div>
+                <div className="auth-preview-metric-key">Payoff Date</div>
+              </div>
+              <div className="auth-preview-metric">
+                <div className="auth-preview-metric-val" style={{ color: "#2dd4bf" }}>Eligible</div>
+                <div className="auth-preview-metric-key">Renewal</div>
+              </div>
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* ── Right: Signup form ── */}
+        <div className="auth-form-panel">
+          <div className="card" style={{ padding: "32px 28px", marginBottom: 0 }}>
+            <div style={{ marginBottom: 24 }}>
+              <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Get your free dashboard</h2>
+              <p style={{ color: "#7b8499", fontSize: 13, lineHeight: 1.6 }}>Takes 30 seconds. No credit card. No spam.</p>
+            </div>
+            <Err />
+            <form onSubmit={handleSignup}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                <div><label className="field-label">First Name</label><input className="field-input" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John" required /></div>
+                <div><label className="field-label">Last Name</label><input className="field-input" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Smith" required /></div>
+              </div>
+              <div style={{ marginBottom: 12 }}><label className="field-label">Business Name</label><input className="field-input" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Acme LLC" /></div>
+              <div style={{ marginBottom: 12 }}><label className="field-label">Phone</label><input className="field-input" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 555-5555" /></div>
+              <div style={{ marginBottom: 20 }}><label className="field-label">Email</label><input className="field-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required /></div>
+              <button className="btn-primary" type="submit" disabled={loading} style={{ fontSize: 16 }}>
+                {loading ? "Setting up your dashboard..." : "Get My Free Dashboard"}
+              </button>
+            </form>
+
+            <div className="auth-trust">
+              <div className="auth-trust-item">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                No credit card
+              </div>
+              <div className="auth-trust-item">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Free forever
+              </div>
+              <div className="auth-trust-item">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                No spam
+              </div>
+            </div>
+
+            <div style={{ textAlign: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", color: "#7b8499", fontSize: 13 }}>
+              Already have an account? <button onClick={() => { setMode("phone-entry"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }
+
 
 // ── ADD POSITION FORM ────────────────────────────────────────────────────
 function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) {
@@ -745,9 +1224,48 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
 }
 
 // ── POSITION DETAIL VIEW ─────────────────────────────────────────────────
-function PositionDetail({ pos, onBack }: { pos: LeadPosition; onBack: () => void }) {
+function PositionDetail({ pos: initialPos, onBack, onDeleted }: { pos: LeadPosition; onBack: () => void; onDeleted: () => void }) {
+  const [pos, setPos] = useState(initialPos);
+  const [editingBalance, setEditingBalance] = useState(false);
+  const [newBalance, setNewBalance] = useState(String(initialPos.remaining_balance || ""));
+  const [savingBalance, setSavingBalance] = useState(false);
+  const [balanceMsg, setBalanceMsg] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const c = calcPosition(pos);
   const isRenewalReady = c.progress >= 50 && pos.status === "active";
+
+  const handleUpdateBalance = async () => {
+    setSavingBalance(true); setBalanceMsg(null);
+    try {
+      const res = await fetch(`/api/lead/positions/${pos.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ remainingBalance: parseFloat(newBalance) }) });
+      if (!res.ok) throw new Error("Failed");
+      setPos(p => ({ ...p, remaining_balance: parseFloat(newBalance) }));
+      setEditingBalance(false);
+      setBalanceMsg("Balance updated.");
+    } catch { setBalanceMsg("Failed to update."); }
+    finally { setSavingBalance(false); }
+  };
+
+  const handleMarkPaid = async () => {
+    setSavingBalance(true); setBalanceMsg(null);
+    try {
+      const res = await fetch(`/api/lead/positions/${pos.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "paid", remainingBalance: 0 }) });
+      if (!res.ok) throw new Error("Failed");
+      setPos(p => ({ ...p, status: "paid", remaining_balance: 0 }));
+      setBalanceMsg("Position marked as paid off.");
+    } catch { setBalanceMsg("Failed to update."); }
+    finally { setSavingBalance(false); }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await fetch(`/api/lead/positions/${pos.id}`, { method: "DELETE", credentials: "include" });
+      onDeleted();
+    } catch { setDeleting(false); }
+  };
 
   return (
     <div>
@@ -760,11 +1278,11 @@ function PositionDetail({ pos, onBack }: { pos: LeadPosition; onBack: () => void
             {pos.product_type}
             {pos.factor_rate ? ` \u00B7 ${pos.factor_rate}x factor` : ""}
             {pos.funded_date ? ` \u00B7 Funded ${fmtDate(pos.funded_date)}` : ""}
-            {` \u00B7 ${pos.payment_frequency.charAt(0).toUpperCase() + pos.payment_frequency.slice(1)} payments`}
+            {pos.payment_frequency ? ` \u00B7 ${pos.payment_frequency.charAt(0).toUpperCase() + pos.payment_frequency.slice(1)} payments` : ""}
           </div>
         </div>
         <span className={`badge ${pos.status === "active" ? "badge-active" : "badge-complete"}`}>
-          {pos.status === "active" ? "Active" : pos.status}
+          {pos.status === "active" ? "Active" : pos.status === "paid" ? "Paid Off" : pos.status}
         </span>
       </div>
 
@@ -869,7 +1387,43 @@ function PositionDetail({ pos, onBack }: { pos: LeadPosition; onBack: () => void
         <p style={{ fontSize: 12, color: "#64748b", marginTop: 8, fontStyle: "italic", textAlign: "center" }}>This position was auto-detected from your bank transactions</p>
       )}
 
-      <div className="contact-strip">
+      {/* Update Balance / Mark Paid */}
+      {pos.status === "active" && (
+        <div className="card">
+          <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>Update Position</p>
+          {balanceMsg && <p style={{ fontSize: 13, color: balanceMsg.includes("Failed") ? "#f87171" : "#2dd4bf", marginBottom: 10 }}>{balanceMsg}</p>}
+          {editingBalance ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input className="field-input" type="number" value={newBalance} onChange={e => setNewBalance(e.target.value)} placeholder="Remaining balance" style={{ flex: 1 }} />
+              <button className="btn-secondary" onClick={handleUpdateBalance} disabled={savingBalance}>{savingBalance ? "Saving..." : "Save"}</button>
+              <button className="btn-ghost" onClick={() => setEditingBalance(false)}>Cancel</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn-secondary" onClick={() => { setEditingBalance(true); setBalanceMsg(null); }}>Update Remaining Balance</button>
+              <button className="btn-ghost" onClick={handleMarkPaid} disabled={savingBalance}>Mark as Paid Off</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Delete */}
+      <div style={{ marginTop: 8 }}>
+        {confirmDelete ? (
+          <div className="card" style={{ background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)" }}>
+            <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Delete this position?</p>
+            <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 14 }}>This cannot be undone.</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: "rgba(248,113,113,0.2)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, color: "#f87171", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{deleting ? "Deleting..." : "Yes, Delete"}</button>
+              <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", color: "#4b5568", fontSize: 12, cursor: "pointer", padding: "4px 0" }}>Remove this position</button>
+        )}
+      </div>
+
+      <div className="contact-strip" style={{ marginTop: 16 }}>
         <div className="contact-strip-text">
           Questions about this position? <a href={`mailto:trevor@todaycapitalgroup.com?subject=Question about my ${pos.funder_name} position`}>Reach out to our team</a>
         </div>
@@ -950,6 +1504,46 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
   const totalMonthlyLoad = positions.reduce((s, p) => s + calcPosition(p).monthlyLoad, 0);
   const revenue = banking?.metrics?.monthlyRevenue || 0;
   const renewalReady = activePositions.filter(p => calcPosition(p).progress >= 50);
+  const isFirstTime = positions.length === 0 && !banking?.connected;
+
+  if (isFirstTime) {
+    return (
+      <div>
+        <div className="welcome-card">
+          <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
+          <div className="welcome-card-title">Your dashboard is ready</div>
+          <div className="welcome-card-sub">
+            This is your private portal for tracking your MCA positions, monitoring cash flow, and knowing exactly when you're ready to refinance or take on additional capital.
+          </div>
+          <div className="value-props">
+            <div className="value-prop">
+              <div className="value-prop-dot" />
+              <div className="value-prop-text"><strong>Payoff tracking</strong>See exactly how far along each position is and when it'll be done.</div>
+            </div>
+            <div className="value-prop">
+              <div className="value-prop-dot" />
+              <div className="value-prop-text"><strong>Cash flow insights</strong>Connect your bank for live revenue and expense analysis.</div>
+            </div>
+            <div className="value-prop">
+              <div className="value-prop-dot" />
+              <div className="value-prop-text"><strong>Renewal timing</strong>Know the moment you're eligible for better terms or additional capital.</div>
+            </div>
+            <div className="value-prop">
+              <div className="value-prop-dot" />
+              <div className="value-prop-text"><strong>Auto-detect positions</strong>Link your bank and we'll find your MCA payments automatically.</div>
+            </div>
+          </div>
+          <p style={{ color: "#64748b", fontSize: 13, marginBottom: 14 }}>Start by adding your current funding position or connecting your bank.</p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" as const }}>
+            <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ flex: 1, maxWidth: 200 }}>Add a Position</button>
+            <button className="btn-secondary" onClick={() => onSwitchTab("financials")} style={{ flex: 1, maxWidth: 200 }}>Connect Bank</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -981,21 +1575,19 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
       {revenue > 0 && totalMonthlyLoad > 0 && (
         <div className="card">
           <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Payment Coverage</p>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
-                <span style={{ color: "#7b8499" }}>Payments as % of revenue</span>
-                <span style={{ color: (totalMonthlyLoad / revenue * 100) < 20 ? "#2dd4bf" : "#facc15", fontWeight: 600 }}>{(totalMonthlyLoad / revenue * 100).toFixed(1)}%</span>
-              </div>
-              <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${Math.min(100, totalMonthlyLoad / revenue * 100)}%`, background: (totalMonthlyLoad / revenue * 100) < 20 ? "linear-gradient(90deg, #2dd4bf, #14b8a6)" : "linear-gradient(90deg, #facc15, #f59e0b)" }} />
-              </div>
-              <p style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
-                {(totalMonthlyLoad / revenue * 100) < 15 ? "Your payment load is very manageable. You have room for additional capital if needed." :
-                 (totalMonthlyLoad / revenue * 100) < 25 ? "Your payment load is moderate. Consider refinancing to free up cash flow." :
-                 "Your payment load is heavy. Consolidation or refinancing could significantly reduce your monthly burden."}
-              </p>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
+              <span style={{ color: "#7b8499" }}>Payments as % of revenue</span>
+              <span style={{ color: (totalMonthlyLoad / revenue * 100) < 20 ? "#2dd4bf" : "#facc15", fontWeight: 600 }}>{(totalMonthlyLoad / revenue * 100).toFixed(1)}%</span>
             </div>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${Math.min(100, totalMonthlyLoad / revenue * 100)}%`, background: (totalMonthlyLoad / revenue * 100) < 20 ? "linear-gradient(90deg, #2dd4bf, #14b8a6)" : "linear-gradient(90deg, #facc15, #f59e0b)" }} />
+            </div>
+            <p style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+              {(totalMonthlyLoad / revenue * 100) < 15 ? "Your payment load is very manageable. You may have room for additional capital." :
+               (totalMonthlyLoad / revenue * 100) < 25 ? "Your payment load is moderate. Refinancing could free up meaningful cash flow." :
+               "Your payment load is heavy. Consolidation or refinancing could significantly reduce your monthly burden."}
+            </p>
           </div>
         </div>
       )}
@@ -1018,24 +1610,19 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
         </div>
       )}
 
-      {/* Quick Actions */}
-      {(positions.length === 0 || !banking?.connected) && (
-        <div className="card">
-          <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Get the most out of your dashboard</p>
-          <div style={{ display: "grid", gap: 10 }}>
-            {positions.length === 0 && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div><p style={{ fontWeight: 600, fontSize: 13 }}>Add a funding position</p><p style={{ color: "#7b8499", fontSize: 12 }}>Track payoffs, see renewal timing, and monitor your progress.</p></div>
-                <button className="btn-secondary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, whiteSpace: "nowrap" }}>Add Position</button>
+      {/* Setup nudge — only show individual items not yet done */}
+      {(!banking?.connected) && positions.length > 0 && (
+        <div className="card" style={{ padding: "16px 20px" }}>
+          <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: "#94a3b8" }}>Complete your setup</p>
+          {!banking?.connected && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: 13 }}>Connect your bank</p>
+                <p style={{ color: "#7b8499", fontSize: 12 }}>Unlock live cash flow data and auto-detect MCA payments.</p>
               </div>
-            )}
-            {!banking?.connected && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div><p style={{ fontWeight: 600, fontSize: 13 }}>Connect your bank</p><p style={{ color: "#7b8499", fontSize: 12 }}>Get live cash flow tracking and auto-detect funding positions.</p></div>
-                <button className="btn-secondary" onClick={() => onSwitchTab("financials")} style={{ fontSize: 12, whiteSpace: "nowrap" }}>Connect</button>
-              </div>
-            )}
-          </div>
+              <button className="btn-secondary" onClick={() => onSwitchTab("financials")} style={{ fontSize: 12, whiteSpace: "nowrap" as const }}>Connect</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1063,7 +1650,7 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [detecting, setDetecting] = useState(false);
-  const [detectMsg, setDetectMsg] = useState<string | null>(null);
+  const [detectMsg, setDetectMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   const fetch_ = useCallback(async () => {
     try { const r = await fetch("/api/lead/positions", { credentials: "include" }); if (r.ok) setPositions(await r.json()); } catch (_) {}
@@ -1076,9 +1663,9 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
     try {
       const r = await fetch("/api/lead/detect-positions", { method: "POST", credentials: "include" });
       const data = await r.json();
-      if (r.ok) { setDetectMsg(data.message || `Found ${data.detected} position(s).`); if (data.added > 0) fetch_(); }
-      else { setDetectMsg(data.error || "Detection failed."); }
-    } catch (_) { setDetectMsg("Failed to scan transactions."); }
+      if (r.ok) { setDetectMsg({ text: data.message || `Found ${data.detected} position(s).`, ok: true }); if (data.added > 0) fetch_(); }
+      else { setDetectMsg({ text: data.error || "Detection failed.", ok: false }); }
+    } catch (_) { setDetectMsg({ text: "Failed to scan transactions.", ok: false }); }
     setDetecting(false);
   };
 
@@ -1101,8 +1688,11 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
       )}
 
       {detectMsg && (
-        <div className="card" style={{ padding: "12px 16px", fontSize: 13, color: "#2dd4bf", background: "rgba(45,212,191,0.08)", border: "1px solid rgba(45,212,191,0.2)" }}>
-          {detectMsg}
+        <div style={{ padding: "12px 16px", fontSize: 13, borderRadius: 10, marginBottom: 14,
+          color: detectMsg.ok ? "#2dd4bf" : "#f87171",
+          background: detectMsg.ok ? "rgba(45,212,191,0.08)" : "rgba(248,113,113,0.08)",
+          border: `1px solid ${detectMsg.ok ? "rgba(45,212,191,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+          {detectMsg.text}
         </div>
       )}
 
@@ -1132,108 +1722,359 @@ function LeadFinancialsTab() {
   const [banking, setBanking] = useState<BankingInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState<string | null>(null);
+  const [detecting, setDetecting] = useState(false);
+  const [detectMsg, setDetectMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [showMonthly, setShowMonthly] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const pollRef = useRef<number | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try { const r = await fetch("/api/lead/banking/insights", { credentials: "include" }); if (r.ok) setBanking(await r.json()); } catch (_) {}
-    setLoading(false);
+  const fetchInsights = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    try {
+      const r = await fetch("/api/lead/banking/insights", { credentials: "include" });
+      if (r.ok) setBanking(await r.json());
+    } catch (_) {}
+    if (!quiet) setLoading(false);
   }, []);
-  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleSync = async () => { setSyncing(true); try { await fetch("/api/lead/chirp/sync", { method: "POST", credentials: "include" }); await fetchData(); } catch (_) {} setSyncing(false); };
+  useEffect(() => { fetchInsights(); }, [fetchInsights]);
+
+  // Auto-poll every 30 s when a connection is pending but not yet confirmed
+  useEffect(() => {
+    if (banking?.hasPendingConnection && !banking?.connected) {
+      if (pollRef.current) return;
+      pollRef.current = window.setInterval(async () => {
+        try {
+          await fetch("/api/lead/chirp/sync", { method: "POST", credentials: "include" });
+          const r = await fetch("/api/lead/banking/insights", { credentials: "include" });
+          if (r.ok) {
+            const data: BankingInsights = await r.json();
+            setBanking(data);
+            if (data.connected) {
+              if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+            }
+          }
+        } catch (_) {}
+      }, 30000);
+      // Also register webhook so Chirp can push status proactively
+      fetch("/api/lead/chirp/register-webhook", { method: "POST", credentials: "include" }).catch(() => {});
+    } else {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [banking?.hasPendingConnection, banking?.connected]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await fetch("/api/lead/chirp/sync", { method: "POST", credentials: "include" });
+      await fetchInsights();
+    } catch (_) {}
+    setSyncing(false);
+  };
 
   const handleConnect = async () => {
     setPopupBlocked(null);
+    setConnecting(true);
     try {
-      const res = await fetch("/api/lead/chirp/connect", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" });
-      if (res.ok) {
-        const data = await res.json();
-        const url = data.widgetUrl || data.verificationUrl;
-        if (url) {
-          const popup = window.open(url, "chirp-connect", "width=480,height=720");
-          if (!popup || popup.closed) setPopupBlocked(url);
+      const res = await fetch("/api/lead/chirp/connect", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || "Failed to start bank connection.");
+        setConnecting(false);
+        return;
+      }
+      const data = await res.json();
+      const url = data.widgetUrl || data.verificationUrl;
+      if (url) {
+        const popup = window.open(url, "chirp-connect", "width=520,height=760");
+        if (!popup || popup.closed) {
+          setPopupBlocked(url);
+        } else {
+          // After popup opens, refresh insights to get hasPendingConnection=true
+          await fetchInsights(true);
+          // Poll via message from popup
+          const onMsg = (e: MessageEvent) => {
+            if (e.data === "chirp-connected" || e.data?.type === "chirp-connected") {
+              fetchInsights();
+              window.removeEventListener("message", onMsg);
+            }
+          };
+          window.addEventListener("message", onMsg);
         }
       }
     } catch (_) {}
+    setConnecting(false);
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm("Disconnect your bank? You can reconnect anytime.")) return;
+    setDisconnecting(true);
+    try {
+      await fetch("/api/lead/chirp/connection", { method: "DELETE", credentials: "include" });
+      setBanking({ connected: false, hasPendingConnection: false });
+    } catch (_) {}
+    setDisconnecting(false);
+  };
+
+  const handleDetect = async () => {
+    setDetecting(true); setDetectMsg(null);
+    try {
+      const r = await fetch("/api/lead/detect-positions", { method: "POST", credentials: "include" });
+      const data = await r.json();
+      if (r.ok) setDetectMsg({ text: data.message || `Found ${data.detected} position(s).`, ok: true });
+      else setDetectMsg({ text: data.error || "Detection failed.", ok: false });
+    } catch (_) { setDetectMsg({ text: "Failed to scan transactions.", ok: false }); }
+    setDetecting(false);
   };
 
   if (loading) return <div className="loading"><div className="spinner" /><p style={{ marginTop: 12 }}>Loading financial data...</p></div>;
 
   const m = banking?.metrics;
+  const hasMetrics = banking?.connected && m && m.monthlyRevenue > 0;
+  const healthColor = (m?.healthScore ?? 0) >= 70 ? "#2dd4bf" : (m?.healthScore ?? 0) >= 40 ? "#facc15" : "#f87171";
+  const healthLabel = (m?.healthScore ?? 0) >= 70 ? "Strong" : (m?.healthScore ?? 0) >= 45 ? "Moderate" : (m?.healthScore ?? 0) > 0 ? "Needs Attention" : null;
+  const trendColor = m?.revenueTrend === "growing" ? "#2dd4bf" : m?.revenueTrend === "declining" ? "#f87171" : "#94a3b8";
+  const trendIcon = m?.revenueTrend === "growing" ? "↗" : m?.revenueTrend === "declining" ? "↘" : "→";
 
   return (
     <div>
+      {/* ── Bank Connection Card ── */}
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600 }}>Bank Connection</h3>
-          {banking?.connected && <span className="badge badge-active">Connected</span>}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {banking?.connected && <span className="badge badge-active">Connected</span>}
+            {!banking?.connected && banking?.hasPendingConnection && (
+              <span style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>Pending</span>
+            )}
+          </div>
         </div>
+
         {banking?.connected ? (
           <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2dd4bf" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2dd4bf", flexShrink: 0 }} />
               <span style={{ fontWeight: 500 }}>{banking.institutionName || "Connected Bank"}</span>
-              {banking.lastSyncedAt && <span style={{ color: "#64748b", fontSize: 11 }}>Last synced {fmtDate(banking.lastSyncedAt)}</span>}
+              {banking.lastSyncedAt && (
+                <span style={{ color: "#64748b", fontSize: 11, marginLeft: "auto" }}>
+                  Synced {fmtDate(banking.lastSyncedAt)}
+                </span>
+              )}
             </div>
-            {banking.accounts && banking.accounts.length > 0 && banking.accounts.map((a, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 13 }}>
-                <span>{a.name} <span style={{ color: "#64748b", fontSize: 11 }}>{a.type}</span></span>
-                <span style={{ fontWeight: 600, color: "#2dd4bf" }}>{fmt$(a.balance)}</span>
+            {banking.accounts && banking.accounts.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                {banking.accounts.map((a, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: 13 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                      <span>{a.name}</span>
+                      {a.type && <span style={{ color: "#64748b", fontSize: 11, textTransform: "capitalize" }}>{a.type}</span>}
+                    </span>
+                    <span style={{ fontWeight: 700, color: "#2dd4bf" }}>{fmt$(a.balance)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-            <button className="btn-secondary" onClick={handleSync} disabled={syncing} style={{ marginTop: 14 }}>{syncing ? "Syncing..." : "Sync Now"}</button>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn-secondary" onClick={handleSync} disabled={syncing} style={{ flex: 1, minWidth: 120 }}>
+                {syncing ? "Syncing..." : "Sync Now"}
+              </button>
+              <button
+                onClick={handleDisconnect}
+                disabled={disconnecting}
+                style={{ background: "none", border: "1px solid rgba(248,113,113,0.25)", color: "#f87171", borderRadius: 10, padding: "8px 14px", fontSize: 13, cursor: "pointer" }}
+              >
+                {disconnecting ? "Disconnecting..." : "Disconnect"}
+              </button>
+            </div>
           </>
+        ) : banking?.hasPendingConnection ? (
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <p style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Awaiting Bank Verification</p>
+            <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, marginBottom: 16 }}>
+              You started linking your bank. Once Chirp confirms the connection, your financial data will appear here automatically.
+            </p>
+            <p style={{ color: "#64748b", fontSize: 12, marginBottom: 14 }}>
+              Status: <span style={{ color: "#fbbf24" }}>{banking.status || "Unverified"}</span>
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              <button className="btn-primary" onClick={handleConnect} disabled={connecting} style={{ maxWidth: 220 }}>
+                {connecting ? "Opening..." : "Reconnect Bank"}
+              </button>
+              <button className="btn-secondary" onClick={handleSync} disabled={syncing} style={{ maxWidth: 180 }}>
+                {syncing ? "Checking..." : "Check Status"}
+              </button>
+            </div>
+            {popupBlocked && <div className="popup-fallback" style={{ marginTop: 12 }}>Browser blocked the popup. <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here</a>, then return.</div>}
+          </div>
         ) : (
           <div style={{ textAlign: "center", padding: "16px 0" }}>
-            <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 14, lineHeight: 1.6 }}>Connect your bank to unlock live cash flow tracking, auto-detect funding positions, and get personalized insights.</p>
-            <button className="btn-primary" onClick={handleConnect} style={{ maxWidth: 300, margin: "0 auto" }}>Connect Your Bank</button>
-            {popupBlocked && <div className="popup-fallback">Your browser blocked the popup. <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here to connect</a>, then come back.</div>}
+            <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 8, lineHeight: 1.6, fontWeight: 500 }}>
+              Connect your bank to unlock live cash flow insights.
+            </p>
+            <ul style={{ color: "#64748b", fontSize: 13, lineHeight: 1.8, textAlign: "left", display: "inline-block", margin: "0 0 16px", paddingLeft: 18 }}>
+              <li>Live revenue &amp; expense tracking</li>
+              <li>Cash flow trends month over month</li>
+              <li>Auto-detect existing MCA positions</li>
+              <li>Faster renewal approvals — no re-uploading statements</li>
+            </ul>
+            <button className="btn-primary" onClick={handleConnect} disabled={connecting} style={{ maxWidth: 300, margin: "0 auto" }}>
+              {connecting ? "Opening..." : "Connect Your Bank"}
+            </button>
+            {popupBlocked && <div className="popup-fallback" style={{ marginTop: 12 }}>Browser blocked the popup. <a href={popupBlocked} target="_blank" rel="noopener noreferrer">Click here to connect</a>, then come back.</div>}
           </div>
         )}
       </div>
 
-      {banking?.connected && m && m.monthlyRevenue > 0 && (
+      {/* ── Cash Flow Metrics ── */}
+      {hasMetrics && m && (
         <>
-          <div className="card" style={{ textAlign: "center" }}>
-            <p style={{ color: "#7b8499", fontSize: 12, marginBottom: 4 }}>Monthly Revenue</p>
-            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 32, fontWeight: 800, color: "#2dd4bf" }}>{fmt$(m.monthlyRevenue)}</p>
-            {m.revenueTrend && <p style={{ color: m.revenueTrend === "growing" ? "#2dd4bf" : m.revenueTrend === "declining" ? "#f87171" : "#94a3b8", fontSize: 12, fontWeight: 600, marginTop: 4 }}>{m.revenueTrend === "growing" ? "\u2197 Growing" : m.revenueTrend === "declining" ? "\u2198 Declining" : "\u2192 Stable"}</p>}
+          {/* Hero revenue + trend */}
+          <div className="card" style={{ textAlign: "center", position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(45,212,191,0.07) 0%, transparent 70%)", pointerEvents: "none" }} />
+            <p style={{ color: "#7b8499", fontSize: 12, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Avg Monthly Revenue</p>
+            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 36, fontWeight: 800, color: "#2dd4bf", lineHeight: 1.1 }}>{fmt$(m.monthlyRevenue)}</p>
+            {m.revenueTrend && (
+              <p style={{ color: trendColor, fontSize: 12, fontWeight: 600, marginTop: 6 }}>
+                {trendIcon} {m.revenueTrend.charAt(0).toUpperCase() + m.revenueTrend.slice(1)}
+                {m.monthsAnalyzed > 0 && <span style={{ color: "#64748b", fontWeight: 400 }}> · {m.monthsAnalyzed} months analyzed</span>}
+              </p>
+            )}
           </div>
-          <div className="stat-grid stat-grid-3">
+
+          {/* 4-stat grid */}
+          <div className="stat-grid stat-grid-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="stat-card">
-              <div className="stat-label">Expenses</div>
-              <div className="stat-val">{m.monthlyExpenses > 0 ? fmt$(m.monthlyExpenses) : "\u2014"}</div>
-              <div className="stat-sub">per month</div>
+              <div className="stat-label">Monthly Expenses</div>
+              <div className="stat-val" style={{ color: "#f87171" }}>{m.monthlyExpenses > 0 ? fmt$(m.monthlyExpenses) : "—"}</div>
+              <div className="stat-sub">avg per month</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Net Cash Flow</div>
               <div className="stat-val" style={{ color: m.netCashFlow >= 0 ? "#2dd4bf" : "#f87171" }}>
-                {m.netCashFlow >= 0 ? "+" : "-"}{fmt$(m.netCashFlow)}
+                {m.netCashFlow >= 0 ? "+" : "−"}{fmt$(m.netCashFlow)}
               </div>
-              <div className="stat-sub">per month</div>
+              <div className="stat-sub">avg per month</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Current Balance</div>
-              <div className="stat-val">{m.currentBalance > 0 ? fmt$(m.currentBalance) : "\u2014"}</div>
+              <div className="stat-val">{m.currentBalance > 0 ? fmt$(m.currentBalance) : "—"}</div>
               <div className="stat-sub">in the bank</div>
             </div>
+            <div className="stat-card">
+              <div className="stat-label">Avg Daily Balance</div>
+              <div className="stat-val">{m.avgBalance > 0 ? fmt$(m.avgBalance) : "—"}</div>
+              <div className="stat-sub">over analyzed period</div>
+            </div>
           </div>
-          {m.healthScore && (
+
+          {/* Health Score */}
+          {(m.healthScore ?? 0) > 0 && (
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <p style={{ fontWeight: 600, fontSize: 14 }}>Financial Health Score</p>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: m.healthScore >= 70 ? "#2dd4bf" : m.healthScore >= 40 ? "#facc15" : "#f87171" }}>{m.healthScore}/100</p>
+                <div>
+                  <p style={{ fontWeight: 600, fontSize: 14 }}>Financial Health Score</p>
+                  {healthLabel && <p style={{ color: healthColor, fontSize: 12, marginTop: 2 }}>{healthLabel}</p>}
+                </div>
+                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 26, fontWeight: 800, color: healthColor }}>{m.healthScore}/100</p>
               </div>
               <div className="progress-track">
-                <div className="progress-fill" style={{ width: `${m.healthScore}%`, background: m.healthScore >= 70 ? "linear-gradient(90deg, #2dd4bf, #14b8a6)" : m.healthScore >= 40 ? "linear-gradient(90deg, #facc15, #f59e0b)" : "linear-gradient(90deg, #f87171, #ef4444)" }} />
+                <div className="progress-fill" style={{
+                  width: `${m.healthScore}%`,
+                  background: (m.healthScore ?? 0) >= 70
+                    ? "linear-gradient(90deg, #2dd4bf, #14b8a6)"
+                    : (m.healthScore ?? 0) >= 40
+                      ? "linear-gradient(90deg, #facc15, #f59e0b)"
+                      : "linear-gradient(90deg, #f87171, #ef4444)",
+                }} />
               </div>
+              <p style={{ color: "#64748b", fontSize: 11, marginTop: 8 }}>
+                Score factors: cash flow ratio, balance cushion, revenue trend
+              </p>
             </div>
           )}
+
+          {/* Month-by-Month Breakdown */}
+          {banking?.activityByMonth && banking.activityByMonth.length > 0 && (
+            <div className="card" style={{ padding: 0 }}>
+              <button
+                onClick={() => setShowMonthly(p => !p)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "16px 20px", color: "#e8eaf0" }}
+              >
+                <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600 }}>Monthly Breakdown</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ transform: showMonthly ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+              {showMonthly && (
+                <div style={{ padding: "0 20px 20px" }}>
+                  {/* Column headers */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 4, paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: 4 }}>
+                    <span style={{ color: "#64748b", fontSize: 11, fontWeight: 600 }}>MONTH</span>
+                    <span style={{ color: "#64748b", fontSize: 11, fontWeight: 600, textAlign: "right" }}>REVENUE</span>
+                    <span style={{ color: "#64748b", fontSize: 11, fontWeight: 600, textAlign: "right" }}>EXPENSES</span>
+                    <span style={{ color: "#64748b", fontSize: 11, fontWeight: 600, textAlign: "right" }}>NET</span>
+                  </div>
+                  {banking.activityByMonth.slice(0, 12).map((row, i) => {
+                    const net = row.net || (row.totalCredit - row.totalDebit);
+                    return (
+                      <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 4, padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 12 }}>
+                        <span style={{ color: "#94a3b8" }}>{row.month}</span>
+                        <span style={{ color: "#2dd4bf", textAlign: "right", fontWeight: 500 }}>
+                          {row.totalCredit > 0 ? fmt$(row.totalCredit) : "—"}
+                        </span>
+                        <span style={{ color: "#f87171", textAlign: "right" }}>
+                          {row.totalDebit > 0 ? fmt$(row.totalDebit) : "—"}
+                        </span>
+                        <span style={{ color: net >= 0 ? "#2dd4bf" : "#f87171", textAlign: "right", fontWeight: 600 }}>
+                          {net !== 0 ? (net >= 0 ? "+" : "−") + fmt$(net) : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Auto-detect MCA Positions */}
+          <div className="card" style={{ background: "rgba(45,212,191,0.04)", border: "1px solid rgba(45,212,191,0.12)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Auto-Detect MCA Positions</p>
+                <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6 }}>
+                  Scan your bank transactions for recurring payments that look like MCA advances and add them automatically to your Positions tab.
+                </p>
+              </div>
+            </div>
+            <button className="btn-primary" onClick={handleDetect} disabled={detecting} style={{ width: "100%" }}>
+              {detecting ? "Scanning transactions..." : "Scan for MCA Positions"}
+            </button>
+            {detectMsg && (
+              <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, fontSize: 13, background: detectMsg.ok ? "rgba(45,212,191,0.08)" : "rgba(248,113,113,0.08)", color: detectMsg.ok ? "#2dd4bf" : "#f87171", border: `1px solid ${detectMsg.ok ? "rgba(45,212,191,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+                {detectMsg.text}
+              </div>
+            )}
+          </div>
         </>
       )}
 
-      {/* PDF Upload */}
+      {/* ── PDF Upload ── */}
       <div className="card">
         <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Upload Bank Statements</h3>
         <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
@@ -1250,31 +2091,64 @@ function LeadFinancialsTab() {
 // ── STATEMENT UPLOADER ───────────────────────────────────────────────────
 function StatementUploader() {
   const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<string | null>(null);
+  const [uploadResult, setUploadResult] = useState<{ text: string; ok: boolean } | null>(null);
+  const [dragover, setDragover] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.pdf')) { setUploadResult("Only PDF files are accepted."); return; }
+  const processFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf')) { setUploadResult({ text: "Only PDF files are accepted.", ok: false }); return; }
     setUploading(true); setUploadResult(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/lead/upload-statement", { method: "POST", credentials: "include", body: formData });
-      if (res.ok) { const data = await res.json(); setUploadResult(`Uploaded: ${data.fileName}`); }
-      else { const data = await res.json().catch(() => ({})); setUploadResult(data.error || "Upload failed."); }
-    } catch (_) { setUploadResult("Upload failed. Please try again."); }
+      if (res.ok) { const data = await res.json(); setUploadResult({ text: `Statement uploaded: ${data.fileName}`, ok: true }); }
+      else { const data = await res.json().catch(() => ({})); setUploadResult({ text: data.error || "Upload failed.", ok: false }); }
+    } catch (_) { setUploadResult({ text: "Upload failed. Please try again.", ok: false }); }
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragover(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
   };
 
   return (
     <div>
-      <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleUpload} style={{ display: "none" }} />
-      <button className="btn-ghost" onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ width: "100%" }}>
-        {uploading ? "Uploading..." : "Choose PDF File"}
-      </button>
-      {uploadResult && <p style={{ fontSize: 12, color: uploadResult.startsWith("Uploaded") ? "#2dd4bf" : "#f87171", marginTop: 8 }}>{uploadResult}</p>}
+      <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileChange} style={{ display: "none" }} />
+      <div
+        className={`drop-zone${dragover ? " dragover" : ""}`}
+        onClick={() => !uploading && fileInputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDragover(true); }}
+        onDragLeave={() => setDragover(false)}
+        onDrop={handleDrop}
+      >
+        {uploading ? (
+          <>
+            <div className="spinner" style={{ margin: "0 auto 10px" }} />
+            <div className="drop-zone-text">Uploading...</div>
+          </>
+        ) : (
+          <>
+            <div className="drop-zone-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            </div>
+            <div className="drop-zone-text">Drop a PDF here or click to browse</div>
+            <div className="drop-zone-sub">Bank statements from the last 3 months · PDF only</div>
+          </>
+        )}
+      </div>
+      {uploadResult && (
+        <div style={{ marginTop: 10, padding: "8px 14px", borderRadius: 8, fontSize: 12, background: uploadResult.ok ? "rgba(45,212,191,0.08)" : "rgba(248,113,113,0.08)", color: uploadResult.ok ? "#2dd4bf" : "#f87171", border: `1px solid ${uploadResult.ok ? "rgba(45,212,191,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+          {uploadResult.text}
+        </div>
+      )}
     </div>
   );
 }
@@ -1402,6 +2276,111 @@ function ResourcesTab() {
   );
 }
 
+// ── SERVICES TAB ─────────────────────────────────────────────────────────
+const PORTAL_SERVICES_LIST = [
+  {
+    id: "payments",
+    title: "Payment Processing",
+    desc: "Lower your processing fees and get faster deposits. We partner with processors built for small businesses.",
+    bullets: ["Lower rates than standard processors", "Next-day deposits", "No long-term contracts", "Works with your existing POS"],
+  },
+  {
+    id: "website",
+    title: "Website Build",
+    desc: "A professional site that actually brings in customers. Mobile-ready, SEO-optimized, and built to convert.",
+    bullets: ["Custom design, not a template", "Mobile-first & fast loading", "SEO + Google Business setup", "Lead capture forms built in"],
+  },
+  {
+    id: "crm",
+    title: "CRM & Automation",
+    desc: "Stop losing leads. Get a CRM that tracks your pipeline, automates follow-ups, and keeps your team organized.",
+    bullets: ["Pipeline tracking & automation", "Text + email follow-up sequences", "Lead scoring & tagging", "Integrates with your existing tools"],
+  },
+];
+
+function LeadServicesTab({ email, name, businessName }: { email: string; name: string; businessName: string }) {
+  const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState<string | null>(null);
+
+  const handleInterest = async (serviceId: string) => {
+    if (submitting || submitted.has(serviceId)) return;
+    setSubmitting(serviceId);
+    try {
+      await fetch("/api/services/interest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          firstName: name.split(" ")[0] || undefined,
+          lastName: name.split(" ").slice(1).join(" ") || undefined,
+          businessName: businessName || undefined,
+          service: serviceId,
+          source: "lead_portal",
+        }),
+      });
+      setSubmitted(prev => new Set([...prev, serviceId]));
+    } catch (_) {}
+    setSubmitting(null);
+  };
+
+  return (
+    <div>
+      <div className="card" style={{ marginBottom: 20 }}>
+        <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Business Services</p>
+        <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
+          We've expanded beyond funding. Let us know which services would help your business and we'll reach out with details — no commitment required.
+        </p>
+      </div>
+      <div style={{ display: "grid", gap: 14 }}>
+        {PORTAL_SERVICES_LIST.map(svc => (
+          <div key={svc.id} className="card" style={{ border: submitted.has(svc.id) ? "1.5px solid rgba(45,212,191,0.35)" : undefined }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 6, color: "#e8eaf0" }}>{svc.title}</p>
+                <p style={{ color: "#7b8499", fontSize: 13, lineHeight: 1.6, marginBottom: 10 }}>{svc.desc}</p>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
+                  {svc.bullets.map(b => (
+                    <li key={b} style={{ fontSize: 12, color: "#6b7280", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#14B8A6", display: "inline-block", flexShrink: 0 }} />
+                      {b}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div style={{ flexShrink: 0, paddingTop: 2 }}>
+                {submitted.has(svc.id) ? (
+                  <span style={{ fontSize: 13, color: "#2dd4bf", fontWeight: 600 }}>Noted!</span>
+                ) : (
+                  <button
+                    onClick={() => handleInterest(svc.id)}
+                    disabled={submitting === svc.id}
+                    style={{
+                      padding: "8px 18px",
+                      background: "rgba(20,184,166,0.12)",
+                      border: "1.5px solid rgba(20,184,166,0.4)",
+                      borderRadius: 8,
+                      color: "#2dd4bf",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {submitting === svc.id ? "..." : "I'm Interested"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "#4b5568", lineHeight: 1.6 }}>
+        No commitment. We'll reach out with details and next steps. Your info is never shared or sold.
+      </div>
+    </div>
+  );
+}
+
 // ── ONBOARDING GUIDE ─────────────────────────────────────────────────────
 function OnboardingGuide({ step, onAdvance }: { step: string; onAdvance: (tab: string) => void }) {
   const steps = [
@@ -1446,6 +2425,7 @@ function OnboardingGuide({ step, onAdvance }: { step: string; onAdvance: (tab: s
       ))}
       <button onClick={() => {
         fetch("/api/lead/onboarding/advance", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ step: "done" }) });
+        onAdvance("__skip__");
       }} style={{ background: "none", border: "none", color: "#4b5568", fontSize: 11, cursor: "pointer", marginTop: 8 }}>
         Skip setup
       </button>
@@ -1492,10 +2472,13 @@ export default function LeadPortal() {
   const [leadName, setLeadName] = useState("");
   const [leadEmail, setLeadEmail] = useState("");
   const [businessName, setBusinessName] = useState("");
-  const [hasPassword, setHasPassword] = useState(true);
   const [referralCode, setReferralCode] = useState("");
-  const [onboardingStep, setOnboardingStep] = useState("done");
-  const [activeTab, setActiveTab] = useState<"overview" | "positions" | "financials" | "qualify" | "resources">("overview");
+  const [onboardingStep, setOnboardingStep] = useState("add_position");
+  const [activeTab, setActiveTab] = useState<"overview" | "positions" | "financials" | "qualify" | "resources" | "services">(() => {
+    const saved = sessionStorage.getItem("lp_tab");
+    if (saved && ["overview","positions","financials","qualify","resources","services"].includes(saved)) return saved as any;
+    return "overview";
+  });
   const [positions, setPositions] = useState<LeadPosition[]>([]);
   const [banking, setBanking] = useState<BankingInsights | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<LeadPosition | null>(null);
@@ -1517,7 +2500,6 @@ export default function LeadPortal() {
           setLeadName(data.name || "");
           setLeadEmail(data.email || "");
           setBusinessName(data.businessName || "");
-          setHasPassword(data.hasPassword !== false);
           setReferralCode(data.referralCode || "");
           setOnboardingStep(data.onboardingStep || "done");
         }
@@ -1541,26 +2523,41 @@ export default function LeadPortal() {
     setLoggedIn(false);
   };
 
-  if (!authChecked) return null;
+  if (!authChecked) return (
+    <div className="lead-portal" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#080d18" }}>
+      <div className="spinner" />
+    </div>
+  );
   if (!loggedIn) return <LeadAuth onAuth={checkAuth} />;
+
+  const firstName = leadName ? leadName.split(" ")[0] : "";
+  const initials = leadName
+    ? leadName.split(" ").filter(Boolean).map(w => w[0]).slice(0, 2).join("").toUpperCase()
+    : leadEmail ? leadEmail[0].toUpperCase() : "?";
+
+  // Shared header component
+  const PortalHeader = () => (
+    <header className="lp-header">
+      <div className="lp-header-logo">
+        <div className="lp-header-mark">TCG</div>
+        <div className="lp-header-brand">Today Capital Group</div>
+      </div>
+      <div className="lp-header-right">
+        <div className="lp-avatar">{initials}</div>
+        {firstName && <span className="lp-header-name">{firstName}</span>}
+        <button className="lp-header-out" onClick={handleLogout}>Sign out</button>
+      </div>
+    </header>
+  );
 
   // Position detail view
   if (selectedPosition) {
     return (
       <div className="lead-portal">
         <style>{LEAD_CSS}</style>
-        <header className="lp-header">
-          <div className="lp-header-logo">
-            <div className="lp-header-mark">TCG</div>
-            <div className="lp-header-brand">Today Capital Group</div>
-          </div>
-          <div className="lp-header-right">
-            <span className="lp-header-user">{leadEmail}</span>
-            <button className="lp-header-out" onClick={handleLogout}>Sign out</button>
-          </div>
-        </header>
+        <PortalHeader />
         <div className="lp-wrap">
-          <PositionDetail pos={selectedPosition} onBack={() => setSelectedPosition(null)} />
+          <PositionDetail pos={selectedPosition} onBack={() => setSelectedPosition(null)} onDeleted={() => { setSelectedPosition(null); }} />
         </div>
       </div>
     );
@@ -1570,36 +2567,32 @@ export default function LeadPortal() {
     ["overview", "Overview"],
     ["positions", "Positions"],
     ["financials", "Financials"],
-    ["qualify", "Qualify"],
+    ["qualify", "Get Funded"],
     ["resources", "Resources"],
+    ["services", "Services"],
   ] as const;
 
   return (
     <div className="lead-portal">
       <style>{LEAD_CSS}</style>
 
-      <header className="lp-header">
-        <div className="lp-header-logo">
-          <div className="lp-header-mark">TCG</div>
-          <div className="lp-header-brand">Today Capital Group</div>
-        </div>
-        <div className="lp-header-right">
-          <span className="lp-header-user">{leadEmail}</span>
-          <button className="lp-header-out" onClick={handleLogout}>Sign out</button>
-        </div>
-      </header>
+      <PortalHeader />
 
       <div className="lp-wrap">
-        <div className="lp-title">My Portal</div>
-        <div className="lp-subtitle">
-          {leadName ? `Welcome, ${leadName.split(" ")[0]}.` : "Welcome."} {businessName || "Track your positions and finances."}
+        <div className="lp-title">
+          {firstName ? `Welcome back, ${firstName}` : "My Dashboard"}
         </div>
-
-        {!hasPassword && <SetPasswordBanner />}
+        <div className="lp-subtitle">
+          {businessName
+            ? businessName
+            : "Track your MCA positions, cash flow, and renewal eligibility."}
+        </div>
 
         {onboardingStep !== "done" && (
           <OnboardingGuide step={onboardingStep} onAdvance={(tab) => {
+            if (tab === "__skip__") { setOnboardingStep("done"); return; }
             setActiveTab(tab as any);
+            sessionStorage.setItem("lp_tab", tab);
             const nextStep = tab === "positions" ? "connect_bank" : tab === "financials" ? "view_qualify" : "done";
             fetch("/api/lead/onboarding/advance", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ step: nextStep }) });
             setOnboardingStep(nextStep);
@@ -1609,7 +2602,7 @@ export default function LeadPortal() {
         {/* Navigation */}
         <div className="lp-nav">
           {tabs.map(([key, label]) => (
-            <button key={key} className={`lp-nav-btn ${activeTab === key ? "active" : ""}`} onClick={() => setActiveTab(key)}>
+            <button key={key} className={`lp-nav-btn ${activeTab === key ? "active" : ""}`} onClick={() => { setActiveTab(key); sessionStorage.setItem("lp_tab", key); }}>
               {label}
             </button>
           ))}
@@ -1620,23 +2613,26 @@ export default function LeadPortal() {
             positions={positions}
             banking={banking}
             onViewPosition={setSelectedPosition}
-            onSwitchTab={(tab) => setActiveTab(tab as any)}
+            onSwitchTab={(tab) => { setActiveTab(tab as any); sessionStorage.setItem("lp_tab", tab); }}
           />
         )}
         {activeTab === "positions" && <PositionsTab onViewPosition={setSelectedPosition} />}
         {activeTab === "financials" && <LeadFinancialsTab />}
         {activeTab === "qualify" && <QualifyTab />}
         {activeTab === "resources" && <ResourcesTab />}
+        {activeTab === "services" && <LeadServicesTab email={leadEmail} name={leadName} businessName={businessName} />}
 
-        {/* Referral + Contact */}
-        <div style={{ marginTop: 24 }}>
-          <ReferralSection referralCode={referralCode} />
-          <div className="contact-strip" style={{ marginTop: 14 }}>
-            <div className="contact-strip-text">
-              Questions? <a href="mailto:trevor@todaycapitalgroup.com">Reach out to our team</a> and we'll get back to you within 24 hours.
+        {/* Referral + Contact — only on overview to avoid clutter on other tabs */}
+        {activeTab === "overview" && (
+          <div style={{ marginTop: 24 }}>
+            {referralCode && <ReferralSection referralCode={referralCode} />}
+            <div className="contact-strip" style={{ marginTop: referralCode ? 14 : 0 }}>
+              <div className="contact-strip-text">
+                Questions about your funding? <a href="mailto:trevor@todaycapitalgroup.com">Reach out to our team</a> — we typically respond within a few hours.
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

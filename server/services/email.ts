@@ -6,12 +6,38 @@ import { gmailService } from "./gmail";
 
 const NOTIFY_TO = "marketing@todaycapitalgroup.com";
 
-export async function sendMarketingNotification(subject: string, htmlBody: string): Promise<void> {
+export async function sendMarketingNotification(subject: string, htmlBody: string, to?: string): Promise<void> {
   try {
-    await gmailService.sendEmail(NOTIFY_TO, subject, htmlBody);
+    await gmailService.sendEmail(to ?? NOTIFY_TO, subject, htmlBody);
   } catch (err) {
     console.error("[EMAIL] sendMarketingNotification failed:", err);
   }
+}
+
+export function buildAdminAlertEmail(data: {
+  title: string;
+  event: string;
+  merchantEmail?: string | null;
+  merchantName?: string | null;
+  businessName?: string | null;
+  details?: Record<string, string | number | null | undefined>;
+}): { subject: string; html: string } {
+  const detailsRows = Object.entries(data.details || {})
+    .map(([k, v]) => row(k, v == null ? "" : String(v)))
+    .join("");
+  return {
+    subject: `[Merchant Alert] ${data.event}${data.businessName ? ` - ${data.businessName}` : data.merchantEmail ? ` - ${data.merchantEmail}` : ""}`,
+    html: emailWrapper(
+      data.title,
+      "Merchant Alert",
+      "#dc2626",
+      row("Event", data.event) +
+      row("Merchant Email", data.merchantEmail) +
+      row("Merchant Name", data.merchantName) +
+      row("Business", data.businessName) +
+      detailsRows,
+    ),
+  };
 }
 
 // ── Shared template ────────────────────────────────────────────────────────
@@ -89,7 +115,7 @@ export function buildAdsInquiryEmail(data: {
   utmCampaign?: string | null;
 }): { subject: string; html: string } {
   return {
-    subject: `New /ads Inquiry — ${data.email}`,
+    subject: `New /ads Inquiry - ${data.email}`,
     html: emailWrapper(
       "New Ads Consultation Request",
       "/ads",
@@ -116,7 +142,7 @@ export function buildServicesInterestEmail(data: {
 }): { subject: string; html: string } {
   const name = [data.firstName, data.lastName].filter(Boolean).join(" ") || null;
   return {
-    subject: `New Services Inquiry — ${data.service || "General"} — ${data.email}`,
+    subject: `New Services Inquiry - ${data.service || "General"} - ${data.email}`,
     html: emailWrapper(
       "New Service Interest",
       "/services",
@@ -141,7 +167,7 @@ export function buildLeadPortalSignupEmail(data: {
 }): { subject: string; html: string } {
   const name = [data.firstName, data.lastName].filter(Boolean).join(" ") || null;
   return {
-    subject: `New /track Signup — ${data.businessName || data.email}`,
+    subject: `New /track Signup - ${data.businessName || data.email}`,
     html: emailWrapper(
       "New Lead Portal Account Created",
       "/track",
