@@ -225,22 +225,22 @@ function fmtDate(d: Date | string) {
 
 // ── STYLES ───────────────────────────────────────────────────────────────
 const CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;700&display=swap');
 
   .merchant-portal * { box-sizing: border-box; margin: 0; padding: 0; }
 
   .merchant-portal {
-    font-family: 'DM Sans', sans-serif;
-    background: #080d18;
-    color: #e8eaf0;
+    font-family: 'Inter', sans-serif;
+    background: #ffffff;
+    color: #1e293b;
     min-height: 100vh;
+    font-size: 1.05rem;
+    line-height: 1.7;
   }
 
   .portal-root {
     min-height: 100vh;
-    background: radial-gradient(ellipse at 20% 0%, rgba(20, 184, 166, 0.12) 0%, transparent 60%),
-                radial-gradient(ellipse at 80% 100%, rgba(15, 23, 41, 0.9) 0%, transparent 60%),
-                #080d18;
+    background: #ffffff;
   }
 
   .login-wrap {
@@ -249,17 +249,17 @@ const CSS = `
     align-items: center;
     justify-content: center;
     padding: 24px;
+    background: #f8fafc;
   }
 
   .login-card {
     width: 100%;
     max-width: 420px;
-    background: rgba(15, 23, 41, 0.8);
-    border: 1px solid rgba(45, 212, 191, 0.2);
-    border-radius: 20px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
     padding: 48px 40px;
-    backdrop-filter: blur(20px);
-    box-shadow: 0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(45,212,191,0.05) inset;
+    box-shadow: 0 12px 40px rgba(13,148,136,0.1);
   }
 
   .login-logo {
@@ -272,46 +272,47 @@ const CSS = `
   .login-logo-mark {
     width: 38px;
     height: 38px;
-    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
+    background: #0d9488;
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
     font-size: 16px;
-    color: #080d18;
+    color: #ffffff;
     flex-shrink: 0;
   }
 
   .login-logo-text {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-weight: 700;
     font-size: 13px;
     line-height: 1.3;
-    color: #e8eaf0;
-    letter-spacing: 0.02em;
+    color: #1e293b;
+    letter-spacing: -0.01em;
   }
 
   .login-logo-sub {
     font-size: 10px;
-    color: #14B8A6;
-    font-weight: 400;
+    color: #0d9488;
+    font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
   .login-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 26px;
     font-weight: 700;
-    color: #fff;
+    color: #1e293b;
     margin-bottom: 8px;
+    letter-spacing: -0.02em;
   }
 
   .login-sub {
     font-size: 14px;
-    color: #7b8499;
+    color: #475569;
     margin-bottom: 36px;
   }
 
@@ -319,7 +320,7 @@ const CSS = `
     display: block;
     font-size: 12px;
     font-weight: 600;
-    color: #9ba3b8;
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 8px;
@@ -327,54 +328,54 @@ const CSS = `
 
   .field-input {
     width: 100%;
-    padding: 13px 16px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
+    padding: 14px 16px;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
     border-radius: 10px;
-    color: #e8eaf0;
+    color: #1e293b;
     font-size: 15px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
     margin-bottom: 20px;
   }
 
   .field-input:focus {
-    border-color: rgba(45, 212, 191, 0.5);
-    background: rgba(45,212,191,0.04);
+    border-color: #0d9488;
+    box-shadow: 0 0 0 3px rgba(13,148,136,0.15);
   }
 
   .login-btn {
     width: 100%;
     padding: 14px;
-    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    background: #0d9488;
     border: none;
-    border-radius: 10px;
-    color: #080d18;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    border-radius: 50px;
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
     font-size: 15px;
     cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s;
+    transition: all 0.3s ease;
     letter-spacing: 0.02em;
   }
 
-  .login-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .login-btn:hover { background: #14b8a6; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(13,148,136,0.25); }
   .login-btn:active { transform: translateY(0); }
 
   .login-error {
     padding: 12px 14px;
-    background: rgba(239,68,68,0.1);
-    border: 1px solid rgba(239,68,68,0.25);
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.2);
     border-radius: 8px;
-    color: #fca5a5;
+    color: #dc2626;
     font-size: 13px;
     margin-top: 12px;
   }
 
   .login-hint {
     font-size: 12px;
-    color: #4b5568;
+    color: #94a3b8;
     text-align: center;
     margin-top: 24px;
   }
@@ -383,10 +384,11 @@ const CSS = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 32px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    background: rgba(8, 13, 24, 0.7);
-    backdrop-filter: blur(12px);
+    padding: 0 32px;
+    height: 72px;
+    border-bottom: 1px solid #e2e8f0;
+    background: rgba(15,23,42,0.95);
+    backdrop-filter: blur(20px);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -401,22 +403,22 @@ const CSS = `
   .header-logo-mark {
     width: 32px;
     height: 32px;
-    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
+    background: #0d9488;
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
     font-size: 13px;
-    color: #080d18;
+    color: #ffffff;
   }
 
   .header-brand {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-weight: 700;
-    font-size: 13px;
-    color: #e8eaf0;
+    font-size: 14px;
+    color: #ffffff;
   }
 
   .header-right {
@@ -427,43 +429,44 @@ const CSS = `
 
   .header-user {
     font-size: 13px;
-    color: #7b8499;
+    color: rgba(255,255,255,0.7);
   }
 
   .logout-btn {
     padding: 7px 14px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 8px;
-    color: #9ba3b8;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 50px;
+    color: rgba(255,255,255,0.85);
     font-size: 12px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
   }
 
   .logout-btn:hover {
-    background: rgba(255,255,255,0.1);
-    color: #e8eaf0;
+    background: rgba(255,255,255,0.15);
+    color: #ffffff;
   }
 
   .page-wrap {
-    max-width: 960px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 40px 24px 80px;
   }
 
   .page-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 28px;
     font-weight: 700;
-    color: #fff;
+    color: #1e293b;
     margin-bottom: 6px;
+    letter-spacing: -0.02em;
   }
 
   .page-subtitle {
     font-size: 14px;
-    color: #7b8499;
+    color: #475569;
     margin-bottom: 40px;
   }
 
@@ -474,12 +477,12 @@ const CSS = `
   }
 
   .deal-card {
-    background: rgba(15, 23, 41, 0.7);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 16px;
-    padding: 28px;
+    padding: 32px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
   }
@@ -488,23 +491,23 @@ const CSS = `
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, #14B8A6, #2dd4bf);
+    height: 3px;
+    background: linear-gradient(90deg, #0d9488, #14b8a6);
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.3s ease;
   }
 
   .deal-card:hover {
-    border-color: rgba(45,212,191,0.3);
-    transform: translateY(-2px);
-    box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+    border-color: #99f6e4;
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(13,148,136,0.1);
   }
 
   .deal-card:hover::before { opacity: 1; }
 
   .deal-card.completed {
     opacity: 0.6;
-    border-color: rgba(255,255,255,0.05);
+    border-color: #e2e8f0;
   }
 
   .deal-card-header {
@@ -515,22 +518,22 @@ const CSS = `
   }
 
   .deal-lender {
-    font-family: 'Syne', sans-serif;
-    font-weight: 600;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 700;
     font-size: 18px;
     letter-spacing: -0.01em;
-    color: #e8eaf0;
+    color: #1e293b;
   }
 
   .deal-funded-date {
     font-size: 12px;
-    color: #7b8499;
+    color: #64748b;
     margin-top: 3px;
   }
 
   .deal-badge {
     padding: 5px 12px;
-    border-radius: 20px;
+    border-radius: 50px;
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -538,15 +541,15 @@ const CSS = `
   }
 
   .badge-active {
-    background: rgba(20,184,166,0.15);
-    color: #2dd4bf;
-    border: 1px solid rgba(45,212,191,0.25);
+    background: #f0fdfa;
+    color: #0d9488;
+    border: 1px solid rgba(13,148,136,0.2);
   }
 
   .badge-complete {
-    background: rgba(100,116,139,0.15);
+    background: #f8fafc;
     color: #94a3b8;
-    border: 1px solid rgba(100,116,139,0.2);
+    border: 1px solid #e2e8f0;
   }
 
   .deal-stats-row {
@@ -558,24 +561,25 @@ const CSS = `
 
   .deal-stat-label {
     font-size: 11px;
-    color: #7b8499;
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     margin-bottom: 4px;
+    font-weight: 600;
   }
 
   .deal-stat-val {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
     font-size: 16px;
-    color: #e8eaf0;
+    color: #1e293b;
   }
 
-  .deal-stat-val.teal { color: #2dd4bf; }
+  .deal-stat-val.teal { color: #0d9488; }
 
   .deal-stat-sub {
     font-size: 10px;
-    color: #4b5568;
+    color: #94a3b8;
     margin-top: 3px;
     letter-spacing: 0.02em;
   }
@@ -587,29 +591,29 @@ const CSS = `
     justify-content: space-between;
     margin-bottom: 8px;
     font-size: 12px;
-    color: #7b8499;
+    color: #64748b;
   }
 
   .progress-pct {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-weight: 700;
     font-size: 13px;
-    color: #2dd4bf;
+    color: #0d9488;
   }
 
   .progress-track {
     height: 8px;
-    background: rgba(255,255,255,0.07);
+    background: #e2e8f0;
     border-radius: 99px;
     overflow: hidden;
   }
 
   .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #14B8A6, #2dd4bf);
+    background: linear-gradient(90deg, #0d9488, #14b8a6);
     border-radius: 99px;
     transition: width 1s ease;
-    box-shadow: 0 0 12px rgba(45,212,191,0.4);
+    box-shadow: 0 0 12px rgba(13,148,136,0.3);
   }
 
   .deal-card-footer {
@@ -621,22 +625,23 @@ const CSS = `
 
   .remaining-label {
     font-size: 13px;
-    color: #9ba3b8;
+    color: #64748b;
   }
 
   .remaining-amount {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
     font-size: 15px;
-    color: #e8eaf0;
+    color: #1e293b;
   }
 
   .view-detail {
     font-size: 12px;
-    color: #14B8A6;
+    color: #0d9488;
     display: flex;
     align-items: center;
     gap: 4px;
+    font-weight: 500;
   }
 
   .section-label {
@@ -644,7 +649,7 @@ const CSS = `
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #4b5568;
+    color: #64748b;
     margin-bottom: 14px;
     margin-top: 36px;
     display: flex;
@@ -656,7 +661,7 @@ const CSS = `
     content: '';
     flex: 1;
     height: 1px;
-    background: rgba(255,255,255,0.06);
+    background: #e2e8f0;
   }
 
   .back-btn {
@@ -665,16 +670,16 @@ const CSS = `
     gap: 6px;
     background: none;
     border: none;
-    color: #9ba3b8;
+    color: #64748b;
     font-size: 13px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     cursor: pointer;
     padding: 0;
     margin-bottom: 28px;
-    transition: color 0.2s;
+    transition: color 0.3s ease;
   }
 
-  .back-btn:hover { color: #2dd4bf; }
+  .back-btn:hover { color: #0d9488; }
 
   .detail-header {
     display: flex;
@@ -686,16 +691,16 @@ const CSS = `
   }
 
   .detail-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 26px;
     font-weight: 700;
     letter-spacing: -0.02em;
-    color: #fff;
+    color: #1e293b;
   }
 
   .detail-sub {
     font-size: 14px;
-    color: #7b8499;
+    color: #475569;
     margin-top: 4px;
   }
 
@@ -711,44 +716,46 @@ const CSS = `
   }
 
   .stat-card {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
     padding: 18px 20px;
+    transition: all 0.3s ease;
   }
 
   .stat-card-label {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: #7b8499;
+    color: #64748b;
     margin-bottom: 6px;
     font-weight: 600;
   }
 
   .stat-card-val {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
     font-size: 20px;
-    color: #e8eaf0;
+    color: #1e293b;
   }
 
-  .stat-card-val.teal { color: #2dd4bf; }
+  .stat-card-val.teal { color: #0d9488; }
 
   .stat-card-sub {
     font-size: 11px;
-    color: #4b5568;
+    color: #94a3b8;
     margin-top: 3px;
   }
 
   .tracker-card {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(45,212,191,0.15);
-    border-radius: 20px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
     padding: 36px;
     margin-bottom: 20px;
     position: relative;
     overflow: hidden;
+    border-top: 3px solid #0d9488;
   }
 
   .tracker-card::after {
@@ -756,31 +763,28 @@ const CSS = `
     position: absolute;
     top: -60px; right: -60px;
     width: 200px; height: 200px;
-    background: radial-gradient(circle, rgba(20,184,166,0.08) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(13,148,136,0.05) 0%, transparent 70%);
     pointer-events: none;
   }
 
   .tracker-pct-display {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 64px;
     font-weight: 700;
     line-height: 1;
     margin-bottom: 6px;
-    background: linear-gradient(135deg, #2dd4bf, #14B8A6);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: #0d9488;
   }
 
   .tracker-pct-label {
     font-size: 14px;
-    color: #7b8499;
+    color: #475569;
     margin-bottom: 28px;
   }
 
   .tracker-big-bar {
     height: 16px;
-    background: rgba(255,255,255,0.06);
+    background: #e2e8f0;
     border-radius: 99px;
     overflow: hidden;
     margin-bottom: 20px;
@@ -788,10 +792,10 @@ const CSS = `
 
   .tracker-big-fill {
     height: 100%;
-    background: linear-gradient(90deg, #0d9488, #14B8A6, #2dd4bf);
+    background: linear-gradient(90deg, #0d9488, #14b8a6);
     border-radius: 99px;
     transition: width 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-    box-shadow: 0 0 24px rgba(45,212,191,0.5);
+    box-shadow: 0 0 16px rgba(13,148,136,0.3);
     position: relative;
   }
 
@@ -802,7 +806,7 @@ const CSS = `
     width: 4px;
     background: #fff;
     border-radius: 99px;
-    opacity: 0.6;
+    opacity: 0.8;
   }
 
   .tracker-amounts {
@@ -813,18 +817,18 @@ const CSS = `
 
   .tracker-paid {
     font-size: 13px;
-    color: #9ba3b8;
+    color: #475569;
   }
 
   .tracker-paid strong {
-    font-family: 'DM Sans', sans-serif;
-    color: #2dd4bf;
+    font-family: 'Inter', sans-serif;
+    color: #0d9488;
     font-weight: 600;
   }
 
   .tracker-total {
     font-size: 13px;
-    color: #7b8499;
+    color: #64748b;
     text-align: right;
   }
 
@@ -833,34 +837,34 @@ const CSS = `
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
     padding-top: 24px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid #e2e8f0;
   }
 
   .tracker-metric-label {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: #4b5568;
+    color: #64748b;
     margin-bottom: 6px;
     font-weight: 600;
   }
 
   .tracker-metric-val {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
     font-size: 18px;
-    color: #e8eaf0;
+    color: #1e293b;
   }
 
   .tracker-metric-sub {
     font-size: 11px;
-    color: #4b5568;
+    color: #94a3b8;
     margin-top: 2px;
   }
 
   .balance-callout {
-    background: rgba(8,13,24,0.8);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 16px;
     padding: 24px 28px;
     display: flex;
@@ -875,21 +879,21 @@ const CSS = `
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: #7b8499;
+    color: #64748b;
     font-weight: 600;
     margin-bottom: 4px;
   }
 
   .balance-amount {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 36px;
     font-weight: 700;
-    color: #fff;
+    color: #1e293b;
   }
 
   .balance-sub {
     font-size: 12px;
-    color: #4b5568;
+    color: #94a3b8;
     margin-top: 2px;
   }
 
@@ -901,28 +905,28 @@ const CSS = `
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: #7b8499;
+    color: #64748b;
     font-weight: 600;
     margin-bottom: 4px;
   }
 
   .payoff-date-val {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 22px;
     font-weight: 600;
-    color: #2dd4bf;
+    color: #0d9488;
   }
 
   .payoff-date-sub {
     font-size: 12px;
-    color: #4b5568;
+    color: #94a3b8;
     margin-top: 2px;
   }
 
   .contact-strip {
-    background: rgba(20,184,166,0.05);
-    border: 1px solid rgba(45,212,191,0.12);
-    border-radius: 14px;
+    background: #f0fdfa;
+    border: 1px solid rgba(13,148,136,0.15);
+    border-radius: 16px;
     padding: 20px 24px;
     display: flex;
     align-items: center;
@@ -933,32 +937,32 @@ const CSS = `
 
   .contact-strip-text {
     font-size: 13px;
-    color: #9ba3b8;
+    color: #475569;
   }
 
   .contact-strip-text strong {
-    color: #e8eaf0;
+    color: #1e293b;
   }
 
   .contact-cta {
     padding: 9px 18px;
-    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    background: #0d9488;
     border: none;
-    border-radius: 8px;
-    color: #080d18;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    border-radius: 50px;
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
     font-size: 12px;
     cursor: pointer;
     letter-spacing: 0.04em;
-    transition: opacity 0.2s;
+    transition: all 0.3s ease;
   }
 
-  .contact-cta:hover { opacity: 0.9; }
+  .contact-cta:hover { background: #14b8a6; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(13,148,136,0.25); }
 
   .completion-banner {
-    background: rgba(20,184,166,0.08);
-    border: 1px solid rgba(45,212,191,0.2);
+    background: #f0fdfa;
+    border: 1px solid rgba(13,148,136,0.2);
     border-radius: 16px;
     padding: 28px;
     text-align: center;
@@ -971,16 +975,17 @@ const CSS = `
   }
 
   .completion-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 22px;
     font-weight: 700;
-    color: #2dd4bf;
+    color: #0d9488;
     margin-bottom: 6px;
+    letter-spacing: -0.02em;
   }
 
   .completion-sub {
     font-size: 14px;
-    color: #7b8499;
+    color: #475569;
   }
 
   .loading-wrap {
@@ -988,7 +993,7 @@ const CSS = `
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #7b8499;
+    color: #64748b;
     font-size: 14px;
   }
 
@@ -1011,30 +1016,32 @@ const CSS = `
     display: flex;
     align-items: center;
     gap: 14px;
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.07);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 12px;
     padding: 14px 18px;
     text-decoration: none;
     color: inherit;
-    transition: border-color 0.2s, background 0.2s;
+    transition: all 0.3s ease;
   }
 
   .document-row:hover {
-    border-color: rgba(45,212,191,0.3);
-    background: rgba(15,23,41,0.9);
+    border-color: #99f6e4;
+    background: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(13,148,136,0.08);
   }
 
   .document-icon {
     width: 36px;
     height: 36px;
-    background: rgba(20,184,166,0.12);
+    background: #f0fdfa;
     border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    color: #2dd4bf;
+    color: #0d9488;
     font-size: 16px;
   }
 
@@ -1046,7 +1053,7 @@ const CSS = `
   .document-name {
     font-size: 14px;
     font-weight: 500;
-    color: #e8eaf0;
+    color: #1e293b;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1054,27 +1061,27 @@ const CSS = `
 
   .document-meta {
     font-size: 11px;
-    color: #4b5568;
+    color: #94a3b8;
     margin-top: 2px;
   }
 
   .document-open {
     font-size: 12px;
-    color: #14B8A6;
+    color: #0d9488;
     flex-shrink: 0;
     white-space: nowrap;
   }
 
   .no-documents {
     font-size: 14px;
-    color: #4b5568;
+    color: #94a3b8;
     padding: 16px 0;
   }
 
   /* ── RENEWAL ELIGIBILITY ── */
   .renewal-tracker {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(168,85,247,0.15);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 16px;
     padding: 24px 28px;
     margin-top: 20px;
@@ -1087,7 +1094,7 @@ const CSS = `
     position: absolute;
     top: -40px; right: -40px;
     width: 140px; height: 140px;
-    background: radial-gradient(circle, rgba(168,85,247,0.06) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(13,148,136,0.05) 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -1101,10 +1108,10 @@ const CSS = `
   }
 
   .renewal-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-weight: 700;
     font-size: 16px;
-    color: #e8eaf0;
+    color: #1e293b;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1112,7 +1119,7 @@ const CSS = `
 
   .renewal-badge {
     padding: 4px 10px;
-    border-radius: 20px;
+    border-radius: 50px;
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -1120,15 +1127,15 @@ const CSS = `
   }
 
   .renewal-badge.eligible {
-    background: rgba(52,211,153,0.15);
-    color: #34d399;
-    border: 1px solid rgba(52,211,153,0.25);
+    background: #f0fdfa;
+    color: #0d9488;
+    border: 1px solid rgba(13,148,136,0.25);
   }
 
   .renewal-badge.progress {
-    background: rgba(168,85,247,0.15);
-    color: #c084fc;
-    border: 1px solid rgba(168,85,247,0.25);
+    background: #f0fdfa;
+    color: #0d9488;
+    border: 1px solid rgba(13,148,136,0.2);
   }
 
   .renewal-bar-wrap {
@@ -1140,17 +1147,17 @@ const CSS = `
     justify-content: space-between;
     margin-bottom: 6px;
     font-size: 12px;
-    color: #7b8499;
+    color: #64748b;
   }
 
   .renewal-bar-pct {
     font-weight: 700;
-    color: #c084fc;
+    color: #0d9488;
   }
 
   .renewal-bar-track {
     height: 10px;
-    background: rgba(255,255,255,0.06);
+    background: #e2e8f0;
     border-radius: 99px;
     overflow: hidden;
     position: relative;
@@ -1158,10 +1165,10 @@ const CSS = `
 
   .renewal-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, #7c3aed, #a855f7, #c084fc);
+    background: linear-gradient(90deg, #0d9488, #14b8a6);
     border-radius: 99px;
     transition: width 1s ease;
-    box-shadow: 0 0 12px rgba(168,85,247,0.4);
+    box-shadow: 0 0 12px rgba(13,148,136,0.3);
   }
 
   .renewal-bar-milestone {
@@ -1169,13 +1176,13 @@ const CSS = `
     top: -2px;
     bottom: -2px;
     width: 3px;
-    background: rgba(255,255,255,0.3);
+    background: rgba(30,41,59,0.3);
     border-radius: 2px;
   }
 
   .renewal-detail {
     font-size: 13px;
-    color: #9ba3b8;
+    color: #475569;
     margin-top: 8px;
     line-height: 1.5;
   }
@@ -1185,21 +1192,21 @@ const CSS = `
     align-items: center;
     gap: 10px;
     padding: 16px 20px;
-    background: rgba(52,211,153,0.06);
-    border: 1px solid rgba(52,211,153,0.15);
+    background: #f0fdfa;
+    border: 1px solid rgba(13,148,136,0.15);
     border-radius: 12px;
     margin-top: 12px;
   }
 
   .renewal-eligible-msg-text {
     font-size: 14px;
-    color: #34d399;
+    color: #0d9488;
     font-weight: 500;
   }
 
   .renewal-eligible-msg-sub {
     font-size: 12px;
-    color: #7b8499;
+    color: #64748b;
     margin-top: 2px;
   }
 
@@ -1213,8 +1220,8 @@ const CSS = `
     align-items: flex-start;
     gap: 16px;
     padding: 24px 28px;
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(45,212,191,0.15);
+    background: #f0fdfa;
+    border: 1px solid rgba(13,148,136,0.15);
     border-radius: 16px;
     margin-bottom: 24px;
   }
@@ -1226,16 +1233,17 @@ const CSS = `
   }
 
   .resources-intro-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-weight: 700;
     font-size: 18px;
-    color: #e8eaf0;
+    color: #1e293b;
     margin-bottom: 4px;
+    letter-spacing: -0.02em;
   }
 
   .resources-intro-sub {
     font-size: 14px;
-    color: #7b8499;
+    color: #475569;
     line-height: 1.5;
   }
 
@@ -1244,10 +1252,10 @@ const CSS = `
   }
 
   .resources-group-title {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 14px;
-    color: #9ba3b8;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 12px;
@@ -1260,7 +1268,7 @@ const CSS = `
     content: '';
     flex: 1;
     height: 1px;
-    background: rgba(255,255,255,0.06);
+    background: #e2e8f0;
   }
 
   .resources-grid {
@@ -1271,20 +1279,20 @@ const CSS = `
 
   .resource-card {
     display: block;
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
     padding: 20px 24px;
     text-decoration: none;
     color: inherit;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
     cursor: pointer;
   }
 
   .resource-card:hover {
-    border-color: rgba(45,212,191,0.3);
-    transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    border-color: #99f6e4;
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(13,148,136,0.1);
   }
 
   .resource-card-header {
@@ -1296,10 +1304,10 @@ const CSS = `
   }
 
   .resource-card-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
     font-size: 15px;
-    color: #e8eaf0;
+    color: #1e293b;
     line-height: 1.3;
   }
 
@@ -1316,20 +1324,20 @@ const CSS = `
 
   .resource-card-desc {
     font-size: 13px;
-    color: #7b8499;
+    color: #475569;
     line-height: 1.5;
     margin-bottom: 10px;
   }
 
   .resource-card-link {
     font-size: 13px;
-    color: #14B8A6;
+    color: #0d9488;
     font-weight: 500;
-    transition: color 0.2s;
+    transition: color 0.3s ease;
   }
 
   .resource-card:hover .resource-card-link {
-    color: #2dd4bf;
+    color: #14b8a6;
   }
 
   @media (min-width: 640px) {
@@ -1344,8 +1352,8 @@ const CSS = `
   }
 
   .messaging-card {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(59,130,246,0.15);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 16px;
     overflow: hidden;
   }
@@ -1355,13 +1363,13 @@ const CSS = `
     align-items: center;
     justify-content: space-between;
     padding: 18px 24px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid #e2e8f0;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.3s ease;
   }
 
   .messaging-header:hover {
-    background: rgba(59,130,246,0.04);
+    background: #f0fdfa;
   }
 
   .messaging-header-left {
@@ -1371,10 +1379,10 @@ const CSS = `
   }
 
   .messaging-header-title {
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
     font-size: 15px;
-    color: #e8eaf0;
+    color: #1e293b;
   }
 
   .messaging-unread {
@@ -1384,7 +1392,7 @@ const CSS = `
     min-width: 20px;
     height: 20px;
     padding: 0 6px;
-    background: #3b82f6;
+    background: #0d9488;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 700;
@@ -1393,7 +1401,7 @@ const CSS = `
 
   .messaging-toggle {
     font-size: 12px;
-    color: #7b8499;
+    color: #64748b;
   }
 
   .messaging-body {
@@ -1405,7 +1413,7 @@ const CSS = `
   .messaging-empty {
     text-align: center;
     padding: 32px 16px;
-    color: #4b5568;
+    color: #94a3b8;
     font-size: 14px;
   }
 
@@ -1420,24 +1428,24 @@ const CSS = `
   }
 
   .msg-bubble.merchant {
-    background: rgba(20,184,166,0.12);
-    border: 1px solid rgba(45,212,191,0.15);
-    color: #e8eaf0;
+    background: #f0fdfa;
+    border: 1px solid rgba(13,148,136,0.15);
+    color: #1e293b;
     margin-left: auto;
     border-bottom-right-radius: 4px;
   }
 
   .msg-bubble.rep {
-    background: rgba(59,130,246,0.1);
-    border: 1px solid rgba(59,130,246,0.15);
-    color: #e8eaf0;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #1e293b;
     margin-right: auto;
     border-bottom-left-radius: 4px;
   }
 
   .msg-meta {
     font-size: 11px;
-    color: #4b5568;
+    color: #94a3b8;
     margin-bottom: 16px;
   }
 
@@ -1447,19 +1455,19 @@ const CSS = `
     display: flex;
     gap: 10px;
     padding: 16px 24px;
-    border-top: 1px solid rgba(255,255,255,0.06);
-    background: rgba(8,13,24,0.5);
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
   }
 
   .messaging-input {
     flex: 1;
     padding: 11px 16px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: #ffffff;
+    border: 1px solid #d1d5db;
     border-radius: 10px;
-    color: #e8eaf0;
+    color: #1e293b;
     font-size: 14px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     outline: none;
     resize: none;
     min-height: 42px;
@@ -1467,24 +1475,25 @@ const CSS = `
   }
 
   .messaging-input:focus {
-    border-color: rgba(59,130,246,0.4);
+    border-color: #0d9488;
+    box-shadow: 0 0 0 3px rgba(13,148,136,0.15);
   }
 
   .messaging-send {
     padding: 0 18px;
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    background: #0d9488;
     border: none;
-    border-radius: 10px;
+    border-radius: 50px;
     color: #fff;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
     font-size: 13px;
     cursor: pointer;
-    transition: opacity 0.2s;
+    transition: all 0.3s ease;
     white-space: nowrap;
   }
 
-  .messaging-send:hover { opacity: 0.9; }
+  .messaging-send:hover { background: #14b8a6; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(13,148,136,0.25); }
   .messaging-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* ── DOCUMENT VAULT ── */
@@ -1493,26 +1502,27 @@ const CSS = `
   }
 
   .vault-card {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 16px;
-    padding: 24px 28px;
+    padding: 32px;
   }
 
   .vault-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-weight: 700;
     font-size: 16px;
-    color: #e8eaf0;
+    color: #1e293b;
     margin-bottom: 4px;
     display: flex;
     align-items: center;
     gap: 8px;
+    letter-spacing: -0.02em;
   }
 
   .vault-sub {
     font-size: 13px;
-    color: #7b8499;
+    color: #475569;
     margin-bottom: 20px;
   }
 
@@ -1521,7 +1531,7 @@ const CSS = `
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #4b5568;
+    color: #64748b;
     margin-bottom: 10px;
     margin-top: 18px;
   }
@@ -1543,15 +1553,15 @@ const CSS = `
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: rgba(8,13,24,0.5);
-    border: 1px solid rgba(255,255,255,0.06);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 10px;
     text-decoration: none;
     color: inherit;
-    transition: border-color 0.2s;
+    transition: all 0.3s ease;
   }
 
-  .vault-item:hover { border-color: rgba(45,212,191,0.25); }
+  .vault-item:hover { border-color: #99f6e4; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(13,148,136,0.08); }
 
   .vault-icon {
     width: 34px;
@@ -1564,16 +1574,16 @@ const CSS = `
     font-size: 15px;
   }
 
-  .vault-icon.check { background: rgba(52,211,153,0.12); color: #34d399; }
-  .vault-icon.id { background: rgba(251,191,36,0.12); color: #fbbf24; }
-  .vault-icon.statement { background: rgba(20,184,166,0.12); color: #2dd4bf; }
+  .vault-icon.check { background: #f0fdfa; color: #0d9488; }
+  .vault-icon.id { background: rgba(251,191,36,0.12); color: #d97706; }
+  .vault-icon.statement { background: #f0fdfa; color: #0d9488; }
 
   .vault-item-info { flex: 1; min-width: 0; }
 
   .vault-item-name {
     font-size: 13px;
     font-weight: 500;
-    color: #e8eaf0;
+    color: #1e293b;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1581,13 +1591,13 @@ const CSS = `
 
   .vault-item-meta {
     font-size: 11px;
-    color: #4b5568;
+    color: #94a3b8;
     margin-top: 2px;
   }
 
   .vault-item-action {
     font-size: 11px;
-    color: #14B8A6;
+    color: #0d9488;
     flex-shrink: 0;
   }
 
@@ -1596,8 +1606,8 @@ const CSS = `
     display: flex;
     gap: 4px;
     margin-bottom: 28px;
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.06);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 12px;
     padding: 4px;
   }
@@ -1608,12 +1618,12 @@ const CSS = `
     background: none;
     border: none;
     border-radius: 8px;
-    color: #7b8499;
-    font-family: 'DM Sans', sans-serif;
+    color: #64748b;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1622,13 +1632,13 @@ const CSS = `
   }
 
   .portal-nav-btn:hover {
-    color: #e8eaf0;
-    background: rgba(255,255,255,0.04);
+    color: #1e293b;
+    background: #ffffff;
   }
 
   .portal-nav-btn.active {
-    background: rgba(45,212,191,0.1);
-    color: #2dd4bf;
+    background: #f0fdfa;
+    color: #0d9488;
     font-weight: 600;
   }
 
@@ -1639,7 +1649,7 @@ const CSS = `
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
-    background: #3b82f6;
+    background: #0d9488;
     border-radius: 9px;
     font-size: 10px;
     font-weight: 700;
@@ -1665,15 +1675,15 @@ const CSS = `
     align-items: center;
     justify-content: center;
     padding: 48px 20px;
-    color: #7b8499;
+    color: #64748b;
     font-size: 14px;
     gap: 12px;
   }
 
   .portal-spinner {
     width: 28px; height: 28px;
-    border: 3px solid rgba(45,212,191,0.2);
-    border-top-color: #2dd4bf;
+    border: 3px solid rgba(13,148,136,0.2);
+    border-top-color: #0d9488;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -1684,10 +1694,10 @@ const CSS = `
   .portal-error {
     text-align: center;
     padding: 32px 20px;
-    background: rgba(239,68,68,0.06);
+    background: rgba(239,68,68,0.05);
     border: 1px solid rgba(239,68,68,0.15);
     border-radius: 12px;
-    color: #fca5a5;
+    color: #dc2626;
     font-size: 14px;
   }
 
@@ -1695,28 +1705,28 @@ const CSS = `
 
   .portal-retry-btn {
     padding: 8px 20px;
-    background: rgba(239,68,68,0.15);
-    border: 1px solid rgba(239,68,68,0.3);
-    border-radius: 8px;
-    color: #fca5a5;
-    font-family: 'DM Sans', sans-serif;
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.2);
+    border-radius: 50px;
+    color: #dc2626;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
   }
 
-  .portal-retry-btn:hover { background: rgba(239,68,68,0.25); }
+  .portal-retry-btn:hover { background: rgba(239,68,68,0.15); }
 
   /* ── EMPTY STATE ── */
   .portal-empty {
     text-align: center;
     padding: 40px 20px;
-    color: #4b5568;
+    color: #475569;
     font-size: 14px;
     line-height: 1.6;
   }
 
-  .portal-empty strong { color: #94a3b8; display: block; margin-bottom: 6px; font-size: 15px; }
+  .portal-empty strong { color: #1e293b; display: block; margin-bottom: 6px; font-size: 15px; }
 
   /* ── STALE DATA WARNING ── */
   .stale-warning {
@@ -1737,9 +1747,9 @@ const CSS = `
     padding: 5px 14px;
     background: rgba(250,204,21,0.15);
     border: 1px solid rgba(250,204,21,0.3);
-    border-radius: 6px;
-    color: #facc15;
-    font-family: 'DM Sans', sans-serif;
+    border-radius: 50px;
+    color: #b45309;
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
@@ -1760,20 +1770,21 @@ const CSS = `
   }
 
   .popup-fallback a {
-    color: #2dd4bf;
+    color: #0d9488;
     font-weight: 600;
     text-decoration: underline;
   }
 
   /* ── OFFER BANNER ── */
   .offer-banner {
-    background: linear-gradient(135deg, rgba(20,184,166,0.12) 0%, rgba(168,85,247,0.08) 100%);
-    border: 1px solid rgba(45,212,191,0.25);
-    border-radius: 20px;
+    background: #f0fdfa;
+    border: 1px solid rgba(13,148,136,0.2);
+    border-radius: 16px;
     padding: 32px;
     margin-bottom: 24px;
     position: relative;
     overflow: hidden;
+    border-top: 3px solid #0d9488;
   }
 
   .offer-banner::before {
@@ -1781,7 +1792,7 @@ const CSS = `
     position: absolute;
     top: -80px; right: -80px;
     width: 240px; height: 240px;
-    background: radial-gradient(circle, rgba(20,184,166,0.1) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(13,148,136,0.06) 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -1790,40 +1801,38 @@ const CSS = `
     align-items: center;
     gap: 6px;
     padding: 5px 12px;
-    background: rgba(20,184,166,0.2);
-    border: 1px solid rgba(45,212,191,0.3);
-    border-radius: 20px;
+    background: #f0fdfa;
+    border: 1px solid rgba(13,148,136,0.25);
+    border-radius: 50px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #2dd4bf;
+    color: #0d9488;
     margin-bottom: 16px;
   }
 
   .offer-banner-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 22px;
     font-weight: 700;
-    color: #fff;
+    color: #1e293b;
     margin-bottom: 8px;
+    letter-spacing: -0.02em;
   }
 
   .offer-banner-amount {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 40px;
     font-weight: 700;
-    background: linear-gradient(135deg, #2dd4bf, #14B8A6);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: #0d9488;
     margin-bottom: 12px;
     line-height: 1.1;
   }
 
   .offer-banner-desc {
     font-size: 14px;
-    color: #9ba3b8;
+    color: #475569;
     margin-bottom: 20px;
     line-height: 1.5;
   }
@@ -1842,10 +1851,10 @@ const CSS = `
   }
 
   .offer-countdown-num {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 28px;
     font-weight: 700;
-    color: #fff;
+    color: #1e293b;
     line-height: 1;
   }
 
@@ -1853,13 +1862,13 @@ const CSS = `
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #7b8499;
+    color: #64748b;
     margin-top: 4px;
   }
 
   .offer-countdown-sep {
     font-size: 24px;
-    color: #4b5568;
+    color: #94a3b8;
     font-weight: 300;
     margin-top: -8px;
   }
@@ -1869,19 +1878,19 @@ const CSS = `
     align-items: center;
     gap: 8px;
     padding: 14px 28px;
-    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    background: #0d9488;
     border: none;
-    border-radius: 12px;
-    color: #080d18;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    border-radius: 50px;
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
     font-size: 15px;
     cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s;
+    transition: all 0.3s ease;
     letter-spacing: 0.02em;
   }
 
-  .offer-claim-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .offer-claim-btn:hover { background: #14b8a6; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(13,148,136,0.25); }
   .offer-claim-btn:active { transform: translateY(0); }
 
   .offer-expired {
@@ -1893,14 +1902,14 @@ const CSS = `
   .offer-additional {
     margin-top: 20px;
     padding-top: 20px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid #e2e8f0;
   }
 
   .offer-additional-title {
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #7b8499;
+    color: #64748b;
     font-weight: 600;
     margin-bottom: 12px;
   }
@@ -1920,53 +1929,54 @@ const CSS = `
     align-items: center;
     justify-content: space-between;
     padding: 14px 18px;
-    background: rgba(8,13,24,0.6);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 12px;
   }
 
   .offer-additional-lender {
     font-size: 14px;
     font-weight: 600;
-    color: #e8eaf0;
+    color: #1e293b;
   }
 
   .offer-additional-amount {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 16px;
     font-weight: 700;
-    color: #2dd4bf;
+    color: #0d9488;
   }
 
   .offer-additional-term {
     font-size: 11px;
-    color: #7b8499;
+    color: #64748b;
     margin-top: 2px;
   }
 
   /* ── ACTIVITY FEED ── */
   .activity-feed {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 16px;
     padding: 24px 28px;
     margin-bottom: 20px;
   }
 
   .activity-feed-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-weight: 700;
     font-size: 16px;
-    color: #e8eaf0;
+    color: #1e293b;
     display: flex;
     align-items: center;
     gap: 8px;
     margin-bottom: 4px;
+    letter-spacing: -0.02em;
   }
 
   .activity-feed-sub {
     font-size: 13px;
-    color: #7b8499;
+    color: #475569;
     margin-bottom: 20px;
   }
 
@@ -1974,7 +1984,7 @@ const CSS = `
     display: flex;
     gap: 14px;
     padding: 14px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid #e2e8f0;
     position: relative;
   }
 
@@ -1991,10 +2001,10 @@ const CSS = `
     font-size: 16px;
   }
 
-  .activity-icon.dollar { background: rgba(52,211,153,0.12); color: #34d399; }
-  .activity-icon.message { background: rgba(59,130,246,0.12); color: #60a5fa; }
-  .activity-icon.star { background: rgba(251,191,36,0.12); color: #fbbf24; }
-  .activity-icon.check { background: rgba(20,184,166,0.12); color: #2dd4bf; }
+  .activity-icon.dollar { background: #f0fdfa; color: #0d9488; }
+  .activity-icon.message { background: #f0fdfa; color: #0d9488; }
+  .activity-icon.star { background: rgba(251,191,36,0.12); color: #d97706; }
+  .activity-icon.check { background: #f0fdfa; color: #0d9488; }
 
   .activity-content { flex: 1; min-width: 0; }
 
@@ -2009,18 +2019,18 @@ const CSS = `
   .activity-title {
     font-size: 14px;
     font-weight: 500;
-    color: #e8eaf0;
+    color: #1e293b;
   }
 
   .activity-time {
     font-size: 11px;
-    color: #4b5568;
+    color: #94a3b8;
     flex-shrink: 0;
   }
 
   .activity-desc {
     font-size: 13px;
-    color: #7b8499;
+    color: #475569;
     margin-top: 3px;
     line-height: 1.4;
   }
@@ -2028,20 +2038,21 @@ const CSS = `
   .activity-empty {
     text-align: center;
     padding: 32px 16px;
-    color: #4b5568;
+    color: #94a3b8;
     font-size: 14px;
   }
 
   /* ── PAYOFF COUNTDOWN WIDGET ── */
   .payoff-countdown-widget {
-    background: linear-gradient(135deg, rgba(15,23,41,0.9) 0%, rgba(20,184,166,0.06) 100%);
-    border: 1px solid rgba(45,212,191,0.2);
-    border-radius: 20px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
     padding: 32px;
     margin-bottom: 20px;
     text-align: center;
     position: relative;
     overflow: hidden;
+    border-top: 3px solid #0d9488;
   }
 
   .payoff-countdown-widget::after {
@@ -2050,26 +2061,23 @@ const CSS = `
     bottom: -60px; left: 50%;
     transform: translateX(-50%);
     width: 300px; height: 150px;
-    background: radial-gradient(ellipse, rgba(20,184,166,0.08) 0%, transparent 70%);
+    background: radial-gradient(ellipse, rgba(13,148,136,0.04) 0%, transparent 70%);
     pointer-events: none;
   }
 
   .payoff-countdown-days {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 72px;
     font-weight: 700;
     line-height: 1;
-    background: linear-gradient(135deg, #2dd4bf, #14B8A6, #0d9488);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: #0d9488;
     margin-bottom: 4px;
   }
 
   .payoff-countdown-unit {
     font-size: 16px;
     font-weight: 600;
-    color: #7b8499;
+    color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin-bottom: 16px;
@@ -2077,29 +2085,30 @@ const CSS = `
 
   .payoff-countdown-date {
     font-size: 14px;
-    color: #9ba3b8;
+    color: #475569;
     margin-bottom: 4px;
   }
 
   .payoff-countdown-date strong {
-    color: #2dd4bf;
+    color: #0d9488;
     font-weight: 600;
   }
 
   .payoff-countdown-sub {
     font-size: 12px;
-    color: #4b5568;
+    color: #94a3b8;
   }
 
   /* ── APPLICATION STATUS BANNER ── */
   .app-status-banner {
-    background: linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(20,184,166,0.06) 100%);
-    border: 1px solid rgba(59,130,246,0.2);
-    border-radius: 20px;
+    background: #f0fdfa;
+    border: 1px solid rgba(13,148,136,0.15);
+    border-radius: 16px;
     padding: 32px;
     margin-bottom: 24px;
     position: relative;
     overflow: hidden;
+    border-top: 3px solid #0d9488;
   }
 
   .app-status-banner::before {
@@ -2107,24 +2116,25 @@ const CSS = `
     position: absolute;
     top: -80px; right: -80px;
     width: 240px; height: 240px;
-    background: radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(13,148,136,0.04) 0%, transparent 70%);
     pointer-events: none;
   }
 
   .app-status-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 20px;
     font-weight: 700;
-    color: #fff;
+    color: #1e293b;
     margin-bottom: 6px;
     display: flex;
     align-items: center;
     gap: 10px;
+    letter-spacing: -0.02em;
   }
 
   .app-status-desc {
     font-size: 14px;
-    color: #9ba3b8;
+    color: #475569;
     margin-bottom: 24px;
     line-height: 1.5;
   }
@@ -2141,21 +2151,21 @@ const CSS = `
     align-items: center;
     gap: 8px;
     padding: 10px 16px;
-    background: rgba(8,13,24,0.6);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 12px;
     flex: 1;
     min-width: 140px;
   }
 
   .app-status-step.done {
-    border-color: rgba(52,211,153,0.3);
-    background: rgba(52,211,153,0.06);
+    border-color: rgba(13,148,136,0.3);
+    background: #f0fdfa;
   }
 
   .app-status-step.current {
-    border-color: rgba(59,130,246,0.3);
-    background: rgba(59,130,246,0.06);
+    border-color: rgba(13,148,136,0.4);
+    background: #f0fdfa;
   }
 
   .app-status-step-icon {
@@ -2170,18 +2180,18 @@ const CSS = `
   }
 
   .app-status-step-icon.done {
-    background: rgba(52,211,153,0.2);
-    color: #34d399;
+    background: #f0fdfa;
+    color: #0d9488;
   }
 
   .app-status-step-icon.current {
-    background: rgba(59,130,246,0.2);
-    color: #60a5fa;
+    background: #f0fdfa;
+    color: #0d9488;
   }
 
   .app-status-step-icon.pending {
-    background: rgba(255,255,255,0.06);
-    color: #4b5568;
+    background: #f8fafc;
+    color: #94a3b8;
   }
 
   .app-status-step-text {
@@ -2189,35 +2199,35 @@ const CSS = `
     font-weight: 500;
   }
 
-  .app-status-step-text.done { color: #34d399; }
-  .app-status-step-text.current { color: #60a5fa; }
-  .app-status-step-text.pending { color: #4b5568; }
+  .app-status-step-text.done { color: #0d9488; }
+  .app-status-step-text.current { color: #0d9488; }
+  .app-status-step-text.pending { color: #94a3b8; }
 
   .app-status-cta {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     padding: 14px 28px;
-    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    background: #0d9488;
     border: none;
-    border-radius: 12px;
-    color: #fff;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
+    border-radius: 50px;
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
     font-size: 15px;
     cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s;
+    transition: all 0.3s ease;
     letter-spacing: 0.02em;
     text-decoration: none;
   }
 
-  .app-status-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+  .app-status-cta:hover { background: #14b8a6; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(13,148,136,0.25); }
   .app-status-cta:active { transform: translateY(0); }
 
   .app-status-cta.secondary {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: #e8eaf0;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    color: #1e293b;
     margin-left: 12px;
   }
 
@@ -2230,11 +2240,10 @@ const CSS = `
   }
 
   .insight-card {
-    background: rgba(15, 23, 41, 0.7);
-    border: 1px solid rgba(45, 212, 191, 0.15);
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
     border-radius: 16px;
     padding: 20px;
-    backdrop-filter: blur(12px);
   }
 
   .health-indicator {
@@ -2244,86 +2253,86 @@ const CSS = `
     margin: 0 auto;
     display: block;
   }
-  .health-strong { background: linear-gradient(135deg, #14B8A6, #2dd4bf); box-shadow: 0 0 16px rgba(45, 212, 191, 0.4); }
-  .health-moderate { background: linear-gradient(135deg, #f59e0b, #fbbf24); box-shadow: 0 0 16px rgba(245, 158, 11, 0.4); }
-  .health-needs-attention { background: linear-gradient(135deg, #ef4444, #f87171); box-shadow: 0 0 16px rgba(239, 68, 68, 0.4); }
+  .health-strong { background: #0d9488; box-shadow: 0 0 16px rgba(13, 148, 136, 0.3); }
+  .health-moderate { background: #f59e0b; box-shadow: 0 0 16px rgba(245, 158, 11, 0.3); }
+  .health-needs-attention { background: #ef4444; box-shadow: 0 0 16px rgba(239, 68, 68, 0.3); }
 
   .plaid-connection-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 10px 0;
-    border-bottom: 1px solid rgba(45, 212, 191, 0.08);
+    border-bottom: 1px solid #e2e8f0;
   }
   .plaid-connection-row:last-child { border-bottom: none; }
 
   .connect-bank-cta {
-    background: linear-gradient(135deg, #14B8A6, #0d9488);
-    color: white;
+    background: #0d9488;
+    color: #ffffff;
     border: none;
     padding: 10px 20px;
-    border-radius: 10px;
-    font-family: 'DM Sans', sans-serif;
+    border-radius: 50px;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
     font-size: 14px;
     cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s;
+    transition: all 0.3s ease;
   }
-  .connect-bank-cta:hover { opacity: 0.9; transform: translateY(-1px); }
+  .connect-bank-cta:hover { background: #14b8a6; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(13,148,136,0.25); }
   .connect-bank-cta:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
   .observation-badge {
     display: inline-block;
     padding: 5px 12px;
-    border-radius: 20px;
+    border-radius: 50px;
     font-size: 12px;
     font-weight: 500;
     line-height: 1.4;
   }
   .observation-positive {
-    background: rgba(45, 212, 191, 0.12);
-    border: 1px solid rgba(45, 212, 191, 0.25);
-    color: #2dd4bf;
+    background: #f0fdfa;
+    border: 1px solid rgba(13, 148, 136, 0.2);
+    color: #0d9488;
   }
   .observation-warning {
-    background: rgba(245, 158, 11, 0.12);
-    border: 1px solid rgba(245, 158, 11, 0.25);
-    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    color: #d97706;
   }
 
   .renewal-nudge {
-    background: rgba(45, 212, 191, 0.08);
-    border: 1px solid rgba(45, 212, 191, 0.2);
+    background: #f0fdfa;
+    border: 1px solid rgba(13, 148, 136, 0.15);
     border-radius: 12px;
     padding: 16px 20px;
     font-size: 14px;
-    color: #e8eaf0;
+    color: #1e293b;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.3s ease;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
   }
-  .renewal-nudge:hover { background: rgba(45, 212, 191, 0.12); }
+  .renewal-nudge:hover { background: rgba(13, 148, 136, 0.08); }
 
   .analyze-btn {
-    background: rgba(45, 212, 191, 0.12);
-    border: 1px solid rgba(45, 212, 191, 0.3);
-    color: #2dd4bf;
+    background: #f0fdfa;
+    border: 1px solid rgba(13, 148, 136, 0.25);
+    color: #0d9488;
     padding: 8px 16px;
-    border-radius: 8px;
-    font-family: 'DM Sans', sans-serif;
+    border-radius: 50px;
+    font-family: 'Inter', sans-serif;
     font-weight: 500;
     font-size: 13px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.3s ease;
   }
-  .analyze-btn:hover { background: rgba(45, 212, 191, 0.2); }
+  .analyze-btn:hover { background: rgba(13, 148, 136, 0.1); }
   .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .skeleton-line {
     height: 14px;
-    background: rgba(255, 255, 255, 0.06);
+    background: #e2e8f0;
     border-radius: 6px;
     animation: pulse 1.5s ease-in-out infinite;
   }
@@ -2633,11 +2642,11 @@ function RenewalEligibilityTracker({ deal }: { deal: Deal }) {
       ) : (
         <div className="renewal-detail">
           You'll be eligible for renewal at {renewalThreshold}% payoff — that's about{" "}
-          <strong style={{ color: "#c084fc" }}>
+          <strong style={{ color: "#0d9488" }}>
             {fmt$(calc.totalPayback * (renewalThreshold / 100) - calc.amountPaid)}
           </strong>{" "}
           more in payments. At your current pace, you'll hit this around{" "}
-          <strong style={{ color: "#c084fc" }}>
+          <strong style={{ color: "#0d9488" }}>
             {fmtDate((() => {
               const remainingToThreshold = Math.max(0, (calc.totalPayback * (renewalThreshold / 100)) - calc.amountPaid);
               const paymentsNeeded = Math.ceil(remainingToThreshold / calc.paymentAmount);
@@ -2745,7 +2754,7 @@ function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand =
       <div className="messaging-card">
         <div className="messaging-header" onClick={() => setExpanded(!expanded)}>
           <div className="messaging-header-left">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <span className="messaging-header-title">
               Message {repName}
             </span>
@@ -2866,7 +2875,7 @@ function DocumentVault({ documents, loading }: { documents: VaultDocument[]; loa
     <div className="vault-section">
       <div className="vault-card">
         <div className="vault-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
           Document Vault
         </div>
         <div className="vault-sub">All your funding documents securely stored in one place.</div>
@@ -3139,9 +3148,9 @@ function ChirpConnectButton({ onSuccess, label = "Connect Your Bank", previewTok
             style={{
               padding: "10px 14px",
               borderRadius: 8,
-              border: "1.5px solid #334155",
-              background: "#1e293b",
-              color: "#f8fafc",
+              border: "1px solid #d1d5db",
+              background: "#ffffff",
+              color: "#1e293b",
               fontSize: 14,
               outline: "none",
             }}
@@ -3297,9 +3306,9 @@ function StatementUploadZone({ previewHeaders, onUploadComplete }: { previewHead
       onDrop={handleDrop}
       style={{
         textAlign: "center", padding: "20px",
-        border: dragging ? "2px dashed #2dd4bf" : "1px solid rgba(255,255,255,0.08)",
-        background: dragging ? "rgba(45,212,191,0.06)" : undefined,
-        transition: "all 0.2s", cursor: "pointer",
+        border: dragging ? "2px dashed #0d9488" : "1px solid #e2e8f0",
+        background: dragging ? "#f0fdfa" : undefined,
+        transition: "all 0.3s ease", cursor: "pointer",
       }}
       onClick={() => fileInputRef.current?.click()}
     >
@@ -3314,11 +3323,11 @@ function StatementUploadZone({ previewHeaders, onUploadComplete }: { previewHead
           <p style={{ color: "#94a3b8", fontSize: 13 }}>
             {dragging ? "Drop your PDF here" : "Drop a bank statement PDF here, or click to browse"}
           </p>
-          <p style={{ color: "#4b5568", fontSize: 11, marginTop: 4 }}>PDF files up to 25MB</p>
+          <p style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>PDF files up to 25MB</p>
         </>
       )}
       {uploadResult && (
-        <p style={{ color: uploadResult.success ? "#2dd4bf" : "#f87171", fontSize: 12, marginTop: 8 }}>
+        <p style={{ color: uploadResult.success ? "#0d9488" : "#f87171", fontSize: 12, marginTop: 8 }}>
           {uploadResult.message}
         </p>
       )}
@@ -3344,9 +3353,9 @@ function InsightCategories({ pdf }: { pdf: any }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {items.map((item, i) => (
         <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-          <span style={{ color, fontSize: 16, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>{color === "#2dd4bf" ? "\u2713" : "\u2022"}</span>
+          <span style={{ color, fontSize: 16, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>{color === "#0d9488" ? "\u2713" : "\u2022"}</span>
           <div>
-            <span style={{ fontWeight: 600, fontSize: 13, color: "#e8eaf0" }}>{item.label}</span>
+            <span style={{ fontWeight: 600, fontSize: 13, color: "#1e293b" }}>{item.label}</span>
             {item.details && <p style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5, marginTop: 2 }}>{item.details}</p>}
           </div>
         </div>
@@ -3361,9 +3370,9 @@ function InsightCategories({ pdf }: { pdf: any }) {
       content: <p style={{ lineHeight: 1.7, fontSize: 13, color: "#94a3b8" }}>{pdf.summary}</p>,
     },
     {
-      key: "strengths", label: "What\u2019s Working", color: "#2dd4bf",
+      key: "strengths", label: "What\u2019s Working", color: "#0d9488",
       count: strengths.length, show: strengths.length > 0,
-      content: renderItems(strengths, "#2dd4bf"),
+      content: renderItems(strengths, "#0d9488"),
     },
     {
       key: "concerns", label: "Keep an Eye On", color: "#facc15",
@@ -3371,14 +3380,14 @@ function InsightCategories({ pdf }: { pdf: any }) {
       content: renderItems(concerns, "#facc15"),
     },
     {
-      key: "tips", label: "Ways to Improve", color: "#60a5fa",
+      key: "tips", label: "Ways to Improve", color: "#0d9488",
       count: (pdf.tips || []).length, show: (pdf.tips || []).length > 0,
       content: (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {(pdf.tips || []).map((tip: string, i: number) => (
             <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13, flexShrink: 0, minWidth: 18 }}>{i + 1}.</span>
-              <span style={{ fontSize: 13, color: "#c8cdd5", lineHeight: 1.5 }}>{tip}</span>
+              <span style={{ color: "#0d9488", fontWeight: 700, fontSize: 13, flexShrink: 0, minWidth: 18 }}>{i + 1}.</span>
+              <span style={{ fontSize: 13, color: "#475569", lineHeight: 1.5 }}>{tip}</span>
             </div>
           ))}
         </div>
@@ -3388,21 +3397,21 @@ function InsightCategories({ pdf }: { pdf: any }) {
 
   return (
     <div className="insight-card" style={{ padding: 0 }}>
-      <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, padding: "16px 20px 8px" }}>
+      <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, padding: "16px 20px 8px" }}>
         Financial Insights
       </h3>
       {sections.map(section => (
-        <div key={section.key} style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div key={section.key} style={{ borderTop: "1px solid #e2e8f0" }}>
           <button
             onClick={() => toggle(section.key)}
             style={{
               width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-              background: expandedSection === section.key ? "rgba(255,255,255,0.02)" : "none",
+              background: expandedSection === section.key ? "#f8fafc" : "none",
               border: "none", cursor: "pointer", padding: "12px 20px", textAlign: "left",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontWeight: 600, fontSize: 14, color: "#e8eaf0" }}>{section.label}</span>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#1e293b" }}>{section.label}</span>
               {"count" in section && (section as any).count > 0 && (
                 <span style={{
                   background: `${section.color}20`, color: section.color, borderRadius: 20,
@@ -3598,9 +3607,9 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
 
   // Health score label
   const healthLabel = healthScore >= 70 ? "Strong" : healthScore >= 45 ? "Moderate" : healthScore > 0 ? "Needs Attention" : null;
-  const healthColor = healthScore >= 70 ? "#2dd4bf" : healthScore >= 45 ? "#facc15" : "#f87171";
+  const healthColor = healthScore >= 70 ? "#0d9488" : healthScore >= 45 ? "#facc15" : "#f87171";
   const trendIcon = revenueTrend === "growing" ? "\u2197" : revenueTrend === "declining" ? "\u2198" : revenueTrend === "stable" ? "\u2192" : "";
-  const trendColor = revenueTrend === "growing" ? "#2dd4bf" : revenueTrend === "declining" ? "#f87171" : "#94a3b8";
+  const trendColor = revenueTrend === "growing" ? "#0d9488" : revenueTrend === "declining" ? "#f87171" : "#94a3b8";
 
   return (
     <div className="financials-section">
@@ -3612,16 +3621,16 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "16px 20px", textAlign: "left" }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
+            <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
               Bank Connection
             </h3>
             {chirpConnected && (
-              <span style={{ background: "rgba(45,212,191,0.15)", color: "#2dd4bf", borderRadius: 20, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>
+              <span style={{ background: "#f0fdfa", color: "#0d9488", borderRadius: 50, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>
                 Connected
               </span>
             )}
             {!chirpConnected && banking?.hasPendingConnection && (
-              <span style={{ background: "rgba(251,191,36,0.15)", color: "#fbbf24", borderRadius: 20, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>
+              <span style={{ background: "rgba(251,191,36,0.1)", color: "#d97706", borderRadius: 50, padding: "2px 10px", fontSize: 12, fontWeight: 600 }}>
                 Pending
               </span>
             )}
@@ -3658,7 +3667,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                             <span style={{ color: "#94a3b8", fontSize: 11 }}>{acct.type}</span>
                           )}
                         </div>
-                        <span style={{ fontWeight: 600, color: "#2dd4bf", fontSize: 13 }}>
+                        <span style={{ fontWeight: 600, color: "#0d9488", fontSize: 13 }}>
                           ${Number(acct.balance).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
                       </div>
@@ -3686,19 +3695,19 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
             ) : banking?.hasPendingConnection ? (
               <div style={{ textAlign: "center", padding: "24px 16px" }}>
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
                   </svg>
                 </div>
-                <p style={{ color: "#e8eaf0", fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
+                <p style={{ color: "#1e293b", fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
                   Awaiting Bank Verification
                 </p>
                 <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.7, marginBottom: 16, maxWidth: 320, margin: "0 auto 16px" }}>
                   You started linking your bank account. Once Chirp confirms the connection, your financial data will appear here automatically.
                 </p>
                 <p style={{ color: "#64748b", fontSize: 12, marginBottom: 16 }}>
-                  Status: <span style={{ color: "#fbbf24" }}>{banking.status || "Unverified"}</span>
+                  Status: <span style={{ color: "#d97706" }}>{banking.status || "Unverified"}</span>
                 </p>
                 <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
                   <ChirpConnectButton onSuccess={fetchData} label="Reconnect Bank" previewToken={previewToken} />
@@ -3716,7 +3725,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
               </div>
             ) : (
               <div style={{ textAlign: "center", padding: "20px 0" }}>
-                <p style={{ color: "#e8eaf0", marginBottom: 8, fontSize: 14, lineHeight: 1.6, fontWeight: 500 }}>
+                <p style={{ color: "#1e293b", marginBottom: 8, fontSize: 14, lineHeight: 1.6, fontWeight: 500 }}>
                   Connect your bank to unlock your financial dashboard.
                 </p>
                 <ul style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.8, textAlign: "left", display: "inline-block", margin: "8px 0 16px", paddingLeft: 18 }}>
@@ -3738,16 +3747,16 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       {/* ── Uploaded Statements ── */}
       {showStatementsSection && (
         <div className="insight-card">
-          <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
             Uploaded Statements
           </h3>
 
           {/* File list */}
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
             {displayStatements.map(stmt => (
-              <div key={stmt.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div key={stmt.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
                   </svg>
                   <div style={{ minWidth: 0 }}>
@@ -3765,7 +3774,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                     href={`/api/bank-statements/public/view/${stmt.viewToken}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ fontSize: 12, color: "#2dd4bf", textDecoration: "none", flexShrink: 0, marginLeft: 8 }}
+                    style={{ fontSize: 12, color: "#0d9488", textDecoration: "none", flexShrink: 0, marginLeft: 8 }}
                   >
                     View
                   </a>
@@ -3816,13 +3825,13 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           {hasBothSources && (
             <div className="insight-card" style={{ padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ color: "#94a3b8", fontSize: 13 }}>Data Source</span>
-              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0" }}>
                 <button
                   onClick={() => setDataSource("chirp")}
                   style={{
                     padding: "6px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
-                    background: activeSource === "chirp" ? "#2dd4bf" : "transparent",
-                    color: activeSource === "chirp" ? "#0f172a" : "#94a3b8",
+                    background: activeSource === "chirp" ? "#0d9488" : "transparent",
+                    color: activeSource === "chirp" ? "#ffffff" : "#94a3b8",
                   }}
                 >
                   Live Bank Data
@@ -3831,8 +3840,8 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                   onClick={() => setDataSource("statements")}
                   style={{
                     padding: "6px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
-                    background: activeSource === "statements" ? "#2dd4bf" : "transparent",
-                    color: activeSource === "statements" ? "#0f172a" : "#94a3b8",
+                    background: activeSource === "statements" ? "#0d9488" : "transparent",
+                    color: activeSource === "statements" ? "#ffffff" : "#94a3b8",
                   }}
                 >
                   Statement Analysis
@@ -3845,7 +3854,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           {(healthScore > 0 || cashFlowHealth || monthlyRevenue > 0) && (
             <div className="insight-card">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
+                <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
                   Financial Health
                   {hasBothSources && (
                     <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400, marginLeft: 8 }}>
@@ -3869,13 +3878,13 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                     flexShrink: 0,
                   }}>
-                    <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 700, color: healthColor, lineHeight: 1 }}>
+                    <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 24, fontWeight: 700, color: healthColor, lineHeight: 1 }}>
                       {healthScore}
                     </span>
                     <span style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>/ 100</span>
                   </div>
                   <div>
-                    <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, color: healthColor, marginBottom: 4 }}>
+                    <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, color: healthColor, marginBottom: 4 }}>
                       {healthLabel}
                     </p>
                     <p style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
@@ -3895,7 +3904,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
               ) : cashFlowHealth ? (
                 <div style={{ textAlign: "center" }}>
                   <div className={`health-indicator health-${cashFlowHealth}`} />
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 600, marginTop: 8, textTransform: "capitalize" }}>
+                  <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 600, marginTop: 8, textTransform: "capitalize" }}>
                     {cashFlowHealth === 'needs-attention' ? 'Needs Attention' : cashFlowHealth}
                   </p>
                 </div>
@@ -3906,7 +3915,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           {/* Hero: Monthly Revenue */}
           <div className="insight-card" style={{ textAlign: "center" }}>
             <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 4 }}>What You're Bringing In</p>
-            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 32, fontWeight: 700, color: "#2dd4bf" }}>
+            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 32, fontWeight: 700, color: "#0d9488" }}>
               ${monthlyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </p>
             <p style={{ color: "#64748b", fontSize: 11, marginTop: 2 }}>per month</p>
@@ -3924,32 +3933,32 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             <div className="insight-card" style={{ textAlign: "center" }}>
               <p style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>Going Out</p>
-              <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: monthlyExpenses > 0 ? "#e8eaf0" : "#64748b" }}>
+              <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: monthlyExpenses > 0 ? "#e8eaf0" : "#64748b" }}>
                 {monthlyExpenses > 0 ? `$${monthlyExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "\u2014"}
               </p>
-              <p style={{ color: "#4b5568", fontSize: 10, marginTop: 2 }}>expenses / mo</p>
+              <p style={{ color: "#94a3b8", fontSize: 10, marginTop: 2 }}>expenses / mo</p>
             </div>
             <div className="insight-card" style={{ textAlign: "center" }}>
               <p style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>What's Left</p>
               <p style={{
-                fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700,
-                color: netCashFlow > 0 ? "#2dd4bf" : netCashFlow < 0 ? "#f87171" : "#64748b",
+                fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700,
+                color: netCashFlow > 0 ? "#0d9488" : netCashFlow < 0 ? "#f87171" : "#64748b",
               }}>
                 {netCashFlow !== 0
                   ? `${netCashFlow >= 0 ? "+" : "-"}$${Math.abs(netCashFlow).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                   : "\u2014"}
               </p>
-              <p style={{ color: "#4b5568", fontSize: 10, marginTop: 2 }}>after expenses</p>
+              <p style={{ color: "#94a3b8", fontSize: 10, marginTop: 2 }}>after expenses</p>
             </div>
             <div className="insight-card" style={{ textAlign: "center" }}>
               <p style={{ color: "#94a3b8", fontSize: 11, marginBottom: 4 }}>In the Bank</p>
               <p style={{
-                fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700,
-                color: currentBalance > 0 ? "#2dd4bf" : currentBalance < 0 ? "#f87171" : "#64748b",
+                fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700,
+                color: currentBalance > 0 ? "#0d9488" : currentBalance < 0 ? "#f87171" : "#64748b",
               }}>
                 {currentBalance !== 0 ? `$${currentBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "\u2014"}
               </p>
-              {avgBalance > 0 && <p style={{ color: "#4b5568", fontSize: 10, marginTop: 2 }}>avg: ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>}
+              {avgBalance > 0 && <p style={{ color: "#94a3b8", fontSize: 10, marginTop: 2 }}>avg: ${avgBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>}
             </div>
           </div>
 
@@ -3957,7 +3966,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           {(() => {
             const runway = pdf?.cashRunwayDays || (monthlyExpenses > 0 ? Math.round(currentBalance / (monthlyExpenses / 30)) : 0);
             if (runway <= 0 && currentBalance <= 0) return null;
-            const runwayColor = runway >= 60 ? "#2dd4bf" : runway >= 30 ? "#facc15" : "#f87171";
+            const runwayColor = runway >= 60 ? "#0d9488" : runway >= 30 ? "#facc15" : "#f87171";
             const runwayLabel = runway >= 90 ? "Healthy cushion" : runway >= 60 ? "Solid buffer" : runway >= 30 ? "Getting tight" : "Very thin";
             return (
               <div className="insight-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px" }}>
@@ -3966,7 +3975,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                   <p style={{ color: "#64748b", fontSize: 11 }}>How long your balance covers expenses</p>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: runwayColor }}>{runway}</span>
+                  <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 22, fontWeight: 700, color: runwayColor }}>{runway}</span>
                   <span style={{ color: "#94a3b8", fontSize: 12, marginLeft: 4 }}>days</span>
                   <p style={{ color: runwayColor, fontSize: 11, fontWeight: 600, marginTop: 2 }}>{runwayLabel}</p>
                 </div>
@@ -3977,23 +3986,23 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           {/* Month-over-Month Breakdown (from PDF analysis) */}
           {pdf?.monthlyBreakdown && pdf.monthlyBreakdown.length >= 2 && (
             <div className="insight-card">
-              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Month by Month</h3>
+              <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Month by Month</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {pdf.monthlyBreakdown.slice(0, 6).map((m: any, i: number) => {
                   const net = (m.revenue || 0) - (m.expenses || 0);
                   const prev = pdf.monthlyBreakdown[i + 1];
                   const delta = prev ? ((m.revenue - prev.revenue) / (prev.revenue || 1)) * 100 : null;
                   return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: i < pdf.monthlyBreakdown.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: i < pdf.monthlyBreakdown.length - 1 ? "1px solid #e2e8f0" : "none" }}>
                       <span style={{ color: "#94a3b8", fontSize: 13, minWidth: 80 }}>{m.month}</span>
                       <div style={{ display: "flex", gap: 16, alignItems: "center", fontSize: 13 }}>
-                        <span style={{ color: "#2dd4bf" }}>+${(m.revenue || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                        <span style={{ color: "#0d9488" }}>+${(m.revenue || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                         <span style={{ color: "#94a3b8" }}>-${(m.expenses || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                        <span style={{ color: net >= 0 ? "#2dd4bf" : "#f87171", fontWeight: 600, minWidth: 70, textAlign: "right" }}>
+                        <span style={{ color: net >= 0 ? "#0d9488" : "#f87171", fontWeight: 600, minWidth: 70, textAlign: "right" }}>
                           {net >= 0 ? "+" : "-"}${Math.abs(net).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
                         {delta !== null && (
-                          <span style={{ color: delta >= 0 ? "#2dd4bf" : "#f87171", fontSize: 11, minWidth: 45, textAlign: "right" }}>
+                          <span style={{ color: delta >= 0 ? "#0d9488" : "#f87171", fontSize: 11, minWidth: 45, textAlign: "right" }}>
                             {delta >= 0 ? "\u2191" : "\u2193"}{Math.abs(delta).toFixed(0)}%
                           </span>
                         )}
@@ -4019,7 +4028,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
 
             const ratio = (totalMonthlyDebt / monthlyRevenue) * 100;
             const remaining = monthlyRevenue - totalMonthlyDebt - monthlyExpenses;
-            const ratioColor = ratio <= 15 ? "#2dd4bf" : ratio <= 25 ? "#facc15" : "#f87171";
+            const ratioColor = ratio <= 15 ? "#0d9488" : ratio <= 25 ? "#facc15" : "#f87171";
             const ratioLabel = ratio <= 15 ? "Healthy" : ratio <= 25 ? "Moderate" : "Heavy";
 
             return (
@@ -4032,7 +4041,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                   </p>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: ratioColor }}>{ratio.toFixed(0)}%</span>
+                  <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 22, fontWeight: 700, color: ratioColor }}>{ratio.toFixed(0)}%</span>
                   <p style={{ color: ratioColor, fontSize: 11, fontWeight: 600, marginTop: 2 }}>{ratioLabel}</p>
                 </div>
               </div>
@@ -4042,7 +4051,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           {/* Account Balances (Plaid) */}
           {plaid && plaid.accounts.length > 0 && (
             <div className="insight-card">
-              <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
+              <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
                 Account Balances
               </h3>
               {plaid.accounts.map((acct, i) => (
@@ -4051,7 +4060,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                     <span style={{ fontWeight: 500 }}>{acct.name}</span>
                     <span style={{ color: "#94a3b8", fontSize: 12, marginLeft: 8 }}>{acct.type}</span>
                   </div>
-                  <span style={{ fontWeight: 600, color: "#2dd4bf" }}>
+                  <span style={{ fontWeight: 600, color: "#0d9488" }}>
                     ${acct.currentBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </span>
                 </div>
@@ -4063,12 +4072,12 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
           {chirpConnected && (
             <div className="insight-card">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
+                <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
                   Recent Transactions
                 </h3>
               </div>
               <div style={{ textAlign: "center", padding: "20px 0", color: "#64748b", fontSize: 13 }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4b5568" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8, display: "block", margin: "0 auto 8px" }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 8, display: "block", margin: "0 auto 8px" }}>
                   <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
                 </svg>
                 <p>Transaction details will appear here once your bank data finishes syncing.</p>
@@ -4102,7 +4111,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       {(insights?.renewalNudge?.eligible || (chirpConnected && monthlyRevenue > 10000 && healthScore >= 60)) && (
         <div className="renewal-nudge" onClick={onSwitchToMessages} role="button" tabIndex={0}>
           <span>{insights?.renewalNudge?.message || "Your financials look great! You may qualify for additional funding."}</span>
-          <span style={{ color: "#2dd4bf", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>Talk to your rep &rarr;</span>
+          <span style={{ color: "#0d9488", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>Talk to your rep &rarr;</span>
         </div>
       )}
     </div>
@@ -4147,7 +4156,7 @@ function ActivityFeed({ merchantEmail, previewToken }: { merchantEmail: string; 
   return (
     <div className="activity-feed">
       <div className="activity-feed-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         Activity
       </div>
       <div className="activity-feed-sub">Recent updates and milestones for your account</div>
@@ -4238,13 +4247,13 @@ function PayoffCoverageInsight({ deal }: { deal: Deal }) {
     coverageMultiple >= 10 ? "strong" :
     coverageMultiple >= 5 ? "moderate" :
     "tight";
-  const healthColor = health === "strong" ? "#2dd4bf" : health === "moderate" ? "#facc15" : "#f87171";
+  const healthColor = health === "strong" ? "#0d9488" : health === "moderate" ? "#facc15" : "#f87171";
   const healthLabel = health === "strong" ? "Healthy coverage" : health === "moderate" ? "Comfortable coverage" : "Tight coverage";
 
   return (
     <div className="insight-card" style={{ marginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600, margin: 0 }}>
+        <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 15, fontWeight: 600, margin: 0 }}>
           Payment Coverage
         </h3>
         <span style={{ color: healthColor, fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -4256,7 +4265,7 @@ function PayoffCoverageInsight({ deal }: { deal: Deal }) {
           <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
             Monthly Revenue
           </div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: "#2dd4bf" }}>
+          <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: "#0d9488" }}>
             {fmt$(monthlyRevenue)}
           </div>
         </div>
@@ -4264,7 +4273,7 @@ function PayoffCoverageInsight({ deal }: { deal: Deal }) {
           <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
             Monthly Payment Load
           </div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: "#e8eaf0" }}>
+          <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: "#1e293b" }}>
             {fmt$(monthlyPaymentLoad)}
           </div>
         </div>
@@ -4272,7 +4281,7 @@ function PayoffCoverageInsight({ deal }: { deal: Deal }) {
           <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
             Coverage
           </div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: healthColor }}>
+          <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: healthColor }}>
             {coverageMultiple.toFixed(1)}&times;
           </div>
         </div>
@@ -4284,7 +4293,7 @@ function PayoffCoverageInsight({ deal }: { deal: Deal }) {
             <div style={{ color: "#94a3b8", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
               Operating Expenses
             </div>
-            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, color: "#e8eaf0" }}>
+            <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 700, color: "#1e293b" }}>
               {fmt$(banking.metrics.monthlyExpenses)}
             </div>
           </div>
@@ -4293,16 +4302,16 @@ function PayoffCoverageInsight({ deal }: { deal: Deal }) {
               After Expenses + Payment
             </div>
             <div style={{
-              fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700,
-              color: (monthlyRevenue - banking.metrics.monthlyExpenses - monthlyPaymentLoad) >= 0 ? "#2dd4bf" : "#f87171",
+              fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 700,
+              color: (monthlyRevenue - banking.metrics.monthlyExpenses - monthlyPaymentLoad) >= 0 ? "#0d9488" : "#f87171",
             }}>
               {fmt$(Math.max(0, monthlyRevenue - banking.metrics.monthlyExpenses - monthlyPaymentLoad))}
             </div>
           </div>
         </div>
       )}
-      <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
-        Your payments on this position take up about <strong style={{ color: "#e8eaf0" }}>{paymentShareOfRevenue.toFixed(1)}%</strong> of your average monthly revenue. Based on bank data from {banking.institutionName || "your connected bank"}.
+      <div style={{ marginTop: 12, padding: "10px 12px", background: "#f8fafc", borderRadius: 8, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
+        Your payments on this position take up about <strong style={{ color: "#1e293b" }}>{paymentShareOfRevenue.toFixed(1)}%</strong> of your average monthly revenue. Based on bank data from {banking.institutionName || "your connected bank"}.
       </div>
     </div>
   );
@@ -4418,21 +4427,21 @@ function ResourcesTab() {
           description: "See your Dun & Bradstreet and Experian business credit scores for free. Understand what lenders see when they review your business.",
           url: "https://www.nav.com/business-credit-scores/",
           tag: "Free",
-          tagColor: "#34d399",
+          tagColor: "#0d9488",
         },
         {
           title: "Experian Business Credit",
           description: "Monitor your Experian business credit profile. Get alerts when your score changes and see what factors are impacting it.",
           url: "https://www.experian.com/business/check-business-credit.html",
           tag: "Free Report",
-          tagColor: "#60a5fa",
+          tagColor: "#14b8a6",
         },
         {
           title: "Dun & Bradstreet — Get Your D-U-N-S Number",
           description: "A D-U-N-S number is essential for building business credit. Get yours for free if you don't have one yet.",
           url: "https://www.dnb.com/duns-number/get-a-duns.html",
           tag: "Free",
-          tagColor: "#34d399",
+          tagColor: "#0d9488",
         },
       ],
     },
@@ -4444,14 +4453,14 @@ function ResourcesTab() {
           description: "Explore SBA 7(a), 504, and Microloan programs. Government-backed loans with lower rates and longer terms for qualifying businesses.",
           url: "https://www.sba.gov/funding-programs/loans",
           tag: "Gov",
-          tagColor: "#a78bfa",
+          tagColor: "#0d9488",
         },
         {
           title: "Grants.gov — Federal Business Grants",
           description: "Search for federal grant opportunities. Unlike loans, grants don't need to be repaid.",
           url: "https://www.grants.gov/",
           tag: "Grants",
-          tagColor: "#fbbf24",
+          tagColor: "#d97706",
         },
       ],
     },
@@ -4463,14 +4472,14 @@ function ResourcesTab() {
           description: "Free invoicing, accounting, and receipt scanning for small businesses. No credit card required.",
           url: "https://www.waveapps.com/",
           tag: "Free",
-          tagColor: "#34d399",
+          tagColor: "#0d9488",
         },
         {
           title: "IRS Tax Calendar for Businesses",
           description: "Never miss a tax deadline. See all federal tax due dates for your business type at a glance.",
           url: "https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendars",
           tag: "IRS",
-          tagColor: "#a78bfa",
+          tagColor: "#0d9488",
         },
       ],
     },
@@ -4482,14 +4491,14 @@ function ResourcesTab() {
           description: "Claim and optimize your free Google Business listing. Show up in local search results and Google Maps.",
           url: "https://business.google.com/",
           tag: "Free",
-          tagColor: "#34d399",
+          tagColor: "#0d9488",
         },
         {
           title: "NEXT Insurance — Business Insurance",
           description: "Get affordable business insurance in minutes. General liability, professional liability, workers' comp, and more.",
           url: "https://www.nextinsurance.com/",
           tag: "Quote",
-          tagColor: "#60a5fa",
+          tagColor: "#14b8a6",
         },
       ],
     },
@@ -4600,20 +4609,20 @@ function MerchantServicesTab({ email, name }: { email: string; name: string }) {
           <div
             key={svc.id}
             style={{
-              background: "rgba(255,255,255,0.03)",
-              border: submitted.has(svc.id) ? "1.5px solid rgba(45,212,191,0.4)" : "1px solid rgba(255,255,255,0.08)",
+              background: "#f8fafc",
+              border: submitted.has(svc.id) ? "1.5px solid rgba(13,148,136,0.4)" : "1px solid #e2e8f0",
               borderRadius: 12,
               padding: "20px 20px",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#e2e8f0", marginBottom: 6 }}>{svc.title}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b", marginBottom: 6 }}>{svc.title}</div>
                 <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6, marginBottom: 10 }}>{svc.desc}</div>
                 <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
                   {svc.bullets.map(b => (
                     <li key={b} style={{ fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#14B8A6", display: "inline-block", flexShrink: 0 }} />
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#0d9488", display: "inline-block", flexShrink: 0 }} />
                       {b}
                     </li>
                   ))}
@@ -4621,17 +4630,17 @@ function MerchantServicesTab({ email, name }: { email: string; name: string }) {
               </div>
               <div style={{ flexShrink: 0, paddingTop: 2 }}>
                 {submitted.has(svc.id) ? (
-                  <span style={{ fontSize: 13, color: "#2dd4bf", fontWeight: 600 }}>Noted!</span>
+                  <span style={{ fontSize: 13, color: "#0d9488", fontWeight: 600 }}>Noted!</span>
                 ) : (
                   <button
                     onClick={() => handleInterest(svc.id)}
                     disabled={submitting === svc.id}
                     style={{
                       padding: "8px 18px",
-                      background: "rgba(20,184,166,0.12)",
-                      border: "1.5px solid rgba(20,184,166,0.4)",
-                      borderRadius: 8,
-                      color: "#2dd4bf",
+                      background: "#f0fdfa",
+                      border: "1.5px solid rgba(13,148,136,0.3)",
+                      borderRadius: 50,
+                      color: "#0d9488",
                       fontSize: 13,
                       fontWeight: 600,
                       cursor: "pointer",
@@ -4646,7 +4655,7 @@ function MerchantServicesTab({ email, name }: { email: string; name: string }) {
           </div>
         ))}
       </div>
-      <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "#475569", lineHeight: 1.6 }}>
+      <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>
         No commitment. We'll reach out with details and next steps. Your info is never shared or sold.
       </div>
     </div>
@@ -4735,7 +4744,7 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
             <div className="login-hint">
               <button
                 onClick={onBack}
-                style={{ background: "none", border: "none", color: "#14B8A6", cursor: "pointer", fontFamily: "inherit", fontSize: "12px" }}
+                style={{ background: "none", border: "none", color: "#0d9488", cursor: "pointer", fontFamily: "inherit", fontSize: "12px" }}
               >
                 Back to Sign In
               </button>
@@ -4879,7 +4888,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         <div className="login-hint" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
           <button
             onClick={() => setShowForgot(true)}
-            style={{ background: "none", border: "none", color: "#14B8A6", cursor: "pointer", fontFamily: "inherit", fontSize: "12px" }}
+            style={{ background: "none", border: "none", color: "#0d9488", cursor: "pointer", fontFamily: "inherit", fontSize: "12px" }}
           >
             Forgot your password?
           </button>
@@ -5078,7 +5087,7 @@ export default function MerchantPortal() {
         {!loggedIn ? (
           <>
             {sessionExpired && (
-              <div style={{ background: "rgba(250,204,21,0.1)", border: "1px solid rgba(250,204,21,0.3)", borderRadius: 0, padding: "12px 24px", textAlign: "center", color: "#facc15", fontSize: 14 }}>
+              <div style={{ background: "rgba(250,204,21,0.08)", border: "1px solid rgba(250,204,21,0.2)", borderRadius: 0, padding: "12px 24px", textAlign: "center", color: "#b45309", fontSize: 14 }}>
                 Your session has expired. Please sign in again.
               </div>
             )}
@@ -5088,8 +5097,8 @@ export default function MerchantPortal() {
           <>
             {isAdminPreview && (
               <div style={{
-                background: '#f59e0b',
-                color: '#000',
+                background: '#fbbf24',
+                color: '#1e293b',
                 padding: '8px 20px',
                 fontSize: '13px',
                 fontWeight: 600,
@@ -5250,7 +5259,7 @@ export default function MerchantPortal() {
                               <div className="insight-title">Recent Documents</div>
                               <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                                 {vaultDocs.slice(0, 4).map(doc => (
-                                  <div key={doc.id} style={{ fontSize: 13, color: "#cbd5e1", display: "flex", justifyContent: "space-between", gap: 10 }}>
+                                  <div key={doc.id} style={{ fontSize: 13, color: "#475569", display: "flex", justifyContent: "space-between", gap: 10 }}>
                                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</span>
                                     <span style={{ color: "#94a3b8", textTransform: "capitalize" }}>{doc.category}</span>
                                   </div>

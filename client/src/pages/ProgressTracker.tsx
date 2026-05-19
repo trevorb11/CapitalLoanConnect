@@ -70,11 +70,11 @@ export default function ProgressTracker() {
     [progress.intakeCompleted, progress.applicationCompleted, progress.bankStatementsUploaded].filter(Boolean).length : 0;
 
   return (
-    <div style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", backgroundColor: '#f5f5f7', color: '#1d1d1f', lineHeight: 1.6, minHeight: '100vh' }}>
+    <div style={{ fontFamily: "'Inter', sans-serif", backgroundColor: '#ffffff', color: '#1e293b', lineHeight: 1.7, minHeight: '100vh', fontSize: '1.05rem' }}>
       
       {/* Header */}
-      <header style={{ backgroundColor: '#0a0f2c', padding: '20px 0', borderBottom: '1px solid #1a2650' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <header style={{ backgroundColor: '#0f172a', padding: '0', height: '72px', display: 'flex', alignItems: 'center', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <img 
             src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c11dae8ddeadf0fc2ffa7_Group%2017.svg" 
             alt="Today Capital Group" 
@@ -89,12 +89,12 @@ export default function ProgressTracker() {
       </header>
 
       {/* Hero Section */}
-      <section style={{ background: 'linear-gradient(135deg, #0a0f2c 0%, #1a2650 100%)', padding: '60px 20px', textAlign: 'center' }}>
+      <section style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '60px 24px', textAlign: 'center' }}>
         <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-          <h1 style={{ fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 600, color: '#FFFFFF', marginBottom: '16px', letterSpacing: '-1px', lineHeight: 1.2 }}>
+          <h1 style={{ fontSize: 'clamp(28px, 4vw, 42px)', fontFamily: "'Playfair Display', Georgia, serif", fontWeight: 700, color: '#FFFFFF', marginBottom: '16px', letterSpacing: '-1px', lineHeight: 1.2 }}>
             Check Your Application Status
           </h1>
-          <p style={{ fontSize: 'clamp(14px, 2vw, 18px)', color: '#e0e0e0', marginBottom: '32px' }}>
+          <p style={{ fontSize: 'clamp(14px, 2vw, 18px)', color: '#94a3b8', marginBottom: '32px' }}>
             Enter your email or phone number to see your progress
           </p>
 
@@ -108,15 +108,16 @@ export default function ProgressTracker() {
                 placeholder="Email or phone number"
                 style={{
                   width: '100%',
-                  padding: '16px 20px',
+                  padding: '14px 16px',
                   paddingLeft: '50px',
                   fontSize: '16px',
-                  border: '2px solid rgba(255,255,255,0.2)',
-                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: '10px',
                   backgroundColor: 'rgba(255,255,255,0.1)',
                   color: '#FFFFFF',
                   outline: 'none',
                   boxSizing: 'border-box',
+                  transition: 'border-color 0.2s, box-shadow 0.2s',
                 }}
                 data-testid="input-email-phone"
               />
@@ -138,18 +139,19 @@ export default function ProgressTracker() {
               style={{
                 width: '100%',
                 padding: '16px 24px',
-                backgroundColor: '#22c55e',
+                backgroundColor: '#0d9488',
                 color: '#FFFFFF',
                 fontWeight: 600,
                 fontSize: '16px',
                 border: 'none',
-                borderRadius: '12px',
+                borderRadius: '50px',
                 cursor: lookupMutation.isPending ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
                 opacity: lookupMutation.isPending ? 0.7 : 1,
+                transition: 'transform 0.2s, box-shadow 0.2s',
               }}
               data-testid="button-check-status"
             >
@@ -188,35 +190,35 @@ export default function ProgressTracker() {
 
       {/* Progress Results */}
       {progress && (
-        <section style={{ padding: '60px 20px' }}>
+        <section style={{ padding: '60px 24px' }}>
           <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
             
             {/* Welcome Message */}
-            <div style={{ 
-              backgroundColor: '#FFFFFF', 
-              borderRadius: '16px', 
-              padding: '24px', 
+            <div style={{
+              backgroundColor: '#f8fafc',
+              borderRadius: '16px',
+              padding: '32px',
               marginBottom: '24px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+              border: '1px solid #e2e8f0'
             }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#1d1d1f', marginBottom: '8px' }}>
+              <h2 style={{ fontSize: '20px', fontFamily: "'Playfair Display', Georgia, serif", fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>
                 Welcome back{progress.businessName ? `, ${progress.businessName}` : ''}!
               </h2>
-              <p style={{ fontSize: '14px', color: '#6e6e73', margin: 0 }}>
+              <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>
                 You've completed {completedCount} of 3 steps. {completedCount === 3 ? "Great job!" : "Complete the remaining steps to get funded faster."}
               </p>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gap: '20px', alignItems: 'start' }}>
               {/* Progress Checklist */}
-              <div style={{ 
-                backgroundColor: '#FFFFFF', 
-                borderRadius: '16px', 
+              <div style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
                 overflow: 'hidden',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+                border: '1px solid #e2e8f0'
               }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #f0f0f0' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1d1d1f', margin: 0 }}>Your Progress</h3>
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', margin: 0 }}>Your Progress</h3>
               </div>
 
                 {/* Intake Form */}
@@ -225,21 +227,21 @@ export default function ProgressTracker() {
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'space-between',
-                borderBottom: '1px solid #f0f0f0',
-                backgroundColor: progress.intakeCompleted ? 'rgba(34, 197, 94, 0.05)' : 'transparent'
+                borderBottom: '1px solid #e2e8f0',
+                backgroundColor: progress.intakeCompleted ? 'rgba(13, 148, 136, 0.05)' : 'transparent'
               }} data-testid="progress-intake">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   {progress.intakeCompleted ? (
-                    <CheckCircle size={28} color="#22c55e" />
+                    <CheckCircle size={28} color="#0d9488" />
                   ) : (
                     <Circle size={28} color="#d1d5db" />
                   )}
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <ClipboardList size={18} color="#6e6e73" />
-                      <span style={{ fontWeight: 500, color: '#1d1d1f' }}>Intake Form</span>
+                      <ClipboardList size={18} color="#64748b" />
+                      <span style={{ fontWeight: 500, color: '#1e293b' }}>Intake Form</span>
                     </div>
-                    <p style={{ fontSize: '13px', color: '#6e6e73', margin: '4px 0 0 0' }}>
+                    <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
                       {progress.intakeCompleted ? "Completed" : "Quick quiz about your business"}
                     </p>
                   </div>
@@ -248,16 +250,17 @@ export default function ProgressTracker() {
                   <Link href="/intake/quiz">
                     <button style={{
                       padding: '10px 20px',
-                      backgroundColor: '#22c55e',
+                      backgroundColor: '#0d9488',
                       color: '#FFFFFF',
                       fontWeight: 500,
                       fontSize: '14px',
                       border: 'none',
-                      borderRadius: '8px',
+                      borderRadius: '50px',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px'
+                      gap: '6px',
+                      transition: 'transform 0.2s, box-shadow 0.2s'
                     }} data-testid="button-start-intake">
                       Start <ArrowRight size={16} />
                     </button>
@@ -271,21 +274,21 @@ export default function ProgressTracker() {
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'space-between',
-                borderBottom: '1px solid #f0f0f0',
-                backgroundColor: progress.applicationCompleted ? 'rgba(34, 197, 94, 0.05)' : 'transparent'
+                borderBottom: '1px solid #e2e8f0',
+                backgroundColor: progress.applicationCompleted ? 'rgba(13, 148, 136, 0.05)' : 'transparent'
               }} data-testid="progress-application">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   {progress.applicationCompleted ? (
-                    <CheckCircle size={28} color="#22c55e" />
+                    <CheckCircle size={28} color="#0d9488" />
                   ) : (
                     <Circle size={28} color="#d1d5db" />
                   )}
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <FileText size={18} color="#6e6e73" />
-                      <span style={{ fontWeight: 500, color: '#1d1d1f' }}>Full Application</span>
+                      <FileText size={18} color="#64748b" />
+                      <span style={{ fontWeight: 500, color: '#1e293b' }}>Full Application</span>
                     </div>
-                    <p style={{ fontSize: '13px', color: '#6e6e73', margin: '4px 0 0 0' }}>
+                    <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
                       {progress.applicationCompleted ? "Completed" : "Complete your business details"}
                     </p>
                   </div>
@@ -294,16 +297,17 @@ export default function ProgressTracker() {
                   <Link href={progress.applicationId ? `/?applicationId=${progress.applicationId}` : "/"}>
                     <button style={{
                       padding: '10px 20px',
-                      backgroundColor: '#22c55e',
+                      backgroundColor: '#0d9488',
                       color: '#FFFFFF',
                       fontWeight: 500,
                       fontSize: '14px',
                       border: 'none',
-                      borderRadius: '8px',
+                      borderRadius: '50px',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px'
+                      gap: '6px',
+                      transition: 'transform 0.2s, box-shadow 0.2s'
                     }} data-testid="button-start-application">
                       {progress.intakeCompleted ? "Continue" : "Start"} <ArrowRight size={16} />
                     </button>
@@ -317,20 +321,20 @@ export default function ProgressTracker() {
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'space-between',
-                backgroundColor: progress.bankStatementsUploaded ? 'rgba(34, 197, 94, 0.05)' : 'transparent'
+                backgroundColor: progress.bankStatementsUploaded ? 'rgba(13, 148, 136, 0.05)' : 'transparent'
               }} data-testid="progress-bank-statements">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                   {progress.bankStatementsUploaded ? (
-                    <CheckCircle size={28} color="#22c55e" />
+                    <CheckCircle size={28} color="#0d9488" />
                   ) : (
                     <Circle size={28} color="#d1d5db" />
                   )}
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Landmark size={18} color="#6e6e73" />
-                      <span style={{ fontWeight: 500, color: '#1d1d1f' }}>Bank Statements</span>
+                      <Landmark size={18} color="#64748b" />
+                      <span style={{ fontWeight: 500, color: '#1e293b' }}>Bank Statements</span>
                     </div>
-                    <p style={{ fontSize: '13px', color: '#6e6e73', margin: '4px 0 0 0' }}>
+                    <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
                       {progress.bankStatementsUploaded 
                         ? (progress.hasPlaidConnection 
                             ? "Bank connected via Plaid" 
@@ -343,16 +347,17 @@ export default function ProgressTracker() {
                   <Link href="/upload-statements">
                     <button style={{
                       padding: '10px 20px',
-                      backgroundColor: '#22c55e',
+                      backgroundColor: '#0d9488',
                       color: '#FFFFFF',
                       fontWeight: 500,
                       fontSize: '14px',
                       border: 'none',
-                      borderRadius: '8px',
+                      borderRadius: '50px',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px'
+                      gap: '6px',
+                      transition: 'transform 0.2s, box-shadow 0.2s'
                     }} data-testid="button-upload-statements">
                       Upload <ArrowRight size={16} />
                     </button>
@@ -363,17 +368,17 @@ export default function ProgressTracker() {
               {/* Help Section */}
               <div style={{ 
                 padding: '24px',
-                borderTop: '1px solid #f0f0f0',
-                backgroundColor: '#fafafa'
+                borderTop: '1px solid #e2e8f0',
+                backgroundColor: '#f8fafc'
               }}>
-                <p style={{ fontSize: '14px', color: '#6e6e73', marginBottom: '12px', textAlign: 'center' }}>
+                <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '12px', textAlign: 'center' }}>
                   Need help completing your application?
                 </p>
                 <div style={{ textAlign: 'center' }}>
                   <a 
                     href="tel:8183510225" 
                     style={{ 
-                      color: '#0a0f2c', 
+                      color: '#0d9488',
                       fontWeight: 600, 
                       textDecoration: 'none',
                       display: 'inline-flex',
@@ -389,20 +394,20 @@ export default function ProgressTracker() {
             </div>
 
               <div style={{ display: 'grid', gap: '16px' }}>
-                <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '20px', border: '1px solid #e2e8f0' }}>
                   <h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Snapshot</h3>
-                  <p style={{ fontSize: '14px', color: '#6e6e73' }}>Application ID: {progress.applicationId || 'Pending'}</p>
-                  <p style={{ fontSize: '14px', color: '#6e6e73' }}>Bank docs uploaded: {progress.bankStatementCount}</p>
-                  <p style={{ fontSize: '14px', color: '#6e6e73', marginBottom: 0 }}>
+                  <p style={{ fontSize: '14px', color: '#64748b' }}>Application ID: {progress.applicationId || 'Pending'}</p>
+                  <p style={{ fontSize: '14px', color: '#64748b' }}>Bank docs uploaded: {progress.bankStatementCount}</p>
+                  <p style={{ fontSize: '14px', color: '#64748b', marginBottom: 0 }}>
                     Bank connected: {progress.hasPlaidConnection ? 'Yes' : 'Not yet'}
                   </p>
                 </div>
-                <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <div style={{ backgroundColor: '#FFFFFF', borderRadius: '16px', padding: '20px', border: '1px solid #e2e8f0' }}>
                   <h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Quick Actions</h3>
                   <div style={{ display: 'grid', gap: '10px' }}>
-                    <Link href="/intake/quiz" style={{ color: '#1a2650', fontWeight: 500, textDecoration: 'none' }}>Go to Intake</Link>
-                    <Link href="/full-application" style={{ color: '#1a2650', fontWeight: 500, textDecoration: 'none' }}>Open Full Application</Link>
-                    <Link href="/upload-statements" style={{ color: '#1a2650', fontWeight: 500, textDecoration: 'none' }}>Upload Statements</Link>
+                    <Link href="/intake/quiz" style={{ color: '#0d9488', fontWeight: 500, textDecoration: 'none' }}>Go to Intake</Link>
+                    <Link href="/full-application" style={{ color: '#0d9488', fontWeight: 500, textDecoration: 'none' }}>Open Full Application</Link>
+                    <Link href="/upload-statements" style={{ color: '#0d9488', fontWeight: 500, textDecoration: 'none' }}>Upload Statements</Link>
                   </div>
                 </div>
               </div>
@@ -412,7 +417,7 @@ export default function ProgressTracker() {
       )}
 
       {/* Footer */}
-      <footer style={{ backgroundColor: '#0a0f2c', padding: '40px 20px', marginTop: 'auto' }}>
+      <footer style={{ backgroundColor: '#0f172a', padding: '40px 24px', marginTop: 'auto' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
           <img 
             src="https://cdn.prod.website-files.com/6864b4e14db4a4b6864c7968/686c11dae8ddeadf0fc2ffa7_Group%2017.svg" 

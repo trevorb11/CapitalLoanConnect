@@ -2,17 +2,19 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
 // ── EMBEDDED CSS ─────────────────────────────────────────────────────────
 const LEAD_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;700;800&display=swap');
 
   .lead-portal * { box-sizing: border-box; margin: 0; padding: 0; }
 
   .lead-portal {
-    font-family: 'DM Sans', sans-serif;
-    background: radial-gradient(ellipse at 20% 0%, rgba(20,184,166,0.10) 0%, transparent 60%),
-                radial-gradient(ellipse at 80% 100%, rgba(15,23,41,0.9) 0%, transparent 60%),
-                #080d18;
-    color: #e8eaf0;
+    font-family: 'Inter', sans-serif;
+    background: radial-gradient(ellipse at 20% 0%, rgba(13,148,136,0.10) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 100%, rgba(15,23,42,0.9) 0%, transparent 60%),
+                #0f172a;
+    color: rgba(255,255,255,0.85);
     min-height: 100vh;
+    font-size: 1.05rem;
+    line-height: 1.7;
   }
 
   /* ── HEADER ── */
@@ -20,10 +22,11 @@ const LEAD_CSS = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 24px;
+    padding: 0 24px;
+    height: 72px;
     border-bottom: 1px solid rgba(255,255,255,0.06);
-    background: rgba(8,13,24,0.85);
-    backdrop-filter: blur(12px);
+    background: rgba(15,23,42,0.95);
+    backdrop-filter: blur(20px);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -35,14 +38,14 @@ const LEAD_CSS = `
 
   .lead-portal .lp-header-mark {
     width: 32px; height: 32px;
-    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
+    background: linear-gradient(135deg, #0d9488, #14b8a6);
     border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 13px; color: #080d18;
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 13px; color: #0f172a;
   }
 
   .lead-portal .lp-header-brand {
-    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px;
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 13px; color: #fff;
   }
 
   .lead-portal .lp-header-right {
@@ -50,20 +53,20 @@ const LEAD_CSS = `
   }
 
   .lead-portal .lp-header-user {
-    font-size: 12px; color: #7b8499;
+    font-size: 12px; color: #94a3b8;
   }
 
   .lead-portal .lp-header-out {
     padding: 6px 14px;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 8px;
-    color: #9ba3b8; font-size: 12px;
-    font-family: 'DM Sans', sans-serif;
-    cursor: pointer; transition: all 0.2s;
+    border-radius: 50px;
+    color: #94a3b8; font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer; transition: all 0.3s ease;
   }
 
-  .lead-portal .lp-header-out:hover { background: rgba(255,255,255,0.1); color: #e8eaf0; }
+  .lead-portal .lp-header-out:hover { background: rgba(255,255,255,0.1); color: #fff; }
 
   /* ── PAGE WRAP ── */
   .lead-portal .lp-wrap {
@@ -73,53 +76,56 @@ const LEAD_CSS = `
   }
 
   .lead-portal .lp-title {
-    font-family: 'Syne', sans-serif;
+    font-family: 'Playfair Display', Georgia, serif;
     font-size: 26px;
     font-weight: 700;
     color: #fff;
     margin-bottom: 4px;
+    letter-spacing: -0.02em;
   }
 
   .lead-portal .lp-subtitle {
-    font-size: 14px; color: #7b8499; margin-bottom: 32px;
+    font-size: 14px; color: rgba(255,255,255,0.7); margin-bottom: 32px;
   }
 
   /* ── NAV TABS ── */
   .lead-portal .lp-nav {
-    display: flex; gap: 4px;
+    display: flex; gap: 6px;
     margin-bottom: 28px;
-    background: rgba(15,23,41,0.7);
+    background: rgba(15,23,42,0.7);
     border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 12px;
-    padding: 4px;
+    border-radius: 50px;
+    padding: 5px;
     overflow-x: auto; -webkit-overflow-scrolling: touch;
   }
 
   .lead-portal .lp-nav-btn {
     flex: 1; padding: 11px 16px;
-    background: none; border: none; border-radius: 8px;
-    color: #7b8499; font-family: 'DM Sans', sans-serif;
+    background: none; border: none; border-radius: 50px;
+    color: #94a3b8; font-family: 'Inter', sans-serif;
     font-size: 13px; font-weight: 500;
-    cursor: pointer; transition: all 0.2s;
+    cursor: pointer; transition: all 0.3s ease;
     white-space: nowrap; min-width: 0;
     position: relative;
   }
 
-  .lead-portal .lp-nav-btn:hover { color: #e8eaf0; background: rgba(255,255,255,0.04); }
-  .lead-portal .lp-nav-btn.active { background: rgba(45,212,191,0.1); color: #2dd4bf; font-weight: 600; }
+  .lead-portal .lp-nav-btn:hover { color: #fff; background: rgba(255,255,255,0.04); }
+  .lead-portal .lp-nav-btn.active { background: #0d9488; color: #fff; font-weight: 600; }
 
   /* ── CARDS ── */
   .lead-portal .card {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(15,23,42,0.7);
+    border: 1px solid #e2e8f01a;
     border-radius: 16px;
-    padding: 24px;
+    padding: 32px;
     margin-bottom: 14px;
-    transition: border-color 0.2s;
+    transition: all 0.3s ease;
   }
 
   .lead-portal .card-hover:hover {
-    border-color: rgba(45,212,191,0.25);
+    border-color: #99f6e4;
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(13,148,136,0.1);
     cursor: pointer;
   }
 
@@ -128,9 +134,9 @@ const LEAD_CSS = `
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #14B8A6, #2dd4bf);
+    background: linear-gradient(90deg, #0d9488, #14b8a6);
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.3s ease;
     border-radius: 16px 16px 0 0;
   }
 
@@ -140,73 +146,73 @@ const LEAD_CSS = `
   .lead-portal .btn-primary {
     width: 100%;
     padding: 13px;
-    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    background: #0d9488;
     border: none;
-    border-radius: 10px;
-    color: #080d18;
-    font-family: 'Syne', sans-serif;
+    border-radius: 50px;
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
     font-weight: 700;
     font-size: 15px;
     cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s;
+    transition: all 0.3s ease;
   }
 
-  .lead-portal .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+  .lead-portal .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(13,148,136,0.35); background: #14b8a6; }
   .lead-portal .btn-primary:active { transform: translateY(0); }
-  .lead-portal .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .lead-portal .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
   .lead-portal .btn-secondary {
     padding: 8px 16px;
-    background: rgba(45,212,191,0.1);
-    border: 1px solid rgba(45,212,191,0.25);
-    border-radius: 8px;
-    color: #2dd4bf;
-    font-family: 'DM Sans', sans-serif;
+    background: rgba(13,148,136,0.1);
+    border: 1px solid rgba(13,148,136,0.25);
+    border-radius: 50px;
+    color: #0d9488;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
   }
 
-  .lead-portal .btn-secondary:hover { background: rgba(45,212,191,0.2); }
+  .lead-portal .btn-secondary:hover { background: rgba(13,148,136,0.2); color: #14b8a6; }
   .lead-portal .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .lead-portal .btn-ghost {
     padding: 8px 16px;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px;
+    border-radius: 50px;
     color: #94a3b8;
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 13px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
   }
 
-  .lead-portal .btn-ghost:hover { background: rgba(255,255,255,0.08); color: #e8eaf0; }
+  .lead-portal .btn-ghost:hover { background: rgba(255,255,255,0.08); color: #fff; }
 
   /* ── FORM FIELDS ── */
   .lead-portal .field-label {
-    display: block; font-size: 12px; font-weight: 600; color: #9ba3b8;
-    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+    display: block; font-size: 11px; font-weight: 600; color: #94a3b8;
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
   }
 
   .lead-portal .field-input, .lead-portal select {
-    width: 100%; padding: 11px 14px;
-    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 8px; color: #e8eaf0; font-size: 14px;
-    font-family: 'DM Sans', sans-serif; outline: none; transition: border-color 0.2s;
+    width: 100%; padding: 14px 16px;
+    background: rgba(255,255,255,0.05); border: 1px solid #d1d5db33;
+    border-radius: 10px; color: #fff; font-size: 14px;
+    font-family: 'Inter', sans-serif; outline: none; transition: all 0.3s ease;
   }
 
   .lead-portal .field-input:focus, .lead-portal select:focus {
-    border-color: rgba(45,212,191,0.5); background: rgba(45,212,191,0.04);
+    border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.2); background: rgba(13,148,136,0.04);
   }
 
   /* ── SECTION LABELS ── */
   .lead-portal .section-label {
-    font-family: 'Syne', sans-serif;
-    font-size: 11px; font-weight: 700;
-    color: #2dd4bf;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px; font-weight: 600;
+    color: #0d9488;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin-bottom: 12px;
@@ -223,17 +229,17 @@ const LEAD_CSS = `
   .lead-portal .progress-track.big { height: 12px; border-radius: 8px; }
 
   .lead-portal .progress-fill {
-    height: 100%; background: linear-gradient(90deg, #2dd4bf, #14b8a6);
+    height: 100%; background: linear-gradient(90deg, #0d9488, #14b8a6);
     border-radius: 6px; transition: width 0.5s ease;
   }
 
   /* ── BADGES ── */
   .lead-portal .badge {
-    display: inline-block; padding: 3px 10px; border-radius: 20px;
-    font-size: 11px; font-weight: 600;
+    display: inline-block; padding: 3px 12px; border-radius: 50px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
   }
 
-  .lead-portal .badge-active { background: rgba(45,212,191,0.15); color: #2dd4bf; }
+  .lead-portal .badge-active { background: #f0fdfa; color: #0d9488; }
   .lead-portal .badge-complete { background: rgba(148,163,184,0.15); color: #94a3b8; }
   .lead-portal .badge-alert { background: rgba(250,204,21,0.15); color: #facc15; }
 
@@ -246,39 +252,39 @@ const LEAD_CSS = `
   .lead-portal .stat-grid-4 { grid-template-columns: repeat(4, 1fr); }
 
   .lead-portal .stat-card {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
+    background: rgba(15,23,42,0.7);
+    border: 1px solid #e2e8f01a;
+    border-radius: 16px;
     padding: 18px 16px;
     text-align: center;
   }
 
   .lead-portal .stat-label {
-    color: #7b8499; font-size: 11px; font-weight: 500;
+    color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.05em;
     margin-bottom: 6px;
   }
 
   .lead-portal .stat-val {
-    font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700;
+    font-family: 'Playfair Display', Georgia, serif; font-size: 22px; font-weight: 700; color: #fff;
   }
 
   .lead-portal .stat-sub {
-    color: #4b5568; font-size: 11px; margin-top: 2px;
+    color: rgba(255,255,255,0.5); font-size: 11px; margin-top: 2px;
   }
 
-  .lead-portal .teal { color: #2dd4bf; }
+  .lead-portal .teal { color: #0d9488; }
   .lead-portal .red { color: #f87171; }
 
   /* ── POSITION CARD ── */
   .lead-portal .pos-card {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(15,23,42,0.7);
+    border: 1px solid #e2e8f01a;
     border-radius: 16px;
-    padding: 24px;
+    padding: 32px;
     margin-bottom: 14px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
   }
@@ -287,14 +293,14 @@ const LEAD_CSS = `
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, #14B8A6, #2dd4bf);
-    opacity: 0; transition: opacity 0.2s;
+    background: linear-gradient(90deg, #0d9488, #14b8a6);
+    opacity: 0; transition: opacity 0.3s ease;
   }
 
   .lead-portal .pos-card:hover {
-    border-color: rgba(45,212,191,0.3);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    border-color: #99f6e4;
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(13,148,136,0.1);
   }
 
   .lead-portal .pos-card:hover::before { opacity: 1; }
@@ -302,14 +308,14 @@ const LEAD_CSS = `
   /* ── BACK BUTTON ── */
   .lead-portal .back-btn {
     background: none; border: none;
-    color: #7b8499; font-size: 14px;
-    font-family: 'DM Sans', sans-serif;
+    color: #94a3b8; font-size: 14px;
+    font-family: 'Inter', sans-serif;
     cursor: pointer; margin-bottom: 20px;
     display: flex; align-items: center; gap: 6px;
-    transition: color 0.2s;
+    transition: color 0.3s ease;
   }
 
-  .lead-portal .back-btn:hover { color: #2dd4bf; }
+  .lead-portal .back-btn:hover { color: #0d9488; }
 
   /* ── DETAIL PAGE ── */
   .lead-portal .detail-header {
@@ -319,34 +325,34 @@ const LEAD_CSS = `
   }
 
   .lead-portal .detail-title {
-    font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 700;
+    font-family: 'Playfair Display', Georgia, serif; font-size: 24px; font-weight: 700; color: #fff; letter-spacing: -0.02em;
   }
 
-  .lead-portal .detail-sub { color: #7b8499; font-size: 13px; margin-top: 4px; }
+  .lead-portal .detail-sub { color: rgba(255,255,255,0.7); font-size: 13px; margin-top: 4px; }
 
   /* ── TRACKER CARD ── */
   .lead-portal .tracker-card {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(45,212,191,0.15);
+    background: rgba(15,23,42,0.7);
+    border: 1px solid rgba(13,148,136,0.15);
     border-radius: 16px;
-    padding: 28px 24px;
+    padding: 36px 32px;
     text-align: center;
     margin-bottom: 16px;
   }
 
   .lead-portal .tracker-pct {
-    font-family: 'Syne', sans-serif; font-size: 42px; font-weight: 800;
-    color: #2dd4bf; margin-bottom: 4px;
+    font-family: 'Playfair Display', Georgia, serif; font-size: 42px; font-weight: 700;
+    color: #0d9488; margin-bottom: 4px; letter-spacing: -0.02em;
   }
 
-  .lead-portal .tracker-pct-sub { color: #7b8499; font-size: 13px; margin-bottom: 20px; }
+  .lead-portal .tracker-pct-sub { color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 20px; }
 
   /* ── COUNTDOWN ── */
   .lead-portal .countdown-card {
-    background: linear-gradient(135deg, rgba(45,212,191,0.08), rgba(20,184,166,0.03));
-    border: 1px solid rgba(45,212,191,0.15);
+    background: linear-gradient(135deg, rgba(13,148,136,0.08), rgba(13,148,136,0.03));
+    border: 1px solid rgba(13,148,136,0.15);
     border-radius: 16px;
-    padding: 24px;
+    padding: 32px;
     margin-bottom: 14px;
   }
 
@@ -356,12 +362,12 @@ const LEAD_CSS = `
   }
 
   .lead-portal .countdown-num {
-    font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800;
-    color: #2dd4bf;
+    font-family: 'Playfair Display', Georgia, serif; font-size: 28px; font-weight: 700;
+    color: #0d9488;
   }
 
   .lead-portal .countdown-label {
-    color: #7b8499; font-size: 11px; text-transform: uppercase;
+    color: rgba(255,255,255,0.7); font-size: 11px; text-transform: uppercase;
     letter-spacing: 0.06em; margin-top: 2px;
   }
 
@@ -376,19 +382,19 @@ const LEAD_CSS = `
   }
 
   .lead-portal .contact-strip-text {
-    font-size: 13px; color: #7b8499;
+    font-size: 13px; color: rgba(255,255,255,0.7);
   }
 
   .lead-portal .contact-strip-text a {
-    color: #2dd4bf; font-weight: 600; text-decoration: none;
+    color: #0d9488; font-weight: 600; text-decoration: none;
   }
 
   .lead-portal .contact-strip-text a:hover { text-decoration: underline; }
 
   /* ── RESOURCES ── */
   .lead-portal .res-group-title {
-    font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
-    margin-bottom: 12px; margin-top: 24px;
+    font-family: 'Playfair Display', Georgia, serif; font-size: 15px; font-weight: 700;
+    margin-bottom: 12px; margin-top: 24px; color: #fff;
   }
 
   .lead-portal .res-group-title:first-child { margin-top: 0; }
@@ -398,19 +404,20 @@ const LEAD_CSS = `
   }
 
   .lead-portal .res-card {
-    background: rgba(15,23,41,0.7);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
+    background: rgba(15,23,42,0.7);
+    border: 1px solid #e2e8f01a;
+    border-radius: 16px;
     padding: 20px;
     text-decoration: none;
     color: inherit;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
     display: block;
   }
 
   .lead-portal .res-card:hover {
-    border-color: rgba(45,212,191,0.3);
-    transform: translateY(-2px);
+    border-color: #99f6e4;
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(13,148,136,0.1);
   }
 
   .lead-portal .res-card-head {
@@ -423,41 +430,41 @@ const LEAD_CSS = `
   }
 
   .lead-portal .res-tag {
-    padding: 2px 8px; border-radius: 4px;
+    padding: 2px 10px; border-radius: 50px;
     font-size: 10px; font-weight: 600;
-    white-space: nowrap; flex-shrink: 0;
+    white-space: nowrap; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.05em;
   }
 
   .lead-portal .res-card-desc {
-    font-size: 12px; color: #7b8499; line-height: 1.5;
+    font-size: 12px; color: rgba(255,255,255,0.7); line-height: 1.5;
   }
 
   .lead-portal .res-card-link {
-    font-size: 12px; color: #2dd4bf; font-weight: 600;
+    font-size: 12px; color: #0d9488; font-weight: 600;
     margin-top: 10px;
   }
 
   /* ── MISC ── */
   .lead-portal .spinner {
     width: 28px; height: 28px;
-    border: 3px solid rgba(45,212,191,0.2); border-top-color: #2dd4bf;
+    border: 3px solid rgba(13,148,136,0.2); border-top-color: #0d9488;
     border-radius: 50%; animation: lead-spin 0.8s linear infinite;
     margin: 0 auto;
   }
 
   @keyframes lead-spin { to { transform: rotate(360deg); } }
 
-  .lead-portal .loading { text-align: center; padding: 48px 20px; color: #7b8499; font-size: 14px; }
-  .lead-portal .empty { text-align: center; padding: 32px 20px; color: #4b5568; font-size: 14px; line-height: 1.6; }
+  .lead-portal .loading { text-align: center; padding: 48px 20px; color: rgba(255,255,255,0.7); font-size: 14px; }
+  .lead-portal .empty { text-align: center; padding: 32px 20px; color: #64748b; font-size: 14px; line-height: 1.6; }
   .lead-portal .empty strong { color: #94a3b8; display: block; margin-bottom: 6px; font-size: 15px; }
 
   .lead-portal .popup-fallback {
     margin-top: 12px; padding: 12px 16px;
     background: rgba(250,204,21,0.08); border: 1px solid rgba(250,204,21,0.2);
-    border-radius: 8px; font-size: 13px; color: #facc15; text-align: center;
+    border-radius: 10px; font-size: 13px; color: #facc15; text-align: center;
   }
 
-  .lead-portal .popup-fallback a { color: #2dd4bf; font-weight: 600; text-decoration: underline; }
+  .lead-portal .popup-fallback a { color: #0d9488; font-weight: 600; text-decoration: underline; }
 
   .lead-portal .divider {
     height: 1px; background: rgba(255,255,255,0.06);
@@ -467,14 +474,14 @@ const LEAD_CSS = `
   /* ── AVATAR ── */
   .lead-portal .lp-avatar {
     width: 30px; height: 30px; border-radius: 50%;
-    background: linear-gradient(135deg, #14B8A6, #0d9488);
+    background: linear-gradient(135deg, #0d9488, #14b8a6);
     display: flex; align-items: center; justify-content: center;
-    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px;
-    color: #080d18; flex-shrink: 0; letter-spacing: 0.02em;
+    font-family: 'Inter', sans-serif; font-weight: 700; font-size: 12px;
+    color: #fff; flex-shrink: 0; letter-spacing: 0.02em;
   }
 
   .lead-portal .lp-header-name {
-    font-size: 12px; color: #9ba3b8; font-weight: 500;
+    font-size: 12px; color: #94a3b8; font-weight: 500;
   }
 
   /* ── MAGIC LINK ── */
@@ -486,38 +493,38 @@ const LEAD_CSS = `
 
   .lead-portal .magic-link-btn {
     background: none; border: none;
-    color: #2dd4bf; font-size: 13px; cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
+    color: #0d9488; font-size: 13px; cursor: pointer;
+    font-family: 'Inter', sans-serif;
     text-decoration: underline; text-underline-offset: 3px;
-    opacity: 0.85; transition: opacity 0.2s;
+    opacity: 0.85; transition: opacity 0.3s ease;
   }
 
   .lead-portal .magic-link-btn:hover { opacity: 1; }
 
   /* ── DROP ZONE ── */
   .lead-portal .drop-zone {
-    border: 2px dashed rgba(45,212,191,0.3);
-    border-radius: 12px; padding: 32px 20px;
+    border: 2px dashed rgba(13,148,136,0.3);
+    border-radius: 16px; padding: 32px 20px;
     text-align: center; cursor: pointer;
-    transition: all 0.2s; background: rgba(45,212,191,0.03);
+    transition: all 0.3s ease; background: rgba(13,148,136,0.03);
   }
 
   .lead-portal .drop-zone:hover,
   .lead-portal .drop-zone.dragover {
-    border-color: rgba(45,212,191,0.6);
-    background: rgba(45,212,191,0.07);
+    border-color: rgba(13,148,136,0.6);
+    background: rgba(13,148,136,0.07);
   }
 
   .lead-portal .drop-zone-icon {
     width: 40px; height: 40px;
-    background: rgba(45,212,191,0.1);
+    background: #f0fdfa1a;
     border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
     margin: 0 auto 12px;
   }
 
   .lead-portal .drop-zone-text {
-    font-size: 14px; font-weight: 600; color: #e8eaf0; margin-bottom: 4px;
+    font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 4px;
   }
 
   .lead-portal .drop-zone-sub {
@@ -526,19 +533,19 @@ const LEAD_CSS = `
 
   /* ── WELCOME CARD ── */
   .lead-portal .welcome-card {
-    background: linear-gradient(135deg, rgba(45,212,191,0.07) 0%, rgba(20,184,166,0.02) 100%);
-    border: 1px solid rgba(45,212,191,0.15);
-    border-radius: 16px; padding: 28px 24px; margin-bottom: 16px;
+    background: linear-gradient(135deg, rgba(13,148,136,0.07) 0%, rgba(13,148,136,0.02) 100%);
+    border: 1px solid rgba(13,148,136,0.15);
+    border-radius: 16px; padding: 36px 32px; margin-bottom: 16px;
     text-align: center;
   }
 
   .lead-portal .welcome-card-title {
-    font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700;
-    color: #fff; margin-bottom: 8px;
+    font-family: 'Playfair Display', Georgia, serif; font-size: 18px; font-weight: 700;
+    color: #fff; margin-bottom: 8px; letter-spacing: -0.02em;
   }
 
   .lead-portal .welcome-card-sub {
-    font-size: 14px; color: #94a3b8; line-height: 1.6; margin-bottom: 20px;
+    font-size: 14px; color: rgba(255,255,255,0.7); line-height: 1.6; margin-bottom: 20px;
   }
 
   .lead-portal .value-props {
@@ -549,21 +556,21 @@ const LEAD_CSS = `
   .lead-portal .value-prop {
     background: rgba(255,255,255,0.03);
     border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 10px; padding: 12px 14px;
+    border-radius: 12px; padding: 12px 14px;
     display: flex; align-items: flex-start; gap: 10px;
   }
 
   .lead-portal .value-prop-dot {
     width: 6px; height: 6px; border-radius: 50%;
-    background: #2dd4bf; flex-shrink: 0; margin-top: 6px;
+    background: #0d9488; flex-shrink: 0; margin-top: 6px;
   }
 
   .lead-portal .value-prop-text {
-    font-size: 12px; color: #94a3b8; line-height: 1.5;
+    font-size: 12px; color: rgba(255,255,255,0.7); line-height: 1.5;
   }
 
   .lead-portal .value-prop-text strong {
-    display: block; color: #e8eaf0; font-weight: 600; margin-bottom: 2px; font-size: 13px;
+    display: block; color: #fff; font-weight: 600; margin-bottom: 2px; font-size: 13px;
   }
 
   /* ── AUTH SPLIT LAYOUT ── */
@@ -592,31 +599,31 @@ const LEAD_CSS = `
 
   .lead-portal .auth-logo-mark {
     width: 38px; height: 38px;
-    background: linear-gradient(135deg, #14B8A6, #2dd4bf);
+    background: linear-gradient(135deg, #0d9488, #14b8a6);
     border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
-    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 14px; color: #080d18;
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 14px; color: #0f172a;
   }
 
   .lead-portal .auth-logo-name {
-    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px;
+    font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 15px; color: #fff;
   }
 
   .lead-portal .auth-logo-tag {
-    font-size: 10px; color: #2dd4bf;
-    text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1px;
+    font-size: 10px; color: #0d9488;
+    text-transform: uppercase; letter-spacing: 0.08em; margin-top: 1px; font-weight: 600;
   }
 
   .lead-portal .auth-headline {
-    font-family: 'Syne', sans-serif;
-    font-size: 42px; font-weight: 800; line-height: 1.2;
-    color: #fff; margin-bottom: 20px;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 42px; font-weight: 700; line-height: 1.2;
+    color: #fff; margin-bottom: 20px; letter-spacing: -0.02em;
   }
 
-  .lead-portal .auth-headline span { color: #2dd4bf; }
+  .lead-portal .auth-headline span { color: #0d9488; }
 
   .lead-portal .auth-sub {
-    font-size: 16px; color: #94a3b8; line-height: 1.8; margin-bottom: 40px;
+    font-size: 16px; color: rgba(255,255,255,0.7); line-height: 1.8; margin-bottom: 40px;
   }
 
   .lead-portal .auth-benefits { margin-bottom: 40px; }
@@ -627,52 +634,52 @@ const LEAD_CSS = `
 
   .lead-portal .auth-benefit-icon {
     width: 22px; height: 22px; flex-shrink: 0;
-    background: rgba(45,212,191,0.12); border-radius: 50%;
+    background: rgba(13,148,136,0.12); border-radius: 50%;
     display: flex; align-items: center; justify-content: center; margin-top: 1px;
   }
 
-  .lead-portal .auth-benefit-text { font-size: 14px; color: #cbd5e1; line-height: 1.5; }
-  .lead-portal .auth-benefit-text strong { color: #e8eaf0; font-weight: 600; }
+  .lead-portal .auth-benefit-text { font-size: 14px; color: rgba(255,255,255,0.85); line-height: 1.5; }
+  .lead-portal .auth-benefit-text strong { color: #fff; font-weight: 600; }
 
   .lead-portal .auth-stats {
     display: flex; gap: 0;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px; overflow: hidden;
+    border: 1px solid #e2e8f01a;
+    border-radius: 16px; overflow: hidden;
     margin-bottom: 28px;
   }
 
   .lead-portal .auth-stat {
     flex: 1; padding: 14px 16px; text-align: center;
-    border-right: 1px solid rgba(255,255,255,0.08);
+    border-right: 1px solid #e2e8f01a;
   }
 
   .lead-portal .auth-stat:last-child { border-right: none; }
 
   .lead-portal .auth-stat-num {
-    font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800;
-    color: #2dd4bf; margin-bottom: 2px;
+    font-family: 'Playfair Display', Georgia, serif; font-size: 18px; font-weight: 700;
+    color: #0d9488; margin-bottom: 2px;
   }
 
   .lead-portal .auth-stat-label {
-    font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em;
+    font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
   }
 
   /* ── DASHBOARD PREVIEW CARD ── */
   .lead-portal .auth-preview {
-    background: rgba(15,23,41,0.8);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 14px; padding: 18px 20px;
+    background: rgba(15,23,42,0.8);
+    border: 1px solid #e2e8f01a;
+    border-radius: 16px; padding: 18px 20px;
     position: relative; overflow: hidden;
   }
 
   .lead-portal .auth-preview::before {
     content: '';
     position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: linear-gradient(90deg, #14B8A6, #2dd4bf, transparent);
+    background: linear-gradient(90deg, #0d9488, #14b8a6, transparent);
   }
 
   .lead-portal .auth-preview-label {
-    font-size: 10px; color: #2dd4bf; text-transform: uppercase;
+    font-size: 10px; color: #0d9488; text-transform: uppercase;
     letter-spacing: 0.08em; margin-bottom: 14px; font-weight: 600;
   }
 
@@ -681,11 +688,11 @@ const LEAD_CSS = `
   }
 
   .lead-portal .auth-preview-pos-name {
-    font-size: 13px; font-weight: 600; color: #e8eaf0;
+    font-size: 13px; font-weight: 600; color: #fff;
   }
 
   .lead-portal .auth-preview-pos-pct {
-    font-size: 12px; color: #2dd4bf; font-weight: 700;
+    font-size: 12px; color: #0d9488; font-weight: 700;
   }
 
   .lead-portal .auth-preview-bar {
@@ -694,7 +701,7 @@ const LEAD_CSS = `
 
   .lead-portal .auth-preview-bar-fill {
     height: 100%; border-radius: 99px;
-    background: linear-gradient(90deg, #14B8A6, #2dd4bf);
+    background: linear-gradient(90deg, #0d9488, #14b8a6);
   }
 
   .lead-portal .auth-preview-metrics {
@@ -706,11 +713,11 @@ const LEAD_CSS = `
   }
 
   .lead-portal .auth-preview-metric-val {
-    font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 2px;
+    font-family: 'Playfair Display', Georgia, serif; font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 2px;
   }
 
   .lead-portal .auth-preview-metric-key {
-    font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;
+    font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
   }
 
   /* ── AUTH FORM PANEL ── */
@@ -743,7 +750,7 @@ const LEAD_CSS = `
   .lead-portal .pulse { animation: lead-pulse 2s ease-in-out infinite; }
 
   @media (max-width: 640px) {
-    .lead-portal .lp-nav-btn { flex: none; padding: 10px 14px; font-size: 12px; }
+    .lead-portal .lp-nav-btn { flex: none; padding: 10px 14px; font-size: 12px; border-radius: 50px; }
     .lead-portal .lp-wrap { padding: 24px 16px 60px; }
     .lead-portal .lp-title { font-size: 22px; }
     .lead-portal .stat-grid-3 { grid-template-columns: 1fr; }
@@ -935,7 +942,7 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
         <style>{LEAD_CSS}</style>
         <div style={{ textAlign: "center" }}>
           <div className="spinner" style={{ margin: "0 auto 16px" }} />
-          <p style={{ color: "#7b8499", fontSize: 14 }}>Signing you in...</p>
+          <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 14 }}>Signing you in...</p>
         </div>
       </div>
     );
@@ -943,15 +950,15 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
 
   const SmallBrand = () => (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 24 }}>
-      <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#14B8A6,#2dd4bf)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: 13, color: "#080d18" }}>TCG</div>
+      <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#0d9488,#14b8a6)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, fontSize: 13, color: "#0f172a" }}>TCG</div>
       <div>
-        <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: 13 }}>Today Capital Group</div>
-        <div style={{ fontSize: 10, color: "#2dd4bf", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Funding Dashboard</div>
+        <div style={{ fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, fontSize: 13 }}>Today Capital Group</div>
+        <div style={{ fontSize: 10, color: "#0d9488", textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>Funding Dashboard</div>
       </div>
     </div>
   );
 
-  const Err = () => error ? <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div> : null;
+  const Err = () => error ? <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 10, padding: "10px 14px", marginBottom: 16, color: "#f87171", fontSize: 13 }}>{error}</div> : null;
 
   // ── Phone-entry & Code-entry: centered card ──
   if (mode === "phone-entry" || mode === "code-entry") {
@@ -964,12 +971,12 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
             {mode === "code-entry" ? (
               <>
                 <div style={{ textAlign: "center", marginBottom: 24 }}>
-                  <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <div style={{ width: 52, height: 52, background: "rgba(13,148,136,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                   </div>
-                  <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Check your texts</h2>
-                  <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
-                    We sent a 6-digit code to <strong style={{ color: "#e8eaf0" }}>{otpPhone}</strong>. Enter it below to sign in.
+                  <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Check your texts</h2>
+                  <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, lineHeight: 1.6 }}>
+                    We sent a 6-digit code to <strong style={{ color: "#fff" }}>{otpPhone}</strong>. Enter it below to sign in.
                   </p>
                 </div>
                 <Err />
@@ -996,7 +1003,7 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
                 <div style={{ textAlign: "center", marginTop: 16 }}>
                   <button
                     onClick={() => { setMode("phone-entry"); setError(null); setOtp(""); }}
-                    style={{ background: "none", border: "none", color: "#7b8499", fontSize: 13, cursor: "pointer" }}
+                    style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", fontSize: 13, cursor: "pointer" }}
                   >
                     Wrong number or didn't receive it? Go back
                   </button>
@@ -1005,8 +1012,8 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
             ) : (
               <>
                 <div style={{ textAlign: "center", marginBottom: 24 }}>
-                  <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Welcome back</h1>
-                  <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Enter your phone number and we'll text you a sign-in code.</p>
+                  <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Welcome back</h1>
+                  <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, lineHeight: 1.6 }}>Enter your phone number and we'll text you a sign-in code.</p>
                 </div>
                 <Err />
                 <form onSubmit={handleSendOtp}>
@@ -1026,8 +1033,8 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
                     {loading ? "Sending..." : "Send Code"}
                   </button>
                 </form>
-                <div style={{ textAlign: "center", marginTop: 16, color: "#7b8499", fontSize: 13 }}>
-                  New here? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Create a free account</button>
+                <div style={{ textAlign: "center", marginTop: 16, color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
+                  New here? <button onClick={() => { setMode("signup"); setError(null); }} style={{ background: "none", border: "none", color: "#0d9488", cursor: "pointer", fontSize: 13 }}>Create a free account</button>
                 </div>
               </>
             )}
@@ -1071,7 +1078,7 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
             {benefits.map((b, i) => (
               <div key={i} className="auth-benefit">
                 <div className="auth-benefit-icon">
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </div>
                 <div className="auth-benefit-text">{b.text}</div>
               </div>
@@ -1113,7 +1120,7 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
                 <div className="auth-preview-metric-key">Payoff Date</div>
               </div>
               <div className="auth-preview-metric">
-                <div className="auth-preview-metric-val" style={{ color: "#2dd4bf" }}>Eligible</div>
+                <div className="auth-preview-metric-val" style={{ color: "#0d9488" }}>Eligible</div>
                 <div className="auth-preview-metric-key">Renewal</div>
               </div>
             </div>
@@ -1124,8 +1131,8 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
         <div className="auth-form-panel">
           <div className="card" style={{ padding: "32px 28px", marginBottom: 0 }}>
             <div style={{ marginBottom: 24 }}>
-              <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Get your free dashboard</h2>
-              <p style={{ color: "#7b8499", fontSize: 13, lineHeight: 1.6 }}>Takes 30 seconds. No credit card. No spam.</p>
+              <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Get your free dashboard</h2>
+              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, lineHeight: 1.6 }}>Takes 30 seconds. No credit card. No spam.</p>
             </div>
             <Err />
             <form onSubmit={handleSignup}>
@@ -1143,21 +1150,21 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
 
             <div className="auth-trust">
               <div className="auth-trust-item">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 No credit card
               </div>
               <div className="auth-trust-item">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 Free forever
               </div>
               <div className="auth-trust-item">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 No spam
               </div>
             </div>
 
-            <div style={{ textAlign: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", color: "#7b8499", fontSize: 13 }}>
-              Already have an account? <button onClick={() => { setMode("phone-entry"); setError(null); }} style={{ background: "none", border: "none", color: "#2dd4bf", cursor: "pointer", fontSize: 13 }}>Sign in</button>
+            <div style={{ textAlign: "center", marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.7)", fontSize: 13 }}>
+              Already have an account? <button onClick={() => { setMode("phone-entry"); setError(null); }} style={{ background: "none", border: "none", color: "#0d9488", cursor: "pointer", fontSize: 13 }}>Sign in</button>
             </div>
           </div>
         </div>
@@ -1187,7 +1194,7 @@ function AddPositionForm({ onSave, onCancel }: { onSave: () => void; onCancel: (
 
   return (
     <div className="card">
-      <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Add Funding Position</h3>
+      <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Add Funding Position</h3>
       {error && <p style={{ color: "#f87171", fontSize: 13, marginBottom: 12 }}>{error}</p>}
       <form onSubmit={handleSubmit}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
@@ -1294,8 +1301,8 @@ function PositionDetail({ pos: initialPos, onBack, onDeleted }: { pos: LeadPosit
           <div className="progress-fill" style={{ width: `${Math.min(100, c.progress)}%` }} />
         </div>
         <div style={{ display: "flex", justifyContent: "center", gap: 32, fontSize: 13 }}>
-          <div><span style={{ color: "#2dd4bf", fontWeight: 700 }}>{fmt$(c.paidSoFar)}</span> <span style={{ color: "#7b8499" }}>paid</span></div>
-          <div><span style={{ color: "#f87171", fontWeight: 700 }}>{fmt$(c.remaining)}</span> <span style={{ color: "#7b8499" }}>remaining</span></div>
+          <div><span style={{ color: "#0d9488", fontWeight: 700 }}>{fmt$(c.paidSoFar)}</span> <span style={{ color: "rgba(255,255,255,0.7)" }}>paid</span></div>
+          <div><span style={{ color: "#f87171", fontWeight: 700 }}>{fmt$(c.remaining)}</span> <span style={{ color: "rgba(255,255,255,0.7)" }}>remaining</span></div>
         </div>
       </div>
 
@@ -1326,7 +1333,7 @@ function PositionDetail({ pos: initialPos, onBack, onDeleted }: { pos: LeadPosit
       {/* Countdown */}
       {pos.status === "active" && c.paymentsLeft > 0 && (
         <div className="countdown-card">
-          <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: "#2dd4bf", marginBottom: 16, textAlign: "center" }}>Payoff Countdown</p>
+          <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 14, fontWeight: 700, color: "#0d9488", marginBottom: 16, textAlign: "center" }}>Payoff Countdown</p>
           <div className="countdown-grid">
             <div>
               <div className="countdown-num">{c.paymentsLeft}</div>
@@ -1348,12 +1355,12 @@ function PositionDetail({ pos: initialPos, onBack, onDeleted }: { pos: LeadPosit
       {pos.status === "active" && (
         <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <p style={{ color: "#7b8499", fontSize: 12, marginBottom: 2 }}>Next Payment</p>
-            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700 }}>{fmtDate(c.nextPayment)}</p>
+            <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, marginBottom: 2 }}>Next Payment</p>
+            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700 }}>{fmtDate(c.nextPayment)}</p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={{ color: "#7b8499", fontSize: 12, marginBottom: 2 }}>Amount</p>
-            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: "#2dd4bf" }}>{fmt$(Number(pos.payment_amount) || 0)}</p>
+            <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, marginBottom: 2 }}>Amount</p>
+            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: "#0d9488" }}>{fmt$(Number(pos.payment_amount) || 0)}</p>
           </div>
         </div>
       )}
@@ -1362,9 +1369,9 @@ function PositionDetail({ pos: initialPos, onBack, onDeleted }: { pos: LeadPosit
       <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <p style={{ fontWeight: 600, fontSize: 14 }}>Monthly Payment Load</p>
-          <p style={{ color: "#7b8499", fontSize: 12 }}>What this position costs you per month</p>
+          <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>What this position costs you per month</p>
         </div>
-        <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 700, color: "#f87171" }}>{fmt$(c.monthlyLoad)}</p>
+        <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 22, fontWeight: 700, color: "#f87171" }}>{fmt$(c.monthlyLoad)}</p>
       </div>
 
       {/* Renewal Eligibility */}
@@ -1377,7 +1384,7 @@ function PositionDetail({ pos: initialPos, onBack, onDeleted }: { pos: LeadPosit
           <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6, marginBottom: 14 }}>
             This position is {c.progress.toFixed(0)}% paid off. Many lenders allow renewals at 50%+, often at a lower factor rate or higher advance amount.
           </p>
-          <a href="/intake/quiz" style={{ display: "inline-block", background: "#facc15", color: "#0f172a", fontWeight: 700, padding: "10px 24px", borderRadius: 8, textDecoration: "none", fontFamily: "'Syne', sans-serif", fontSize: 14 }}>
+          <a href="/intake/quiz" style={{ display: "inline-block", background: "#0d9488", color: "#fff", fontWeight: 700, padding: "10px 24px", borderRadius: 50, textDecoration: "none", fontFamily: "'Inter', sans-serif", fontSize: 14, transition: "all 0.3s ease" }}>
             Check Your Options
           </a>
         </div>
@@ -1391,7 +1398,7 @@ function PositionDetail({ pos: initialPos, onBack, onDeleted }: { pos: LeadPosit
       {pos.status === "active" && (
         <div className="card">
           <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>Update Position</p>
-          {balanceMsg && <p style={{ fontSize: 13, color: balanceMsg.includes("Failed") ? "#f87171" : "#2dd4bf", marginBottom: 10 }}>{balanceMsg}</p>}
+          {balanceMsg && <p style={{ fontSize: 13, color: balanceMsg.includes("Failed") ? "#f87171" : "#0d9488", marginBottom: 10 }}>{balanceMsg}</p>}
           {editingBalance ? (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input className="field-input" type="number" value={newBalance} onChange={e => setNewBalance(e.target.value)} placeholder="Remaining balance" style={{ flex: 1 }} />
@@ -1414,12 +1421,12 @@ function PositionDetail({ pos: initialPos, onBack, onDeleted }: { pos: LeadPosit
             <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Delete this position?</p>
             <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 14 }}>This cannot be undone.</p>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: "rgba(248,113,113,0.2)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 8, color: "#f87171", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{deleting ? "Deleting..." : "Yes, Delete"}</button>
+              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: "rgba(248,113,113,0.2)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 50, color: "#f87171", fontFamily: "'Inter', sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{deleting ? "Deleting..." : "Yes, Delete"}</button>
               <button className="btn-ghost" onClick={() => setConfirmDelete(false)}>Cancel</button>
             </div>
           </div>
         ) : (
-          <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", color: "#4b5568", fontSize: 12, cursor: "pointer", padding: "4px 0" }}>Remove this position</button>
+          <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", color: "#64748b", fontSize: 12, cursor: "pointer", padding: "4px 0" }}>Remove this position</button>
         )}
       </div>
 
@@ -1440,8 +1447,8 @@ function PositionCard({ pos, onClick }: { pos: LeadPosition; onClick: () => void
     <div className="pos-card" onClick={onClick}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <div>
-          <h4 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700 }}>{pos.funder_name}</h4>
-          <span style={{ color: "#7b8499", fontSize: 12 }}>{pos.product_type}{pos.factor_rate ? ` \u00B7 ${pos.factor_rate}x` : ""}{pos.funded_date ? ` \u00B7 Funded ${fmtDate(pos.funded_date)}` : ""}</span>
+          <h4 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 700 }}>{pos.funder_name}</h4>
+          <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>{pos.product_type}{pos.factor_rate ? ` \u00B7 ${pos.factor_rate}x` : ""}{pos.funded_date ? ` \u00B7 Funded ${fmtDate(pos.funded_date)}` : ""}</span>
         </div>
         <span className={`badge ${pos.status === "active" ? "badge-active" : "badge-complete"}`}>
           {pos.status === "active" ? "Active" : pos.status}
@@ -1464,8 +1471,8 @@ function PositionCard({ pos, onClick }: { pos: LeadPosition; onClick: () => void
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <span style={{ color: "#7b8499", fontSize: 12 }}>Paid off</span>
-        <span style={{ color: "#2dd4bf", fontSize: 12, fontWeight: 600 }}>{c.progress.toFixed(1)}%</span>
+        <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>Paid off</span>
+        <span style={{ color: "#0d9488", fontSize: 12, fontWeight: 600 }}>{c.progress.toFixed(1)}%</span>
       </div>
       <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.min(100, c.progress)}%` }} /></div>
 
@@ -1475,18 +1482,18 @@ function PositionCard({ pos, onClick }: { pos: LeadPosition; onClick: () => void
             <>
               <div>
                 <span style={{ color: "#64748b" }}>Next payment</span>
-                <div style={{ fontWeight: 500, color: "#e8eaf0" }}>{fmtDate(c.nextPayment)}</div>
+                <div style={{ fontWeight: 500, color: "#fff" }}>{fmtDate(c.nextPayment)}</div>
               </div>
               <div>
                 <span style={{ color: "#64748b" }}>Est. payoff</span>
-                <div style={{ fontWeight: 500, color: "#e8eaf0" }}>{fmtDate(c.projectedPayoff)}</div>
+                <div style={{ fontWeight: 500, color: "#fff" }}>{fmtDate(c.projectedPayoff)}</div>
               </div>
             </>
           ) : (
             <span style={{ color: "#64748b" }}>Position fully paid off</span>
           )}
         </div>
-        <span style={{ color: "#2dd4bf", fontSize: 12, fontWeight: 600 }}>View details &rarr;</span>
+        <span style={{ color: "#0d9488", fontSize: 12, fontWeight: 600 }}>View details &rarr;</span>
       </div>
     </div>
   );
@@ -1510,8 +1517,8 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
     return (
       <div>
         <div className="welcome-card">
-          <div style={{ width: 52, height: 52, background: "rgba(45,212,191,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <div style={{ width: 52, height: 52, background: "rgba(13,148,136,0.12)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </div>
           <div className="welcome-card-title">Your dashboard is ready</div>
           <div className="welcome-card-sub">
@@ -1574,14 +1581,14 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
       {/* Payment Coverage Insight */}
       {revenue > 0 && totalMonthlyLoad > 0 && (
         <div className="card">
-          <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Payment Coverage</p>
+          <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Payment Coverage</p>
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
-              <span style={{ color: "#7b8499" }}>Payments as % of revenue</span>
-              <span style={{ color: (totalMonthlyLoad / revenue * 100) < 20 ? "#2dd4bf" : "#facc15", fontWeight: 600 }}>{(totalMonthlyLoad / revenue * 100).toFixed(1)}%</span>
+              <span style={{ color: "rgba(255,255,255,0.7)" }}>Payments as % of revenue</span>
+              <span style={{ color: (totalMonthlyLoad / revenue * 100) < 20 ? "#0d9488" : "#facc15", fontWeight: 600 }}>{(totalMonthlyLoad / revenue * 100).toFixed(1)}%</span>
             </div>
             <div className="progress-track">
-              <div className="progress-fill" style={{ width: `${Math.min(100, totalMonthlyLoad / revenue * 100)}%`, background: (totalMonthlyLoad / revenue * 100) < 20 ? "linear-gradient(90deg, #2dd4bf, #14b8a6)" : "linear-gradient(90deg, #facc15, #f59e0b)" }} />
+              <div className="progress-fill" style={{ width: `${Math.min(100, totalMonthlyLoad / revenue * 100)}%`, background: (totalMonthlyLoad / revenue * 100) < 20 ? "linear-gradient(90deg, #0d9488, #14b8a6)" : "linear-gradient(90deg, #facc15, #f59e0b)" }} />
             </div>
             <p style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
               {(totalMonthlyLoad / revenue * 100) < 15 ? "Your payment load is very manageable. You may have room for additional capital." :
@@ -1604,7 +1611,7 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
               ? `Your position with ${renewalReady[0].funder_name} is past 50% paid. You may qualify for a renewal at better terms.`
               : `${renewalReady.length} positions are past 50% paid. You could be eligible for renewals or consolidation at better terms.`}
           </p>
-          <a href="/intake/quiz" style={{ display: "inline-block", background: "#facc15", color: "#0f172a", fontWeight: 700, padding: "10px 24px", borderRadius: 8, textDecoration: "none", fontFamily: "'Syne', sans-serif", fontSize: 14 }}>
+          <a href="/intake/quiz" style={{ display: "inline-block", background: "#0d9488", color: "#fff", fontWeight: 700, padding: "10px 24px", borderRadius: 50, textDecoration: "none", fontFamily: "'Inter', sans-serif", fontSize: 14, transition: "all 0.3s ease" }}>
             Check Your Options
           </a>
         </div>
@@ -1618,7 +1625,7 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
                 <p style={{ fontWeight: 600, fontSize: 13 }}>Connect your bank</p>
-                <p style={{ color: "#7b8499", fontSize: 12 }}>Unlock live cash flow data and auto-detect MCA payments.</p>
+                <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>Unlock live cash flow data and auto-detect MCA payments.</p>
               </div>
               <button className="btn-secondary" onClick={() => onSwitchTab("financials")} style={{ fontSize: 12, whiteSpace: "nowrap" as const }}>Connect</button>
             </div>
@@ -1689,9 +1696,9 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
 
       {detectMsg && (
         <div style={{ padding: "12px 16px", fontSize: 13, borderRadius: 10, marginBottom: 14,
-          color: detectMsg.ok ? "#2dd4bf" : "#f87171",
-          background: detectMsg.ok ? "rgba(45,212,191,0.08)" : "rgba(248,113,113,0.08)",
-          border: `1px solid ${detectMsg.ok ? "rgba(45,212,191,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+          color: detectMsg.ok ? "#0d9488" : "#f87171",
+          background: detectMsg.ok ? "rgba(13,148,136,0.08)" : "rgba(248,113,113,0.08)",
+          border: `1px solid ${detectMsg.ok ? "rgba(13,148,136,0.2)" : "rgba(248,113,113,0.2)"}` }}>
           {detectMsg.text}
         </div>
       )}
@@ -1837,9 +1844,9 @@ function LeadFinancialsTab() {
 
   const m = banking?.metrics;
   const hasMetrics = banking?.connected && m && m.monthlyRevenue > 0;
-  const healthColor = (m?.healthScore ?? 0) >= 70 ? "#2dd4bf" : (m?.healthScore ?? 0) >= 40 ? "#facc15" : "#f87171";
+  const healthColor = (m?.healthScore ?? 0) >= 70 ? "#0d9488" : (m?.healthScore ?? 0) >= 40 ? "#facc15" : "#f87171";
   const healthLabel = (m?.healthScore ?? 0) >= 70 ? "Strong" : (m?.healthScore ?? 0) >= 45 ? "Moderate" : (m?.healthScore ?? 0) > 0 ? "Needs Attention" : null;
-  const trendColor = m?.revenueTrend === "growing" ? "#2dd4bf" : m?.revenueTrend === "declining" ? "#f87171" : "#94a3b8";
+  const trendColor = m?.revenueTrend === "growing" ? "#0d9488" : m?.revenueTrend === "declining" ? "#f87171" : "#94a3b8";
   const trendIcon = m?.revenueTrend === "growing" ? "↗" : m?.revenueTrend === "declining" ? "↘" : "→";
 
   return (
@@ -1847,7 +1854,7 @@ function LeadFinancialsTab() {
       {/* ── Bank Connection Card ── */}
       <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600 }}>Bank Connection</h3>
+          <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600 }}>Bank Connection</h3>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {banking?.connected && <span className="badge badge-active">Connected</span>}
             {!banking?.connected && banking?.hasPendingConnection && (
@@ -1859,7 +1866,7 @@ function LeadFinancialsTab() {
         {banking?.connected ? (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2dd4bf", flexShrink: 0 }} />
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#0d9488", flexShrink: 0 }} />
               <span style={{ fontWeight: 500 }}>{banking.institutionName || "Connected Bank"}</span>
               {banking.lastSyncedAt && (
                 <span style={{ color: "#64748b", fontSize: 11, marginLeft: "auto" }}>
@@ -1876,7 +1883,7 @@ function LeadFinancialsTab() {
                       <span>{a.name}</span>
                       {a.type && <span style={{ color: "#64748b", fontSize: 11, textTransform: "capitalize" }}>{a.type}</span>}
                     </span>
-                    <span style={{ fontWeight: 700, color: "#2dd4bf" }}>{fmt$(a.balance)}</span>
+                    <span style={{ fontWeight: 700, color: "#0d9488" }}>{fmt$(a.balance)}</span>
                   </div>
                 ))}
               </div>
@@ -1888,7 +1895,7 @@ function LeadFinancialsTab() {
               <button
                 onClick={handleDisconnect}
                 disabled={disconnecting}
-                style={{ background: "none", border: "1px solid rgba(248,113,113,0.25)", color: "#f87171", borderRadius: 10, padding: "8px 14px", fontSize: 13, cursor: "pointer" }}
+                style={{ background: "none", border: "1px solid rgba(248,113,113,0.25)", color: "#f87171", borderRadius: 50, padding: "8px 14px", fontSize: 13, cursor: "pointer", transition: "all 0.3s ease" }}
               >
                 {disconnecting ? "Disconnecting..." : "Disconnect"}
               </button>
@@ -1942,9 +1949,9 @@ function LeadFinancialsTab() {
         <>
           {/* Hero revenue + trend */}
           <div className="card" style={{ textAlign: "center", position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(45,212,191,0.07) 0%, transparent 70%)", pointerEvents: "none" }} />
-            <p style={{ color: "#7b8499", fontSize: 12, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Avg Monthly Revenue</p>
-            <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 36, fontWeight: 800, color: "#2dd4bf", lineHeight: 1.1 }}>{fmt$(m.monthlyRevenue)}</p>
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(13,148,136,0.07) 0%, transparent 70%)", pointerEvents: "none" }} />
+            <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Avg Monthly Revenue</p>
+            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 36, fontWeight: 800, color: "#0d9488", lineHeight: 1.1 }}>{fmt$(m.monthlyRevenue)}</p>
             {m.revenueTrend && (
               <p style={{ color: trendColor, fontSize: 12, fontWeight: 600, marginTop: 6 }}>
                 {trendIcon} {m.revenueTrend.charAt(0).toUpperCase() + m.revenueTrend.slice(1)}
@@ -1962,7 +1969,7 @@ function LeadFinancialsTab() {
             </div>
             <div className="stat-card">
               <div className="stat-label">Net Cash Flow</div>
-              <div className="stat-val" style={{ color: m.netCashFlow >= 0 ? "#2dd4bf" : "#f87171" }}>
+              <div className="stat-val" style={{ color: m.netCashFlow >= 0 ? "#0d9488" : "#f87171" }}>
                 {m.netCashFlow >= 0 ? "+" : "−"}{fmt$(m.netCashFlow)}
               </div>
               <div className="stat-sub">avg per month</div>
@@ -1987,13 +1994,13 @@ function LeadFinancialsTab() {
                   <p style={{ fontWeight: 600, fontSize: 14 }}>Financial Health Score</p>
                   {healthLabel && <p style={{ color: healthColor, fontSize: 12, marginTop: 2 }}>{healthLabel}</p>}
                 </div>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 26, fontWeight: 800, color: healthColor }}>{m.healthScore}/100</p>
+                <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 26, fontWeight: 800, color: healthColor }}>{m.healthScore}/100</p>
               </div>
               <div className="progress-track">
                 <div className="progress-fill" style={{
                   width: `${m.healthScore}%`,
                   background: (m.healthScore ?? 0) >= 70
-                    ? "linear-gradient(90deg, #2dd4bf, #14b8a6)"
+                    ? "linear-gradient(90deg, #0d9488, #14b8a6)"
                     : (m.healthScore ?? 0) >= 40
                       ? "linear-gradient(90deg, #facc15, #f59e0b)"
                       : "linear-gradient(90deg, #f87171, #ef4444)",
@@ -2010,9 +2017,9 @@ function LeadFinancialsTab() {
             <div className="card" style={{ padding: 0 }}>
               <button
                 onClick={() => setShowMonthly(p => !p)}
-                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "16px 20px", color: "#e8eaf0" }}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: "16px 20px", color: "#fff" }}
               >
-                <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 600 }}>Monthly Breakdown</span>
+                <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 15, fontWeight: 600 }}>Monthly Breakdown</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                   style={{ transform: showMonthly ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
                   <polyline points="6 9 12 15 18 9"/>
@@ -2032,13 +2039,13 @@ function LeadFinancialsTab() {
                     return (
                       <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 4, padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 12 }}>
                         <span style={{ color: "#94a3b8" }}>{row.month}</span>
-                        <span style={{ color: "#2dd4bf", textAlign: "right", fontWeight: 500 }}>
+                        <span style={{ color: "#0d9488", textAlign: "right", fontWeight: 500 }}>
                           {row.totalCredit > 0 ? fmt$(row.totalCredit) : "—"}
                         </span>
                         <span style={{ color: "#f87171", textAlign: "right" }}>
                           {row.totalDebit > 0 ? fmt$(row.totalDebit) : "—"}
                         </span>
-                        <span style={{ color: net >= 0 ? "#2dd4bf" : "#f87171", textAlign: "right", fontWeight: 600 }}>
+                        <span style={{ color: net >= 0 ? "#0d9488" : "#f87171", textAlign: "right", fontWeight: 600 }}>
                           {net !== 0 ? (net >= 0 ? "+" : "−") + fmt$(net) : "—"}
                         </span>
                       </div>
@@ -2050,9 +2057,9 @@ function LeadFinancialsTab() {
           )}
 
           {/* Auto-detect MCA Positions */}
-          <div className="card" style={{ background: "rgba(45,212,191,0.04)", border: "1px solid rgba(45,212,191,0.12)" }}>
+          <div className="card" style={{ background: "rgba(13,148,136,0.04)", border: "1px solid rgba(13,148,136,0.12)" }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
               <div>
@@ -2066,7 +2073,7 @@ function LeadFinancialsTab() {
               {detecting ? "Scanning transactions..." : "Scan for MCA Positions"}
             </button>
             {detectMsg && (
-              <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, fontSize: 13, background: detectMsg.ok ? "rgba(45,212,191,0.08)" : "rgba(248,113,113,0.08)", color: detectMsg.ok ? "#2dd4bf" : "#f87171", border: `1px solid ${detectMsg.ok ? "rgba(45,212,191,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+              <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, fontSize: 13, background: detectMsg.ok ? "rgba(13,148,136,0.08)" : "rgba(248,113,113,0.08)", color: detectMsg.ok ? "#0d9488" : "#f87171", border: `1px solid ${detectMsg.ok ? "rgba(13,148,136,0.2)" : "rgba(248,113,113,0.2)"}` }}>
                 {detectMsg.text}
               </div>
             )}
@@ -2076,7 +2083,7 @@ function LeadFinancialsTab() {
 
       {/* ── PDF Upload ── */}
       <div className="card">
-        <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Upload Bank Statements</h3>
+        <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Upload Bank Statements</h3>
         <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
           {banking?.connected
             ? "Upload PDF statements for additional months or a different account."
@@ -2137,7 +2144,7 @@ function StatementUploader() {
         ) : (
           <>
             <div className="drop-zone-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
             </div>
             <div className="drop-zone-text">Drop a PDF here or click to browse</div>
             <div className="drop-zone-sub">Bank statements from the last 3 months · PDF only</div>
@@ -2145,7 +2152,7 @@ function StatementUploader() {
         )}
       </div>
       {uploadResult && (
-        <div style={{ marginTop: 10, padding: "8px 14px", borderRadius: 8, fontSize: 12, background: uploadResult.ok ? "rgba(45,212,191,0.08)" : "rgba(248,113,113,0.08)", color: uploadResult.ok ? "#2dd4bf" : "#f87171", border: `1px solid ${uploadResult.ok ? "rgba(45,212,191,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+        <div style={{ marginTop: 10, padding: "8px 14px", borderRadius: 8, fontSize: 12, background: uploadResult.ok ? "rgba(13,148,136,0.08)" : "rgba(248,113,113,0.08)", color: uploadResult.ok ? "#0d9488" : "#f87171", border: `1px solid ${uploadResult.ok ? "rgba(13,148,136,0.2)" : "rgba(248,113,113,0.2)"}` }}>
           {uploadResult.text}
         </div>
       )}
@@ -2187,10 +2194,10 @@ function QualifyTab() {
       {hasData ? (
         <>
           <div className="card">
-            <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Funding Readiness</h3>
+            <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Funding Readiness</h3>
             {signals.length > 0 ? signals.map((sig, i) => (
               <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
-                <span style={{ width: 24, height: 24, borderRadius: "50%", background: sig.met ? "rgba(45,212,191,0.15)" : "rgba(250,204,21,0.15)", color: sig.met ? "#2dd4bf" : "#facc15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
+                <span style={{ width: 24, height: 24, borderRadius: "50%", background: sig.met ? "rgba(13,148,136,0.15)" : "rgba(250,204,21,0.15)", color: sig.met ? "#0d9488" : "#facc15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
                   {sig.met ? "\u2713" : "\u2022"}
                 </span>
                 <div><p style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{sig.label}</p><p style={{ color: "#94a3b8", fontSize: 13 }}>{sig.detail}</p></div>
@@ -2198,14 +2205,14 @@ function QualifyTab() {
             )) : <p style={{ color: "#94a3b8" }}>Add positions and connect your bank to see readiness signals.</p>}
           </div>
 
-          <div className="card" style={{ background: "linear-gradient(135deg, rgba(45,212,191,0.08), rgba(20,184,166,0.04))", border: "1px solid rgba(45,212,191,0.2)", textAlign: "center" }}>
-            <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Ready to explore your options?</h3>
+          <div className="card" style={{ background: "linear-gradient(135deg, rgba(13,148,136,0.08), rgba(13,148,136,0.04))", border: "1px solid rgba(13,148,136,0.2)", textAlign: "center" }}>
+            <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Ready to explore your options?</h3>
             <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 16, lineHeight: 1.6 }}>
               {paymentShare > 0 && paymentShare < 20 ? "Your payment load is manageable. You may have room for additional capital or better terms."
                 : paymentShare >= 20 ? "Refinancing could lower your daily payment and free up cash flow."
                 : "We can match you with funding options tailored to your business."}
             </p>
-            <a href="/intake/quiz" style={{ display: "inline-block", background: "#2dd4bf", color: "#0f172a", fontWeight: 700, padding: "12px 32px", borderRadius: 8, textDecoration: "none", fontFamily: "'Syne', sans-serif", fontSize: 15 }}>See What You Qualify For</a>
+            <a href="/intake/quiz" style={{ display: "inline-block", background: "#0d9488", color: "#fff", fontWeight: 700, padding: "12px 32px", borderRadius: 50, textDecoration: "none", fontFamily: "'Inter', sans-serif", fontSize: 15, transition: "all 0.3s ease" }}>See What You Qualify For</a>
           </div>
         </>
       ) : (
@@ -2252,8 +2259,8 @@ function ResourcesTab() {
   return (
     <div>
       <div className="card" style={{ marginBottom: 20 }}>
-        <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Business Resources</p>
-        <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>Free tools and resources to help you monitor credit, find funding programs, and grow your business.</p>
+        <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Business Resources</p>
+        <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, lineHeight: 1.6 }}>Free tools and resources to help you monitor credit, find funding programs, and grow your business.</p>
       </div>
       {resources.map(group => (
         <div key={group.category}>
@@ -2326,22 +2333,22 @@ function LeadServicesTab({ email, name, businessName }: { email: string; name: s
   return (
     <div>
       <div className="card" style={{ marginBottom: 20 }}>
-        <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Business Services</p>
-        <p style={{ color: "#7b8499", fontSize: 14, lineHeight: 1.6 }}>
+        <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Business Services</p>
+        <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, lineHeight: 1.6 }}>
           We've expanded beyond funding. Let us know which services would help your business and we'll reach out with details — no commitment required.
         </p>
       </div>
       <div style={{ display: "grid", gap: 14 }}>
         {PORTAL_SERVICES_LIST.map(svc => (
-          <div key={svc.id} className="card" style={{ border: submitted.has(svc.id) ? "1.5px solid rgba(45,212,191,0.35)" : undefined }}>
+          <div key={svc.id} className="card" style={{ border: submitted.has(svc.id) ? "1.5px solid rgba(13,148,136,0.35)" : undefined }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, marginBottom: 6, color: "#e8eaf0" }}>{svc.title}</p>
-                <p style={{ color: "#7b8499", fontSize: 13, lineHeight: 1.6, marginBottom: 10 }}>{svc.desc}</p>
+                <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 15, fontWeight: 700, marginBottom: 6, color: "#fff" }}>{svc.title}</p>
+                <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, lineHeight: 1.6, marginBottom: 10 }}>{svc.desc}</p>
                 <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
                   {svc.bullets.map(b => (
-                    <li key={b} style={{ fontSize: 12, color: "#6b7280", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#14B8A6", display: "inline-block", flexShrink: 0 }} />
+                    <li key={b} style={{ fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#0d9488", display: "inline-block", flexShrink: 0 }} />
                       {b}
                     </li>
                   ))}
@@ -2349,17 +2356,17 @@ function LeadServicesTab({ email, name, businessName }: { email: string; name: s
               </div>
               <div style={{ flexShrink: 0, paddingTop: 2 }}>
                 {submitted.has(svc.id) ? (
-                  <span style={{ fontSize: 13, color: "#2dd4bf", fontWeight: 600 }}>Noted!</span>
+                  <span style={{ fontSize: 13, color: "#0d9488", fontWeight: 600 }}>Noted!</span>
                 ) : (
                   <button
                     onClick={() => handleInterest(svc.id)}
                     disabled={submitting === svc.id}
                     style={{
                       padding: "8px 18px",
-                      background: "rgba(20,184,166,0.12)",
-                      border: "1.5px solid rgba(20,184,166,0.4)",
-                      borderRadius: 8,
-                      color: "#2dd4bf",
+                      background: "rgba(13,148,136,0.12)",
+                      border: "1.5px solid rgba(13,148,136,0.4)",
+                      borderRadius: 50,
+                      color: "#0d9488",
                       fontSize: 13,
                       fontWeight: 600,
                       cursor: "pointer",
@@ -2374,7 +2381,7 @@ function LeadServicesTab({ email, name, businessName }: { email: string; name: s
           </div>
         ))}
       </div>
-      <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "#4b5568", lineHeight: 1.6 }}>
+      <div style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: "#64748b", lineHeight: 1.6 }}>
         No commitment. We'll reach out with details and next steps. Your info is never shared or sold.
       </div>
     </div>
@@ -2392,33 +2399,33 @@ function OnboardingGuide({ step, onAdvance }: { step: string; onAdvance: (tab: s
   if (currentIdx < 0) return null;
 
   return (
-    <div className="card" style={{ marginBottom: 16, background: "linear-gradient(135deg, rgba(45,212,191,0.06), rgba(20,184,166,0.02))", border: "1px solid rgba(45,212,191,0.15)" }}>
+    <div className="card" style={{ marginBottom: 16, background: "linear-gradient(135deg, rgba(13,148,136,0.06), rgba(13,148,136,0.02))", border: "1px solid rgba(13,148,136,0.15)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-        <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: "#2dd4bf" }}>Getting Started</span>
+        <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 14, fontWeight: 700, color: "#0d9488" }}>Getting Started</span>
         <span style={{ fontSize: 12, color: "#64748b" }}>Step {currentIdx + 1} of {steps.length}</span>
       </div>
       <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
         {steps.map((_, i) => (
-          <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i <= currentIdx ? "#2dd4bf" : "rgba(255,255,255,0.08)" }} />
+          <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i <= currentIdx ? "#0d9488" : "rgba(255,255,255,0.08)" }} />
         ))}
       </div>
       {steps.map((s, i) => (
         <div key={s.key} style={{
           display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", marginBottom: 4,
-          borderRadius: 8, background: i === currentIdx ? "rgba(45,212,191,0.08)" : "transparent",
+          borderRadius: 8, background: i === currentIdx ? "rgba(13,148,136,0.08)" : "transparent",
           opacity: i < currentIdx ? 0.5 : 1,
         }}>
           <span style={{
             width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 12, fontWeight: 700, flexShrink: 0,
-            background: i < currentIdx ? "#2dd4bf" : i === currentIdx ? "rgba(45,212,191,0.2)" : "rgba(255,255,255,0.06)",
-            color: i < currentIdx ? "#080d18" : i === currentIdx ? "#2dd4bf" : "#64748b",
+            background: i < currentIdx ? "#0d9488" : i === currentIdx ? "rgba(13,148,136,0.2)" : "rgba(255,255,255,0.06)",
+            color: i < currentIdx ? "#0f172a" : i === currentIdx ? "#0d9488" : "#64748b",
           }}>
             {i < currentIdx ? "\u2713" : i + 1}
           </span>
           <div style={{ flex: 1 }}>
-            <p style={{ fontWeight: 600, fontSize: 13, color: i === currentIdx ? "#e8eaf0" : "#94a3b8" }}>{s.label}</p>
-            {i === currentIdx && <p style={{ fontSize: 12, color: "#7b8499", marginTop: 2 }}>{s.desc}</p>}
+            <p style={{ fontWeight: 600, fontSize: 13, color: i === currentIdx ? "#fff" : "#94a3b8" }}>{s.label}</p>
+            {i === currentIdx && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>{s.desc}</p>}
           </div>
           {i === currentIdx && <button className="btn-secondary" onClick={() => onAdvance(s.tab)} style={{ fontSize: 12, whiteSpace: "nowrap" }}>Go</button>}
         </div>
@@ -2426,7 +2433,7 @@ function OnboardingGuide({ step, onAdvance }: { step: string; onAdvance: (tab: s
       <button onClick={() => {
         fetch("/api/lead/onboarding/advance", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ step: "done" }) });
         onAdvance("__skip__");
-      }} style={{ background: "none", border: "none", color: "#4b5568", fontSize: 11, cursor: "pointer", marginTop: 8 }}>
+      }} style={{ background: "none", border: "none", color: "#64748b", fontSize: 11, cursor: "pointer", marginTop: 8 }}>
         Skip setup
       </button>
     </div>
@@ -2452,7 +2459,7 @@ function ReferralSection({ referralCode }: { referralCode: string }) {
         <p style={{ fontWeight: 600, fontSize: 14 }}>Refer a business owner</p>
         {stats && stats.referralCount > 0 && <span className="badge badge-active">{stats.referralCount} referral{stats.referralCount !== 1 ? "s" : ""}</span>}
       </div>
-      <p style={{ color: "#7b8499", fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>
+      <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginBottom: 10, lineHeight: 1.5 }}>
         Know someone paying too much on their MCA? Share your link and help them track their positions too.
       </p>
       <div style={{ display: "flex", gap: 8 }}>
@@ -2524,7 +2531,7 @@ export default function LeadPortal() {
   };
 
   if (!authChecked) return (
-    <div className="lead-portal" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#080d18" }}>
+    <div className="lead-portal" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0f172a" }}>
       <div className="spinner" />
     </div>
   );

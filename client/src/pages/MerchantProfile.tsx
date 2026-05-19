@@ -241,10 +241,10 @@ function MerchantSearch({ onSelect }: { onSelect: (email: string) => void }) {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="text-center mb-8">
-        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Building2 className="w-8 h-8 text-primary" />
+        <div className="w-16 h-16 bg-[#f0fdfa] rounded-full flex items-center justify-center mx-auto mb-4">
+          <Building2 className="w-8 h-8 text-[#0d9488]" />
         </div>
-        <h2 className="text-2xl font-bold mb-2">Merchant Profiles</h2>
+        <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>Merchant Profiles</h2>
         <p className="text-muted-foreground">
           Search by business name, contact name, or email to view the full merchant profile.
         </p>
@@ -256,7 +256,7 @@ function MerchantSearch({ onSelect }: { onSelect: (email: string) => void }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search merchants..."
-          className="pl-10 h-12 text-lg"
+          className="pl-10 h-12 text-lg rounded-[10px] border-[#d1d5db] focus:border-[#0d9488] focus:ring-[3px] focus:ring-[rgba(13,148,136,0.25)]"
           autoFocus
         />
       </div>
@@ -354,8 +354,8 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
 
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8">
         <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Building2 className="w-6 h-6" />
+          <h2 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
+            <Building2 className="w-6 h-6 text-[#0d9488]" />
             {businessInfo.businessName || email}
           </h2>
           <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-muted-foreground">
@@ -380,7 +380,7 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
           {declines.length > 0 && <Badge variant="destructive">Declined ({declines.length})</Badge>}
           {applications.length > 0 && <Badge variant="secondary">Apps ({applications.length})</Badge>}
           {portalStatus.hasAccount && (
-            <Badge variant="outline" className="border-blue-400 text-blue-400">
+            <Badge variant="outline" className="border-[#0d9488] text-[#0d9488]">
               <Shield className="w-3 h-3 mr-1" /> Portal Active
             </Badge>
           )}
@@ -389,21 +389,21 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground mb-1">Applications</p>
-          <p className="text-2xl font-bold">{applications.length}</p>
+        <Card className="p-4 rounded-2xl border-[#e2e8f0] bg-[#f8fafc]">
+          <p className="text-xs text-[#64748b] mb-1">Applications</p>
+          <p className="text-2xl font-bold text-[#1e293b]">{applications.length}</p>
         </Card>
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground mb-1">Approvals</p>
-          <p className="text-2xl font-bold text-green-600">{approvals.length}</p>
+        <Card className="p-4 rounded-2xl border-[#e2e8f0] bg-[#f8fafc]">
+          <p className="text-xs text-[#64748b] mb-1">Approvals</p>
+          <p className="text-2xl font-bold text-[#0d9488]">{approvals.length}</p>
         </Card>
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground mb-1">Funded Deals</p>
-          <p className="text-2xl font-bold text-primary">{fundedDeals.length}</p>
+        <Card className="p-4 rounded-2xl border-[#e2e8f0] bg-[#f8fafc]">
+          <p className="text-xs text-[#64748b] mb-1">Funded Deals</p>
+          <p className="text-2xl font-bold text-[#0d9488]">{fundedDeals.length}</p>
         </Card>
-        <Card className="p-4">
-          <p className="text-xs text-muted-foreground mb-1">Documents</p>
-          <p className="text-2xl font-bold">{documents.length}</p>
+        <Card className="p-4 rounded-2xl border-[#e2e8f0] bg-[#f8fafc]">
+          <p className="text-xs text-[#64748b] mb-1">Documents</p>
+          <p className="text-2xl font-bold text-[#1e293b]">{documents.length}</p>
         </Card>
       </div>
 
@@ -993,15 +993,15 @@ export default function MerchantProfile() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <div className="border-b border-[#e2e8f0] bg-white" style={{ backdropFilter: 'blur(20px)' }}>
+        <div className="max-w-[1200px] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/dashboard">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="w-4 h-4 mr-1" /> Dashboard
               </Button>
             </Link>
-            <h1 className="text-lg font-bold">Merchant Profiles</h1>
+            <h1 className="text-lg font-bold text-[#1e293b]" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>Merchant Profiles</h1>
           </div>
           <Badge variant={authData.role === "admin" ? "default" : "secondary"}>
             {authData.role === "admin" ? (
@@ -1013,7 +1013,7 @@ export default function MerchantProfile() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="max-w-[1200px] mx-auto px-6 py-8">
         {selectedEmail ? (
           <ProfileView
             email={selectedEmail}
