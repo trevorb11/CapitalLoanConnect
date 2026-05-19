@@ -2099,6 +2099,93 @@ const CSS = `
     color: #4a6a88;
   }
 
+  /* ── PAYOFF COUNTDOWN SPLIT (dashboard 2-col) ── */
+  .payoff-countdown-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    text-align: left;
+    cursor: pointer;
+  }
+  .payoff-countdown-split:hover { opacity: 0.95; }
+
+  .payoff-countdown-left {
+    text-align: center;
+    padding-right: 32px;
+    border-right: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .payoff-countdown-right {
+    padding-left: 32px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  @media (max-width: 620px) {
+    .payoff-countdown-split { grid-template-columns: 1fr; }
+    .payoff-countdown-left { border-right: none; padding-right: 0; padding-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 24px; }
+    .payoff-countdown-right { padding-left: 0; }
+  }
+
+  /* ── SERVICE TEASER BLOCKS ── */
+  .service-teaser-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  @media (max-width: 700px) {
+    .service-teaser-grid { grid-template-columns: 1fr; }
+  }
+
+  .service-teaser-card {
+    background: #172542;
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 16px;
+    padding: 22px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .service-teaser-card:hover { background: #1e2f50; border-color: rgba(45,212,191,0.2); }
+
+  .service-teaser-eyebrow {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6a8aaa;
+    font-weight: 600;
+  }
+
+  .service-teaser-title {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: #dce8f5;
+    letter-spacing: -0.01em;
+  }
+
+  .service-teaser-desc {
+    font-size: 13px;
+    color: #8aaac8;
+    line-height: 1.55;
+    flex: 1;
+  }
+
+  .service-teaser-cta {
+    font-size: 12px;
+    color: #2dd4bf;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+
   /* ── APPLICATION STATUS BANNER ── */
   .app-status-banner {
     background: rgba(13,148,136,0.08);
@@ -4184,7 +4271,11 @@ function ActivityFeed({ merchantEmail, previewToken }: { merchantEmail: string; 
 }
 
 // ── PAYOFF COUNTDOWN WIDGET ───────────────────────────────────────────────
-function PayoffCountdownWidget({ deal }: { deal: Deal }) {
+function PayoffCountdownWidget({ deal, onViewDeal, onFinancials }: {
+  deal: Deal;
+  onViewDeal?: () => void;
+  onFinancials?: () => void;
+}) {
   const calc = calcDeal(deal);
   if (calc.isComplete) return null;
 
@@ -4192,6 +4283,40 @@ function PayoffCountdownWidget({ deal }: { deal: Deal }) {
   const payoff = calc.projectedPayoff;
   const diffMs = payoff.getTime() - now.getTime();
   const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+  if (onViewDeal || onFinancials) {
+    return (
+      <div className="payoff-countdown-widget payoff-countdown-split" onClick={onViewDeal}>
+        <div className="payoff-countdown-left">
+          <div className="payoff-countdown-days">{daysLeft}</div>
+          <div className="payoff-countdown-unit">Days Remaining</div>
+          <div className="payoff-countdown-date">
+            Estimated payoff: <strong>{fmtDate(payoff)}</strong>
+          </div>
+          <div className="payoff-countdown-sub">
+            {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} of {fmt$(calc.totalPayback)} owed ({deal.factorRate}x factor)
+          </div>
+          <div style={{ marginTop: 18 }}>
+            <span className="analyze-btn" style={{ display: "inline-block" }}>View Position Details &rarr;</span>
+          </div>
+        </div>
+        <div className="payoff-countdown-right" onClick={e => e.stopPropagation()}>
+          <div className="service-teaser-eyebrow" style={{ marginBottom: 10 }}>Financial Health</div>
+          <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 20, fontWeight: 700, color: "#dce8f5", marginBottom: 10, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
+            Know Your Numbers
+          </div>
+          <div style={{ fontSize: 13, color: "#8aaac8", lineHeight: 1.65, marginBottom: 18 }}>
+            Connect your bank account or upload statements to get a full breakdown — revenue trends, cash flow health, and how your funding compares to your income.
+          </div>
+          {onFinancials && (
+            <button className="analyze-btn" onClick={onFinancials}>
+              Open Financial Health &rarr;
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="payoff-countdown-widget">
@@ -4609,20 +4734,20 @@ function MerchantServicesTab({ email, name }: { email: string; name: string }) {
           <div
             key={svc.id}
             style={{
-              background: "#f8fafc",
-              border: submitted.has(svc.id) ? "1.5px solid rgba(13,148,136,0.4)" : "1px solid #e2e8f0",
+              background: submitted.has(svc.id) ? "rgba(13,148,136,0.08)" : "#172542",
+              border: submitted.has(svc.id) ? "1.5px solid rgba(13,148,136,0.35)" : "1px solid rgba(255,255,255,0.09)",
               borderRadius: 12,
               padding: "20px 20px",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b", marginBottom: 6 }}>{svc.title}</div>
-                <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.6, marginBottom: 10 }}>{svc.desc}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#dce8f5", marginBottom: 6 }}>{svc.title}</div>
+                <div style={{ fontSize: 13, color: "#8aaac8", lineHeight: 1.6, marginBottom: 10 }}>{svc.desc}</div>
                 <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
                   {svc.bullets.map(b => (
-                    <li key={b} style={{ fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#0d9488", display: "inline-block", flexShrink: 0 }} />
+                    <li key={b} style={{ fontSize: 12, color: "#6a8aaa", display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#2dd4bf", display: "inline-block", flexShrink: 0 }} />
                       {b}
                     </li>
                   ))}
@@ -4630,22 +4755,13 @@ function MerchantServicesTab({ email, name }: { email: string; name: string }) {
               </div>
               <div style={{ flexShrink: 0, paddingTop: 2 }}>
                 {submitted.has(svc.id) ? (
-                  <span style={{ fontSize: 13, color: "#0d9488", fontWeight: 600 }}>Noted!</span>
+                  <span style={{ fontSize: 13, color: "#2dd4bf", fontWeight: 600 }}>Noted!</span>
                 ) : (
                   <button
                     onClick={() => handleInterest(svc.id)}
                     disabled={submitting === svc.id}
-                    style={{
-                      padding: "8px 18px",
-                      background: "#f0fdfa",
-                      border: "1.5px solid rgba(13,148,136,0.3)",
-                      borderRadius: 50,
-                      color: "#0d9488",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
+                    className="analyze-btn"
+                    style={{ whiteSpace: "nowrap" }}
                   >
                     {submitting === svc.id ? "..." : "I'm Interested"}
                   </button>
@@ -5215,7 +5331,11 @@ export default function MerchantPortal() {
                         <PreQualifiedOfferBanner deals={deals} />
                       )}
                       {!loadingDeals && activeDeals.length > 0 && (
-                        <PayoffCountdownWidget deal={activeDeals[0]} />
+                        <PayoffCountdownWidget
+                          deal={activeDeals[0]}
+                          onViewDeal={() => setSelectedDeal(activeDeals[0])}
+                          onFinancials={() => setActiveTab('financials')}
+                        />
                       )}
 
                       <div style={{ display: "grid", gap: 20, gridTemplateColumns: "2fr 1fr" }}>
@@ -5259,14 +5379,33 @@ export default function MerchantPortal() {
                               <div className="insight-title">Recent Documents</div>
                               <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                                 {vaultDocs.slice(0, 4).map(doc => (
-                                  <div key={doc.id} style={{ fontSize: 13, color: "#475569", display: "flex", justifyContent: "space-between", gap: 10 }}>
+                                  <div key={doc.id} style={{ fontSize: 13, color: "#8aaac8", display: "flex", justifyContent: "space-between", gap: 10 }}>
                                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</span>
-                                    <span style={{ color: "#94a3b8", textTransform: "capitalize" }}>{doc.category}</span>
+                                    <span style={{ color: "#4a6a88", textTransform: "capitalize" }}>{doc.category}</span>
                                   </div>
                                 ))}
                               </div>
                             </div>
                           )}
+                        </div>
+                      </div>
+
+                      {/* ── SERVICE TEASERS ── */}
+                      <div>
+                        <div className="section-label">More From Today Capital Group</div>
+                        <div className="service-teaser-grid">
+                          {MERCHANT_SERVICES_LIST.map(svc => (
+                            <div
+                              key={svc.id}
+                              className="service-teaser-card"
+                              onClick={() => setActiveTab('services')}
+                            >
+                              <div className="service-teaser-eyebrow">TCG Service</div>
+                              <div className="service-teaser-title">{svc.title}</div>
+                              <div className="service-teaser-desc">{svc.desc}</div>
+                              <div className="service-teaser-cta">Learn more &rarr;</div>
+                            </div>
+                          ))}
                         </div>
                       </div>
 
