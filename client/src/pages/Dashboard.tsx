@@ -4249,6 +4249,67 @@ export default function Dashboard() {
                         </Button>
                       </>
                     )}
+                    {authData.role === "admin" && app.email && (() => {
+                      const bizEmail = app.email.toLowerCase();
+                      const bizName = app.legalBusinessName || app.businessName || "";
+                      const existingDecision = pipelineStatusByEmail.get(bizEmail);
+                      if (existingDecision) {
+                        return (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              if (existingDecision.status === "approved" || existingDecision.status === "funded") {
+                                openApprovalForm(bizEmail, bizName);
+                              } else if (existingDecision.status === "declined") {
+                                openDeclineDialog(bizEmail, bizName);
+                              } else {
+                                openUnqualifiedDialog(bizEmail, bizName);
+                              }
+                            }}
+                            className="text-muted-foreground w-full"
+                            data-testid={`button-edit-decision-app-${app.id}`}
+                          >
+                            <Pencil className="w-3 h-3 mr-1" />
+                            Edit Decision
+                          </Button>
+                        );
+                      }
+                      return (
+                        <div className="flex flex-col gap-1 pt-1 border-t border-border" data-testid={`div-quick-actions-${app.id}`}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openApprovalForm(bizEmail, bizName)}
+                            className="text-green-600 border-green-200 hover:bg-green-50 dark:border-green-800 dark:hover:bg-green-900/20"
+                            data-testid={`button-approve-app-${app.id}`}
+                          >
+                            <ThumbsUp className="w-3 h-3 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openDeclineDialog(bizEmail, bizName)}
+                            className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
+                            data-testid={`button-decline-app-${app.id}`}
+                          >
+                            <ThumbsDown className="w-3 h-3 mr-1" />
+                            Decline
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openUnqualifiedDialog(bizEmail, bizName)}
+                            className="text-orange-600 border-orange-200 hover:bg-orange-50 dark:border-orange-800 dark:hover:bg-orange-900/20"
+                            data-testid={`button-unqualified-app-${app.id}`}
+                          >
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            Unqualified
+                          </Button>
+                        </div>
+                      );
+                    })()}
                     <p className="text-xs text-muted-foreground text-center" data-testid={`text-app-id-${app.id}`}>ID: {app.id?.slice(0, 8)}...</p>
                   </div>
                 </div>
