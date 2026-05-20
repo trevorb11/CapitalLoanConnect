@@ -4068,12 +4068,12 @@ export default function Dashboard() {
             <p className="text-center text-muted-foreground" data-testid="text-loading-message">Loading applications...</p>
           </Card>
         ) : filteredApplications && filteredApplications.length > 0 ? (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {filteredApplications.map((app) => (
-              <Card key={app.id} className="p-6 hover-elevate" data-testid={`card-application-${app.id}`}>
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <Card key={app.id} className="p-4 hover-elevate" data-testid={`card-application-${app.id}`}>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-semibold text-lg flex items-center gap-1" data-testid={`text-business-name-${app.id}`}>
                         {app.legalBusinessName || app.businessName || "No business name"}
                         {Number(app.monthlyRevenue || app.averageMonthlyRevenue) >= 20000 && (
@@ -4136,7 +4136,7 @@ export default function Dashboard() {
                       )}
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <span className="font-medium">Email:</span>{" "}
                         <span data-testid={`value-email-${app.id}`}>{app.email || "N/A"}</span>
@@ -4205,7 +4205,7 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-1.5">
                     <Button
                       variant="outline"
                       size="sm"
@@ -4286,7 +4286,7 @@ export default function Dashboard() {
                   const existingDecision = pipelineStatusByEmail.get(bizEmail);
                   if (existingDecision) return null;
                   return (
-                    <div className="flex gap-2 pt-4 mt-2 border-t border-border flex-wrap" data-testid={`div-quick-actions-${app.id}`}>
+                    <div className="flex gap-2 pt-3 mt-2 border-t border-border flex-wrap" data-testid={`div-quick-actions-${app.id}`}>
                       <Button
                         variant="outline"
                         size="sm"
