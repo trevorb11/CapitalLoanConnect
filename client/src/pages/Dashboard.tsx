@@ -1287,7 +1287,8 @@ function BankStatementsTab() {
 
   // Helper to get decision for a business by email
   const getBusinessDecision = (email: string): BusinessUnderwritingDecision | undefined => {
-    return underwritingDecisions?.find(d => d.businessEmail === email);
+    const normalized = email.toLowerCase();
+    return underwritingDecisions?.find(d => (d.businessEmail || '').toLowerCase() === normalized);
   };
 
   // Helper: get all approvals for a business from the decision's JSONB (migration-aware)
