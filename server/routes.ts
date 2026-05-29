@@ -6877,56 +6877,197 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Ensure website_contracts table exists
+  // Ensure website_contracts table exists with all columns
   try {
     await db.execute(sql`CREATE TABLE IF NOT EXISTS website_contracts (
       id SERIAL PRIMARY KEY,
+      token TEXT UNIQUE,
+      status TEXT DEFAULT 'draft',
       effective_date TEXT,
-      client_name TEXT NOT NULL,
+      client_name TEXT,
       client_address TEXT,
       project_fee TEXT,
       hosting_option TEXT,
       tcg_printed_name TEXT,
       tcg_title TEXT,
       tcg_date TEXT,
-      client_printed_name TEXT NOT NULL,
+      tcg_signature TEXT,
+      tcg_signed_at TIMESTAMP,
+      client_printed_name TEXT,
       client_title TEXT,
       client_company TEXT,
       client_date TEXT,
+      client_signature TEXT,
       submitted_at TIMESTAMP DEFAULT NOW()
     )`);
+    // Add any missing columns to existing tables
+    const alterCols = [
+      `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS token TEXT UNIQUE`,
+      `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'draft'`,
+      `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS tcg_signature TEXT`,
+      `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS tcg_signed_at TIMESTAMP`,
+      `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS client_signature TEXT`,
+    ];
+    for (const stmt of alterCols) {
+      await db.execute(sql.raw(stmt)).catch(() => {});
+    }
   } catch (err) {
     console.error("[CONTRACT] Failed to ensure website_contracts table:", err);
   }
 
-  // POST /api/contracts/website — save a signed Website Build Services Agreement
+  // GET /api/contracts/website/draft/:token — load a saved draft
+  app.get("/api/contracts/website/draft/:token", async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const result = await db.execute(sql`
+        SELECT effective_date, client_name, client_address, project_fee, hosting_option,
+               tcg_printed_name, tcg_title, tcg_date, tcg_signed_at,
+               client_printed_name, client_title, client_company, client_date, status
+        FROM website_contracts WHERE token = ${token} LIMIT 1
+      `);
+      if (!result.rows.length) return res.status(404).json({ error: "Not found" });
+      const r = result.rows[0] as any;
+      res.json({
+        effectiveDate: r.effective_date,
+        clientName: r.client_name,
+        clientAddress: r.client_address,
+        projectFee: r.project_fee,
+        hostingOption: r.hosting_option,
+        tcgPrintedName: r.tcg_printed_name,
+        tcgTitle: r.tcg_title,
+        tcgDate: r.tcg_date,
+        tcgSignedAt: r.tcg_signed_at,
+        clientPrintedName: r.client_printed_name,
+        clientTitle: r.client_title,
+        clientCompany: r.client_company,
+        clientDate: r.client_date,
+        status: r.status,
+      });
+    } catch (err: any) {
+      console.error("[CONTRACT] draft load error:", err);
+      res.status(500).json({ error: "Failed to load draft" });
+    }
+  });
+
+  // POST /api/contracts/website/draft — create or update a draft, return token
+  app.post("/api/contracts/website/draft", async (req: Request, res: Response) => {
+    try {
+      const {
+        token: existingToken,
+        effectiveDate, clientName, clientAddress, projectFee, hostingOption,
+        tcgPrintedName, tcgTitle, tcgDate, tcgSignature,
+        clientPrintedName, clientTitle, clientCompany, clientDate, clientSignature,
+      } = req.body;
+
+      const hasTcgSig = tcgSignature && tcgSignature.length > 1000; // real canvas data
+
+      if (existingToken) {
+        // Update existing draft
+        await db.execute(sql`
+          UPDATE website_contracts SET
+            effective_date = ${effectiveDate || null},
+            client_name = ${clientName || null},
+            client_address = ${clientAddress || null},
+            project_fee = ${projectFee || null},
+            hosting_option = ${hostingOption || null},
+            tcg_printed_name = ${tcgPrintedName || null},
+            tcg_title = ${tcgTitle || null},
+            tcg_date = ${tcgDate || null},
+            tcg_signature = COALESCE(${hasTcgSig ? tcgSignature : null}, tcg_signature),
+            tcg_signed_at = CASE WHEN ${hasTcgSig} AND tcg_signed_at IS NULL THEN NOW() ELSE tcg_signed_at END,
+            client_printed_name = ${clientPrintedName || null},
+            client_title = ${clientTitle || null},
+            client_company = ${clientCompany || null},
+            client_date = ${clientDate || null},
+            client_signature = COALESCE(${clientSignature && clientSignature.length > 1000 ? clientSignature : null}, client_signature)
+          WHERE token = ${existingToken}
+        `);
+        res.json({ token: existingToken });
+      } else {
+        // Create new draft with unique token
+        const newToken = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+        await db.execute(sql`
+          INSERT INTO website_contracts (
+            token, status, effective_date, client_name, client_address, project_fee, hosting_option,
+            tcg_printed_name, tcg_title, tcg_date, tcg_signature, tcg_signed_at,
+            client_printed_name, client_title, client_company, client_date, client_signature
+          ) VALUES (
+            ${newToken}, 'draft',
+            ${effectiveDate || null}, ${clientName || null}, ${clientAddress || null},
+            ${projectFee || null}, ${hostingOption || null},
+            ${tcgPrintedName || null}, ${tcgTitle || null}, ${tcgDate || null},
+            ${hasTcgSig ? tcgSignature : null},
+            ${hasTcgSig ? sql`NOW()` : null},
+            ${clientPrintedName || null}, ${clientTitle || null}, ${clientCompany || null},
+            ${clientDate || null}, ${clientSignature && clientSignature.length > 1000 ? clientSignature : null}
+          )
+        `);
+        res.json({ token: newToken });
+      }
+    } catch (err: any) {
+      console.error("[CONTRACT] draft save error:", err);
+      res.status(500).json({ error: "Failed to save draft" });
+    }
+  });
+
+  // POST /api/contracts/website — finalize a signed agreement
   app.post("/api/contracts/website", async (req: Request, res: Response) => {
     try {
       const {
+        token: existingToken,
         effectiveDate, clientName, clientAddress, projectFee, hostingOption,
-        tcgPrintedName, tcgTitle, tcgDate,
-        clientPrintedName, clientTitle, clientCompany, clientDate,
+        tcgPrintedName, tcgTitle, tcgDate, tcgSignature,
+        clientPrintedName, clientTitle, clientCompany, clientDate, clientSignature,
       } = req.body;
 
       if (!clientName || !clientPrintedName) {
         return res.status(400).json({ error: "Client name and printed name are required" });
       }
 
-      // Persist to DB
-      await db.execute(sql`
-        INSERT INTO website_contracts (
-          effective_date, client_name, client_address, project_fee, hosting_option,
-          tcg_printed_name, tcg_title, tcg_date,
-          client_printed_name, client_title, client_company, client_date,
-          submitted_at
-        ) VALUES (
-          ${effectiveDate || null}, ${clientName}, ${clientAddress || null},
-          ${projectFee || null}, ${hostingOption || null},
-          ${tcgPrintedName || null}, ${tcgTitle || null}, ${tcgDate || null},
-          ${clientPrintedName}, ${clientTitle || null}, ${clientCompany || null},
-          ${clientDate || null}, NOW()
-        )
-      `);
+      const hasTcgSig = tcgSignature && tcgSignature.length > 1000;
+      const hasClientSig = clientSignature && clientSignature.length > 1000;
+
+      if (existingToken) {
+        // Update existing record and mark complete
+        await db.execute(sql`
+          UPDATE website_contracts SET
+            status = 'complete',
+            effective_date = ${effectiveDate || null},
+            client_name = ${clientName},
+            client_address = ${clientAddress || null},
+            project_fee = ${projectFee || null},
+            hosting_option = ${hostingOption || null},
+            tcg_printed_name = ${tcgPrintedName || null},
+            tcg_title = ${tcgTitle || null},
+            tcg_date = ${tcgDate || null},
+            tcg_signature = COALESCE(${hasTcgSig ? tcgSignature : null}, tcg_signature),
+            tcg_signed_at = CASE WHEN ${hasTcgSig} AND tcg_signed_at IS NULL THEN NOW() ELSE tcg_signed_at END,
+            client_printed_name = ${clientPrintedName},
+            client_title = ${clientTitle || null},
+            client_company = ${clientCompany || null},
+            client_date = ${clientDate || null},
+            client_signature = COALESCE(${hasClientSig ? clientSignature : null}, client_signature),
+            submitted_at = NOW()
+          WHERE token = ${existingToken}
+        `);
+      } else {
+        // New submission without a prior draft
+        await db.execute(sql`
+          INSERT INTO website_contracts (
+            status, effective_date, client_name, client_address, project_fee, hosting_option,
+            tcg_printed_name, tcg_title, tcg_date, tcg_signature, tcg_signed_at,
+            client_printed_name, client_title, client_company, client_date, client_signature,
+            submitted_at
+          ) VALUES (
+            'complete', ${effectiveDate || null}, ${clientName}, ${clientAddress || null},
+            ${projectFee || null}, ${hostingOption || null},
+            ${tcgPrintedName || null}, ${tcgTitle || null}, ${tcgDate || null},
+            ${hasTcgSig ? tcgSignature : null}, ${hasTcgSig ? sql`NOW()` : null},
+            ${clientPrintedName}, ${clientTitle || null}, ${clientCompany || null},
+            ${clientDate || null}, ${hasClientSig ? clientSignature : null}, NOW()
+          )
+        `);
+      }
 
       // Email notification
       const subject = `[Website Contract] Signed Agreement — ${clientName}`;
