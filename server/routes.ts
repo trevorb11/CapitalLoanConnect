@@ -6877,6 +6877,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Ensure website_contracts table exists
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS website_contracts (
+      id SERIAL PRIMARY KEY,
+      effective_date TEXT,
+      client_name TEXT NOT NULL,
+      client_address TEXT,
+      project_fee TEXT,
+      hosting_option TEXT,
+      tcg_printed_name TEXT,
+      tcg_title TEXT,
+      tcg_date TEXT,
+      client_printed_name TEXT NOT NULL,
+      client_title TEXT,
+      client_company TEXT,
+      client_date TEXT,
+      submitted_at TIMESTAMP DEFAULT NOW()
+    )`);
+  } catch (err) {
+    console.error("[CONTRACT] Failed to ensure website_contracts table:", err);
+  }
+
+  // POST /api/contracts/website — save a signed Website Build Services Agreement
+  app.post("/api/contracts/website", async (req: Request, res: Response) => {
+    try {
+      const {
+        effectiveDate, clientName, clientAddress, projectFee, hostingOption,
+        tcgPrintedName, tcgTitle, tcgDate,
+        clientPrintedName, clientTitle, clientCompany, clientDate,
+      } = req.body;
+
+      if (!clientName || !clientPrintedName) {
+        return res.status(400).json({ error: "Client name and printed name are required" });
+      }
+
+      // Persist to DB
+      await db.execute(sql`
+        INSERT INTO website_contracts (
+          effective_date, client_name, client_address, project_fee, hosting_option,
+          tcg_printed_name, tcg_title, tcg_date,
+          client_printed_name, client_title, client_company, client_date,
+          submitted_at
+        ) VALUES (
+          ${effectiveDate || null}, ${clientName}, ${clientAddress || null},
+          ${projectFee || null}, ${hostingOption || null},
+          ${tcgPrintedName || null}, ${tcgTitle || null}, ${tcgDate || null},
+          ${clientPrintedName}, ${clientTitle || null}, ${clientCompany || null},
+          ${clientDate || null}, NOW()
+        )
+      `);
+
+      // Email notification
+      const subject = `[Website Contract] Signed Agreement — ${clientName}`;
+      const html = `
+        <h2 style="color:#1e40af;">Website Build Services Agreement Submitted</h2>
+        <table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;">
+          <tr><td style="padding:6px 12px;font-weight:bold;color:#555;width:180px;">Effective Date</td><td style="padding:6px 12px;">${effectiveDate || '—'}</td></tr>
+          <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Client Name</td><td style="padding:6px 12px;">${clientName}</td></tr>
+          <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Client Address</td><td style="padding:6px 12px;">${clientAddress || '—'}</td></tr>
+          <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Project Fee</td><td style="padding:6px 12px;">${projectFee ? '$' + projectFee : '—'}</td></tr>
+          <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Hosting Option</td><td style="padding:6px 12px;">${hostingOption ? 'Option ' + hostingOption : '—'}</td></tr>
+          <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">TCG Signer</td><td style="padding:6px 12px;">${tcgPrintedName || '—'} — ${tcgTitle || '—'}</td></tr>
+          <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Client Signer</td><td style="padding:6px 12px;">${clientPrintedName} — ${clientTitle || '—'}</td></tr>
+          <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Client Company</td><td style="padding:6px 12px;">${clientCompany || '—'}</td></tr>
+          <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Client Date</td><td style="padding:6px 12px;">${clientDate || '—'}</td></tr>
+        </table>
+        <p style="margin-top:20px;font-size:12px;color:#888;">Submitted via /services/website/contract</p>
+      `;
+      sendMarketingNotification(subject, html).catch(() => {});
+
+      console.log(`[CONTRACT] Website agreement signed by ${clientName} / ${clientPrintedName}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[CONTRACT] website contract error:", err);
+      res.status(500).json({ error: "Failed to save contract" });
+    }
+  });
+
   // GET /api/services/interests — admin view of all interest clicks
   app.get("/api/services/interests", async (req: Request, res: Response) => {
     if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
