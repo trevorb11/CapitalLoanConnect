@@ -6900,17 +6900,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       client_signature TEXT,
       submitted_at TIMESTAMP DEFAULT NOW()
     )`);
-    // Add any missing columns to existing tables
-    const alterCols = [
-      `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS token TEXT UNIQUE`,
+    // Add missing columns and relax NOT NULL constraints for draft support
+    const alterStmts = [
+      `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS token TEXT`,
       `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'draft'`,
       `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS tcg_signature TEXT`,
       `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS tcg_signed_at TIMESTAMP`,
       `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS client_signature TEXT`,
+      `ALTER TABLE website_contracts ALTER COLUMN client_name DROP NOT NULL`,
+      `ALTER TABLE website_contracts ALTER COLUMN client_printed_name DROP NOT NULL`,
     ];
-    for (const stmt of alterCols) {
+    for (const stmt of alterStmts) {
       await db.execute(sql.raw(stmt)).catch(() => {});
     }
+    // Add unique index on token separately (ADD COLUMN IF NOT EXISTS can't include UNIQUE)
+    await db.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS website_contracts_token_idx ON website_contracts (token) WHERE token IS NOT NULL`)).catch(() => {});
   } catch (err) {
     console.error("[CONTRACT] Failed to ensure website_contracts table:", err);
   }
