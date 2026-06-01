@@ -3707,7 +3707,7 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center gap-3">
               {(authData.role === 'admin' || authData.role === 'agent') && (
-                <Link href="/upload-statements">
+                <Link href="/upload-statements?internal=true">
                   <Button variant="outline" size="sm" data-testid="button-header-upload-statements">
                     <Upload className="w-4 h-4 mr-1.5" />
                     Upload Bank Statements
@@ -4336,7 +4336,7 @@ export default function Dashboard() {
                 })()}
                 {(authData.role === 'admin' || authData.role === 'agent') && app.email && !emailsWithStatements.has(app.email.toLowerCase()) && (
                   <div className="pt-2 mt-2 border-t border-border" data-testid={`div-upload-statements-${app.id}`}>
-                    <Link href={`/upload-statements?email=${encodeURIComponent(app.email)}&businessName=${encodeURIComponent(app.legalBusinessName || app.businessName || '')}`}>
+                    <Link href={`/upload-statements?internal=true&email=${encodeURIComponent(app.email)}&businessName=${encodeURIComponent(app.legalBusinessName || app.businessName || '')}`}>
                       <Button
                         variant="outline"
                         size="sm"

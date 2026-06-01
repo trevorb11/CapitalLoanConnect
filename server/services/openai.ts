@@ -838,3 +838,124 @@ export async function extractPositionTermsFromPdfBuffer(pdfBuffer: Buffer): Prom
     return { ...POSITION_EMPTY, notes: "Could not read this PDF. Try pasting the text instead." };
   }
 }
+
+// ========================================
+// UNDERWRITING SNAPSHOT FOR REPS
+// ========================================
+
+export interface UnderwritingSnapshot {
+  worthSubmitting: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  overallScore: number; // 0-100
+  qualificationTier: string;
+  avgMonthlyRevenue: number;
+  revenueTrend: 'growing' | 'stable' | 'declining';
+  avgDailyBalance: number;
+  lowestBalance: number;
+  nsfCount: number;
+  negativeDays: number;
+  existingPositions: Array<{
+    funder: string;
+    estimatedPayment: string;
+    frequency: string;
+  }>;
+  totalMonthlyDebtPayments: number;
+  debtServiceRatio: number; // 0-1, existing payments / monthly revenue
+  redFlags: Array<{ flag: string; severity: 'low' | 'medium' | 'high' }>;
+  positiveIndicators: string[];
+  maxRecommendedAdvance: number;
+  recommendedProduct: string;
+  estimatedFactor: string;
+  summary: string;
+  underwriterNotes: string[];
+}
+
+export async function generateUnderwritingSnapshot(
+  extractedText: string,
+  additionalInfo?: {
+    creditScoreRange?: string;
+    timeInBusiness?: string;
+    industry?: string;
+    businessName?: string;
+  }
+): Promise<UnderwritingSnapshot> {
+  const context = additionalInfo ? `
+Additional Context:
+- Business Name: ${additionalInfo.businessName || 'Not provided'}
+- Credit Score Range: ${additionalInfo.creditScoreRange || 'Not provided'}
+- Time in Business: ${additionalInfo.timeInBusiness || 'Not provided'}
+- Industry: ${additionalInfo.industry || 'Not provided'}
+` : '';
+
+  const prompt = `You are a senior MCA underwriter at Today Capital Group, a business finance brokerage.
+A sales rep is asking you to quickly assess whether this merchant's bank statements are worth submitting to underwriting.
+
+${context}
+
+BANK STATEMENT DATA:
+${extractedText}
+
+Analyze these statements with an underwriter's eye. Be direct — this is for internal rep use only, not the merchant.
+
+Pay particular attention to:
+1. REVENUE: Calculate avg monthly revenue from the last 3-6 months of deposits. Look for the trend.
+2. BALANCES: Track average daily balance and flag any negative balance periods.
+3. NSFs: Count all NSF / returned item / overdraft fees — these are major red flags.
+4. STACKING: Look for daily or weekly recurring ACH debits to known MCA funders (Yellowstone, Libertas, Kapitus, On Deck, Bluevine, Fundbox, Credibly, Rapid Finance, Forward Financing, National Funding, Mulligan Funding, Fora Financial, IOU Financial, Lendini, etc.). If found, list them.
+5. DEBIT LOAD: Sum up estimated existing funding payments per month to calculate debt service ratio (payments / revenue).
+6. RED FLAGS: NSFs, negative days, garnishments/levies, declining revenue, excessive cash withdrawals, too many positions.
+7. POSITIVE INDICATORS: Consistent deposits, payroll activity, card processing, growing balances.
+
+Respond with ONLY this JSON structure (no extra text):
+{
+  "worthSubmitting": <true or false>,
+  "confidence": "<high, medium, or low>",
+  "overallScore": <0-100>,
+  "qualificationTier": "<Prime Borrower, Growth Capital, Working Capital, Cash Flow Financing, Foundation Building, or Do Not Submit>",
+  "avgMonthlyRevenue": <number>,
+  "revenueTrend": "<growing, stable, or declining>",
+  "avgDailyBalance": <number>,
+  "lowestBalance": <number - most negative or lowest balance seen>,
+  "nsfCount": <number>,
+  "negativeDays": <number - estimated days with negative balance>,
+  "existingPositions": [
+    { "funder": "<name>", "estimatedPayment": "<e.g. $500/day>", "frequency": "<daily, weekly, monthly>" }
+  ],
+  "totalMonthlyDebtPayments": <number - sum of all existing position payments per month>,
+  "debtServiceRatio": <number 0-1, e.g. 0.35 means 35% of revenue goes to existing debt>,
+  "redFlags": [
+    { "flag": "<brief label>", "severity": "<low, medium, or high>" }
+  ],
+  "positiveIndicators": ["<one-line positive observation>"],
+  "maxRecommendedAdvance": <number - 0 if do not submit>,
+  "recommendedProduct": "<MCA, Term Loan, Line of Credit, Revenue Based Advance, or N/A>",
+  "estimatedFactor": "<e.g. 1.25-1.35 or N/A>",
+  "summary": "<3-4 sentence underwriter bottom line — direct, factual, actionable for the rep>",
+  "underwriterNotes": ["<specific note for the underwriting team>"]
+}`;
+
+  try {
+    const response = await getAnthropic().messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2500,
+      system: "You are a senior MCA underwriter at Today Capital Group. Your job is to give sales reps a quick, honest assessment of whether a merchant file is worth submitting. Be direct and use underwriting language. Respond only with valid JSON.",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = response.content.find(b => b.type === "text");
+    let content = textBlock?.text?.trim() || "";
+
+    if (content.startsWith("```json")) content = content.slice(7);
+    else if (content.startsWith("```")) content = content.slice(3);
+    if (content.endsWith("```")) content = content.slice(0, -3);
+    content = content.trim();
+
+    return JSON.parse(content) as UnderwritingSnapshot;
+  } catch (error) {
+    console.error("[CLAUDE] generateUnderwritingSnapshot error:", error);
+    if (error instanceof SyntaxError) {
+      throw new Error("Failed to parse underwriting analysis. Please try again.");
+    }
+    throw error;
+  }
+}

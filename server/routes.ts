@@ -12,7 +12,7 @@ import { plaidService } from "./services/plaid";
 import { chirpService, ChirpApiError } from "./services/chirp";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, extractPositionTerms, extractPositionTermsFromPdfBuffer } from "./services/openai";
+import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, extractPositionTerms, extractPositionTermsFromPdfBuffer, generateUnderwritingSnapshot } from "./services/openai";
 import { gmailService, type EmailMessage } from "./services/gmail";
 import { googleSheetsService, type ApprovalRow } from "./services/googleSheets";
 import { notifyMerchantNewMessage } from "./services/twilio";
@@ -4154,10 +4154,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 2. Get all bank statement uploads (for dashboard) - role-based filtering
+
+  // POST /api/bank-statements/analyze-for-rep — AI underwriting snapshot for reps
+  app.post("/api/bank-statements/analyze-for-rep", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    const role = req.session.user.role;
+    if (role !== 'admin' && role !== 'agent') {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    try {
+      const { email, businessName, creditScoreRange, timeInBusiness, industry } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      let uploads;
+      if (role === 'admin') {
+        uploads = await storage.getBankStatementUploadsByEmail(normalizedEmail);
+      } else {
+        // Agents: get by email but also verify they have access
+        uploads = await storage.getBankStatementUploadsByEmail(normalizedEmail);
+      }
+
+      if (uploads.length === 0) {
+        return res.status(404).json({ error: "No bank statements found for this email" });
+      }
+
+      console.log(`[SNAPSHOT] Analyzing ${uploads.length} statements for ${normalizedEmail}`);
+
+      // Extract text from all PDFs (up to 6)
+      const extractedTexts: string[] = [];
+      for (const upload of uploads.slice(0, 6)) {
+        try {
+          let fileBuffer: Buffer;
+          if (upload.storedFileName && upload.storedFileName.includes("bank-statements/")) {
+            fileBuffer = await objectStorage.getFileBuffer(upload.storedFileName);
+          } else {
+            const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+            if (fs.existsSync(filePath)) {
+              fileBuffer = fs.readFileSync(filePath);
+            } else {
+              console.warn(`[SNAPSHOT] File not found: ${upload.storedFileName}`);
+              continue;
+            }
+          }
+
+          const parser = new PDFParse({ data: fileBuffer });
+          const result = await parser.getText();
+          const text = result.text || "";
+          extractedTexts.push(`--- Statement: ${upload.originalFileName} ---\n${text}\n`);
+          console.log(`[SNAPSHOT] Extracted ${text.length} chars from ${upload.originalFileName}`);
+          await parser.destroy();
+        } catch (pdfError) {
+          console.error(`[SNAPSHOT] Error parsing ${upload.originalFileName}:`, pdfError);
+          extractedTexts.push(`--- Statement: ${upload.originalFileName} ---\n[Could not extract text]\n`);
+        }
+      }
+
+      if (extractedTexts.length === 0) {
+        return res.status(400).json({ error: "Could not read any of the uploaded PDFs" });
+      }
+
+      const combinedText = extractedTexts.join("\n\n");
+      const snapshot = await generateUnderwritingSnapshot(combinedText, {
+        businessName: businessName || undefined,
+        creditScoreRange: creditScoreRange || undefined,
+        timeInBusiness: timeInBusiness || undefined,
+        industry: industry || undefined,
+      });
+
+      console.log(`[SNAPSHOT] Complete for ${normalizedEmail} — worthSubmitting=${snapshot.worthSubmitting}, score=${snapshot.overallScore}`);
+      res.json({ success: true, snapshot, filesProcessed: extractedTexts.length });
+    } catch (err: any) {
+      console.error("[SNAPSHOT] Error:", err);
+      res.status(500).json({ error: err.message || "Analysis failed" });
+    }
+  });
+
   // POST /api/bank-statements/submit-to-underwriting — email file + statements to underwriting team
   app.post("/api/bank-statements/submit-to-underwriting", async (req: Request, res: Response) => {
     try {
-      const { email, businessName } = req.body;
+      const { email, businessName, snapshotHtml } = req.body;
       if (!email) return res.status(400).json({ error: "Email is required" });
 
       const normalizedEmail = email.toLowerCase().trim();
@@ -4190,6 +4270,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ` : `<tr><td colspan="2" style="padding:6px 12px;color:#888;">No application record found for this email</td></tr>`;
 
       const subject = `[Underwriting] ${appName}`;
+      const snapshotSection = snapshotHtml ? `
+        <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">AI Underwriting Snapshot (Pre-Submission)</h3>
+        <div style="background:#f8faff;border:1px solid #d0dff5;border-radius:6px;padding:16px;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
+          ${snapshotHtml}
+        </div>
+      ` : '';
+
       const html = `
         <h2 style="color:#1e40af;margin-bottom:8px;">File Submitted for Underwriting Review</h2>
         <p style="color:#555;font-size:14px;margin-bottom:24px;">The rep team has submitted the following file for underwriting review.</p>
@@ -4209,6 +4296,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           </tr>
           ${uploadRows}
         </table>` : '<p style="color:#888;font-size:14px;margin-bottom:24px;">No bank statements on file for this email.</p>'}
+
+        ${snapshotSection}
 
         <p style="font-size:12px;color:#aaa;">Submitted via Today Capital Group internal dashboard</p>
       `;
