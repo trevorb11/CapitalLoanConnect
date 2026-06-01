@@ -3461,6 +3461,11 @@ export default function Dashboard() {
     }
   }
 
+  // Emails that already have at least one bank statement uploaded
+  const emailsWithStatements = new Set<string>(
+    (bankUploads || []).map(u => (u.email || '').toLowerCase()).filter(Boolean)
+  );
+
   const logoutMutation = useMutation({
     mutationFn: async () => {
       await fetch("/api/auth/logout", {
@@ -3701,6 +3706,14 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              {(authData.role === 'admin' || authData.role === 'agent') && (
+                <Link href="/upload-statements">
+                  <Button variant="outline" size="sm" data-testid="button-header-upload-statements">
+                    <Upload className="w-4 h-4 mr-1.5" />
+                    Upload Bank Statements
+                  </Button>
+                </Link>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon" data-testid="button-nav-menu">
@@ -4321,6 +4334,22 @@ export default function Dashboard() {
                     </div>
                   );
                 })()}
+                {(authData.role === 'admin' || authData.role === 'agent') && app.email && !emailsWithStatements.has(app.email.toLowerCase()) && (
+                  <div className="pt-2 mt-2 border-t border-border" data-testid={`div-upload-statements-${app.id}`}>
+                    <Link href={`/upload-statements?email=${encodeURIComponent(app.email)}&businessName=${encodeURIComponent(app.legalBusinessName || app.businessName || '')}`}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-blue-600 border-blue-200 dark:border-blue-800"
+                        data-testid={`button-upload-statements-${app.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Upload className="w-3 h-3 mr-1" />
+                        Upload Statements
+                      </Button>
+                    </Link>
+                  </div>
+                )}
               </Card>
             ))}
 

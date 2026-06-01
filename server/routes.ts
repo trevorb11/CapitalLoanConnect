@@ -4154,6 +4154,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 2. Get all bank statement uploads (for dashboard) - role-based filtering
+  // POST /api/bank-statements/submit-to-underwriting — email file + statements to underwriting team
+  app.post("/api/bank-statements/submit-to-underwriting", async (req: Request, res: Response) => {
+    try {
+      const { email, businessName } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+      const [uploads, application] = await Promise.all([
+        storage.getBankStatementUploadsByEmail(normalizedEmail),
+        storage.getLoanApplicationByEmail(normalizedEmail),
+      ]);
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+      const uploadRows = uploads.map(u => `
+        <tr>
+          <td style="padding:6px 12px;">${u.originalFileName || 'File'}</td>
+          <td style="padding:6px 12px;">${u.fileSize ? (u.fileSize / 1024 / 1024).toFixed(1) + ' MB' : '—'}</td>
+          <td style="padding:6px 12px;"><a href="${baseUrl}/api/bank-statements/view/${u.id}" style="color:#1e40af;">View PDF</a></td>
+        </tr>`).join('');
+
+      const appName = businessName || application?.legalBusinessName || application?.businessName || normalizedEmail;
+
+      const appRows = application ? `
+        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;width:200px;">Business Name</td><td style="padding:6px 12px;">${application.legalBusinessName || application.businessName || '—'}</td></tr>
+        <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Contact Name</td><td style="padding:6px 12px;">${application.fullName || '—'}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Email</td><td style="padding:6px 12px;">${application.email || '—'}</td></tr>
+        <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Phone</td><td style="padding:6px 12px;">${application.phone || '—'}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Monthly Revenue</td><td style="padding:6px 12px;">${application.monthlyRevenue || application.averageMonthlyRevenue ? '$' + Number(application.monthlyRevenue || application.averageMonthlyRevenue).toLocaleString() : '—'}</td></tr>
+        <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Requested Amount</td><td style="padding:6px 12px;">${application.requestedAmount ? '$' + Number(application.requestedAmount).toLocaleString() : '—'}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Time in Business</td><td style="padding:6px 12px;">${application.timeInBusiness || '—'}</td></tr>
+        <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Business Address</td><td style="padding:6px 12px;">${[application.businessAddress, (application as any).businessCity, (application as any).businessState].filter(Boolean).join(', ') || '—'}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Agent</td><td style="padding:6px 12px;">${application.agentName || '—'}</td></tr>
+      ` : `<tr><td colspan="2" style="padding:6px 12px;color:#888;">No application record found for this email</td></tr>`;
+
+      const subject = `[Underwriting] ${appName}`;
+      const html = `
+        <h2 style="color:#1e40af;margin-bottom:8px;">File Submitted for Underwriting Review</h2>
+        <p style="color:#555;font-size:14px;margin-bottom:24px;">The rep team has submitted the following file for underwriting review.</p>
+
+        <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Application Details</h3>
+        <table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
+          ${appRows}
+        </table>
+
+        <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Bank Statements (${uploads.length} file${uploads.length !== 1 ? 's' : ''})</h3>
+        ${uploads.length > 0 ? `
+        <table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
+          <tr style="background:#f0f5ff;">
+            <th style="padding:6px 12px;text-align:left;">File Name</th>
+            <th style="padding:6px 12px;text-align:left;">Size</th>
+            <th style="padding:6px 12px;text-align:left;">Link</th>
+          </tr>
+          ${uploadRows}
+        </table>` : '<p style="color:#888;font-size:14px;margin-bottom:24px;">No bank statements on file for this email.</p>'}
+
+        <p style="font-size:12px;color:#aaa;">Submitted via Today Capital Group internal dashboard</p>
+      `;
+
+      await sendMarketingNotification(subject, html, 'underwriting@todaycapitalgroup.com');
+      console.log(`[BANK STATEMENTS] Submitted to underwriting: ${normalizedEmail} (${uploads.length} files)`);
+      res.json({ success: true, uploadCount: uploads.length });
+    } catch (err: any) {
+      console.error("[BANK STATEMENTS] submit-to-underwriting error:", err);
+      res.status(500).json({ error: "Failed to submit to underwriting" });
+    }
+  });
+
   app.get("/api/bank-statements/uploads", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });

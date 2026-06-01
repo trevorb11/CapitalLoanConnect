@@ -40,6 +40,7 @@ export default function BankStatementsUpload() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showApplicationSuccess, setShowApplicationSuccess] = useState(false);
+  const [submittedToUnderwriting, setSubmittedToUnderwriting] = useState(false);
 
   // Read URL parameters and pre-fill form
   useEffect(() => {
@@ -58,6 +59,36 @@ export default function BankStatementsUpload() {
       setShowApplicationSuccess(true);
     }
   }, [searchString]);
+
+  const submitToUnderwritingMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/bank-statements/submit-to-underwriting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, businessName }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to submit");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      setSubmittedToUnderwriting(true);
+      toast({
+        title: "Submitted to Underwriting",
+        description: "underwriting@todaycapitalgroup.com has been notified with the file details and bank statements.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Submission Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -225,11 +256,39 @@ export default function BankStatementsUpload() {
           </div>
 
           <div className="flex flex-col gap-3">
+            {submittedToUnderwriting ? (
+              <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-green-500/15 border border-green-500/30" data-testid="div-underwriting-confirmed">
+                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <p className="text-sm text-green-600 dark:text-green-400 text-left">
+                  Submitted — underwriting@todaycapitalgroup.com has been notified.
+                </p>
+              </div>
+            ) : (
+              <Button
+                onClick={() => submitToUnderwritingMutation.mutate()}
+                disabled={submitToUnderwritingMutation.isPending}
+                data-testid="button-submit-to-underwriting"
+              >
+                {submitToUnderwritingMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight className="w-4 h-4 mr-2" />
+                    Submit to Underwriting
+                  </>
+                )}
+              </Button>
+            )}
+
             <Button 
               variant="outline"
               onClick={() => {
                 setIsSubmitted(false);
                 setUploadedFiles([]);
+                setSubmittedToUnderwriting(false);
               }}
               data-testid="button-upload-more"
             >
