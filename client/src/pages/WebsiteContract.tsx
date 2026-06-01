@@ -257,6 +257,44 @@ const CSS = `
     text-align: center; margin-top: 8px;
   }
 
+  /* ── NAME DIALOG ── */
+  .wc-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.55); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .wc-dialog {
+    background: #fff; border-radius: 12px;
+    padding: 32px 28px; width: 100%; max-width: 420px;
+    font-family: 'Inter', sans-serif; box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  }
+  .wc-dialog h3 {
+    font-size: 18px; font-weight: 700; color: #0c1a2e; margin-bottom: 8px;
+  }
+  .wc-dialog p {
+    font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.55;
+  }
+  .wc-dialog-input {
+    width: 100%; padding: 10px 14px; border: 1.5px solid #cbd5e1;
+    border-radius: 8px; font-size: 14px; font-family: 'Inter', sans-serif;
+    color: #1a1a1a; outline: none; transition: border-color 0.15s; margin-bottom: 16px;
+  }
+  .wc-dialog-input:focus { border-color: #1e40af; }
+  .wc-dialog-input::placeholder { color: #aab; }
+  .wc-dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .wc-dialog-cancel {
+    padding: 9px 18px; background: transparent; border: 1.5px solid #cbd5e1;
+    border-radius: 7px; color: #555; font-size: 13px; font-weight: 600;
+    font-family: 'Inter', sans-serif; cursor: pointer;
+  }
+  .wc-dialog-confirm {
+    padding: 9px 20px; background: #1e40af; border: none;
+    border-radius: 7px; color: #fff; font-size: 13px; font-weight: 700;
+    font-family: 'Inter', sans-serif; cursor: pointer; transition: background 0.15s;
+  }
+  .wc-dialog-confirm:hover { background: #1d4ed8; }
+  .wc-dialog-confirm:disabled { opacity: 0.45; cursor: not-allowed; }
+
   /* ── SUCCESS ── */
   .wc-success {
     text-align: center; padding: 48px 32px;
@@ -419,9 +457,12 @@ export default function WebsiteContract() {
 
   // Draft / share state
   const [token, setToken] = useState(urlToken);
+  const [agreementName, setAgreementName] = useState("");
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [loadingDraft, setLoadingDraft] = useState(!!urlToken);
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [pendingNameValue, setPendingNameValue] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -452,9 +493,12 @@ export default function WebsiteContract() {
         if (d.clientTitle) setClientTitle(d.clientTitle);
         if (d.clientCompany) setClientCompany(d.clientCompany);
         if (d.clientDate) setClientDate(d.clientDate);
+        if (d.name) setAgreementName(d.name);
         // If TCG already signed (has tcg_signature stored), mark it locked
         if (d.tcgSignedAt) setTcgSigned(true);
         if (d.status === "complete") setSubmitted(true);
+        // Build share URL from loaded token
+        setShareUrl(`${window.location.origin}/services/website/contract?token=${urlToken}`);
       } catch {}
       setLoadingDraft(false);
     })();
@@ -463,7 +507,7 @@ export default function WebsiteContract() {
   const buildShareUrl = (t: string) =>
     `${window.location.origin}/services/website/contract?token=${t}`;
 
-  const handleSaveDraft = async () => {
+  const doSaveDraft = async (nameToUse: string) => {
     setError("");
     setSaving(true);
     try {
@@ -472,6 +516,7 @@ export default function WebsiteContract() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token: token || undefined,
+          name: nameToUse || undefined,
           effectiveDate: effectiveDate ? `${effectiveDate}, ${effectiveYear}` : null,
           clientName: clientName || null,
           clientAddress: clientAddress || null,
@@ -493,13 +538,30 @@ export default function WebsiteContract() {
       setToken(data.token);
       const url = buildShareUrl(data.token);
       setShareUrl(url);
-      // Update browser URL without reload
       window.history.replaceState({}, "", `/services/website/contract?token=${data.token}`);
     } catch {
       setError("Could not save draft. Please try again.");
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSaveDraft = () => {
+    // On first save (no token yet), prompt for a name
+    if (!token) {
+      const suggested = clientName || "";
+      setPendingNameValue(suggested);
+      setShowNameDialog(true);
+    } else {
+      doSaveDraft(agreementName);
+    }
+  };
+
+  const handleNameDialogConfirm = () => {
+    const name = pendingNameValue.trim();
+    setAgreementName(name);
+    setShowNameDialog(false);
+    doSaveDraft(name);
   };
 
   const handleCopy = async () => {
@@ -519,6 +581,7 @@ export default function WebsiteContract() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token: token || undefined,
+          name: agreementName || clientName || undefined,
           effectiveDate: effectiveDate ? `${effectiveDate}, ${effectiveYear}` : null,
           clientName,
           clientAddress,
@@ -567,6 +630,31 @@ export default function WebsiteContract() {
     <div className="wc">
       <style>{CSS}</style>
 
+      {/* NAME DIALOG */}
+      {showNameDialog && (
+        <div className="wc-overlay" onClick={() => setShowNameDialog(false)}>
+          <div className="wc-dialog" onClick={e => e.stopPropagation()}>
+            <h3>Name this agreement</h3>
+            <p>Give this agreement a name so you can find it later at <strong>/agreements</strong>. You can use the client's name or project name.</p>
+            <input
+              className="wc-dialog-input"
+              placeholder="e.g. Acme Corp — Website Build"
+              value={pendingNameValue}
+              onChange={e => setPendingNameValue(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleNameDialogConfirm(); if (e.key === "Escape") setShowNameDialog(false); }}
+              autoFocus
+              data-testid="input-agreement-name"
+            />
+            <div className="wc-dialog-actions">
+              <button className="wc-dialog-cancel" onClick={() => setShowNameDialog(false)}>Cancel</button>
+              <button className="wc-dialog-confirm" onClick={handleNameDialogConfirm} disabled={saving} data-testid="button-confirm-name">
+                {saving ? "Saving…" : "Save Draft"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* NAV */}
       <nav className="wc-nav">
         <a className="wc-nav-logo" href="/services/website">
@@ -576,7 +664,17 @@ export default function WebsiteContract() {
             <div className="wc-nav-sub">Web Development</div>
           </div>
         </a>
-        <div className="wc-nav-badge">Website Build Services Agreement</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" as const }}>
+          {agreementName && (
+            <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 13, color: "#93c5fd", fontStyle: "italic", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
+              {agreementName}
+            </span>
+          )}
+          <a href="/agreements" style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: "#60a5fa", textDecoration: "none", fontWeight: 600, opacity: 0.8 }}>
+            All Agreements
+          </a>
+          <div className="wc-nav-badge">Website Build Services Agreement</div>
+        </div>
       </nav>
 
       <div className="wc-outer">

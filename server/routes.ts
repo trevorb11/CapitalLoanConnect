@@ -7066,6 +7066,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS client_signature TEXT`,
       `ALTER TABLE website_contracts ALTER COLUMN client_name DROP NOT NULL`,
       `ALTER TABLE website_contracts ALTER COLUMN client_printed_name DROP NOT NULL`,
+      `ALTER TABLE website_contracts ADD COLUMN IF NOT EXISTS name TEXT`,
     ];
     for (const stmt of alterStmts) {
       await db.execute(sql.raw(stmt)).catch(() => {});
@@ -7076,6 +7077,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error("[CONTRACT] Failed to ensure website_contracts table:", err);
   }
 
+  // GET /api/contracts/website/list — list all contracts (admin/agent only)
+  app.get("/api/contracts/website/list", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Authentication required" });
+    const role = req.session.user.role;
+    if (role !== 'admin' && role !== 'agent') return res.status(403).json({ error: "Access denied" });
+    try {
+      const result = await db.execute(sql`
+        SELECT id, token, name, status, client_name, project_fee, submitted_at
+        FROM website_contracts
+        ORDER BY submitted_at DESC
+        LIMIT 200
+      `);
+      res.json(result.rows.map((r: any) => ({
+        id: r.id,
+        token: r.token,
+        name: r.name,
+        status: r.status,
+        clientName: r.client_name,
+        projectFee: r.project_fee,
+        submittedAt: r.submitted_at,
+      })));
+    } catch (err: any) {
+      console.error("[CONTRACT] list error:", err);
+      res.status(500).json({ error: "Failed to load agreements" });
+    }
+  });
+
   // GET /api/contracts/website/draft/:token — load a saved draft
   app.get("/api/contracts/website/draft/:token", async (req: Request, res: Response) => {
     try {
@@ -7083,7 +7111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await db.execute(sql`
         SELECT effective_date, client_name, client_address, project_fee, hosting_option,
                tcg_printed_name, tcg_title, tcg_date, tcg_signed_at,
-               client_printed_name, client_title, client_company, client_date, status
+               client_printed_name, client_title, client_company, client_date, status, name
         FROM website_contracts WHERE token = ${token} LIMIT 1
       `);
       if (!result.rows.length) return res.status(404).json({ error: "Not found" });
@@ -7103,6 +7131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clientCompany: r.client_company,
         clientDate: r.client_date,
         status: r.status,
+        name: r.name,
       });
     } catch (err: any) {
       console.error("[CONTRACT] draft load error:", err);
@@ -7115,6 +7144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const {
         token: existingToken,
+        name,
         effectiveDate, clientName, clientAddress, projectFee, hostingOption,
         tcgPrintedName, tcgTitle, tcgDate, tcgSignature,
         clientPrintedName, clientTitle, clientCompany, clientDate, clientSignature,
@@ -7126,6 +7156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Update existing draft
         await db.execute(sql`
           UPDATE website_contracts SET
+            name = COALESCE(${name || null}, name),
             effective_date = ${effectiveDate || null},
             client_name = ${clientName || null},
             client_address = ${clientAddress || null},
@@ -7149,11 +7180,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const newToken = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
         await db.execute(sql`
           INSERT INTO website_contracts (
-            token, status, effective_date, client_name, client_address, project_fee, hosting_option,
+            token, status, name, effective_date, client_name, client_address, project_fee, hosting_option,
             tcg_printed_name, tcg_title, tcg_date, tcg_signature, tcg_signed_at,
             client_printed_name, client_title, client_company, client_date, client_signature
           ) VALUES (
-            ${newToken}, 'draft',
+            ${newToken}, 'draft', ${name || null},
             ${effectiveDate || null}, ${clientName || null}, ${clientAddress || null},
             ${projectFee || null}, ${hostingOption || null},
             ${tcgPrintedName || null}, ${tcgTitle || null}, ${tcgDate || null},
@@ -7176,6 +7207,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const {
         token: existingToken,
+        name,
         effectiveDate, clientName, clientAddress, projectFee, hostingOption,
         tcgPrintedName, tcgTitle, tcgDate, tcgSignature,
         clientPrintedName, clientTitle, clientCompany, clientDate, clientSignature,
@@ -7193,6 +7225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await db.execute(sql`
           UPDATE website_contracts SET
             status = 'complete',
+            name = COALESCE(${name || null}, name),
             effective_date = ${effectiveDate || null},
             client_name = ${clientName},
             client_address = ${clientAddress || null},
@@ -7215,12 +7248,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // New submission without a prior draft
         await db.execute(sql`
           INSERT INTO website_contracts (
-            status, effective_date, client_name, client_address, project_fee, hosting_option,
+            status, name, effective_date, client_name, client_address, project_fee, hosting_option,
             tcg_printed_name, tcg_title, tcg_date, tcg_signature, tcg_signed_at,
             client_printed_name, client_title, client_company, client_date, client_signature,
             submitted_at
           ) VALUES (
-            'complete', ${effectiveDate || null}, ${clientName}, ${clientAddress || null},
+            'complete', ${name || null}, ${effectiveDate || null}, ${clientName}, ${clientAddress || null},
             ${projectFee || null}, ${hostingOption || null},
             ${tcgPrintedName || null}, ${tcgTitle || null}, ${tcgDate || null},
             ${hasTcgSig ? tcgSignature : null}, ${hasTcgSig ? sql`NOW()` : null},
