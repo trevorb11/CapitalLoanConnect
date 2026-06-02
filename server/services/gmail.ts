@@ -246,6 +246,70 @@ export class GmailService {
     }
   }
 
+  /**
+   * Send an email with PDF attachments (for shopping deals to lenders).
+   * `to` can be a comma-separated list of addresses.
+   * `cc` is optional comma-separated list.
+   */
+  async sendEmailWithAttachments(
+    to: string,
+    subject: string,
+    htmlBody: string,
+    attachments: Array<{ filename: string; content: Buffer; mimeType: string }>,
+    cc?: string,
+  ): Promise<boolean> {
+    try {
+      const gmail = await getUncachableGmailClient();
+      const boundary = `boundary_mixed_${Date.now()}`;
+      const altBoundary = `boundary_alt_${Date.now()}`;
+
+      const headers = [
+        `To: ${to}`,
+        cc ? `Cc: ${cc}` : null,
+        `Subject: ${subject}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      ].filter(Boolean).join("\r\n");
+
+      // HTML body part wrapped in multipart/alternative
+      const bodyPart = [
+        `--${boundary}`,
+        `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+        ``,
+        `--${altBoundary}`,
+        `Content-Type: text/html; charset=UTF-8`,
+        `Content-Transfer-Encoding: 7bit`,
+        ``,
+        htmlBody,
+        ``,
+        `--${altBoundary}--`,
+      ].join("\r\n");
+
+      // Attachment parts
+      const attachmentParts = attachments.map(att => [
+        `--${boundary}`,
+        `Content-Type: ${att.mimeType}; name="${att.filename}"`,
+        `Content-Disposition: attachment; filename="${att.filename}"`,
+        `Content-Transfer-Encoding: base64`,
+        ``,
+        att.content.toString("base64"),
+      ].join("\r\n")).join("\r\n");
+
+      const fullMessage = [headers, ``, bodyPart, attachmentParts, `--${boundary}--`].join("\r\n");
+      const raw = Buffer.from(fullMessage).toString("base64url");
+
+      const result = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw },
+      });
+      console.log(`[GMAIL] Email with ${attachments.length} attachments sent → ${to} | id=${result.data.id} | subject="${subject}"`);
+      return true;
+    } catch (err) {
+      console.error(`[GMAIL] Failed to send email with attachments to ${to}:`, err);
+      return false;
+    }
+  }
+
   isLikelyApprovalEmail(email: EmailMessage): boolean {
     const subject = email.subject.toLowerCase();
     const from = email.from.toLowerCase();
