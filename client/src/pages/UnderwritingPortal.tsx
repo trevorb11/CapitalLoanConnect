@@ -769,7 +769,7 @@ export default function UnderwritingPortal() {
             <Shield className="h-6 w-6" />
             <div>
               <h1 className="text-lg font-bold">Underwriting Portal</h1>
-              <p className="text-xs text-blue-200">Today Capital Group</p>
+              <p className="text-xs text-blue-200">Showing files with statements uploaded in the past 30 days that have not yet been approved, declined, or marked unqualified</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -821,7 +821,16 @@ export default function UnderwritingPortal() {
         {!queueLoading && filteredQueue.length === 0 && (
           <div className="text-center py-12 text-gray-500">
             <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-            <p>No files in the queue{searchQuery ? " matching your search" : ""}.</p>
+            <p className="font-medium">
+              {searchQuery
+                ? "No files matching your search."
+                : filterStatus !== "all"
+                  ? `No files with "${filterStatus}" status in the current queue.`
+                  : "All caught up — no files need review right now."}
+            </p>
+            {!searchQuery && filterStatus === "all" && (
+              <p className="text-sm text-gray-400 mt-1">Files appear here when bank statements have been uploaded in the past 30 days and no decision has been made yet.</p>
+            )}
           </div>
         )}
 

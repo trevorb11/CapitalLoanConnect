@@ -13547,54 +13547,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   };
 
-  // GET /api/underwriting/queue — all files that have bank statements uploaded (the review queue)
+  // GET /api/underwriting/queue — files needing review: statements uploaded in past 30 days,
+  // not already resolved (approved/declined/unqualified decision within past 30 days)
   app.get("/api/underwriting/queue", requireUnderwriting, async (_req: Request, res: Response) => {
     try {
-      // Get all bank statement uploads, group by email
-      const allUploads = await storage.getAllBankStatementUploads();
-      const allDecisions = await storage.getAllBusinessUnderwritingDecisions();
-      const allApps = await storage.getAllLoanApplications();
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // Group uploads by email
+      // Statuses that mean the file has been resolved for this cycle
+      const TERMINAL_STATUSES = new Set(['approved', 'declined', 'unqualified']);
+
+      const [allUploads, allDecisions, allApps] = await Promise.all([
+        storage.getAllBankStatementUploads(),
+        storage.getAllBusinessUnderwritingDecisions(),
+        storage.getAllLoanApplications(),
+      ]);
+
+      // Filter to bank statements uploaded within the past 30 days only
+      const recentUploads = allUploads.filter(u => {
+        const uploadDate = u.receivedAt || u.createdAt;
+        return uploadDate && new Date(uploadDate) >= thirtyDaysAgo;
+      });
+
+      // Group recent uploads by email
       const uploadsByEmail = new Map<string, typeof allUploads>();
-      for (const u of allUploads) {
+      for (const u of recentUploads) {
         const key = u.email.toLowerCase();
         if (!uploadsByEmail.has(key)) uploadsByEmail.set(key, []);
         uploadsByEmail.get(key)!.push(u);
       }
 
-      // Build queue items
-      const queue = Array.from(uploadsByEmail.entries()).map(([email, uploads]) => {
-        const app = allApps.find(a => a.email.toLowerCase() === email);
-        const decisions = allDecisions.filter(d => d.businessEmail?.toLowerCase() === email);
-        const latestDecision = decisions.length > 0 ? decisions[decisions.length - 1] : null;
+      // Build queue items, then filter out files resolved within the past 30 days
+      // allDecisions is ordered updatedAt DESC so [0] is the most recent per email
+      const queue = Array.from(uploadsByEmail.entries())
+        .map(([email, uploads]) => {
+          const app = allApps.find(a => a.email.toLowerCase() === email);
+          const decisions = allDecisions.filter(d => d.businessEmail?.toLowerCase() === email);
+          // Most recent decision (allDecisions sorted updatedAt DESC)
+          const latestDecision = decisions.length > 0 ? decisions[0] : null;
 
-        return {
-          email,
-          businessName: app?.legalBusinessName || app?.businessName || uploads[0]?.businessName || email,
-          fullName: app?.fullName || null,
-          phone: app?.phone || null,
-          state: app?.state || null,
-          industry: app?.industry || null,
-          requestedAmount: app?.requestedAmount || null,
-          creditScore: app?.creditScore || app?.ficoScoreExact || null,
-          timeInBusiness: app?.timeInBusiness || null,
-          monthlyRevenue: app?.monthlyRevenue || app?.averageMonthlyRevenue || null,
-          agentName: app?.agentName || null,
-          agentEmail: app?.agentEmail || null,
-          applicationId: app?.id || null,
-          statementCount: uploads.length,
-          latestUploadAt: uploads.reduce((latest, u) => {
-            const d = u.createdAt ? new Date(u.createdAt).getTime() : 0;
-            return d > latest ? d : latest;
-          }, 0),
-          hasDecision: !!latestDecision,
-          decisionStatus: latestDecision?.status || null,
-          decisionId: latestDecision?.id || null,
-        };
-      });
+          // Has a terminal decision been made within the past 30 days?
+          const hasRecentTerminalDecision = decisions.some(d => {
+            if (!TERMINAL_STATUSES.has(d.status || '')) return false;
+            const decided = d.updatedAt || d.createdAt;
+            return decided && new Date(decided) >= thirtyDaysAgo;
+          });
 
-      // Sort by latest upload date descending
+          return {
+            email,
+            businessName: app?.legalBusinessName || app?.businessName || uploads[0]?.businessName || email,
+            fullName: app?.fullName || null,
+            phone: app?.phone || null,
+            state: app?.state || null,
+            industry: app?.industry || null,
+            requestedAmount: app?.requestedAmount || null,
+            creditScore: app?.creditScore || app?.ficoScoreExact || null,
+            timeInBusiness: app?.timeInBusiness || null,
+            monthlyRevenue: app?.monthlyRevenue || app?.averageMonthlyRevenue || null,
+            agentName: app?.agentName || null,
+            agentEmail: app?.agentEmail || null,
+            applicationId: app?.id || null,
+            statementCount: uploads.length,
+            latestUploadAt: uploads.reduce((latest, u) => {
+              const d = (u.receivedAt || u.createdAt) ? new Date((u.receivedAt || u.createdAt)!).getTime() : 0;
+              return d > latest ? d : latest;
+            }, 0),
+            hasDecision: !!latestDecision,
+            decisionStatus: latestDecision?.status || null,
+            decisionId: latestDecision?.id || null,
+            hasRecentTerminalDecision,
+          };
+        })
+        // Exclude files that already received a terminal decision in the past 30 days
+        .filter(item => !item.hasRecentTerminalDecision);
+
+      // Sort by latest upload date descending (oldest uploads rise to the top of urgency)
       queue.sort((a, b) => b.latestUploadAt - a.latestUploadAt);
 
       res.json(queue);
