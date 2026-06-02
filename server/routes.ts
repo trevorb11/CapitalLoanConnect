@@ -13534,6 +13534,414 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ========================================
+  // UNDERWRITING PORTAL ROUTES
+  // ========================================
+
+  // Auth guard for underwriting routes
+  const requireUnderwriting = (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Authentication required" });
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Underwriting access required" });
+    }
+    next();
+  };
+
+  // GET /api/underwriting/queue — all files that have bank statements uploaded (the review queue)
+  app.get("/api/underwriting/queue", requireUnderwriting, async (_req: Request, res: Response) => {
+    try {
+      // Get all bank statement uploads, group by email
+      const allUploads = await storage.getAllBankStatementUploads();
+      const allDecisions = await storage.getAllBusinessUnderwritingDecisions();
+      const allApps = await storage.getAllLoanApplications();
+
+      // Group uploads by email
+      const uploadsByEmail = new Map<string, typeof allUploads>();
+      for (const u of allUploads) {
+        const key = u.email.toLowerCase();
+        if (!uploadsByEmail.has(key)) uploadsByEmail.set(key, []);
+        uploadsByEmail.get(key)!.push(u);
+      }
+
+      // Build queue items
+      const queue = Array.from(uploadsByEmail.entries()).map(([email, uploads]) => {
+        const app = allApps.find(a => a.email.toLowerCase() === email);
+        const decisions = allDecisions.filter(d => d.businessEmail?.toLowerCase() === email);
+        const latestDecision = decisions.length > 0 ? decisions[decisions.length - 1] : null;
+
+        return {
+          email,
+          businessName: app?.legalBusinessName || app?.businessName || uploads[0]?.businessName || email,
+          fullName: app?.fullName || null,
+          phone: app?.phone || null,
+          state: app?.state || null,
+          industry: app?.industry || null,
+          requestedAmount: app?.requestedAmount || null,
+          creditScore: app?.creditScore || app?.ficoScoreExact || null,
+          timeInBusiness: app?.timeInBusiness || null,
+          monthlyRevenue: app?.monthlyRevenue || app?.averageMonthlyRevenue || null,
+          agentName: app?.agentName || null,
+          agentEmail: app?.agentEmail || null,
+          applicationId: app?.id || null,
+          statementCount: uploads.length,
+          latestUploadAt: uploads.reduce((latest, u) => {
+            const d = u.createdAt ? new Date(u.createdAt).getTime() : 0;
+            return d > latest ? d : latest;
+          }, 0),
+          hasDecision: !!latestDecision,
+          decisionStatus: latestDecision?.status || null,
+          decisionId: latestDecision?.id || null,
+        };
+      });
+
+      // Sort by latest upload date descending
+      queue.sort((a, b) => b.latestUploadAt - a.latestUploadAt);
+
+      res.json(queue);
+    } catch (err: any) {
+      console.error("[UNDERWRITING] queue error:", err);
+      res.status(500).json({ error: "Failed to load underwriting queue" });
+    }
+  });
+
+  // GET /api/underwriting/file/:email — full file details for underwriter review
+  app.get("/api/underwriting/file/:email", requireUnderwriting, async (req: Request, res: Response) => {
+    try {
+      const email = decodeURIComponent(req.params.email).toLowerCase();
+
+      const [application, uploads, decisions, lenderApprovals] = await Promise.all([
+        storage.getLoanApplicationByEmail(email),
+        storage.getBankStatementUploadsByEmail(email),
+        storage.getBusinessUnderwritingDecisionsByEmail(email),
+        storage.getLenderApprovalsByBusinessEmail(email),
+      ]);
+
+      res.json({
+        application: application || null,
+        bankStatements: uploads,
+        underwritingDecisions: decisions,
+        lenderApprovals: lenderApprovals || [],
+      });
+    } catch (err: any) {
+      console.error("[UNDERWRITING] file detail error:", err);
+      res.status(500).json({ error: "Failed to load file details" });
+    }
+  });
+
+  // POST /api/underwriting/shop — send deal to selected lenders with attachments
+  app.post("/api/underwriting/shop", requireUnderwriting, async (req: Request, res: Response) => {
+    try {
+      const {
+        email,               // merchant email
+        lenderEmails,        // array of { to: string[], cc?: string[], lenderName: string }
+        statementIds,        // array of bank statement upload IDs to include
+        dealOverview,        // { state, industry, amountSeeking, positionSeeking, outstandingBalance, creditScore, creditLeary, additionalNotes }
+      } = req.body;
+
+      if (!email || !lenderEmails?.length) {
+        return res.status(400).json({ error: "Email and at least one lender are required" });
+      }
+
+      const normalizedEmail = email.toLowerCase().trim();
+      const application = await storage.getLoanApplicationByEmail(normalizedEmail);
+      const businessName = application?.legalBusinessName || application?.businessName || normalizedEmail;
+
+      // Generate application PDF in-memory using PDFKit
+      const appPdfBuffer = await generateApplicationPdfBuffer(application);
+
+      // Gather selected bank statement PDFs
+      const attachments: Array<{ filename: string; content: Buffer; mimeType: string }> = [];
+
+      if (appPdfBuffer) {
+        attachments.push({
+          filename: `Application - ${businessName}.pdf`,
+          content: appPdfBuffer,
+          mimeType: "application/pdf",
+        });
+      }
+
+      if (statementIds?.length) {
+        for (const stmtId of statementIds) {
+          try {
+            const upload = await storage.getBankStatementUpload(stmtId);
+            if (!upload) continue;
+            let fileBuffer: Buffer;
+            if (upload.storedFileName?.includes("bank-statements/")) {
+              fileBuffer = await objectStorage.getFileBuffer(upload.storedFileName);
+            } else {
+              const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+              if (fs.existsSync(filePath)) {
+                fileBuffer = fs.readFileSync(filePath);
+              } else {
+                console.warn(`[SHOP] File not found: ${upload.storedFileName}`);
+                continue;
+              }
+            }
+            attachments.push({
+              filename: upload.originalFileName || `Statement-${stmtId}.pdf`,
+              content: fileBuffer,
+              mimeType: "application/pdf",
+            });
+          } catch (stmtErr) {
+            console.error(`[SHOP] Error loading statement ${stmtId}:`, stmtErr);
+          }
+        }
+      }
+
+      // Build the deal overview for the email body
+      const ov = dealOverview || {};
+      const overviewRows = [
+        ov.state ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;width:180px;">State:</td><td style="padding:4px 12px;">${ov.state}</td></tr>` : '',
+        ov.industry ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Industry:</td><td style="padding:4px 12px;">${ov.industry}</td></tr>` : '',
+        ov.amountSeeking ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Amount Seeking:</td><td style="padding:4px 12px;">${ov.amountSeeking}</td></tr>` : '',
+        ov.positionSeeking ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Position Seeking:</td><td style="padding:4px 12px;">${ov.positionSeeking}</td></tr>` : '',
+        ov.outstandingBalance ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Outstanding Balance:</td><td style="padding:4px 12px;">${ov.outstandingBalance}</td></tr>` : '',
+        ov.creditScore ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Credit Score:</td><td style="padding:4px 12px;">${ov.creditScore}</td></tr>` : '',
+        ov.creditLeary ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Credit Leary:</td><td style="padding:4px 12px;">${ov.creditLeary}</td></tr>` : '',
+        ov.additionalNotes ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Additional Notes:</td><td style="padding:4px 12px;">${ov.additionalNotes}</td></tr>` : '',
+      ].filter(Boolean).join('\n');
+
+      const subject = `NEW DEAL SUBMISSION - ${businessName}`;
+      const htmlBody = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;">
+          <h2 style="color:#1e3a5f;margin-bottom:4px;">NEW DEAL SUBMISSION</h2>
+          <p style="color:#555;font-size:14px;margin-top:0;">From Today Capital Group</p>
+          <table style="border-collapse:collapse;width:100%;font-size:14px;margin:16px 0;border:1px solid #e0e0e0;border-radius:6px;">
+            ${overviewRows}
+          </table>
+          <p style="font-size:13px;color:#888;">Application and bank statements attached.</p>
+        </div>
+      `;
+
+      // Send to each lender
+      const results: Array<{ lenderName: string; success: boolean; error?: string }> = [];
+      for (const lender of lenderEmails) {
+        try {
+          const toAddr = lender.to.join(", ");
+          const ccAddr = lender.cc?.length ? lender.cc.join(", ") : undefined;
+          const success = await gmailService.sendEmailWithAttachments(
+            toAddr,
+            subject,
+            htmlBody,
+            attachments,
+            ccAddr,
+          );
+          results.push({ lenderName: lender.lenderName, success });
+          if (success) {
+            console.log(`[SHOP] Deal sent to ${lender.lenderName} (${toAddr})`);
+          }
+        } catch (sendErr: any) {
+          console.error(`[SHOP] Failed to send to ${lender.lenderName}:`, sendErr);
+          results.push({ lenderName: lender.lenderName, success: false, error: sendErr.message });
+        }
+      }
+
+      res.json({ success: true, results, attachmentCount: attachments.length });
+    } catch (err: any) {
+      console.error("[UNDERWRITING] shop error:", err);
+      res.status(500).json({ error: "Failed to shop deal" });
+    }
+  });
+
+  // POST /api/underwriting/request-info — request more info from the sales rep
+  app.post("/api/underwriting/request-info", requireUnderwriting, async (req: Request, res: Response) => {
+    try {
+      const { email, note } = req.body;
+      if (!email || !note) return res.status(400).json({ error: "Email and note are required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+      const application = await storage.getLoanApplicationByEmail(normalizedEmail);
+      const businessName = application?.legalBusinessName || application?.businessName || normalizedEmail;
+      const agentEmail = application?.agentEmail;
+      const agentName = application?.agentName || 'Rep';
+
+      if (!agentEmail) {
+        return res.status(400).json({ error: "No sales rep on file for this merchant. Cannot send request." });
+      }
+
+      const subject = `[More Info Needed] ${businessName}`;
+      const html = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;">
+          <div style="background:#1e3a5f;padding:16px 24px;border-radius:8px 8px 0 0;">
+            <h2 style="color:#fff;margin:0;font-size:18px;">Underwriting Request — More Information Needed</h2>
+          </div>
+          <div style="border:1px solid #e0e0e0;border-top:none;padding:20px 24px;border-radius:0 0 8px 8px;">
+            <p style="font-size:14px;color:#333;">Hi ${agentName},</p>
+            <p style="font-size:14px;color:#333;">Our underwriting team needs additional information for the following file before we can proceed:</p>
+            <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+              <tr><td style="padding:6px 12px;font-weight:600;color:#555;width:140px;">Business:</td><td style="padding:6px 12px;">${businessName}</td></tr>
+              <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:600;color:#555;">Email:</td><td style="padding:6px 12px;">${normalizedEmail}</td></tr>
+            </table>
+            <div style="background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;padding:14px 18px;margin:16px 0;">
+              <p style="font-size:13px;font-weight:600;color:#92400e;margin:0 0 6px;">What we need:</p>
+              <p style="font-size:14px;color:#333;margin:0;white-space:pre-wrap;">${note}</p>
+            </div>
+            <p style="font-size:13px;color:#888;margin-top:20px;">— Today Capital Group Underwriting Team</p>
+          </div>
+        </div>
+      `;
+
+      await gmailService.sendEmail(agentEmail, subject, html);
+      console.log(`[UNDERWRITING] Info request sent to ${agentEmail} for ${businessName}`);
+      res.json({ success: true, sentTo: agentEmail });
+    } catch (err: any) {
+      console.error("[UNDERWRITING] request-info error:", err);
+      res.status(500).json({ error: "Failed to send info request" });
+    }
+  });
+
+  // POST /api/underwriting/mark-unqualified — mark file as unqualified with reason
+  app.post("/api/underwriting/mark-unqualified", requireUnderwriting, async (req: Request, res: Response) => {
+    try {
+      const { email, note } = req.body;
+      if (!email || !note) return res.status(400).json({ error: "Email and note are required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+      const application = await storage.getLoanApplicationByEmail(normalizedEmail);
+      const businessName = application?.legalBusinessName || application?.businessName || normalizedEmail;
+      const reviewerEmail = req.session.user?.agentEmail || 'underwriting';
+
+      const decision = await storage.createOrUpdateBusinessUnderwritingDecision({
+        businessEmail: normalizedEmail,
+        businessName,
+        status: 'declined',
+        declineReason: note,
+        reviewedBy: reviewerEmail,
+      });
+
+      // Notify the assigned rep if one exists
+      const agentEmail = application?.agentEmail;
+      if (agentEmail) {
+        const agentName = application?.agentName || 'Rep';
+        const subject = `[Unqualified] ${businessName}`;
+        const html = `
+          <div style="font-family:Arial,sans-serif;max-width:600px;">
+            <div style="background:#dc2626;padding:16px 24px;border-radius:8px 8px 0 0;">
+              <h2 style="color:#fff;margin:0;font-size:18px;">File Marked Unqualified</h2>
+            </div>
+            <div style="border:1px solid #e0e0e0;border-top:none;padding:20px 24px;border-radius:0 0 8px 8px;">
+              <p style="font-size:14px;color:#333;">Hi ${agentName},</p>
+              <p style="font-size:14px;color:#333;">The following file has been reviewed and marked as <strong>unqualified</strong> by our underwriting team:</p>
+              <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+                <tr><td style="padding:6px 12px;font-weight:600;color:#555;width:140px;">Business:</td><td style="padding:6px 12px;">${businessName}</td></tr>
+                <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:600;color:#555;">Email:</td><td style="padding:6px 12px;">${normalizedEmail}</td></tr>
+              </table>
+              <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:14px 18px;margin:16px 0;">
+                <p style="font-size:13px;font-weight:600;color:#991b1b;margin:0 0 6px;">Reason:</p>
+                <p style="font-size:14px;color:#333;margin:0;white-space:pre-wrap;">${note}</p>
+              </div>
+              <p style="font-size:13px;color:#888;margin-top:20px;">— Today Capital Group Underwriting Team</p>
+            </div>
+          </div>
+        `;
+        gmailService.sendEmail(agentEmail, subject, html).catch(err =>
+          console.error(`[UNDERWRITING] Failed to notify rep about unqualified:`, err)
+        );
+      }
+
+      console.log(`[UNDERWRITING] ${reviewerEmail} marked ${businessName} as unqualified: ${note}`);
+      res.json({ success: true, decision });
+    } catch (err: any) {
+      console.error("[UNDERWRITING] mark-unqualified error:", err);
+      res.status(500).json({ error: "Failed to mark as unqualified" });
+    }
+  });
+
+  // GET /api/underwriting/lender-network — return the lender network for the shopping UI
+  app.get("/api/underwriting/lender-network", requireUnderwriting, async (_req: Request, res: Response) => {
+    const { LENDER_NETWORK } = await import("../shared/lenderNetwork");
+    res.json(LENDER_NETWORK);
+  });
+
+  // Helper: Generate application PDF as a Buffer (for email attachment)
+  async function generateApplicationPdfBuffer(application: any): Promise<Buffer | null> {
+    if (!application) return null;
+
+    return new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
+        const chunks: Buffer[] = [];
+        doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        const darkNavy = '#1B2E4D';
+        const teal = '#5FBFB8';
+        const labelColor = '#6B7280';
+
+        // Header
+        doc.rect(0, 0, 595, 80).fill('#E8EEF3');
+        doc.fillColor(teal).fontSize(20).font('Helvetica-Bold').text('TODAY', 50, 25);
+        doc.fillColor(darkNavy).fontSize(20).font('Helvetica-Bold').text('CAPITAL GROUP', 130, 25);
+        doc.fillColor(labelColor).fontSize(10).font('Helvetica').text(
+          'Date: ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          420, 30
+        );
+        doc.fillColor(darkNavy).fontSize(10).font('Helvetica').text('Business Funding Application', 420, 45);
+
+        let y = 100;
+        const leftCol = 50;
+        const rightCol = 310;
+        const fieldW = 230;
+
+        const addSection = (title: string) => {
+          if (y > 700) { doc.addPage(); y = 50; }
+          doc.fillColor(darkNavy).fontSize(13).font('Helvetica-Bold').text(title, leftCol, y);
+          doc.strokeColor(teal).lineWidth(1.5).moveTo(leftCol, y + 16).lineTo(leftCol + 140, y + 16).stroke();
+          y += 30;
+        };
+
+        const addRow = (label: string, value: string | null | undefined, x: number) => {
+          if (y > 750) { doc.addPage(); y = 50; }
+          doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text(label, x, y);
+          doc.fillColor('#111827').fontSize(10).font('Helvetica').text(value || '—', x, y + 11, { width: fieldW });
+          y += 28;
+        };
+
+        const addRowPair = (l1: string, v1: string | null | undefined, l2: string, v2: string | null | undefined) => {
+          if (y > 750) { doc.addPage(); y = 50; }
+          doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text(l1, leftCol, y);
+          doc.fillColor('#111827').fontSize(10).font('Helvetica').text(v1 || '—', leftCol, y + 11, { width: fieldW });
+          doc.fillColor(labelColor).fontSize(8).font('Helvetica-Bold').text(l2, rightCol, y);
+          doc.fillColor('#111827').fontSize(10).font('Helvetica').text(v2 || '—', rightCol, y + 11, { width: fieldW });
+          y += 28;
+        };
+
+        addSection('Business Information');
+        addRowPair('Legal Business Name:', application.legalBusinessName || application.businessName, 'DBA:', application.doingBusinessAs);
+        addRowPair('Website:', application.companyWebsite, 'Start Date:', application.businessStartDate);
+        addRowPair('EIN:', application.ein, 'Industry:', application.industry);
+        addRowPair('Address:', application.businessAddress || application.businessStreetAddress, 'City:', application.city);
+        addRowPair('State:', application.state, 'ZIP:', application.zipCode);
+        addRowPair('Requested Amount:', application.requestedAmount ? '$' + Number(application.requestedAmount).toLocaleString() : null, 'Monthly Revenue:', application.monthlyRevenue ? '$' + Number(application.monthlyRevenue).toLocaleString() : null);
+        addRowPair('Credit Cards:', application.doYouProcessCreditCards, 'Time in Business:', application.timeInBusiness);
+
+        addSection('Owner Information');
+        addRowPair('Full Name:', application.fullName, 'Email:', application.email);
+        addRowPair('Phone:', application.phone, 'SSN:', application.socialSecurityNumber ? '***-**-' + application.socialSecurityNumber.slice(-4) : null);
+        addRowPair('Date of Birth:', application.dateOfBirth, 'FICO Score:', application.ficoScoreExact || application.creditScore);
+        addRowPair('Ownership %:', application.ownership, 'Home Address:', application.ownerAddress1);
+        addRowPair('City:', application.ownerCity, 'State/ZIP:', [application.ownerState, application.ownerZip].filter(Boolean).join(' '));
+
+        if (application.hasOutstandingLoans || application.mcaBalanceAmount) {
+          addSection('Outstanding Obligations');
+          addRowPair('Has Outstanding Loans:', application.hasOutstandingLoans ? 'Yes' : 'No', 'Outstanding Amount:', application.outstandingLoansAmount ? '$' + Number(application.outstandingLoansAmount).toLocaleString() : null);
+          addRowPair('MCA Balance:', application.mcaBalanceAmount ? '$' + Number(application.mcaBalanceAmount).toLocaleString() : null, 'MCA Bank:', application.mcaBalanceBankName);
+        }
+
+        if (application.useOfFunds) {
+          addSection('Additional Details');
+          addRow('Use of Funds:', application.useOfFunds, leftCol);
+          addRowPair('Funding Urgency:', application.fundingUrgency, 'Referral Source:', application.referralSource);
+        }
+
+        doc.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
   // ── Ads Leads GHL sync — runs every 2 hours indefinitely ─────────────────
   (function startAdsLeadsPoll() {
     const INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours

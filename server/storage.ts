@@ -140,6 +140,7 @@ export interface IStorage {
   getLenderApprovalByEmailId(emailId: string): Promise<LenderApproval | undefined>;
   getAllLenderApprovals(): Promise<LenderApproval[]>;
   getLenderApprovalsByBusinessName(businessName: string): Promise<LenderApproval[]>;
+  getLenderApprovalsByBusinessEmail(email: string): Promise<LenderApproval[]>;
   getLenderApprovalsByLender(lenderName: string): Promise<LenderApproval[]>;
   updateLenderApproval(id: string, updates: Partial<InsertLenderApproval>): Promise<LenderApproval | undefined>;
 
@@ -961,6 +962,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(lenderApprovals)
       .where(eq(lenderApprovals.businessName, businessName))
+      .orderBy(desc(lenderApprovals.createdAt));
+  }
+
+  async getLenderApprovalsByBusinessEmail(email: string): Promise<LenderApproval[]> {
+    return await db
+      .select()
+      .from(lenderApprovals)
+      .where(eq(lenderApprovals.businessEmail, email.toLowerCase()))
       .orderBy(desc(lenderApprovals.createdAt));
   }
 

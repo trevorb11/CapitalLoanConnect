@@ -75,6 +75,7 @@ import MemorialDayWebsite from "@/pages/MemorialDayWebsite";
 import WebsiteContract from "@/pages/WebsiteContract";
 import Agreements from "@/pages/Agreements";
 import WhatWeNeed from "@/pages/WhatWeNeed";
+import UnderwritingPortal from "@/pages/UnderwritingPortal";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -181,6 +182,9 @@ function Router() {
       <Route path="/ads-leads" component={AdsLeads} />
       <Route path="/service-leads" component={ServiceLeads} />
       <Route path="/leads" component={LeadsDashboard} />
+
+      {/* Underwriting Portal */}
+      <Route path="/underwriting" component={UnderwritingPortal} />
 
       {/* Lead Portal Routes */}
       <Route path="/what-we-need" component={WhatWeNeed} />
