@@ -354,6 +354,13 @@ export default function UnderwritingPortal() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {app?.id && (
+                <a href={`/api/applications/${app.id}/view`} target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" variant="outline" className="text-white border-white/30 hover:bg-white/10">
+                    <ExternalLink className="h-4 w-4 mr-1" /> View Application
+                  </Button>
+                </a>
+              )}
               <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={openShopDialog}>
                 <Send className="h-4 w-4 mr-1" /> Shop File
               </Button>
@@ -392,8 +399,8 @@ export default function UnderwritingPortal() {
                   <InfoField label="Outstanding Loans" value={app.hasOutstandingLoans ? "Yes" + (app.outstandingLoansAmount ? " — $" + Number(app.outstandingLoansAmount).toLocaleString() : "") : "No"} />
                   <InfoField label="MCA Balance" value={app.mcaBalanceAmount ? "$" + Number(app.mcaBalanceAmount).toLocaleString() + (app.mcaBalanceBankName ? " (" + app.mcaBalanceBankName + ")" : "") : null} />
                   <InfoField label="Sales Rep" value={app.agentName} />
-                  {app.applicationId && (
-                    <div className="col-span-full">
+                  {app.id && (
+                    <div className="col-span-full pt-1">
                       <a href={`/api/applications/${app.id}/view`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs flex items-center gap-1">
                         <ExternalLink className="h-3 w-3" /> View Full Application
                       </a>
@@ -877,9 +884,23 @@ export default function UnderwritingPortal() {
                       {item.latestUploadAt ? new Date(item.latestUploadAt).toLocaleDateString() : "—"}
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <Button variant="ghost" size="sm" className="text-blue-600">
-                        Review <ChevronLeft className="h-3 w-3 ml-1 rotate-180" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {item.applicationId && (
+                          <a
+                            href={`/api/applications/${item.applicationId}/view`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <Button variant="ghost" size="sm" className="text-gray-500 hover:text-blue-600" title="View Application">
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Button>
+                          </a>
+                        )}
+                        <Button variant="ghost" size="sm" className="text-blue-600">
+                          Review <ChevronLeft className="h-3 w-3 ml-1 rotate-180" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
