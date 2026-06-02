@@ -525,22 +525,28 @@ export default function WebsiteContract() {
           tcgPrintedName,
           tcgTitle,
           tcgDate,
-          tcgSignature: tcgSig.isEmpty() ? null : tcgSig.getDataURL(),
+          // Signatures are NOT sent on draft saves — they're large blobs that
+          // can exceed proxy limits. The server uses COALESCE to preserve any
+          // previously-saved signature. Signatures are saved on final submission only.
+          tcgSignature: null,
           clientPrintedName: clientPrintedName || null,
           clientTitle: clientTitle || null,
           clientCompany: clientCompany || null,
           clientDate: clientDate || null,
-          clientSignature: clientSig.isEmpty() ? null : clientSig.getDataURL(),
+          clientSignature: null,
         }),
       });
-      if (!res.ok) throw new Error("Save failed");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.error || `Server error ${res.status}`);
+      }
       const data = await res.json();
       setToken(data.token);
       const url = buildShareUrl(data.token);
       setShareUrl(url);
       window.history.replaceState({}, "", `/services/website/contract?token=${data.token}`);
-    } catch {
-      setError("Could not save draft. Please try again.");
+    } catch (err: any) {
+      setError(err?.message || "Could not save draft. Please try again.");
     } finally {
       setSaving(false);
     }
