@@ -4155,13 +4155,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // 2. Get all bank statement uploads (for dashboard) - role-based filtering
 
-  // POST /api/bank-statements/analyze-for-rep — AI underwriting snapshot for reps
+  // POST /api/bank-statements/analyze-for-rep — AI underwriting snapshot for reps + underwriting team
   app.post("/api/bank-statements/analyze-for-rep", async (req: Request, res: Response) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
     }
     const role = req.session.user.role;
-    if (role !== 'admin' && role !== 'agent') {
+    if (role !== 'admin' && role !== 'agent' && role !== 'underwriting') {
       return res.status(403).json({ error: "Access denied" });
     }
 
@@ -4227,6 +4227,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       console.log(`[SNAPSHOT] Complete for ${normalizedEmail} — worthSubmitting=${snapshot.worthSubmitting}, score=${snapshot.overallScore}`);
+
+      // Persist snapshot so it can be re-accessed without re-running AI
+      const ranBy = req.session.user?.agentEmail || req.session.user?.agentName || role;
+      try {
+        await db.execute(sql`
+          INSERT INTO underwriting_snapshots (email, snapshot, ran_at, ran_by, files_processed)
+          VALUES (${normalizedEmail}, ${JSON.stringify(snapshot)}::jsonb, NOW(), ${ranBy}, ${extractedTexts.length})
+          ON CONFLICT (email) DO UPDATE SET
+            snapshot = EXCLUDED.snapshot,
+            ran_at = NOW(),
+            ran_by = EXCLUDED.ran_by,
+            files_processed = EXCLUDED.files_processed
+        `);
+        console.log(`[SNAPSHOT] Saved to DB for ${normalizedEmail}`);
+      } catch (saveErr: any) {
+        console.error("[SNAPSHOT] Failed to save to DB (non-fatal):", saveErr.message);
+      }
+
       res.json({ success: true, snapshot, filesProcessed: extractedTexts.length });
     } catch (err: any) {
       console.error("[SNAPSHOT] Error:", err);
@@ -13636,18 +13654,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const email = decodeURIComponent(req.params.email).toLowerCase();
 
-      const [application, uploads, decisions, lenderApprovals] = await Promise.all([
+      const [application, uploads, decisions, lenderApprovals, snapshotRow] = await Promise.all([
         storage.getLoanApplicationByEmail(email),
         storage.getBankStatementUploadsByEmail(email),
         storage.getBusinessUnderwritingDecisionsByEmail(email),
         storage.getLenderApprovalsByBusinessEmail(email),
+        db.execute(sql`SELECT snapshot, ran_at, ran_by, files_processed FROM underwriting_snapshots WHERE email = ${email} LIMIT 1`).catch(() => ({ rows: [] })),
       ]);
+
+      const savedSnapshot = (snapshotRow as any).rows?.[0] ?? null;
 
       res.json({
         application: application || null,
         bankStatements: uploads,
         underwritingDecisions: decisions,
         lenderApprovals: lenderApprovals || [],
+        savedSnapshot: savedSnapshot ? {
+          snapshot: savedSnapshot.snapshot,
+          ranAt: savedSnapshot.ran_at,
+          ranBy: savedSnapshot.ran_by,
+          filesProcessed: savedSnapshot.files_processed,
+        } : null,
       });
     } catch (err: any) {
       console.error("[UNDERWRITING] file detail error:", err);

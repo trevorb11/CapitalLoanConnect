@@ -61,6 +61,12 @@ interface FileDetail {
   bankStatements: any[];
   underwritingDecisions: any[];
   lenderApprovals: any[];
+  savedSnapshot: {
+    snapshot: UnderwritingSnapshot;
+    ranAt: string;
+    ranBy: string | null;
+    filesProcessed: number;
+  } | null;
 }
 
 interface UnderwritingSnapshot {
@@ -113,6 +119,7 @@ export default function UnderwritingPortal() {
   // AI Snapshot state
   const [snapshot, setSnapshot] = useState<UnderwritingSnapshot | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotRanAt, setSnapshotRanAt] = useState<string | null>(null);
 
   // Auth check
   useEffect(() => {
@@ -140,6 +147,18 @@ export default function UnderwritingPortal() {
     queryFn: getQueryFn({ on401: "returnNull" }),
     enabled: !!selectedEmail && auth.isAuthenticated,
   });
+
+  // Pre-load saved snapshot when file detail arrives
+  useEffect(() => {
+    if (fileDetail?.savedSnapshot) {
+      setSnapshot(fileDetail.savedSnapshot.snapshot);
+      setSnapshotRanAt(fileDetail.savedSnapshot.ranAt);
+    } else if (fileDetail && !fileDetail.savedSnapshot) {
+      // File opened with no saved snapshot — clear any previous file's snapshot
+      setSnapshot(null);
+      setSnapshotRanAt(null);
+    }
+  }, [fileDetail]);
 
   // Lender network
   const { data: lenderNetwork = [] } = useQuery<LenderContact[]>({
@@ -243,6 +262,7 @@ export default function UnderwritingPortal() {
       if (!res.ok) throw new Error((await res.json()).error || "Analysis failed");
       const data = await res.json();
       setSnapshot(data.snapshot);
+      setSnapshotRanAt(new Date().toISOString());
     } catch (err: any) {
       toast({ title: "AI Snapshot Failed", description: err.message, variant: "destructive" });
     } finally {
@@ -479,9 +499,16 @@ export default function UnderwritingPortal() {
           <div className="space-y-6">
             <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-[#1e3a5f] flex items-center gap-2">
-                  <Sparkles className="h-5 w-5" /> AI Underwriting Snapshot
-                </h2>
+                <div>
+                  <h2 className="text-lg font-bold text-[#1e3a5f] flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" /> AI Underwriting Snapshot
+                  </h2>
+                  {snapshotRanAt && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Last run {new Date(snapshotRanAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(snapshotRanAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                    </p>
+                  )}
+                </div>
                 <Button size="sm" onClick={runSnapshot} disabled={snapshotLoading || stmts.length === 0}>
                   {snapshotLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Bot className="h-4 w-4 mr-1" />}
                   {snapshot ? "Re-run" : "Run Snapshot"}
