@@ -160,6 +160,16 @@ app.use((req, res, next) => {
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_bank_connected_at TIMESTAMP`);
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_approved_at TIMESTAMP`);
       console.log('[STARTUP] Migration: gigfi columns ensured');
+      // Underwriting AI snapshots table
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS underwriting_snapshots (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        snapshot JSONB NOT NULL,
+        ran_at TIMESTAMP DEFAULT NOW(),
+        ran_by TEXT,
+        files_processed INTEGER DEFAULT 0
+      )`);
+      console.log('[STARTUP] Migration: underwriting_snapshots ensured');
       // Backfill submitted_at from UUID v7 decision IDs for any rows missing it
       const backfill = await db.execute(sql`
         UPDATE loan_applications
