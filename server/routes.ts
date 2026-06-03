@@ -7211,7 +7211,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clientPrintedName, clientTitle, clientCompany, clientDate, clientSignature,
       } = req.body;
 
-      const hasTcgSig = tcgSignature && tcgSignature.length > 1000; // real canvas data
+      const hasTcgSig = !!(tcgSignature && tcgSignature.length > 0);
+      const hasClientSig = !!(clientSignature && clientSignature.length > 0);
 
       if (existingToken) {
         // Update existing draft
@@ -7232,7 +7233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             client_title = ${clientTitle || null},
             client_company = ${clientCompany || null},
             client_date = ${clientDate || null},
-            client_signature = COALESCE(${clientSignature && clientSignature.length > 1000 ? clientSignature : null}, client_signature)
+            client_signature = COALESCE(${hasClientSig ? clientSignature : null}, client_signature)
           WHERE token = ${existingToken}
         `);
         res.json({ token: existingToken });
@@ -7252,7 +7253,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ${hasTcgSig ? tcgSignature : null},
             ${hasTcgSig ? sql`NOW()` : null},
             ${clientPrintedName || null}, ${clientTitle || null}, ${clientCompany || null},
-            ${clientDate || null}, ${clientSignature && clientSignature.length > 1000 ? clientSignature : null}
+            ${clientDate || null}, ${hasClientSig ? clientSignature : null}
           )
         `);
         res.json({ token: newToken });

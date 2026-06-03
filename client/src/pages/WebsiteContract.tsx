@@ -498,6 +498,9 @@ export default function WebsiteContract() {
         if (d.clientCompany) setClientCompany(d.clientCompany);
         if (d.clientDate) setClientDate(d.clientDate);
         if (d.name) setAgreementName(d.name);
+        // Restore click-signed state from saved signature markers
+        if (d.tcgSignature && d.tcgSignature.startsWith("click-signed:")) setTcgClickSigned(true);
+        if (d.clientSignature && d.clientSignature.startsWith("click-signed:")) setClientClickSigned(true);
         // If TCG already signed (has tcg_signature stored), mark it locked
         if (d.tcgSignedAt) setTcgSigned(true);
         if (d.status === "complete") setSubmitted(true);
@@ -529,15 +532,12 @@ export default function WebsiteContract() {
           tcgPrintedName,
           tcgTitle,
           tcgDate,
-          // Signatures are NOT sent on draft saves — they're large blobs that
-          // can exceed proxy limits. The server uses COALESCE to preserve any
-          // previously-saved signature. Signatures are saved on final submission only.
-          tcgSignature: null,
+          tcgSignature: tcgClickSigned ? `click-signed:${tcgPrintedName}` : null,
           clientPrintedName: clientPrintedName || null,
           clientTitle: clientTitle || null,
           clientCompany: clientCompany || null,
           clientDate: clientDate || null,
-          clientSignature: null,
+          clientSignature: clientClickSigned ? `click-signed:${clientPrintedName}` : null,
         }),
       });
       if (!res.ok) {
