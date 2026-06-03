@@ -3898,7 +3898,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : null;
       const isLeadPortalUpload = Boolean(leadSessionEmail);
 
-      let email: string = leadSessionEmail || req.body.email;
+      let email: string = (leadSessionEmail || req.body.email || "").toLowerCase().trim();
       let businessName: string = req.body.businessName;
 
       if (!email) {

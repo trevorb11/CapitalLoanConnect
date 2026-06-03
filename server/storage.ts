@@ -768,10 +768,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBankStatementUploadsByEmail(email: string): Promise<BankStatementUpload[]> {
+    const normalized = email.toLowerCase().trim();
     return await db
       .select()
       .from(bankStatementUploads)
-      .where(eq(bankStatementUploads.email, email))
+      .where(sql`LOWER(${bankStatementUploads.email}) = ${normalized}`)
       .orderBy(desc(sql`COALESCE(${bankStatementUploads.receivedAt}, ${bankStatementUploads.createdAt})`));
   }
 
