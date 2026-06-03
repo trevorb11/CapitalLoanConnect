@@ -868,6 +868,16 @@ export interface UnderwritingSnapshot {
   estimatedFactor: string;
   summary: string;
   underwriterNotes: string[];
+  // Per-month breakdown for the scorecard view (oldest → newest, up to 6 months)
+  monthlyData?: Array<{
+    month: string;        // e.g. "Jan 2024" or "4 months ago"
+    deposits: number;
+    avgBalance: number;
+    numDeposits: string;  // e.g. "10+" or "7"
+    nsfs: number;
+    negativeDays: number;
+    endBalance: number | null;
+  }>;
 }
 
 export async function generateUnderwritingSnapshot(
@@ -931,13 +941,24 @@ Respond with ONLY this JSON structure (no extra text):
   "recommendedProduct": "<MCA, Term Loan, Line of Credit, Revenue Based Advance, or N/A>",
   "estimatedFactor": "<e.g. 1.25-1.35 or N/A>",
   "summary": "<3-4 sentence underwriter bottom line — direct, factual, actionable for the rep>",
-  "underwriterNotes": ["<specific note for the underwriting team>"]
+  "underwriterNotes": ["<specific note for the underwriting team>"],
+  "monthlyData": [
+    {
+      "month": "<e.g. 'Jan 2024' — use actual month/year if determinable from statement dates, otherwise '4 months ago'>",
+      "deposits": <total deposits for that month as a number — round to nearest hundred>,
+      "avgBalance": <estimated average daily balance for that month as a number — round to nearest hundred>,
+      "numDeposits": "<e.g. '10+' or '7' — count of individual deposit transactions>",
+      "nsfs": <number of NSF/returned items that month>,
+      "negativeDays": <estimated number of days with negative balance that month>,
+      "endBalance": <ending/closing balance for that month as a number, or null if not available>
+    }
+  ]
 }`;
 
   try {
     const response = await getAnthropic().messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 2500,
+      max_tokens: 3500,
       system: "You are a senior MCA underwriter at Today Capital Group. Your job is to give sales reps a quick, honest assessment of whether a merchant file is worth submitting. Be direct and use underwriting language. Respond only with valid JSON.",
       messages: [{ role: "user", content: prompt }],
     });

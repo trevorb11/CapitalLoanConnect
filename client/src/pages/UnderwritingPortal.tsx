@@ -90,6 +90,15 @@ interface UnderwritingSnapshot {
   estimatedFactor: string;
   summary: string;
   underwriterNotes: string[];
+  monthlyData?: Array<{
+    month: string;
+    deposits: number;
+    avgBalance: number;
+    numDeposits: string;
+    nsfs: number;
+    negativeDays: number;
+    endBalance: number | null;
+  }>;
 }
 
 export default function UnderwritingPortal() {
@@ -120,6 +129,7 @@ export default function UnderwritingPortal() {
   const [snapshot, setSnapshot] = useState<UnderwritingSnapshot | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [snapshotRanAt, setSnapshotRanAt] = useState<string | null>(null);
+  const [showDeepDive, setShowDeepDive] = useState(false);
 
   // Auth check
   useEffect(() => {
@@ -525,85 +535,161 @@ export default function UnderwritingPortal() {
                 </div>
               )}
 
-              {snapshot && !snapshotLoading && (
-                <div className="space-y-4 text-sm">
-                  {/* Score + Verdict */}
-                  <div className={`p-4 rounded-lg border ${snapshot.worthSubmitting ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold text-lg">{snapshot.overallScore}/100</span>
-                      <Badge className={snapshot.worthSubmitting ? 'bg-emerald-600' : 'bg-red-600'}>
-                        {snapshot.worthSubmitting ? "Worth Submitting" : "Do Not Submit"}
-                      </Badge>
+              {snapshot && !snapshotLoading && (() => {
+                const fmtK = (n: number) => {
+                  if (!n && n !== 0) return '—';
+                  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+                  if (n >= 1000) return '$' + (Math.round(n / 100) / 10) + 'k';
+                  return '$' + n.toLocaleString();
+                };
+                return (
+                <div className="space-y-0 text-sm -mx-6 -mb-6">
+                  {/* ── Verdict banner ── */}
+                  <div className={`px-6 py-4 border-b ${snapshot.worthSubmitting ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-2xl text-gray-800">{snapshot.overallScore}<span className="text-base font-normal text-gray-500">/100</span></span>
+                        <Badge className={snapshot.worthSubmitting ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}>
+                          {snapshot.worthSubmitting ? "Worth Submitting" : "Do Not Submit"}
+                        </Badge>
+                      </div>
+                      <span className="text-xs text-gray-500 font-medium">{snapshot.qualificationTier}</span>
                     </div>
-                    <p className="text-gray-700">{snapshot.qualificationTier}</p>
-                    <p className="text-gray-600 mt-1">{snapshot.summary}</p>
+                    <p className="text-xs text-gray-500 mt-2 leading-relaxed">{snapshot.summary}</p>
                   </div>
 
-                  {/* Key Metrics */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <MetricCard label="Avg Monthly Revenue" value={"$" + snapshot.avgMonthlyRevenue.toLocaleString()} />
-                    <MetricCard label="Revenue Trend" value={snapshot.revenueTrend} />
-                    <MetricCard label="Avg Daily Balance" value={"$" + snapshot.avgDailyBalance.toLocaleString()} />
-                    <MetricCard label="NSF Count" value={String(snapshot.nsfCount)} alert={snapshot.nsfCount > 0} />
-                    <MetricCard label="Negative Days" value={String(snapshot.negativeDays)} alert={snapshot.negativeDays > 0} />
-                    <MetricCard label="Debt Service Ratio" value={(snapshot.debtServiceRatio * 100).toFixed(0) + "%"} alert={snapshot.debtServiceRatio > 0.5} />
+                  {/* ── Monthly scorecard table ── */}
+                  {snapshot.monthlyData && snapshot.monthlyData.length > 0 ? (
+                    <div className="overflow-x-auto px-6 pt-4 pb-2">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="text-left text-xs text-gray-400 pb-2 pr-4 font-medium">Statements</th>
+                            {snapshot.monthlyData.map((m, i) => (
+                              <th key={i} className="text-center text-xs text-gray-400 pb-2 px-3 font-medium whitespace-nowrap min-w-16">{m.month}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {([
+                            { label: 'Deposits', key: 'deposits', fmt: (v: number) => fmtK(v), redIf: false },
+                            { label: 'Avg Balance', key: 'avgBalance', fmt: (v: number) => fmtK(v), redIf: false },
+                            { label: '# Deposits', key: 'numDeposits', fmt: (v: string) => String(v), redIf: false },
+                            { label: 'NSFs', key: 'nsfs', fmt: (v: number) => String(v), redIf: true },
+                            { label: 'Neg Days', key: 'negativeDays', fmt: (v: number) => String(v), redIf: true },
+                          ] as const).map(row => (
+                            <tr key={row.key} className="border-b border-gray-100 last:border-0">
+                              <td className="py-2 pr-4 text-xs text-gray-400 whitespace-nowrap">{row.label}</td>
+                              {snapshot.monthlyData!.map((m, i) => {
+                                const val = (m as any)[row.key];
+                                const isRed = row.redIf && Number(val) > 0;
+                                return (
+                                  <td key={i} className={`text-center py-2 px-3 font-semibold text-sm ${isRed ? 'text-red-500' : 'text-gray-800'}`}>
+                                    {(row.fmt as any)(val)}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    /* Fallback for snapshots without monthly data */
+                    <div className="grid grid-cols-2 gap-3 px-6 pt-4 pb-2">
+                      <MetricCard label="Avg Monthly Revenue" value={fmtK(snapshot.avgMonthlyRevenue)} />
+                      <MetricCard label="Revenue Trend" value={snapshot.revenueTrend} />
+                      <MetricCard label="Avg Daily Balance" value={fmtK(snapshot.avgDailyBalance)} />
+                      <MetricCard label="NSF Count" value={String(snapshot.nsfCount)} alert={snapshot.nsfCount > 0} />
+                      <MetricCard label="Negative Days" value={String(snapshot.negativeDays)} alert={snapshot.negativeDays > 0} />
+                      <MetricCard label="Debt Service Ratio" value={(snapshot.debtServiceRatio * 100).toFixed(0) + "%"} alert={snapshot.debtServiceRatio > 0.5} />
+                    </div>
+                  )}
+
+                  {/* ── Key stats strip ── */}
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 px-6 py-3 text-sm border-t border-gray-100 bg-gray-50">
+                    <span>
+                      <span className="text-gray-400">Positions: </span>
+                      <span className={`font-medium ${snapshot.existingPositions.length > 0 ? 'text-orange-500' : 'text-emerald-600'}`}>
+                        {snapshot.existingPositions.length === 0 ? 'None' : snapshot.existingPositions.map(p => p.funder).join(', ')}
+                      </span>
+                    </span>
+                    {snapshot.maxRecommendedAdvance > 0 && (
+                      <span>
+                        <span className="text-gray-400">Max Advance: </span>
+                        <span className="font-medium text-gray-800">${snapshot.maxRecommendedAdvance.toLocaleString()}</span>
+                      </span>
+                    )}
+                    <span>
+                      <span className="text-gray-400">Factor: </span>
+                      <span className="font-medium text-gray-800">{snapshot.estimatedFactor}</span>
+                    </span>
+                    <span>
+                      <span className="text-gray-400">Product: </span>
+                      <span className="font-medium text-gray-800">{snapshot.recommendedProduct}</span>
+                    </span>
                   </div>
 
-                  {/* Existing Positions */}
-                  {snapshot.existingPositions.length > 0 && (
-                    <div>
-                      <p className="font-semibold mb-1">Existing Positions:</p>
-                      {snapshot.existingPositions.map((pos, i) => (
-                        <p key={i} className="text-gray-600">{pos.funder}: {pos.estimatedPayment} ({pos.frequency})</p>
-                      ))}
-                    </div>
-                  )}
+                  {/* ── More info toggle ── */}
+                  <div className="px-6 pb-6 border-t border-gray-100 pt-3">
+                    <button
+                      onClick={() => setShowDeepDive(v => !v)}
+                      className="text-xs text-blue-600 flex items-center gap-1 hover:underline"
+                      data-testid="button-toggle-deep-dive"
+                    >
+                      {showDeepDive
+                        ? <><CheckCircle2 className="h-3 w-3" /> Hide detailed analysis</>
+                        : <><AlertTriangle className="h-3 w-3" /> More info</>}
+                    </button>
 
-                  {/* Red Flags */}
-                  {snapshot.redFlags.length > 0 && (
-                    <div>
-                      <p className="font-semibold mb-1 text-red-700">Red Flags:</p>
-                      {snapshot.redFlags.map((rf, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <AlertTriangle className={`h-3 w-3 ${rf.severity === 'high' ? 'text-red-600' : rf.severity === 'medium' ? 'text-amber-500' : 'text-gray-400'}`} />
-                          <span>{rf.flag}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Positive Indicators */}
-                  {snapshot.positiveIndicators.length > 0 && (
-                    <div>
-                      <p className="font-semibold mb-1 text-emerald-700">Positive Indicators:</p>
-                      {snapshot.positiveIndicators.map((pi, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                          <span>{pi}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Recommendation */}
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <p className="font-semibold">Recommendation:</p>
-                    <p>Max Advance: ${snapshot.maxRecommendedAdvance.toLocaleString()}</p>
-                    <p>Product: {snapshot.recommendedProduct}</p>
-                    <p>Est. Factor: {snapshot.estimatedFactor}</p>
+                    {showDeepDive && (
+                      <div className="mt-4 space-y-4">
+                        {snapshot.existingPositions.length > 0 && (
+                          <div>
+                            <p className="font-semibold mb-1 text-gray-700">Existing Positions:</p>
+                            {snapshot.existingPositions.map((pos, i) => (
+                              <p key={i} className="text-gray-600 text-sm">{pos.funder}: {pos.estimatedPayment} ({pos.frequency})</p>
+                            ))}
+                            {snapshot.totalMonthlyDebtPayments > 0 && (
+                              <p className="text-gray-500 text-xs mt-1">Total: ~${snapshot.totalMonthlyDebtPayments.toLocaleString()}/mo · DSR: {(snapshot.debtServiceRatio * 100).toFixed(0)}%</p>
+                            )}
+                          </div>
+                        )}
+                        {snapshot.redFlags.length > 0 && (
+                          <div>
+                            <p className="font-semibold mb-1 text-red-700">Red Flags:</p>
+                            {snapshot.redFlags.map((rf, i) => (
+                              <div key={i} className="flex items-center gap-2 text-sm">
+                                <AlertTriangle className={`h-3 w-3 flex-shrink-0 ${rf.severity === 'high' ? 'text-red-600' : rf.severity === 'medium' ? 'text-amber-500' : 'text-gray-400'}`} />
+                                <span>{rf.flag}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {snapshot.positiveIndicators.length > 0 && (
+                          <div>
+                            <p className="font-semibold mb-1 text-emerald-700">Positive Indicators:</p>
+                            {snapshot.positiveIndicators.map((pi, i) => (
+                              <div key={i} className="flex items-center gap-2 text-sm">
+                                <CheckCircle2 className="h-3 w-3 text-emerald-500 flex-shrink-0" /><span>{pi}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {snapshot.underwriterNotes.length > 0 && (
+                          <div>
+                            <p className="font-semibold mb-1 text-gray-700">Notes:</p>
+                            <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
+                              {snapshot.underwriterNotes.map((n, i) => <li key={i}>{n}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-
-                  {/* Underwriter Notes */}
-                  {snapshot.underwriterNotes.length > 0 && (
-                    <div>
-                      <p className="font-semibold mb-1">Notes:</p>
-                      <ul className="list-disc list-inside text-gray-600 space-y-1">
-                        {snapshot.underwriterNotes.map((n, i) => <li key={i}>{n}</li>)}
-                      </ul>
-                    </div>
-                  )}
                 </div>
-              )}
+                );
+              })()}
             </Card>
           </div>
         </div>

@@ -59,6 +59,15 @@ interface UnderwritingSnapshot {
   estimatedFactor: string;
   summary: string;
   underwriterNotes: string[];
+  monthlyData?: Array<{
+    month: string;
+    deposits: number;
+    avgBalance: number;
+    numDeposits: string;
+    nsfs: number;
+    negativeDays: number;
+    endBalance: number | null;
+  }>;
 }
 
 export default function BankStatementsUpload() {
@@ -78,6 +87,7 @@ export default function BankStatementsUpload() {
   const [isInternal, setIsInternal] = useState(false);
   const [snapshot, setSnapshot] = useState<UnderwritingSnapshot | null>(null);
   const [reportExpanded, setReportExpanded] = useState(true);
+  const [deepDiveExpanded, setDeepDiveExpanded] = useState(false);
 
   // Read URL parameters and pre-fill form
   useEffect(() => {
@@ -335,6 +345,12 @@ export default function BankStatementsUpload() {
   if (isSubmitted && uploadedFiles.length > 0) {
     // ── INTERNAL / REP SUCCESS SCREEN ──────────────────────────────────────
     if (isInternal) {
+      const fmtK = (n: number) => {
+        if (!n && n !== 0) return '—';
+        if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return '$' + (Math.round(n / 100) / 10) + 'k';
+        return '$' + n.toLocaleString();
+      };
       const scoreColor = snapshot
         ? snapshot.overallScore >= 70 ? 'text-green-500' : snapshot.overallScore >= 45 ? 'text-yellow-500' : 'text-red-500'
         : '';
@@ -534,126 +550,192 @@ export default function BankStatementsUpload() {
                 </button>
 
                 {reportExpanded && (
-                  <div className="px-5 pb-5 space-y-5 border-t border-border">
-                    {/* Key metrics grid */}
-                    <div className="grid grid-cols-2 gap-3 pt-4">
-                      <div className="bg-muted/40 rounded-md p-3">
-                        <p className="text-xs text-muted-foreground mb-1">Avg Monthly Revenue</p>
-                        <p className="font-semibold flex items-center gap-1">
-                          ${snapshot.avgMonthlyRevenue.toLocaleString()}
-                          {trendIcon}
-                        </p>
+                  <div className="border-t border-border">
+                    {/* ── SCORECARD: monthly breakdown table ── */}
+                    {snapshot.monthlyData && snapshot.monthlyData.length > 0 ? (
+                      <div className="overflow-x-auto px-5 pt-4 pb-2">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-border">
+                              <th className="text-left text-xs text-muted-foreground pb-2 pr-4 font-medium">Statements</th>
+                              {snapshot.monthlyData.map((m, i) => (
+                                <th key={i} className="text-center text-xs text-muted-foreground pb-2 px-3 font-medium whitespace-nowrap min-w-16">
+                                  {m.month}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {([
+                              { label: 'Deposits', key: 'deposits', fmt: (v: number) => fmtK(v), redIf: false },
+                              { label: 'Avg Balance', key: 'avgBalance', fmt: (v: number) => fmtK(v), redIf: false },
+                              { label: '# Deposits', key: 'numDeposits', fmt: (v: string) => String(v), redIf: false },
+                              { label: 'NSFs', key: 'nsfs', fmt: (v: number) => String(v), redIf: true },
+                              { label: 'Neg Days', key: 'negativeDays', fmt: (v: number) => String(v), redIf: true },
+                            ] as const).map(row => (
+                              <tr key={row.key} className="border-b border-border/40 last:border-0">
+                                <td className="py-2 pr-4 text-xs text-muted-foreground whitespace-nowrap">{row.label}</td>
+                                {snapshot.monthlyData!.map((m, i) => {
+                                  const val = (m as any)[row.key];
+                                  const isRed = row.redIf && Number(val) > 0;
+                                  return (
+                                    <td key={i} className={`text-center py-2 px-3 font-medium text-sm ${isRed ? 'text-red-500' : ''}`}>
+                                      {(row.fmt as any)(val)}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                      <div className="bg-muted/40 rounded-md p-3">
-                        <p className="text-xs text-muted-foreground mb-1">Avg Daily Balance</p>
-                        <p className="font-semibold">${snapshot.avgDailyBalance.toLocaleString()}</p>
+                    ) : (
+                      /* Fallback: aggregate grid for old snapshots without monthly data */
+                      <div className="grid grid-cols-2 gap-3 px-5 pt-4 pb-2">
+                        <div className="bg-muted/40 rounded-md p-3">
+                          <p className="text-xs text-muted-foreground mb-1">Avg Monthly Revenue</p>
+                          <p className="font-semibold flex items-center gap-1">{fmtK(snapshot.avgMonthlyRevenue)} {trendIcon}</p>
+                        </div>
+                        <div className="bg-muted/40 rounded-md p-3">
+                          <p className="text-xs text-muted-foreground mb-1">Avg Daily Balance</p>
+                          <p className="font-semibold">{fmtK(snapshot.avgDailyBalance)}</p>
+                        </div>
+                        <div className="bg-muted/40 rounded-md p-3">
+                          <p className="text-xs text-muted-foreground mb-1">NSFs / Neg Days</p>
+                          <p className={`font-semibold ${snapshot.nsfCount > 3 ? 'text-red-500' : snapshot.nsfCount > 0 ? 'text-yellow-500' : ''}`}>
+                            {snapshot.nsfCount} NSFs · {snapshot.negativeDays} days
+                          </p>
+                        </div>
+                        <div className="bg-muted/40 rounded-md p-3">
+                          <p className="text-xs text-muted-foreground mb-1">Debt Service Ratio</p>
+                          <p className={`font-semibold ${snapshot.debtServiceRatio > 0.4 ? 'text-red-500' : snapshot.debtServiceRatio > 0.25 ? 'text-yellow-500' : ''}`}>
+                            {Math.round(snapshot.debtServiceRatio * 100)}% of revenue
+                          </p>
+                        </div>
                       </div>
-                      <div className="bg-muted/40 rounded-md p-3">
-                        <p className="text-xs text-muted-foreground mb-1">NSFs / Neg. Days</p>
-                        <p className={`font-semibold ${snapshot.nsfCount > 3 ? 'text-red-500' : snapshot.nsfCount > 0 ? 'text-yellow-500' : ''}`}>
-                          {snapshot.nsfCount} NSFs · {snapshot.negativeDays} days
-                        </p>
-                      </div>
-                      <div className="bg-muted/40 rounded-md p-3">
-                        <p className="text-xs text-muted-foreground mb-1">Debt Service Ratio</p>
-                        <p className={`font-semibold ${snapshot.debtServiceRatio > 0.4 ? 'text-red-500' : snapshot.debtServiceRatio > 0.25 ? 'text-yellow-500' : ''}`}>
-                          {Math.round(snapshot.debtServiceRatio * 100)}% of revenue
-                        </p>
-                      </div>
+                    )}
+
+                    {/* ── Key stats strip ── */}
+                    <div className="flex flex-wrap gap-x-5 gap-y-1 px-5 py-3 text-sm border-t border-border/40">
+                      <span>
+                        <span className="text-muted-foreground">Positions: </span>
+                        <span className={`font-medium ${snapshot.existingPositions.length > 0 ? 'text-orange-400' : 'text-green-500'}`}>
+                          {snapshot.existingPositions.length === 0 ? 'None' : snapshot.existingPositions.map(p => p.funder).join(', ')}
+                        </span>
+                      </span>
+                      {snapshot.maxRecommendedAdvance > 0 && (
+                        <span>
+                          <span className="text-muted-foreground">Max Advance: </span>
+                          <span className="font-medium">${snapshot.maxRecommendedAdvance.toLocaleString()}</span>
+                        </span>
+                      )}
+                      <span>
+                        <span className="text-muted-foreground">Factor: </span>
+                        <span className="font-medium">{snapshot.estimatedFactor}</span>
+                      </span>
+                      <span>
+                        <span className="text-muted-foreground">Product: </span>
+                        <span className="font-medium">{snapshot.recommendedProduct}</span>
+                      </span>
                     </div>
 
-                    {/* Existing positions */}
-                    <div>
-                      <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-muted-foreground" />
-                        Existing Positions ({snapshot.existingPositions.length})
-                        {snapshot.totalMonthlyDebtPayments > 0 && (
-                          <span className="text-xs text-muted-foreground font-normal">
-                            ~${snapshot.totalMonthlyDebtPayments.toLocaleString()}/mo total
-                          </span>
-                        )}
-                      </h3>
-                      {snapshot.existingPositions.length > 0 ? (
-                        <ul className="space-y-1">
-                          {snapshot.existingPositions.map((p, i) => (
-                            <li key={i} className="text-sm flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
-                              <span className="font-medium">{p.funder}</span>
-                              <span className="text-muted-foreground">— {p.estimatedPayment} ({p.frequency})</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-sm text-green-500">No existing positions detected</p>
+                    {/* ── More info toggle ── */}
+                    <div className="px-5 pb-5 border-t border-border/40 pt-3">
+                      <button
+                        onClick={() => setDeepDiveExpanded(v => !v)}
+                        className="text-xs text-primary flex items-center gap-1 hover:underline"
+                        data-testid="button-toggle-deep-dive"
+                      >
+                        {deepDiveExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        {deepDiveExpanded ? 'Hide detailed analysis' : 'More info'}
+                      </button>
+
+                      {deepDiveExpanded && (
+                        <div className="mt-4 space-y-5">
+                          <p className="text-sm text-muted-foreground italic leading-relaxed">{snapshot.summary}</p>
+
+                          <div>
+                            <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                              <DollarSign className="w-4 h-4 text-muted-foreground" />
+                              Existing Positions ({snapshot.existingPositions.length})
+                              {snapshot.totalMonthlyDebtPayments > 0 && (
+                                <span className="text-xs text-muted-foreground font-normal">~${snapshot.totalMonthlyDebtPayments.toLocaleString()}/mo total</span>
+                              )}
+                            </h3>
+                            {snapshot.existingPositions.length > 0 ? (
+                              <ul className="space-y-1">
+                                {snapshot.existingPositions.map((p, i) => (
+                                  <li key={i} className="text-sm flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
+                                    <span className="font-medium">{p.funder}</span>
+                                    <span className="text-muted-foreground">— {p.estimatedPayment} ({p.frequency})</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm text-green-500">No existing positions detected</p>
+                            )}
+                          </div>
+
+                          {snapshot.redFlags.length > 0 && (
+                            <div>
+                              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 text-yellow-500" /> Red Flags
+                              </h3>
+                              <ul className="space-y-1">
+                                {snapshot.redFlags.map((f, i) => (
+                                  <li key={i} className="text-sm flex items-center gap-2">
+                                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                      f.severity === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' :
+                                      f.severity === 'medium' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400' :
+                                      'bg-muted text-muted-foreground'
+                                    }`}>{f.severity}</span>
+                                    {f.flag}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {snapshot.positiveIndicators.length > 0 && (
+                            <div>
+                              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4 text-green-500" /> Positive Indicators
+                              </h3>
+                              <ul className="space-y-1">
+                                {snapshot.positiveIndicators.slice(0, 5).map((p, i) => (
+                                  <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0 mt-1.5" />{p}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          <div className="bg-muted/40 rounded-md p-4">
+                            <h3 className="text-sm font-semibold mb-2">Recommendation</h3>
+                            <div className="flex flex-wrap gap-3 text-sm mb-2">
+                              <span><span className="text-muted-foreground">Tier:</span> <span className="font-medium">{snapshot.qualificationTier}</span></span>
+                              <span><span className="text-muted-foreground">DSR:</span> <span className="font-medium">{Math.round(snapshot.debtServiceRatio * 100)}%</span></span>
+                              <span><span className="text-muted-foreground">Lowest Balance:</span> <span className="font-medium">{fmtK(snapshot.lowestBalance)}</span></span>
+                            </div>
+                          </div>
+
+                          {snapshot.underwriterNotes.length > 0 && (
+                            <div>
+                              <h3 className="text-sm font-semibold mb-2">Notes for Underwriter</h3>
+                              <ul className="space-y-1">
+                                {snapshot.underwriterNotes.map((n, i) => (
+                                  <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                                    <span className="text-primary">·</span>{n}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
-
-                    {/* Red flags */}
-                    {snapshot.redFlags.length > 0 && (
-                      <div>
-                        <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                          <AlertTriangle className="w-4 h-4 text-yellow-500" />
-                          Red Flags
-                        </h3>
-                        <ul className="space-y-1">
-                          {snapshot.redFlags.map((f, i) => (
-                            <li key={i} className="text-sm flex items-center gap-2">
-                              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                                f.severity === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' :
-                                f.severity === 'medium' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400' :
-                                'bg-muted text-muted-foreground'
-                              }`}>{f.severity}</span>
-                              {f.flag}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Positives */}
-                    {snapshot.positiveIndicators.length > 0 && (
-                      <div>
-                        <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4 text-green-500" />
-                          Positive Indicators
-                        </h3>
-                        <ul className="space-y-1">
-                          {snapshot.positiveIndicators.slice(0, 5).map((p, i) => (
-                            <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0 mt-1.5" />
-                              {p}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Recommendation */}
-                    <div className="bg-muted/40 rounded-md p-4">
-                      <h3 className="text-sm font-semibold mb-2">Recommendation</h3>
-                      <div className="flex flex-wrap gap-3 text-sm mb-2">
-                        <span><span className="text-muted-foreground">Max Advance:</span> <span className="font-medium">${snapshot.maxRecommendedAdvance.toLocaleString()}</span></span>
-                        <span><span className="text-muted-foreground">Product:</span> <span className="font-medium">{snapshot.recommendedProduct}</span></span>
-                        <span><span className="text-muted-foreground">Factor:</span> <span className="font-medium">{snapshot.estimatedFactor}</span></span>
-                        <span><span className="text-muted-foreground">Tier:</span> <span className="font-medium">{snapshot.qualificationTier}</span></span>
-                      </div>
-                      <p className="text-sm text-muted-foreground italic leading-relaxed">{snapshot.summary}</p>
-                    </div>
-
-                    {/* Underwriter notes */}
-                    {snapshot.underwriterNotes.length > 0 && (
-                      <div>
-                        <h3 className="text-sm font-semibold mb-2">Notes for Underwriter</h3>
-                        <ul className="space-y-1">
-                          {snapshot.underwriterNotes.map((n, i) => (
-                            <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                              <span className="text-primary">·</span>
-                              {n}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
                   </div>
                 )}
               </Card>
