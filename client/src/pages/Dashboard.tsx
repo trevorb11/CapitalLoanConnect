@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy, Phone } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy, Phone, Send } from "lucide-react";
 import { Link } from "wouter";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { BotAttemptsTab } from "@/components/dashboard/BotAttemptsTab";
@@ -1173,6 +1173,28 @@ function BankStatementsTab() {
   const [unqualifiedAssignedRep, setUnqualifiedAssignedRep] = useState('');
   const [savingDecision, setSavingDecision] = useState(false);
   const [expandedAdditionalApprovals, setExpandedAdditionalApprovals] = useState<Set<string>>(new Set());
+  const [submittingUnderwritingEmails, setSubmittingUnderwritingEmails] = useState<Set<string>>(new Set());
+  const [submittedUnderwritingEmails, setSubmittedUnderwritingEmails] = useState<Set<string>>(new Set());
+
+  const handleSubmitToUnderwriting = async (email: string, businessName: string) => {
+    if (!email || submittingUnderwritingEmails.has(email)) return;
+    setSubmittingUnderwritingEmails(prev => new Set(prev).add(email));
+    try {
+      const res = await fetch("/api/bank-statements/submit-to-underwriting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, businessName }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed to submit"); }
+      setSubmittedUnderwritingEmails(prev => new Set(prev).add(email));
+      toast({ title: "Submitted to Underwriting", description: `underwriting@todaycapitalgroup.com has been notified for ${businessName}.` });
+    } catch (err: any) {
+      toast({ title: "Submission Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmittingUnderwritingEmails(prev => { const s = new Set(prev); s.delete(email); return s; });
+    }
+  };
 
   // Approval form dialog state (for adding/editing a single approval)
   interface FullApprovalEntry {
@@ -2329,6 +2351,29 @@ function BankStatementsTab() {
                         <Eye className="w-4 h-4 mr-2 text-blue-500" />
                         View All
                       </Button>
+                      {(() => {
+                        const bizEmail = uploads[0]?.email;
+                        if (!bizEmail) return null;
+                        const isSubmitting = submittingUnderwritingEmails.has(bizEmail);
+                        const isSubmitted = submittedUnderwritingEmails.has(bizEmail);
+                        return (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleSubmitToUnderwriting(bizEmail, businessName)}
+                            disabled={isSubmitting || isSubmitted}
+                            className="bg-gradient-to-r from-green-500/10 to-teal-500/10 hover:from-green-500/20 hover:to-teal-500/20 border-green-200 dark:border-green-800"
+                            data-testid={`button-submit-underwriting-${businessName}`}
+                          >
+                            {isSubmitting ? (
+                              <><Loader2 className="w-4 h-4 mr-2 animate-spin text-green-600" />Submitting…</>
+                            ) : isSubmitted ? (
+                              <><CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />Submitted</>
+                            ) : (
+                              <><Send className="w-4 h-4 mr-2 text-green-600" />Submit to Underwriting</>
+                            )}
+                          </Button>
+                        );
+                      })()}
                       <Button
                         onClick={() => handleBulkDownload(businessName)}
                         className="bg-primary hover:bg-primary/90"
@@ -3535,6 +3580,29 @@ export default function Dashboard() {
     logoutMutation.mutate();
   };
 
+  const [submittingUnderwritingApps, setSubmittingUnderwritingApps] = useState<Set<string>>(new Set());
+  const [submittedUnderwritingApps, setSubmittedUnderwritingApps] = useState<Set<string>>(new Set());
+
+  const handleSubmitAppToUnderwriting = async (email: string, businessName: string, appId: string) => {
+    if (!email || submittingUnderwritingApps.has(appId)) return;
+    setSubmittingUnderwritingApps(prev => new Set(prev).add(appId));
+    try {
+      const res = await fetch("/api/bank-statements/submit-to-underwriting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, businessName }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Failed to submit"); }
+      setSubmittedUnderwritingApps(prev => new Set(prev).add(appId));
+      toast({ title: "Submitted to Underwriting", description: `underwriting@todaycapitalgroup.com has been notified for ${businessName}.` });
+    } catch (err: any) {
+      toast({ title: "Submission Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmittingUnderwritingApps(prev => { const s = new Set(prev); s.delete(appId); return s; });
+    }
+  };
+
   const handleEditClick = () => {
     if (selectedAppDetails) {
       setEditFormData({
@@ -4335,8 +4403,8 @@ export default function Dashboard() {
                   );
                 })()}
                 {(authData.role === 'admin' || authData.role === 'agent') && app.email && (
-                  <div className="pt-2 mt-2 border-t border-border" data-testid={`div-upload-statements-${app.id}`}>
-                    <Link href={`/upload-statements?internal=true&email=${encodeURIComponent(app.email)}&businessName=${encodeURIComponent(app.legalBusinessName || app.businessName || '')}`}>
+                  <div className="pt-2 mt-2 border-t border-border flex gap-2" data-testid={`div-upload-statements-${app.id}`}>
+                    <Link href={`/upload-statements?internal=true&email=${encodeURIComponent(app.email)}&businessName=${encodeURIComponent(app.legalBusinessName || app.businessName || '')}`} className="flex-1">
                       <Button
                         variant="outline"
                         size="sm"
@@ -4348,6 +4416,22 @@ export default function Dashboard() {
                         Upload Statements
                       </Button>
                     </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 text-green-600 border-green-200 dark:border-green-800"
+                      data-testid={`button-submit-underwriting-app-${app.id}`}
+                      disabled={submittingUnderwritingApps.has(app.id) || submittedUnderwritingApps.has(app.id)}
+                      onClick={(e) => { e.stopPropagation(); handleSubmitAppToUnderwriting(app.email!, app.legalBusinessName || app.businessName || '', app.id); }}
+                    >
+                      {submittingUnderwritingApps.has(app.id) ? (
+                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Submitting…</>
+                      ) : submittedUnderwritingApps.has(app.id) ? (
+                        <><CheckCircle2 className="w-3 h-3 mr-1" />Submitted</>
+                      ) : (
+                        <><Send className="w-3 h-3 mr-1" />Submit to UW</>
+                      )}
+                    </Button>
                   </div>
                 )}
               </Card>
