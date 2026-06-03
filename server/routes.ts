@@ -4265,15 +4265,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ]);
 
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-
-      const uploadRows = uploads.map(u => `
-        <tr>
-          <td style="padding:6px 12px;">${u.originalFileName || 'File'}</td>
-          <td style="padding:6px 12px;">${u.fileSize ? (u.fileSize / 1024 / 1024).toFixed(1) + ' MB' : '—'}</td>
-          <td style="padding:6px 12px;"><a href="${baseUrl}/api/bank-statements/view/${u.id}" style="color:#1e40af;">View PDF</a></td>
-        </tr>`).join('');
-
       const appName = businessName || application?.legalBusinessName || application?.businessName || normalizedEmail;
+
+      // ── Collect PDF attachments ───────────────────────────────────────────
+      const attachments: Array<{ filename: string; content: Buffer; mimeType: string }> = [];
+
+      // 1. Application PDF
+      const appPdfBuffer = await generateApplicationPdfBuffer(application);
+      if (appPdfBuffer) {
+        attachments.push({
+          filename: `Application - ${appName}.pdf`,
+          content: appPdfBuffer,
+          mimeType: "application/pdf",
+        });
+      }
+
+      // 2. Bank statement PDFs
+      const attachedStatementNames: string[] = [];
+      for (const u of uploads) {
+        try {
+          let fileBuffer: Buffer;
+          if (u.storedFileName?.includes("bank-statements/")) {
+            fileBuffer = await objectStorage.getFileBuffer(u.storedFileName);
+          } else {
+            const filePath = path.join(UPLOAD_DIR, u.storedFileName);
+            if (fs.existsSync(filePath)) {
+              fileBuffer = fs.readFileSync(filePath);
+            } else {
+              console.warn(`[SUBMIT-UW] File not found: ${u.storedFileName}`);
+              continue;
+            }
+          }
+          const fname = u.originalFileName || `Statement-${u.id}.pdf`;
+          attachments.push({ filename: fname, content: fileBuffer, mimeType: "application/pdf" });
+          attachedStatementNames.push(fname);
+        } catch (stmtErr) {
+          console.error(`[SUBMIT-UW] Error loading statement ${u.id}:`, stmtErr);
+        }
+      }
+
+      // ── Build email body ──────────────────────────────────────────────────
+      const portalUrl = `${baseUrl}/underwriting`;
 
       const appRows = application ? `
         <tr><td style="padding:6px 12px;font-weight:bold;color:#555;width:200px;">Business Name</td><td style="padding:6px 12px;">${application.legalBusinessName || application.businessName || '—'}</td></tr>
@@ -4284,10 +4316,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Requested Amount</td><td style="padding:6px 12px;">${application.requestedAmount ? '$' + Number(application.requestedAmount).toLocaleString() : '—'}</td></tr>
         <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Time in Business</td><td style="padding:6px 12px;">${application.timeInBusiness || '—'}</td></tr>
         <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Business Address</td><td style="padding:6px 12px;">${[application.businessAddress, (application as any).businessCity, (application as any).businessState].filter(Boolean).join(', ') || '—'}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Agent</td><td style="padding:6px 12px;">${application.agentName || '—'}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Agent</td><td style="padding:6px 12px;">${application.agentName || '—'}${application.agentEmail ? ' (' + application.agentEmail + ')' : ''}</td></tr>
       ` : `<tr><td colspan="2" style="padding:6px 12px;color:#888;">No application record found for this email</td></tr>`;
 
-      const subject = `[Underwriting] ${appName}`;
+      const statementsSection = attachedStatementNames.length > 0 ? `
+        <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Bank Statements (${attachedStatementNames.length} attached)</h3>
+        <ul style="font-family:sans-serif;font-size:14px;margin:0 0 24px;padding-left:20px;">
+          ${attachedStatementNames.map(n => `<li style="padding:3px 0;">${n}</li>`).join('')}
+        </ul>
+      ` : `<p style="color:#888;font-size:14px;margin-bottom:24px;">No bank statements on file for this email.</p>`;
+
       const snapshotSection = snapshotHtml ? `
         <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">AI Underwriting Snapshot (Pre-Submission)</h3>
         <div style="background:#f8faff;border:1px solid #d0dff5;border-radius:6px;padding:16px;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
@@ -4295,33 +4333,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         </div>
       ` : '';
 
+      const subject = `[Underwriting] ${appName}`;
       const html = `
-        <h2 style="color:#1e40af;margin-bottom:8px;">File Submitted for Underwriting Review</h2>
-        <p style="color:#555;font-size:14px;margin-bottom:24px;">The rep team has submitted the following file for underwriting review.</p>
+        <div style="font-family:Arial,sans-serif;max-width:680px;">
+          <h2 style="color:#1e40af;margin-bottom:8px;">File Submitted for Underwriting Review</h2>
+          <p style="color:#555;font-size:14px;margin-bottom:16px;">The rep team has submitted the following file for underwriting review. Bank statement PDFs are attached to this email.</p>
 
-        <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Application Details</h3>
-        <table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
-          ${appRows}
-        </table>
+          <p style="margin-bottom:24px;">
+            <a href="${portalUrl}" style="display:inline-block;background:#1e40af;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;font-size:14px;font-weight:bold;">
+              Open Underwriting Portal
+            </a>
+            <span style="font-size:12px;color:#888;margin-left:12px;">Search for: ${normalizedEmail}</span>
+          </p>
 
-        <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Bank Statements (${uploads.length} file${uploads.length !== 1 ? 's' : ''})</h3>
-        ${uploads.length > 0 ? `
-        <table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
-          <tr style="background:#f0f5ff;">
-            <th style="padding:6px 12px;text-align:left;">File Name</th>
-            <th style="padding:6px 12px;text-align:left;">Size</th>
-            <th style="padding:6px 12px;text-align:left;">Link</th>
-          </tr>
-          ${uploadRows}
-        </table>` : '<p style="color:#888;font-size:14px;margin-bottom:24px;">No bank statements on file for this email.</p>'}
+          <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Application Details</h3>
+          <table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
+            ${appRows}
+          </table>
 
-        ${snapshotSection}
+          ${statementsSection}
+          ${snapshotSection}
 
-        <p style="font-size:12px;color:#aaa;">Submitted via Today Capital Group internal dashboard</p>
+          <p style="font-size:12px;color:#aaa;">Submitted via Today Capital Group internal dashboard</p>
+        </div>
       `;
 
-      await sendMarketingNotification(subject, html, 'underwriting@todaycapitalgroup.com');
-      console.log(`[BANK STATEMENTS] Submitted to underwriting: ${normalizedEmail} (${uploads.length} files)`);
+      await gmailService.sendEmailWithAttachments(
+        'underwriting@todaycapitalgroup.com',
+        subject,
+        html,
+        attachments,
+      );
+      console.log(`[BANK STATEMENTS] Submitted to underwriting: ${normalizedEmail} (${attachments.length} attachments)`);
       res.json({ success: true, uploadCount: uploads.length });
     } catch (err: any) {
       console.error("[BANK STATEMENTS] submit-to-underwriting error:", err);
