@@ -7278,8 +7278,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Client name and printed name are required" });
       }
 
-      const hasTcgSig = tcgSignature && tcgSignature.length > 1000;
-      const hasClientSig = clientSignature && clientSignature.length > 1000;
+      const hasTcgSig = !!(tcgSignature && tcgSignature.length > 0);
+      const hasClientSig = !!(clientSignature && clientSignature.length > 0);
 
       if (existingToken) {
         // Update existing record and mark complete

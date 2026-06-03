@@ -149,30 +149,35 @@ const CSS = `
     font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
     font-size: 13px; margin-bottom: 16px; color: #444;
   }
-  .wc-sig-canvas-wrap {
-    border: 1.5px solid #d0d0d0; border-radius: 4px;
-    background: #fafafa; margin-bottom: 6px;
-    position: relative; cursor: crosshair;
-    height: 110px; overflow: hidden;
+  .wc-sig-click-box {
+    border: 1.5px dashed #c0c8d8; border-radius: 4px;
+    background: #fafafa; margin-bottom: 10px;
+    height: 72px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: border-color 0.15s, background 0.15s;
   }
-  .wc-sig-canvas-wrap canvas {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%;
-    touch-action: none;
+  .wc-sig-click-box:hover { border-color: #1e40af; background: #f0f5ff; }
+  .wc-sig-click-box.signed {
+    border-style: solid; border-color: #16a34a; background: #f0fdf4; cursor: default;
   }
-  .wc-sig-canvas-hint {
-    position: absolute; bottom: 6px; left: 0; right: 0;
-    text-align: center; font-family: 'Inter', sans-serif;
-    font-size: 11px; color: #bbb; pointer-events: none;
+  .wc-sig-click-box.disabled { opacity: 0.6; cursor: not-allowed; }
+  .wc-sig-click-prompt {
+    font-size: 12px; color: #bbb; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    pointer-events: none;
   }
-  .wc-sig-canvas-hint.hidden { display: none; }
-  .wc-sig-clear {
+  .wc-sig-click-icon { font-size: 18px; color: #d0d5de; }
+  .wc-sig-signed-name {
+    font-family: 'EB Garamond', Georgia, serif; font-style: italic;
+    font-size: 30px; color: #1a3a8f; pointer-events: none;
+    letter-spacing: 0.02em;
+  }
+  .wc-sig-unsign {
     font-family: 'Inter', sans-serif; font-size: 11px; color: #888;
     background: none; border: none; cursor: pointer;
     padding: 0; text-decoration: underline;
     margin-bottom: 14px; display: block;
   }
-  .wc-sig-clear:hover { color: #1e40af; }
+  .wc-sig-unsign:hover { color: #dc2626; }
   .wc-sig-row { margin-bottom: 10px; }
   .wc-sig-label {
     font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
@@ -319,8 +324,9 @@ const CSS = `
   }
 `;
 
-// ── Signature pad hook ─────────────────────────────────────────────────────────
-function useSignaturePad(canvasRef: React.RefObject<HTMLCanvasElement>) {
+// ── (signature pad hook removed — using click-to-sign) ─────────────────────────
+
+function _unused_useSignaturePad(canvasRef: React.RefObject<HTMLCanvasElement>) {
   const drawing = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
   const hasSig = useRef(false);
@@ -444,16 +450,14 @@ export default function WebsiteContract() {
   const [tcgTitle, setTcgTitle] = useState("Founder, Today Capital Group");
   const [tcgDate, setTcgDate] = useState(new Date().toLocaleDateString("en-US"));
   const [tcgSigned, setTcgSigned] = useState(false); // locked from backend
-  const tcgCanvasRef = useRef<HTMLCanvasElement>(null);
-  const tcgSig = useSignaturePad(tcgCanvasRef);
+  const [tcgClickSigned, setTcgClickSigned] = useState(false);
 
   // Client signature block
   const [clientPrintedName, setClientPrintedName] = useState("");
   const [clientTitle, setClientTitle] = useState("");
   const [clientCompany, setClientCompany] = useState("");
   const [clientDate, setClientDate] = useState("");
-  const clientCanvasRef = useRef<HTMLCanvasElement>(null);
-  const clientSig = useSignaturePad(clientCanvasRef);
+  const [clientClickSigned, setClientClickSigned] = useState(false);
 
   // Draft / share state
   const [token, setToken] = useState(urlToken);
@@ -579,6 +583,7 @@ export default function WebsiteContract() {
   const handleSubmit = async () => {
     if (!clientName) { setError("Please fill in the Client name before submitting."); return; }
     if (!clientPrintedName) { setError("Please fill in the Client printed name before submitting."); return; }
+    if (!clientClickSigned) { setError("Please click to sign before submitting."); return; }
     setError("");
     setSubmitting(true);
     try {
@@ -596,12 +601,12 @@ export default function WebsiteContract() {
           tcgPrintedName,
           tcgTitle,
           tcgDate,
-          tcgSignature: tcgSig.isEmpty() ? null : tcgSig.getDataURL(),
+          tcgSignature: tcgClickSigned ? `click-signed:${tcgPrintedName}` : null,
           clientPrintedName,
           clientTitle,
           clientCompany,
           clientDate,
-          clientSignature: clientSig.isEmpty() ? null : clientSig.getDataURL(),
+          clientSignature: clientClickSigned ? `click-signed:${clientPrintedName}` : null,
         }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Submit failed"); }
@@ -702,8 +707,8 @@ export default function WebsiteContract() {
                 <div className="wc-doc-org">Today Capital Group</div>
               </div>
 
-              {/* Shareable link banner */}
-              {shareUrl && (
+              {/* Shareable link banner — only visible to TCG side (not when opened via shared token) */}
+              {shareUrl && !urlToken && (
                 <div className="wc-draft-banner">
                   <div className="wc-draft-banner-title">Draft Saved — Shareable Link</div>
                   <div className="wc-draft-banner-body">
@@ -860,18 +865,30 @@ export default function WebsiteContract() {
                   {/* TCG */}
                   <div>
                     <div className="wc-sig-party-label">Today Capital Group</div>
-                    {tcgSigned && <div className="wc-locked-badge">&#10003; Signed</div>}
+                    {(tcgSigned || tcgClickSigned) && <div className="wc-locked-badge">&#10003; Signed</div>}
 
                     <div style={{ marginBottom: 6, fontFamily: "'Inter',sans-serif", fontSize: 12, color: "#888" }}>Signature</div>
-                    <div className="wc-sig-canvas-wrap" style={tcgSigned ? { pointerEvents: "none", opacity: 0.65 } : {}}>
-                      <canvas ref={tcgCanvasRef} data-testid="canvas-tcg-sig" />
-                      <span ref={tcgSig.hintRef} className="wc-sig-canvas-hint">Draw signature here</span>
+                    <div
+                      className={`wc-sig-click-box${tcgSigned || tcgClickSigned ? " signed" : ""}${tcgSigned ? " disabled" : ""}`}
+                      onClick={() => { if (!tcgSigned && tcgPrintedName) setTcgClickSigned(true); }}
+                      data-testid="button-tcg-click-sign"
+                    >
+                      {tcgClickSigned || tcgSigned ? (
+                        <span className="wc-sig-signed-name">{tcgPrintedName}</span>
+                      ) : (
+                        <div className="wc-sig-click-prompt">
+                          <span className="wc-sig-click-icon">✍</span>
+                          <span>Click to sign</span>
+                        </div>
+                      )}
                     </div>
-                    {!tcgSigned && <button className="wc-sig-clear" onClick={tcgSig.clear} data-testid="button-clear-tcg-sig">Clear</button>}
+                    {tcgClickSigned && !tcgSigned && (
+                      <button className="wc-sig-unsign" onClick={() => setTcgClickSigned(false)} data-testid="button-tcg-unsign">Clear signature</button>
+                    )}
 
                     <div className="wc-sig-row">
                       <div className="wc-sig-label">Printed Name</div>
-                      <input className="wc-sig-input" value={tcgPrintedName} onChange={e => setTcgPrintedName(e.target.value)} placeholder="Printed name" disabled={tcgSigned} data-testid="input-tcg-name" />
+                      <input className="wc-sig-input" value={tcgPrintedName} onChange={e => { setTcgPrintedName(e.target.value); setTcgClickSigned(false); }} placeholder="Printed name" disabled={tcgSigned} data-testid="input-tcg-name" />
                     </div>
                     <div className="wc-sig-row">
                       <div className="wc-sig-label">Title</div>
@@ -886,17 +903,31 @@ export default function WebsiteContract() {
                   {/* CLIENT */}
                   <div>
                     <div className="wc-sig-party-label">Client</div>
+                    {clientClickSigned && <div className="wc-locked-badge">&#10003; Signed</div>}
 
                     <div style={{ marginBottom: 6, fontFamily: "'Inter',sans-serif", fontSize: 12, color: "#888" }}>Signature</div>
-                    <div className="wc-sig-canvas-wrap">
-                      <canvas ref={clientCanvasRef} data-testid="canvas-client-sig" />
-                      <span ref={clientSig.hintRef} className="wc-sig-canvas-hint">Draw signature here</span>
+                    <div
+                      className={`wc-sig-click-box${clientClickSigned ? " signed" : ""}`}
+                      onClick={() => { if (clientPrintedName) setClientClickSigned(true); }}
+                      data-testid="button-client-click-sign"
+                      title={!clientPrintedName ? "Fill in your printed name first" : ""}
+                    >
+                      {clientClickSigned ? (
+                        <span className="wc-sig-signed-name">{clientPrintedName}</span>
+                      ) : (
+                        <div className="wc-sig-click-prompt">
+                          <span className="wc-sig-click-icon">✍</span>
+                          <span>{clientPrintedName ? "Click to sign" : "Fill in your name below first"}</span>
+                        </div>
+                      )}
                     </div>
-                    <button className="wc-sig-clear" onClick={clientSig.clear} data-testid="button-clear-client-sig">Clear</button>
+                    {clientClickSigned && (
+                      <button className="wc-sig-unsign" onClick={() => setClientClickSigned(false)} data-testid="button-client-unsign">Clear signature</button>
+                    )}
 
                     <div className="wc-sig-row">
                       <div className="wc-sig-label">Printed Name</div>
-                      <input className="wc-sig-input" value={clientPrintedName} onChange={e => setClientPrintedName(e.target.value)} placeholder="Printed name" data-testid="input-client-printed-name" />
+                      <input className="wc-sig-input" value={clientPrintedName} onChange={e => { setClientPrintedName(e.target.value); setClientClickSigned(false); }} placeholder="Printed name" data-testid="input-client-printed-name" />
                     </div>
                     <div className="wc-sig-row">
                       <div className="wc-sig-label">Title</div>
