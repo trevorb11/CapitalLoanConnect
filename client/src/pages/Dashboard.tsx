@@ -4334,7 +4334,7 @@ export default function Dashboard() {
                     </div>
                   );
                 })()}
-                {(authData.role === 'admin' || authData.role === 'agent') && app.email && !emailsWithStatements.has(app.email.toLowerCase()) && (
+                {(authData.role === 'admin' || authData.role === 'agent') && app.email && (
                   <div className="pt-2 mt-2 border-t border-border" data-testid={`div-upload-statements-${app.id}`}>
                     <Link href={`/upload-statements?internal=true&email=${encodeURIComponent(app.email)}&businessName=${encodeURIComponent(app.legalBusinessName || app.businessName || '')}`}>
                       <Button
