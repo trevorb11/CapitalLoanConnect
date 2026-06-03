@@ -13767,12 +13767,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         </div>
       `;
 
+      // Collect the assigned rep's email to CC on every lender send
+      const repEmail = application?.agentEmail?.trim() || null;
+
       // Send to each lender
       const results: Array<{ lenderName: string; success: boolean; error?: string }> = [];
       for (const lender of lenderEmails) {
         try {
           const toAddr = lender.to.join(", ");
-          const ccAddr = lender.cc?.length ? lender.cc.join(", ") : undefined;
+          const ccParts = [...(lender.cc || [])];
+          if (repEmail && !ccParts.includes(repEmail)) ccParts.push(repEmail);
+          const ccAddr = ccParts.length ? ccParts.join(", ") : undefined;
           const success = await gmailService.sendEmailWithAttachments(
             toAddr,
             subject,
