@@ -729,8 +729,8 @@ export class GoHighLevelService {
       address2: application.ownerAddress2,
       
       // ===== CALCULATED FIELDS =====
-      first_name: firstName,
-      last_name: lastName,
+      ...(firstName ? { first_name: firstName } : {}),
+      ...(lastName ? { last_name: lastName } : {}),
       submission_date: new Date().toISOString(),
       source: "Full Application Form",
       
@@ -875,8 +875,8 @@ export class GoHighLevelService {
       address2: application.ownerAddress2,
       
       // ===== CALCULATED FIELDS =====
-      first_name: firstName,
-      last_name: lastName,
+      ...(firstName ? { first_name: firstName } : {}),
+      ...(lastName ? { last_name: lastName } : {}),
       submission_date: new Date().toISOString(),
       source: "Partial Application Form",
       is_complete: application.isCompleted ? "Yes" : "No",
@@ -923,8 +923,8 @@ export class GoHighLevelService {
     
     // Build intake webhook payload - pass data as-is without sanitizing to prevent data loss
     const webhookPayload = {
-      first_name: firstName,
-      last_name: lastName,
+      ...(firstName ? { first_name: firstName } : {}),
+      ...(lastName ? { last_name: lastName } : {}),
       email: application.email,
       phone: application.phone,
       company_name: application.businessName || application.legalBusinessName,
@@ -1010,9 +1010,9 @@ export class GoHighLevelService {
 
     const webhookPayload = {
       email: contactInfo.email,
-      phone: contactInfo.phone || null,
-      first_name: contactInfo.firstName || null,
-      last_name: contactInfo.lastName || null,
+      ...(contactInfo.phone ? { phone: contactInfo.phone } : {}),
+      ...(contactInfo.firstName ? { first_name: contactInfo.firstName } : {}),
+      ...(contactInfo.lastName ? { last_name: contactInfo.lastName } : {}),
       company_name: contactInfo.businessName || null,
       submission_date: new Date().toISOString(),
       source: "Bank Statement Upload",

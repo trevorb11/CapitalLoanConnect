@@ -277,7 +277,11 @@ export default function QuizIntake({ agent }: { agent?: Agent } = {}) {
         console.log('[GHL Form] All keys:', Object.keys(formData));
         setGhlFormSubmitted(true);
 
-        const capturedName = formData.full_name || formData.name || formData.first_name || '';
+        const looksLikeEmail = (s: string) => typeof s === 'string' && s.includes('@');
+        const capturedName = (!looksLikeEmail(formData.full_name) ? formData.full_name : '')
+          || (!looksLikeEmail(formData.name) ? formData.name : '')
+          || (!looksLikeEmail(formData.first_name) ? formData.first_name : '')
+          || '';
         const capturedEmail = formData.email || '';
         const capturedPhone = formData.phone || formData.full_phone || '';
 
