@@ -14388,7 +14388,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // REP STATISTICS ROUTES
   // ══════════════════════════════════════════════════════════════════════════
 
-  const ZOOM_WEBHOOK_SECRET = process.env.ZOOM_WEBHOOK_SECRET || "PLACEHOLDER_ZOOM_SECRET";
+  const ZOOM_WEBHOOK_SECRET = process.env.ZOOM_WEBHOOK_SECRET || "nZ5tsBsIQYabSHlDeg_qHg";
+  const ZOOM_ACCOUNT_ID = process.env.ZOOM_ACCOUNT_ID || "G3A7aGaYQYuc9vsZSziQlw";
+  const ZOOM_CLIENT_ID = process.env.ZOOM_CLIENT_ID || "Ja6yklo9RCyOmbu1r4zrkA";
+  const ZOOM_CLIENT_SECRET = process.env.ZOOM_CLIENT_SECRET || "v3zjmZmAZ5z5DwKD7OVp6ysyhGnydwYD";
 
   const REP_DIRECTORY: Record<string, string> = {
     "Bryce Jennings": "Bryce@todaycapitalgroup.com",
