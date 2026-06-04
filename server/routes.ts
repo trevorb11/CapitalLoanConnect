@@ -3860,6 +3860,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // BANK STATEMENT UPLOAD ROUTES
   // ========================================
 
+  // ── Per-email underwriting email cooldown (in-memory, 10-min window) ────────
+  const _uwCooldown = new Map<string, number>();
+  const _UW_COOLDOWN_MS = 10 * 60 * 1000;
+
+  // Shared helper: build & send underwriting submission email
+  async function doSendUnderwritingEmail({
+    email,
+    businessName,
+    baseUrl: emailBaseUrl,
+  }: {
+    email: string;
+    businessName?: string;
+    baseUrl: string;
+  }) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const [uploads, application] = await Promise.all([
+      storage.getBankStatementUploadsByEmail(normalizedEmail),
+      storage.getLoanApplicationByEmail(normalizedEmail),
+    ]);
+
+    const appName = businessName || application?.legalBusinessName || application?.businessName || normalizedEmail;
+    const agentEmail: string | null = (application as any)?.agentEmail || null;
+
+    // ── PDF attachments ──────────────────────────────────────────────────────
+    const attachments: Array<{ filename: string; content: Buffer; mimeType: string }> = [];
+
+    const appPdfBuffer = await generateApplicationPdfBuffer(application);
+    if (appPdfBuffer) {
+      attachments.push({ filename: `Application - ${appName}.pdf`, content: appPdfBuffer, mimeType: "application/pdf" });
+    }
+
+    // Build download links + attach PDFs
+    const downloadLinks: Array<{ name: string; url: string }> = [];
+    for (const u of uploads) {
+      try {
+        let fileBuffer: Buffer;
+        if (u.storedFileName?.includes("bank-statements/")) {
+          fileBuffer = await objectStorage.getFileBuffer(u.storedFileName);
+        } else {
+          const filePath = path.join(UPLOAD_DIR, u.storedFileName);
+          if (fs.existsSync(filePath)) {
+            fileBuffer = fs.readFileSync(filePath);
+          } else {
+            console.warn(`[SUBMIT-UW] File not found: ${u.storedFileName}`);
+            continue;
+          }
+        }
+        const fname = u.originalFileName || `Statement-${u.id}.pdf`;
+        attachments.push({ filename: fname, content: fileBuffer, mimeType: "application/pdf" });
+        downloadLinks.push({
+          name: fname,
+          url: u.viewToken ? `${emailBaseUrl}/api/bank-statements/public/download/${u.viewToken}` : '',
+        });
+      } catch (stmtErr) {
+        console.error(`[SUBMIT-UW] Error loading statement ${u.id}:`, stmtErr);
+      }
+    }
+
+    // ── Build email HTML ─────────────────────────────────────────────────────
+    const portalUrl = `${emailBaseUrl}/underwriting`;
+
+    const appRows = application ? `
+      <tr><td style="padding:6px 12px;font-weight:bold;color:#555;width:200px;">Business Name</td><td style="padding:6px 12px;">${application.legalBusinessName || application.businessName || '—'}</td></tr>
+      <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Contact Name</td><td style="padding:6px 12px;">${application.fullName || '—'}</td></tr>
+      <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Email</td><td style="padding:6px 12px;">${application.email || '—'}</td></tr>
+      <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Phone</td><td style="padding:6px 12px;">${application.phone || '—'}</td></tr>
+      <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Monthly Revenue</td><td style="padding:6px 12px;">${(application.monthlyRevenue || (application as any).averageMonthlyRevenue) ? '$' + Number(application.monthlyRevenue || (application as any).averageMonthlyRevenue).toLocaleString() : '—'}</td></tr>
+      <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Requested Amount</td><td style="padding:6px 12px;">${application.requestedAmount ? '$' + Number(application.requestedAmount).toLocaleString() : '—'}</td></tr>
+      <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Time in Business</td><td style="padding:6px 12px;">${(application as any).timeInBusiness || '—'}</td></tr>
+      <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Business Address</td><td style="padding:6px 12px;">${[application.businessAddress, (application as any).businessCity, (application as any).businessState].filter(Boolean).join(', ') || '—'}</td></tr>
+      <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Agent</td><td style="padding:6px 12px;">${(application as any).agentName || '—'}${agentEmail ? ' (' + agentEmail + ')' : ''}</td></tr>
+    ` : `<tr><td colspan="2" style="padding:6px 12px;color:#888;">No application record found for this email</td></tr>`;
+
+    const statementsSection = downloadLinks.length > 0 ? `
+      <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Bank Statements (${downloadLinks.length} file${downloadLinks.length !== 1 ? 's' : ''} attached — click to download)</h3>
+      <ul style="font-family:sans-serif;font-size:14px;margin:0 0 24px;padding-left:20px;">
+        ${downloadLinks.map(l => l.url
+          ? `<li style="padding:4px 0;"><a href="${l.url}" style="color:#1e40af;font-weight:600;text-decoration:underline;">${l.name}</a></li>`
+          : `<li style="padding:4px 0;">${l.name}</li>`
+        ).join('')}
+      </ul>
+    ` : `<p style="color:#888;font-size:14px;margin-bottom:24px;">No bank statements on file for this email.</p>`;
+
+    const subject = `[Underwriting] ${appName}`;
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:680px;">
+        <h2 style="color:#1e40af;margin-bottom:8px;">File Submitted for Underwriting Review</h2>
+        <p style="color:#555;font-size:14px;margin-bottom:16px;">Bank statements are attached to this email and available as click-to-download links below.</p>
+
+        <p style="margin-bottom:24px;">
+          <a href="${portalUrl}" style="display:inline-block;background:#1e40af;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;font-size:14px;font-weight:bold;">
+            Open Underwriting Portal
+          </a>
+          <span style="font-size:12px;color:#888;margin-left:12px;">Search for: ${normalizedEmail}</span>
+        </p>
+
+        <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Application Details</h3>
+        <table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
+          ${appRows}
+        </table>
+
+        ${statementsSection}
+
+        <p style="font-size:12px;color:#aaa;">Submitted automatically via Today Capital Group file management system</p>
+      </div>
+    `;
+
+    await gmailService.sendEmailWithAttachments(
+      'underwriting@todaycapitalgroup.com',
+      subject,
+      html,
+      attachments,
+      agentEmail || undefined,
+    );
+    console.log(`[SUBMIT-UW] Email sent for: ${normalizedEmail} (${attachments.length} attachments, CC: ${agentEmail || 'none'})`);
+    return { uploadCount: uploads.length };
+  }
+
   // 1. Upload bank statement PDF
   app.post("/api/bank-statements/upload", (req, res, next) => {
     bankStatementUpload.single("file")(req, res, (err: any) => {
@@ -4147,6 +4265,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lenderApprovalId,
         },
       });
+
+      // ── Auto-submit to underwriting (fire-and-forget, 10-min cooldown per email) ──
+      const _uwLastSent = _uwCooldown.get(email);
+      if (!_uwLastSent || Date.now() - _uwLastSent > _UW_COOLDOWN_MS) {
+        _uwCooldown.set(email, Date.now());
+        const _uwProtocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const _uwHost = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
+        doSendUnderwritingEmail({
+          email,
+          businessName: businessName || matchingApp?.businessName || matchingApp?.legalBusinessName,
+          baseUrl: `${_uwProtocol}://${_uwHost}`,
+        }).catch(err => console.error('[BANK UPLOAD] Auto underwriting email failed:', err));
+      } else {
+        console.log(`[BANK UPLOAD] Underwriting email cooldown active for ${email}, skipping auto-send`);
+      }
     } catch (error) {
       console.error("Bank statement upload error:", error);
       res.status(500).json({ error: "Failed to upload bank statement" });
@@ -4252,120 +4385,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/bank-statements/submit-to-underwriting — email file + statements to underwriting team
+  // POST /api/bank-statements/submit-to-underwriting — manual trigger (now delegates to shared helper)
   app.post("/api/bank-statements/submit-to-underwriting", async (req: Request, res: Response) => {
     try {
-      const { email, businessName, snapshotHtml } = req.body;
+      const { email, businessName } = req.body;
       if (!email) return res.status(400).json({ error: "Email is required" });
-
-      const normalizedEmail = email.toLowerCase().trim();
-      const [uploads, application] = await Promise.all([
-        storage.getBankStatementUploadsByEmail(normalizedEmail),
-        storage.getLoanApplicationByEmail(normalizedEmail),
-      ]);
-
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      const appName = businessName || application?.legalBusinessName || application?.businessName || normalizedEmail;
-
-      // ── Collect PDF attachments ───────────────────────────────────────────
-      const attachments: Array<{ filename: string; content: Buffer; mimeType: string }> = [];
-
-      // 1. Application PDF
-      const appPdfBuffer = await generateApplicationPdfBuffer(application);
-      if (appPdfBuffer) {
-        attachments.push({
-          filename: `Application - ${appName}.pdf`,
-          content: appPdfBuffer,
-          mimeType: "application/pdf",
-        });
-      }
-
-      // 2. Bank statement PDFs
-      const attachedStatementNames: string[] = [];
-      for (const u of uploads) {
-        try {
-          let fileBuffer: Buffer;
-          if (u.storedFileName?.includes("bank-statements/")) {
-            fileBuffer = await objectStorage.getFileBuffer(u.storedFileName);
-          } else {
-            const filePath = path.join(UPLOAD_DIR, u.storedFileName);
-            if (fs.existsSync(filePath)) {
-              fileBuffer = fs.readFileSync(filePath);
-            } else {
-              console.warn(`[SUBMIT-UW] File not found: ${u.storedFileName}`);
-              continue;
-            }
-          }
-          const fname = u.originalFileName || `Statement-${u.id}.pdf`;
-          attachments.push({ filename: fname, content: fileBuffer, mimeType: "application/pdf" });
-          attachedStatementNames.push(fname);
-        } catch (stmtErr) {
-          console.error(`[SUBMIT-UW] Error loading statement ${u.id}:`, stmtErr);
-        }
-      }
-
-      // ── Build email body ──────────────────────────────────────────────────
-      const portalUrl = `${baseUrl}/underwriting`;
-
-      const appRows = application ? `
-        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;width:200px;">Business Name</td><td style="padding:6px 12px;">${application.legalBusinessName || application.businessName || '—'}</td></tr>
-        <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Contact Name</td><td style="padding:6px 12px;">${application.fullName || '—'}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Email</td><td style="padding:6px 12px;">${application.email || '—'}</td></tr>
-        <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Phone</td><td style="padding:6px 12px;">${application.phone || '—'}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Monthly Revenue</td><td style="padding:6px 12px;">${application.monthlyRevenue || application.averageMonthlyRevenue ? '$' + Number(application.monthlyRevenue || application.averageMonthlyRevenue).toLocaleString() : '—'}</td></tr>
-        <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Requested Amount</td><td style="padding:6px 12px;">${application.requestedAmount ? '$' + Number(application.requestedAmount).toLocaleString() : '—'}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Time in Business</td><td style="padding:6px 12px;">${application.timeInBusiness || '—'}</td></tr>
-        <tr style="background:#f8faff;"><td style="padding:6px 12px;font-weight:bold;color:#555;">Business Address</td><td style="padding:6px 12px;">${[application.businessAddress, (application as any).businessCity, (application as any).businessState].filter(Boolean).join(', ') || '—'}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;color:#555;">Agent</td><td style="padding:6px 12px;">${application.agentName || '—'}${application.agentEmail ? ' (' + application.agentEmail + ')' : ''}</td></tr>
-      ` : `<tr><td colspan="2" style="padding:6px 12px;color:#888;">No application record found for this email</td></tr>`;
-
-      const statementsSection = attachedStatementNames.length > 0 ? `
-        <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Bank Statements (${attachedStatementNames.length} attached)</h3>
-        <ul style="font-family:sans-serif;font-size:14px;margin:0 0 24px;padding-left:20px;">
-          ${attachedStatementNames.map(n => `<li style="padding:3px 0;">${n}</li>`).join('')}
-        </ul>
-      ` : `<p style="color:#888;font-size:14px;margin-bottom:24px;">No bank statements on file for this email.</p>`;
-
-      const snapshotSection = snapshotHtml ? `
-        <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">AI Underwriting Snapshot (Pre-Submission)</h3>
-        <div style="background:#f8faff;border:1px solid #d0dff5;border-radius:6px;padding:16px;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
-          ${snapshotHtml}
-        </div>
-      ` : '';
-
-      const subject = `[Underwriting] ${appName}`;
-      const html = `
-        <div style="font-family:Arial,sans-serif;max-width:680px;">
-          <h2 style="color:#1e40af;margin-bottom:8px;">File Submitted for Underwriting Review</h2>
-          <p style="color:#555;font-size:14px;margin-bottom:16px;">The rep team has submitted the following file for underwriting review. Bank statement PDFs are attached to this email.</p>
-
-          <p style="margin-bottom:24px;">
-            <a href="${portalUrl}" style="display:inline-block;background:#1e40af;color:#fff;padding:10px 20px;border-radius:5px;text-decoration:none;font-size:14px;font-weight:bold;">
-              Open Underwriting Portal
-            </a>
-            <span style="font-size:12px;color:#888;margin-left:12px;">Search for: ${normalizedEmail}</span>
-          </p>
-
-          <h3 style="color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e0e0e0;padding-bottom:6px;">Application Details</h3>
-          <table style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:14px;margin-bottom:24px;">
-            ${appRows}
-          </table>
-
-          ${statementsSection}
-          ${snapshotSection}
-
-          <p style="font-size:12px;color:#aaa;">Submitted via Today Capital Group internal dashboard</p>
-        </div>
-      `;
-
-      await gmailService.sendEmailWithAttachments(
-        'underwriting@todaycapitalgroup.com',
-        subject,
-        html,
-        attachments,
-      );
-      console.log(`[BANK STATEMENTS] Submitted to underwriting: ${normalizedEmail} (${attachments.length} attachments)`);
-      res.json({ success: true, uploadCount: uploads.length });
+      // Reset cooldown so a manual trigger always fires
+      _uwCooldown.delete(email.toLowerCase().trim());
+      const result = await doSendUnderwritingEmail({ email, businessName, baseUrl });
+      _uwCooldown.set(email.toLowerCase().trim(), Date.now());
+      res.json({ success: true, uploadCount: result.uploadCount });
     } catch (err: any) {
       console.error("[BANK STATEMENTS] submit-to-underwriting error:", err);
       res.status(500).json({ error: "Failed to submit to underwriting" });
@@ -5851,6 +5881,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error viewing bank statement via public link:", error);
       if (!res.headersSent) {
         res.status(500).json({ error: "Failed to view file" });
+      }
+    }
+  });
+
+  // 3b2. Public DOWNLOAD bank statement PDF via token (forces browser download, no inline preview)
+  app.get("/api/bank-statements/public/download/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      if (!token || token.length !== 64) {
+        return res.status(400).json({ error: "Invalid token format" });
+      }
+      const upload = await storage.getBankStatementUploadByViewToken(token);
+      if (!upload) {
+        return res.status(404).json({ error: "Statement not found" });
+      }
+
+      let fileBuffer: Buffer;
+      if (upload.storedFileName.includes("bank-statements/")) {
+        fileBuffer = await objectStorage.getFileBuffer(upload.storedFileName);
+      } else {
+        const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+        if (!fs.existsSync(filePath)) {
+          return res.status(404).json({ error: "File not found on disk" });
+        }
+        fileBuffer = fs.readFileSync(filePath);
+      }
+
+      const filename = upload.originalFileName || "statement.pdf";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Length", fileBuffer.length.toString());
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      console.log(`[BANK STATEMENTS] Public download: ${filename} (${upload.email})`);
+      res.end(fileBuffer);
+    } catch (error) {
+      console.error("Error downloading bank statement via public link:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to download file" });
       }
     }
   });
