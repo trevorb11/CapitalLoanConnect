@@ -14430,28 +14430,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
+      // Reps explicitly excluded from the stats page
+      const EXCLUDED_REPS = new Set([
+        "Tyler Bernie", "Tyler",
+        "Manny Fanalua", "Manny",
+        "James",
+        "Jonathan Bishop",
+        "Sage",
+      ]);
+
       // Reverse alias map: stored-name → canonical rep name (for legacy DB records)
       const CALL_NAME_ALIASES: Record<string, string> = {
         "Carlos Batista": "Jonathan Rendon",
         "Greg Dergevorkian": "Gregory Dergevorkian",
       };
 
-      // Build set of known rep names from all sources
+      // Build set of known rep names from all sources (excluding blocked reps)
       const repNames = new Set<string>();
       for (const [name] of Object.entries(REP_DIRECTORY)) {
-        repNames.add(name);
+        if (!EXCLUDED_REPS.has(name)) repNames.add(name);
       }
       for (const app of allApplications) {
-        if (app.agentName) repNames.add(app.agentName);
+        if (app.agentName && !EXCLUDED_REPS.has(app.agentName)) repNames.add(app.agentName);
       }
       for (const dec of allDecisions) {
-        if (dec.assignedRep) repNames.add(dec.assignedRep);
+        if (dec.assignedRep && !EXCLUDED_REPS.has(dec.assignedRep)) repNames.add(dec.assignedRep);
       }
       // Only add call-sourced names if they're in REP_DIRECTORY (prevents junk entries
       // like email addresses or company names grabbed from caller ID)
       for (const call of allCalls) {
         const n = call.repName;
-        if (n && n !== "Unknown" && REP_DIRECTORY[n]) repNames.add(n);
+        if (n && n !== "Unknown" && REP_DIRECTORY[n] && !EXCLUDED_REPS.has(n)) repNames.add(n);
       }
 
       const results: any[] = [];
