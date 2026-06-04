@@ -17,6 +17,8 @@ import {
   type MerchantPlaidConnection, type InsertMerchantPlaidConnection,
   type MerchantFinancialInsight, type InsertMerchantFinancialInsight,
   type MerchantBankSnapshot, type InsertMerchantBankSnapshot,
+  repCallStats,
+  type RepCallStat, type InsertRepCallStat,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, sql, ilike, getTableColumns, isNotNull, isNull, gte } from "drizzle-orm";
@@ -198,6 +200,11 @@ export interface IStorage {
   createOrUpdateMerchantInsight(data: InsertMerchantFinancialInsight): Promise<MerchantFinancialInsight>;
   getMerchantInsight(email: string, sourceType: string): Promise<MerchantFinancialInsight | undefined>;
   getPlaidAccessTokensForMerchant(email: string): Promise<{ accessToken: string; institutionName: string | null }[]>;
+
+  // Rep Call Stats
+  getAllRepCallStats(): Promise<RepCallStat[]>;
+  getRepCallStatsByEmail(email: string): Promise<RepCallStat[]>;
+  insertRepCallStat(stat: InsertRepCallStat): Promise<RepCallStat>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1491,6 +1498,39 @@ export class DatabaseStorage implements IStorage {
     }
 
     return results;
+  }
+
+  // Rep Call Stats
+  async getAllRepCallStats(): Promise<RepCallStat[]> {
+    return await db
+      .select()
+      .from(repCallStats)
+      .orderBy(desc(repCallStats.createdAt));
+  }
+
+  async getRepCallStatsByEmail(email: string): Promise<RepCallStat[]> {
+    return await db
+      .select()
+      .from(repCallStats)
+      .where(sql`LOWER(${repCallStats.repEmail}) = LOWER(${email})`)
+      .orderBy(desc(repCallStats.createdAt));
+  }
+
+  async insertRepCallStat(stat: InsertRepCallStat): Promise<RepCallStat> {
+    const [record] = await db
+      .insert(repCallStats)
+      .values(stat)
+      .onConflictDoUpdate({
+        target: repCallStats.id,
+        set: {
+          duration: stat.duration,
+          result: stat.result,
+          endTime: stat.endTime,
+          rawPayload: stat.rawPayload,
+        },
+      })
+      .returning();
+    return record;
   }
 }
 

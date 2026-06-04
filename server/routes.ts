@@ -2,7 +2,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import path from "path";
 import fs from "fs";
-import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
+import { randomUUID, scryptSync, randomBytes, timingSafeEqual, createHmac } from "crypto";
 import multer from "multer";
 import PDFDocument from "pdfkit";
 import archiver from "archiver";
@@ -32,7 +32,7 @@ import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncDecisionToPr
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { z } from "zod";
-import type { LoanApplication, MerchantBankSnapshot } from "@shared/schema";
+import type { LoanApplication, MerchantBankSnapshot, RepCallStat } from "@shared/schema";
 
 // Initialize Object Storage service for persistent file storage
 const objectStorage = new ObjectStorageService();
@@ -14383,6 +14383,460 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // REP STATISTICS ROUTES
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const ZOOM_WEBHOOK_SECRET = process.env.ZOOM_WEBHOOK_SECRET || "PLACEHOLDER_ZOOM_SECRET";
+
+  const REP_DIRECTORY: Record<string, string> = {
+    "Bryce Jennings": "Bryce@todaycapitalgroup.com",
+    "Caden Lehto": "caden@todaycapitalgroup.com",
+    "Dennys Cisne": "Dennys@todaycapitalgroup.com",
+    "Diego Orellana": "diego@todaycapitalgroup.com",
+    "Dillon LeBlanc": "Dillon@todaycapitalgroup.com",
+    "Dominic Kendl": "Dominic@todaycapitalgroup.com",
+    "Greg Dergevorkian": "greg@todaycapitalgroup.com",
+    "Jonathan Rendon": "jonathan@todaycapitalgroup.com",
+    "Julius Speck": "julius@todaycapitalgroup.com",
+    "Kenny Nwobi": "Kenny@todaycapitalgroup.com",
+    "Manny Fanalua": "manny@todaycapitalgroup.com",
+    "Ryan Wilcox": "ryan@todaycapitalgroup.com",
+    "Trevor Bosetti": "trevorbosetti@gmail.com",
+    "Tyler Bernie": "tyler@todaycapitalgroup.com",
+  };
+
+  // Reverse lookup: email -> name
+  const EMAIL_TO_REP: Record<string, string> = {};
+  for (const [name, email] of Object.entries(REP_DIRECTORY)) {
+    EMAIL_TO_REP[email.toLowerCase()] = name;
+  }
+
+  // GET /api/rep-stats — aggregated stats for ALL reps
+  app.get("/api/rep-stats", async (_req: Request, res: Response) => {
+    try {
+      const [allApplications, allDecisions, allCalls] = await Promise.all([
+        storage.getAllLoanApplications(),
+        storage.getAllBusinessUnderwritingDecisions(),
+        storage.getAllRepCallStats(),
+      ]);
+
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      // Build set of known rep names from all sources
+      const repNames = new Set<string>();
+      for (const [name] of Object.entries(REP_DIRECTORY)) {
+        repNames.add(name);
+      }
+      for (const app of allApplications) {
+        if (app.agentName) repNames.add(app.agentName);
+      }
+      for (const dec of allDecisions) {
+        if (dec.assignedRep) repNames.add(dec.assignedRep);
+      }
+
+      const results: any[] = [];
+
+      for (const repName of repNames) {
+        const repEmail = REP_DIRECTORY[repName]?.toLowerCase() || "";
+
+        // Applications
+        const repApps = allApplications.filter(a =>
+          a.agentName === repName ||
+          (repEmail && a.agentEmail?.toLowerCase() === repEmail)
+        );
+        const applications_count = repApps.length;
+        const applications_30d = repApps.filter(a =>
+          a.createdAt && new Date(a.createdAt) >= thirtyDaysAgo
+        ).length;
+
+        // Decisions where assignedRep matches
+        const repDecisions = allDecisions.filter(d => d.assignedRep === repName);
+
+        const approvedDecisions = repDecisions.filter(d => d.status === "approved");
+        const approvals_count = approvedDecisions.length;
+        const approvals_amount = approvedDecisions.reduce((sum, d) =>
+          sum + (d.advanceAmount ? Number(d.advanceAmount) : 0), 0);
+
+        const fundedDecisions = repDecisions.filter(d => d.status === "funded");
+        const funded_count = fundedDecisions.length;
+        const funded_amount = fundedDecisions.reduce((sum, d) =>
+          sum + (d.advanceAmount ? Number(d.advanceAmount) : 0), 0);
+
+        // Additional fundings across ALL decisions (not just this rep's assigned)
+        let additional_funded_count = 0;
+        let additional_funded_amount = 0;
+        for (const dec of allDecisions) {
+          const fundings = Array.isArray(dec.additionalFundings) ? dec.additionalFundings as any[] : [];
+          for (const f of fundings) {
+            if (f.assignedRep === repName) {
+              additional_funded_count++;
+              additional_funded_amount += f.advanceAmount ? Number(f.advanceAmount) : 0;
+            }
+          }
+        }
+
+        const total_funded_amount = funded_amount + additional_funded_amount;
+
+        const decline_count = repDecisions.filter(d => d.status === "declined").length;
+
+        // Calls
+        const repCalls = allCalls.filter(c =>
+          c.repEmail?.toLowerCase() === repEmail ||
+          c.repName === repName
+        );
+        const calls_total = repCalls.length;
+        const calls_30d = repCalls.filter(c =>
+          c.createdAt && new Date(c.createdAt) >= thirtyDaysAgo
+        ).length;
+        const connectedCalls = repCalls.filter(c => c.result === "connected");
+        const calls_connected = connectedCalls.length;
+        const calls_duration_total = repCalls.reduce((sum, c) => sum + (c.duration || 0), 0);
+        const calls_avg_duration = connectedCalls.length > 0
+          ? connectedCalls.reduce((sum, c) => sum + (c.duration || 0), 0) / connectedCalls.length
+          : 0;
+
+        const conversion_rate = applications_count > 0
+          ? (funded_count / applications_count) * 100 : 0;
+        const connect_rate = calls_total > 0
+          ? (calls_connected / calls_total) * 100 : 0;
+
+        // SCORE (0-100)
+        const score = Math.min(100, Math.round(
+          Math.min(15, applications_30d * 1) +
+          Math.min(20, approvals_count * 2) +
+          Math.min(25, funded_count * 5) +
+          Math.min(15, total_funded_amount / 10000) +
+          Math.min(15, calls_30d * 0.1) +
+          Math.min(10, connect_rate * 0.1)
+        ));
+
+        results.push({
+          rep_name: repName,
+          rep_email: repEmail,
+          applications_count,
+          applications_30d,
+          approvals_count,
+          approvals_amount: Math.round(approvals_amount * 100) / 100,
+          funded_count,
+          funded_amount: Math.round(funded_amount * 100) / 100,
+          additional_funded_count,
+          additional_funded_amount: Math.round(additional_funded_amount * 100) / 100,
+          total_funded_amount: Math.round(total_funded_amount * 100) / 100,
+          decline_count,
+          calls_total,
+          calls_30d,
+          calls_connected,
+          calls_duration_total,
+          calls_avg_duration: Math.round(calls_avg_duration),
+          conversion_rate: Math.round(conversion_rate * 100) / 100,
+          connect_rate: Math.round(connect_rate * 100) / 100,
+          score,
+        });
+      }
+
+      // Sort by score descending
+      results.sort((a, b) => b.score - a.score);
+
+      res.json(results);
+    } catch (err: any) {
+      console.error("[REP-STATS] Error:", err.message);
+      res.status(500).json({ error: "Failed to compute rep stats" });
+    }
+  });
+
+  // GET /api/rep-stats/calls/recent — 50 most recent calls across all reps
+  app.get("/api/rep-stats/calls/recent", async (_req: Request, res: Response) => {
+    try {
+      const allCalls = await storage.getAllRepCallStats();
+      const recent = allCalls.slice(0, 50).map(c => ({
+        id: c.id,
+        rep_name: c.repName,
+        rep_email: c.repEmail,
+        caller_number: c.callerNumber,
+        callee_number: c.calleeNumber,
+        caller_name: c.callerName,
+        callee_name: c.calleeName,
+        direction: c.direction,
+        duration: c.duration,
+        result: c.result,
+        start_time: c.startTime,
+        end_time: c.endTime,
+        created_at: c.createdAt,
+      }));
+      res.json(recent);
+    } catch (err: any) {
+      console.error("[REP-STATS] Error fetching recent calls:", err.message);
+      res.status(500).json({ error: "Failed to fetch recent calls" });
+    }
+  });
+
+  // GET /api/rep-stats/:repName — detailed stats for a single rep
+  app.get("/api/rep-stats/:repName", async (req: Request, res: Response) => {
+    try {
+      const repName = decodeURIComponent(req.params.repName);
+      const repEmail = REP_DIRECTORY[repName]?.toLowerCase() || "";
+
+      const [allApplications, allDecisions, allCalls] = await Promise.all([
+        storage.getAllLoanApplications(),
+        storage.getAllBusinessUnderwritingDecisions(),
+        storage.getAllRepCallStats(),
+      ]);
+
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      // Applications
+      const repApps = allApplications.filter(a =>
+        a.agentName === repName ||
+        (repEmail && a.agentEmail?.toLowerCase() === repEmail)
+      );
+      const applications_count = repApps.length;
+      const applications_30d = repApps.filter(a =>
+        a.createdAt && new Date(a.createdAt) >= thirtyDaysAgo
+      ).length;
+
+      // Decisions
+      const repDecisions = allDecisions.filter(d => d.assignedRep === repName);
+
+      const approvedDecisions = repDecisions.filter(d => d.status === "approved");
+      const approvals_count = approvedDecisions.length;
+      const approvals_amount = approvedDecisions.reduce((sum, d) =>
+        sum + (d.advanceAmount ? Number(d.advanceAmount) : 0), 0);
+
+      const fundedDecisions = repDecisions.filter(d => d.status === "funded");
+      const funded_count = fundedDecisions.length;
+      const funded_amount = fundedDecisions.reduce((sum, d) =>
+        sum + (d.advanceAmount ? Number(d.advanceAmount) : 0), 0);
+
+      let additional_funded_count = 0;
+      let additional_funded_amount = 0;
+      for (const dec of allDecisions) {
+        const fundings = Array.isArray(dec.additionalFundings) ? dec.additionalFundings as any[] : [];
+        for (const f of fundings) {
+          if (f.assignedRep === repName) {
+            additional_funded_count++;
+            additional_funded_amount += f.advanceAmount ? Number(f.advanceAmount) : 0;
+          }
+        }
+      }
+
+      const total_funded_amount = funded_amount + additional_funded_amount;
+      const decline_count = repDecisions.filter(d => d.status === "declined").length;
+
+      // Calls
+      const repCalls = allCalls.filter(c =>
+        c.repEmail?.toLowerCase() === repEmail ||
+        c.repName === repName
+      );
+      const calls_total = repCalls.length;
+      const calls_30d = repCalls.filter(c =>
+        c.createdAt && new Date(c.createdAt) >= thirtyDaysAgo
+      ).length;
+      const connectedCalls = repCalls.filter(c => c.result === "connected");
+      const calls_connected = connectedCalls.length;
+      const calls_duration_total = repCalls.reduce((sum, c) => sum + (c.duration || 0), 0);
+      const calls_avg_duration = connectedCalls.length > 0
+        ? connectedCalls.reduce((sum, c) => sum + (c.duration || 0), 0) / connectedCalls.length
+        : 0;
+
+      const conversion_rate = applications_count > 0
+        ? (funded_count / applications_count) * 100 : 0;
+      const connect_rate = calls_total > 0
+        ? (calls_connected / calls_total) * 100 : 0;
+
+      // SCORE
+      const score = Math.min(100, Math.round(
+        Math.min(15, applications_30d * 1) +
+        Math.min(20, approvals_count * 2) +
+        Math.min(25, funded_count * 5) +
+        Math.min(15, total_funded_amount / 10000) +
+        Math.min(15, calls_30d * 0.1) +
+        Math.min(10, connect_rate * 0.1)
+      ));
+
+      // Recent items
+      const recent_applications = repApps
+        .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
+        .slice(0, 10)
+        .map(a => ({
+          business_name: a.businessName || a.legalBusinessName,
+          date: a.createdAt,
+          email: a.email,
+        }));
+
+      const recent_approvals = approvedDecisions
+        .sort((a, b) => new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime())
+        .slice(0, 10)
+        .map(d => ({
+          business_name: d.businessName,
+          amount: d.advanceAmount ? Number(d.advanceAmount) : 0,
+          lender: d.lender,
+          date: d.updatedAt,
+        }));
+
+      const recent_funded = fundedDecisions
+        .sort((a, b) => new Date(b.fundedDate || b.updatedAt!).getTime() - new Date(a.fundedDate || a.updatedAt!).getTime())
+        .slice(0, 10)
+        .map(d => ({
+          business_name: d.businessName,
+          amount: d.advanceAmount ? Number(d.advanceAmount) : 0,
+          lender: d.lender,
+          date: d.fundedDate || d.updatedAt,
+        }));
+
+      const recent_calls = repCalls
+        .slice(0, 20)
+        .map(c => ({
+          number: c.direction === "outbound" ? c.calleeNumber : c.callerNumber,
+          duration: c.duration,
+          result: c.result,
+          direction: c.direction,
+          date: c.startTime || c.createdAt,
+        }));
+
+      // Monthly breakdown (last 6 months)
+      const monthly_breakdown: any[] = [];
+      for (let i = 0; i < 6; i++) {
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+        const label = monthStart.toISOString().slice(0, 7); // YYYY-MM
+
+        const monthApps = repApps.filter(a =>
+          a.createdAt && new Date(a.createdAt) >= monthStart && new Date(a.createdAt) <= monthEnd
+        ).length;
+
+        const monthApprovals = approvedDecisions.filter(d =>
+          d.updatedAt && new Date(d.updatedAt) >= monthStart && new Date(d.updatedAt) <= monthEnd
+        ).length;
+
+        const monthFunded = fundedDecisions.filter(d => {
+          const dt = d.fundedDate || d.updatedAt;
+          return dt && new Date(dt) >= monthStart && new Date(dt) <= monthEnd;
+        }).length;
+
+        const monthCalls = repCalls.filter(c =>
+          c.createdAt && new Date(c.createdAt) >= monthStart && new Date(c.createdAt) <= monthEnd
+        ).length;
+
+        monthly_breakdown.push({
+          month: label,
+          applications: monthApps,
+          approvals: monthApprovals,
+          funded: monthFunded,
+          calls: monthCalls,
+        });
+      }
+
+      res.json({
+        rep_name: repName,
+        rep_email: repEmail,
+        applications_count,
+        applications_30d,
+        approvals_count,
+        approvals_amount: Math.round(approvals_amount * 100) / 100,
+        funded_count,
+        funded_amount: Math.round(funded_amount * 100) / 100,
+        additional_funded_count,
+        additional_funded_amount: Math.round(additional_funded_amount * 100) / 100,
+        total_funded_amount: Math.round(total_funded_amount * 100) / 100,
+        decline_count,
+        calls_total,
+        calls_30d,
+        calls_connected,
+        calls_duration_total,
+        calls_avg_duration: Math.round(calls_avg_duration),
+        conversion_rate: Math.round(conversion_rate * 100) / 100,
+        connect_rate: Math.round(connect_rate * 100) / 100,
+        score,
+        recent_applications,
+        recent_approvals,
+        recent_funded,
+        recent_calls,
+        monthly_breakdown,
+      });
+    } catch (err: any) {
+      console.error("[REP-STATS] Error:", err.message);
+      res.status(500).json({ error: "Failed to compute rep stats for " + req.params.repName });
+    }
+  });
+
+  // POST /api/webhooks/zoom — Zoom Phone webhook for call events
+  app.post("/api/webhooks/zoom", async (req: Request, res: Response) => {
+    try {
+      const body = req.body;
+
+      // Handle Zoom webhook verification challenge
+      if (body?.event === "endpoint.url_validation") {
+        const plainToken = body.payload?.plainToken;
+        if (!plainToken) {
+          return res.status(400).json({ error: "Missing plainToken" });
+        }
+        const encryptedToken = createHmac("sha256", ZOOM_WEBHOOK_SECRET)
+          .update(plainToken)
+          .digest("hex");
+        console.log("[ZOOM-WEBHOOK] Responding to URL validation challenge");
+        return res.status(200).json({ plainToken, encryptedToken });
+      }
+
+      // Handle call ended events
+      const eventType = body?.event;
+      if (eventType === "phone.callee_ended" || eventType === "phone.caller_ended") {
+        const payload = body.payload || {};
+        const callObj = payload.object || {};
+
+        const callId = callObj.call_id || callObj.id || randomUUID();
+        const direction = callObj.direction || (eventType === "phone.caller_ended" ? "outbound" : "inbound");
+        const duration = callObj.duration || 0;
+        const callerNumber = callObj.caller?.phone_number || callObj.caller_number || "";
+        const calleeNumber = callObj.callee?.phone_number || callObj.callee_number || "";
+        const callerName = callObj.caller?.name || callObj.caller_name || "";
+        const calleeName = callObj.callee?.name || callObj.callee_name || "";
+        const result = callObj.result || callObj.answer_result || "unknown";
+        const startTime = callObj.date_time ? new Date(callObj.date_time) : null;
+        const endTime = callObj.end_date_time ? new Date(callObj.end_date_time) : null;
+        const zoomUserId = callObj.user_id || payload.account_id || "";
+        const zoomUserEmail = callObj.user?.email || callObj.email || "";
+
+        // Map Zoom user email to rep
+        const repName = EMAIL_TO_REP[zoomUserEmail.toLowerCase()] || callerName || calleeName || "Unknown";
+        const repEmail = zoomUserEmail || REP_DIRECTORY[repName]?.toLowerCase() || "";
+
+        const statId = `zoom-${callId}-${Date.now()}`;
+
+        await storage.insertRepCallStat({
+          id: statId,
+          repName,
+          repEmail: repEmail.toLowerCase(),
+          callId,
+          callType: direction,
+          direction,
+          duration,
+          callerNumber,
+          calleeNumber,
+          callerName,
+          calleeName,
+          result,
+          startTime,
+          endTime,
+          recordingUrl: callObj.recording_url || null,
+          zoomUserId,
+          zoomUserEmail,
+          rawPayload: body,
+          createdAt: new Date(),
+        });
+
+        console.log(`[ZOOM-WEBHOOK] Recorded call ${callId} for ${repName} (${direction}, ${duration}s, result: ${result})`);
+      }
+
+      res.status(200).json({ status: "ok" });
+    } catch (err: any) {
+      console.error("[ZOOM-WEBHOOK] Error processing webhook:", err.message);
+      res.status(200).json({ status: "error", message: err.message });
+    }
+  });
 
   // ── Ads Leads GHL sync — runs every 2 hours indefinitely ─────────────────
   (function startAdsLeadsPoll() {

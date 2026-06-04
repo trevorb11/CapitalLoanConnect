@@ -892,3 +892,29 @@ export const insertAdsLeadSchema = createInsertSchema(adsLeads).omit({
 
 export type InsertAdsLead = z.infer<typeof insertAdsLeadSchema>;
 export type AdsLead = typeof adsLeads.$inferSelect;
+
+// ── Rep Call/Dial Statistics (synced from Zoom) ──
+export const repCallStats = pgTable("rep_call_stats", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  repName: text("rep_name"),
+  repEmail: text("rep_email"),
+  callId: text("call_id"),                    // Zoom call ID
+  callType: text("call_type"),                // inbound, outbound
+  direction: text("direction"),               // inbound, outbound
+  duration: integer("duration"),              // seconds
+  callerNumber: text("caller_number"),
+  calleeNumber: text("callee_number"),
+  callerName: text("caller_name"),
+  calleeName: text("callee_name"),
+  result: text("result"),                     // connected, no_answer, voicemail, busy, cancelled
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+  recordingUrl: text("recording_url"),
+  zoomUserId: text("zoom_user_id"),
+  zoomUserEmail: text("zoom_user_email"),
+  rawPayload: jsonb("raw_payload"),           // Full Zoom webhook payload
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type RepCallStat = typeof repCallStats.$inferSelect;
+export type InsertRepCallStat = typeof repCallStats.$inferInsert;

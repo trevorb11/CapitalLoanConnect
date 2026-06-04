@@ -76,6 +76,8 @@ import WebsiteContract from "@/pages/WebsiteContract";
 import Agreements from "@/pages/Agreements";
 import WhatWeNeed from "@/pages/WhatWeNeed";
 import UnderwritingPortal from "@/pages/UnderwritingPortal";
+import RepStats from "@/pages/RepStats";
+import RepScorecard from "@/pages/RepScorecard";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -185,6 +187,10 @@ function Router() {
 
       {/* Underwriting Portal */}
       <Route path="/underwriting" component={UnderwritingPortal} />
+
+      {/* Rep Stats & Scorecards */}
+      <Route path="/admin/rep-stats" component={RepStats} />
+      <Route path="/admin/rep-stats/:repName" component={RepScorecard} />
 
       {/* Lead Portal Routes */}
       <Route path="/what-we-need" component={WhatWeNeed} />
