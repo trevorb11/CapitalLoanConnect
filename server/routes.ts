@@ -14422,6 +14422,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   for (const [name, email] of Object.entries(REP_DIRECTORY)) {
     EMAIL_TO_REP[email.toLowerCase()] = name;
   }
+  // Additional Zoom email mappings (aliases, legacy, etc.)
+  EMAIL_TO_REP["carlos@todaycapitalgroup.com"] = "Jonathan Rendon";
+  EMAIL_TO_REP["kenny@fundorafunding.com"] = "Kenny Nwobi";
+  EMAIL_TO_REP["gregory@todaycapitalgroup.com"] = "Greg Dergevorkian";
+
+  // Zoom display name -> dashboard name (for webhook caller/callee name matching)
+  const ZOOM_NAME_MAP: Record<string, string> = {
+    "Gregory Dergevorkian": "Greg Dergevorkian",
+    "Carlos Batista": "Jonathan Rendon",
+    "JONATHAN BISCHOP": "Jonathan Rendon",
+    "Kenny@fundorafunding.com": "Kenny Nwobi",
+  };
 
   // GET /api/rep-stats — aggregated stats for ALL reps
   app.get("/api/rep-stats", async (_req: Request, res: Response) => {
@@ -14813,8 +14825,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const zoomUserId = callObj.user_id || payload.account_id || "";
         const zoomUserEmail = callObj.user?.email || callObj.email || "";
 
-        // Map Zoom user email to rep
-        const repName = EMAIL_TO_REP[zoomUserEmail.toLowerCase()] || callerName || calleeName || "Unknown";
+        // Map Zoom user email to rep, then check name map for display name corrections
+        let repName = EMAIL_TO_REP[zoomUserEmail.toLowerCase()] || callerName || calleeName || "Unknown";
+        if (ZOOM_NAME_MAP[repName]) repName = ZOOM_NAME_MAP[repName];
         const repEmail = zoomUserEmail || REP_DIRECTORY[repName]?.toLowerCase() || "";
 
         const statId = `zoom-${callId}-${Date.now()}`;
