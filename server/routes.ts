@@ -14351,19 +14351,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         addSection('Business Information');
         addRowPair('Legal Business Name:', application.legalBusinessName || application.businessName, 'DBA:', application.doingBusinessAs);
-        addRowPair('Website:', application.companyWebsite, 'Start Date:', application.businessStartDate);
-        addRowPair('EIN:', application.ein, 'Industry:', application.industry);
-        addRowPair('Address:', application.businessAddress || application.businessStreetAddress, 'City:', application.city);
-        addRowPair('State:', application.state, 'ZIP:', application.zipCode);
-        addRowPair('Requested Amount:', application.requestedAmount ? '$' + Number(application.requestedAmount).toLocaleString() : null, 'Monthly Revenue:', application.monthlyRevenue ? '$' + Number(application.monthlyRevenue).toLocaleString() : null);
-        addRowPair('Credit Cards:', application.doYouProcessCreditCards, 'Time in Business:', application.timeInBusiness);
+        addRowPair('Business Type:', application.businessType, 'Industry:', application.industry);
+        addRowPair('EIN:', application.ein, 'Start Date:', application.businessStartDate);
+        addRowPair('State of Incorporation:', application.stateOfIncorporation, 'Time in Business:', application.timeInBusiness);
+        addRowPair('Company Email:', application.companyEmail || application.businessEmail, 'Website:', application.companyWebsite);
+        const bizStreet = application.businessStreetAddress || application.businessAddress;
+        const bizCsz = application.businessCsz || [application.city, application.state, application.zipCode].filter(Boolean).join(', ');
+        addRowPair('Business Address:', bizStreet, 'City / State / ZIP:', bizCsz);
+        const revenue = application.monthlyRevenue || application.averageMonthlyRevenue;
+        addRowPair('Requested Amount:', application.requestedAmount ? '$' + Number(application.requestedAmount).toLocaleString() : null, 'Monthly Revenue:', revenue ? '$' + Number(revenue).toLocaleString() : null);
+        addRowPair('Credit Cards Processed:', application.doYouProcessCreditCards, 'Bank:', application.bankName);
 
         addSection('Owner Information');
-        addRowPair('Full Name:', application.fullName, 'Email:', application.email);
-        addRowPair('Phone:', application.phone, 'SSN:', application.socialSecurityNumber ? '***-**-' + application.socialSecurityNumber.slice(-4) : null);
-        addRowPair('Date of Birth:', application.dateOfBirth, 'FICO Score:', application.ficoScoreExact || application.creditScore);
-        addRowPair('Ownership %:', application.ownership, 'Home Address:', application.ownerAddress1);
-        addRowPair('City:', application.ownerCity, 'State/ZIP:', [application.ownerState, application.ownerZip].filter(Boolean).join(' '));
+        addRowPair('Full Name:', application.fullName, 'Ownership %:', application.ownership || application.ownerPercentage);
+        addRowPair('Email:', application.email, 'Phone:', application.phone);
+        addRowPair('Date of Birth:', application.dateOfBirth, 'SSN:', application.socialSecurityNumber ? '***-**-' + String(application.socialSecurityNumber).slice(-4) : null);
+        addRowPair('Credit Score:', application.ficoScoreExact || application.personalCreditScoreRange || application.creditScore, 'Best Time to Contact:', application.bestTimeToContact);
+        const ownerLine1 = [application.ownerAddress1, application.ownerAddress2].filter(Boolean).join(', ');
+        const ownerCsz = application.ownerCsz || [application.ownerCity, application.ownerState, application.ownerZip].filter(Boolean).join(', ');
+        addRowPair('Home Address:', ownerLine1 || null, 'City / State / ZIP:', ownerCsz || null);
 
         if (application.hasOutstandingLoans || application.mcaBalanceAmount) {
           addSection('Outstanding Obligations');
@@ -14371,10 +14377,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           addRowPair('MCA Balance:', application.mcaBalanceAmount ? '$' + Number(application.mcaBalanceAmount).toLocaleString() : null, 'MCA Bank:', application.mcaBalanceBankName);
         }
 
-        if (application.useOfFunds) {
-          addSection('Additional Details');
-          addRow('Use of Funds:', application.useOfFunds, leftCol);
-          addRowPair('Funding Urgency:', application.fundingUrgency, 'Referral Source:', application.referralSource);
+        addSection('Additional Details');
+        addRowPair('Use of Funds:', application.useOfFunds, 'Funding Urgency:', application.fundingUrgency);
+        addRowPair('Referral Source:', application.referralSource, 'Agent:', [application.agentName, application.agentEmail].filter(Boolean).join(' — ') || null);
+        if (application.signatureDate) {
+          addRow('Application Signed:', new Date(application.signatureDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), leftCol);
         }
 
         doc.end();
