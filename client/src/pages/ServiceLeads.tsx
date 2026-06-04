@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Globe, FileText, MousePointerClick, Mail, Users } from "lucide-react";
+import { Search, Globe, FileText, MousePointerClick, Mail, Users, UserPlus } from "lucide-react";
 
 interface ServiceInterest {
   id: number;
@@ -50,6 +50,13 @@ function submissionType(source: string | null): { label: string; className: stri
       label: "Form Submission",
       className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
       icon: <FileText className="w-3 h-3" />,
+    };
+  }
+  if (source === "rep-referral") {
+    return {
+      label: "Rep Referral",
+      className: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+      icon: <UserPlus className="w-3 h-3" />,
     };
   }
   if (source === "email") {
@@ -110,13 +117,15 @@ export default function ServiceLeads() {
       const matchType =
         typeFilter === "all" ||
         (typeFilter === "form" && l.source === "landing-page") ||
-        (typeFilter === "click" && l.source !== "landing-page");
+        (typeFilter === "rep-referral" && l.source === "rep-referral") ||
+        (typeFilter === "click" && l.source !== "landing-page" && l.source !== "rep-referral");
       return matchSearch && matchService && matchType;
     });
   }, [leads, search, serviceFilter, typeFilter]);
 
   const formCount = leads.filter(l => l.source === "landing-page").length;
-  const clickCount = leads.filter(l => l.source !== "landing-page").length;
+  const repReferralCount = leads.filter(l => l.source === "rep-referral").length;
+  const clickCount = leads.filter(l => l.source !== "landing-page" && l.source !== "rep-referral").length;
   const serviceCount = useMemo(() => {
     const map: Record<string, number> = {};
     for (const l of leads) map[l.service] = (map[l.service] || 0) + 1;
@@ -166,6 +175,12 @@ export default function ServiceLeads() {
             — filled out the quote/interest form on a landing page
           </span>
           <span className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+              <UserPlus className="w-3 h-3" /> Rep Referral
+            </span>
+            — submitted by a sales rep on behalf of a client
+          </span>
+          <span className="flex items-center gap-1.5">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
               <Mail className="w-3 h-3" /> Email Click
             </span>
@@ -195,6 +210,14 @@ export default function ServiceLeads() {
                 <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{formCount}</div>
                 <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                   <FileText className="w-3 h-3" /> Form Submissions
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{repReferralCount}</div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                  <UserPlus className="w-3 h-3" /> Rep Referrals
                 </div>
               </CardContent>
             </Card>
@@ -247,6 +270,7 @@ export default function ServiceLeads() {
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="form">Form Submissions only</SelectItem>
+              <SelectItem value="rep-referral">Rep Referrals only</SelectItem>
               <SelectItem value="click">Interest Clicks only</SelectItem>
             </SelectContent>
           </Select>
@@ -291,6 +315,7 @@ export default function ServiceLeads() {
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Phone</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Service</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Referred By</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Details</th>
                     <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
                   </tr>
@@ -332,6 +357,11 @@ export default function ServiceLeads() {
                             {type.icon}
                             {type.label}
                           </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">
+                          {lead.source === "rep-referral" && lead.utm_source
+                            ? <span className="text-purple-600 dark:text-purple-400 font-medium">{lead.utm_source}</span>
+                            : "—"}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground text-xs max-w-52 truncate" title={lead.other_details ?? ""}>
                           {lead.other_details || "—"}

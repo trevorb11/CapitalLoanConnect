@@ -139,9 +139,28 @@ export function buildServicesInterestEmail(data: {
   service?: string | null;
   otherDetails?: string | null;
   source?: string | null;
+  utmSource?: string | null;
 }): { subject: string; html: string } {
   const name = [data.firstName, data.lastName].filter(Boolean).join(" ") || null;
   const isMemorialDay = data.service === "website-memorial-day";
+
+  if (data.source === "rep-referral") {
+    const repName = data.utmSource || "Unknown Rep";
+    return {
+      subject: `[Rep Referral] Website Lead — ${data.businessName || name || data.email} (via ${repName})`,
+      html: emailWrapper(
+        "Rep Website Referral",
+        "/service-leads",
+        "#0891b2",
+        row("Referred By", repName) +
+        row("Email", data.email) +
+        row("Name", name) +
+        row("Phone", data.phone) +
+        row("Business", data.businessName) +
+        row("Notes", data.otherDetails),
+      ),
+    };
+  }
 
   if (isMemorialDay) {
     return {

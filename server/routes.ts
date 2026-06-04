@@ -7412,17 +7412,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const normalizedEmail = email.toLowerCase().trim();
 
-      // Check for duplicate click (same email + service in last 24 hours)
-      const existing = await db.execute(sql`SELECT id FROM service_interests WHERE email = ${normalizedEmail} AND service = ${service} AND created_at >= NOW() - INTERVAL '24 hours'`);
-      if (existing.rows.length > 0) {
-        return res.json({ success: true, message: "Already recorded" });
+      // Skip dedup for rep-referral — reps should always be able to submit
+      if (source !== "rep-referral") {
+        const existing = await db.execute(sql`SELECT id FROM service_interests WHERE email = ${normalizedEmail} AND service = ${service} AND created_at >= NOW() - INTERVAL '24 hours'`);
+        if (existing.rows.length > 0) {
+          return res.json({ success: true, message: "Already recorded" });
+        }
       }
 
       await db.execute(sql`INSERT INTO service_interests (email, first_name, last_name, phone, business_name, service, other_details, source, utm_campaign, utm_source)
         VALUES (${normalizedEmail}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${service}, ${otherDetails || null}, ${source || 'direct'}, ${utmCampaign || null}, ${utmSource || null})`);
 
-      console.log(`[SERVICES] Interest recorded: ${normalizedEmail} -> ${service}`);
-      const { subject: svcSub, html: svcHtml } = buildServicesInterestEmail({ email: normalizedEmail, firstName, lastName, phone, businessName, service, otherDetails, source });
+      console.log(`[SERVICES] Interest recorded: ${normalizedEmail} -> ${service} (source: ${source || 'direct'})`);
+      const { subject: svcSub, html: svcHtml } = buildServicesInterestEmail({ email: normalizedEmail, firstName, lastName, phone, businessName, service, otherDetails, source, utmSource });
       sendMarketingNotification(svcSub, svcHtml).catch(() => {});
       res.json({ success: true });
     } catch (err: any) {

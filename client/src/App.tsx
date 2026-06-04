@@ -72,6 +72,7 @@ import ServicePayments from "@/pages/ServicePayments";
 import ServiceWebsite from "@/pages/ServiceWebsite";
 import ServiceCRM from "@/pages/ServiceCRM";
 import MemorialDayWebsite from "@/pages/MemorialDayWebsite";
+import RepWebsiteReferral from "@/pages/RepWebsiteReferral";
 import WebsiteContract from "@/pages/WebsiteContract";
 import Agreements from "@/pages/Agreements";
 import WhatWeNeed from "@/pages/WhatWeNeed";
@@ -177,6 +178,7 @@ function Router() {
       <Route path="/services/payments" component={ServicePayments} />
       <Route path="/services/website/memorial-day" component={MemorialDayWebsite} />
       <Route path="/services/website/contract" component={WebsiteContract} />
+      <Route path="/rep/website-referral" component={RepWebsiteReferral} />
       <Route path="/agreements" component={Agreements} />
       <Route path="/services/website" component={ServiceWebsite} />
       <Route path="/services/crm" component={ServiceCRM} />
