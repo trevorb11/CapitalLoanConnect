@@ -14403,18 +14403,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const REP_DIRECTORY: Record<string, string> = {
     "Bryce Jennings": "Bryce@todaycapitalgroup.com",
     "Caden Lehto": "caden@todaycapitalgroup.com",
+    "Carlos Batista": "carlos@todaycapitalgroup.com",
     "Dennys Cisne": "Dennys@todaycapitalgroup.com",
     "Diego Orellana": "diego@todaycapitalgroup.com",
     "Dillon LeBlanc": "Dillon@todaycapitalgroup.com",
     "Dominic Kendl": "Dominic@todaycapitalgroup.com",
-    "Greg Dergevorkian": "greg@todaycapitalgroup.com",
+    "Gregory Dergevorkian": "greg@todaycapitalgroup.com",
     "Jonathan Rendon": "jonathan@todaycapitalgroup.com",
     "Julius Speck": "julius@todaycapitalgroup.com",
     "Kenny Nwobi": "Kenny@todaycapitalgroup.com",
-    "Manny Fanalua": "manny@todaycapitalgroup.com",
     "Ryan Wilcox": "ryan@todaycapitalgroup.com",
     "Trevor Bosetti": "trevorbosetti@gmail.com",
-    "Tyler Bernie": "tyler@todaycapitalgroup.com",
   };
 
   // Reverse lookup: email -> name
@@ -14445,6 +14444,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       for (const dec of allDecisions) {
         if (dec.assignedRep) repNames.add(dec.assignedRep);
+      }
+      for (const call of allCalls) {
+        if (call.repName && call.repName !== "Unknown") repNames.add(call.repName);
       }
 
       const results: any[] = [];
