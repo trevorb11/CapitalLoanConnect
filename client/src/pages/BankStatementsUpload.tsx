@@ -212,19 +212,36 @@ export default function BankStatementsUpload() {
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("email", email);
-      formData.append("businessName", businessName);
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
-      const response = await fetch("/api/bank-statements/upload", {
+      const response = await fetch("/api/bank-statements/upload-json", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          fileBase64,
+          fileName: file.name,
+          mimeType: file.type,
+          email,
+          businessName,
+        }),
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Upload failed");
+        const ct = response.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await response.json();
+          throw new Error(data.error || `Upload failed (${response.status})`);
+        }
+        if (response.status === 403) {
+          throw new Error("Upload blocked (403). Please try in an incognito window or contact support.");
+        }
+        throw new Error(`Upload failed with status ${response.status}. Please try again.`);
       }
 
       return response.json();

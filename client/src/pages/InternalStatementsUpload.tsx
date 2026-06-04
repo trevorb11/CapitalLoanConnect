@@ -132,49 +132,51 @@ export default function InternalStatementsUpload() {
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("email", email);
-      formData.append("businessName", businessName);
-      if (selectedApplication) {
-        formData.append("applicationId", selectedApplication.id);
-      }
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
       const computedReceivedAt = receivedYear && receivedMonth && receivedDay
         ? `${receivedYear}-${receivedMonth}-${receivedDay}`
-        : '';
-      if (computedReceivedAt) {
-        formData.append("receivedAt", computedReceivedAt);
-      }
-      if (approvalStatus && approvalStatus !== "pending") {
-        formData.append("approvalStatus", approvalStatus);
-      }
-      if (approvalNotes) {
-        formData.append("approvalNotes", approvalNotes);
-      }
-      if (selectedLender) {
-        formData.append("lenderId", selectedLender.id);
-        formData.append("lenderName", selectedLender.name);
-      } else if (customLenderName) {
-        formData.append("lenderName", customLenderName);
-      }
-      // Approval details (when approved)
-      if (approvalStatus === "approved") {
-        if (advanceAmount) formData.append("advanceAmount", advanceAmount);
-        if (term) formData.append("term", term);
-        if (paymentFrequency) formData.append("paymentFrequency", paymentFrequency);
-        if (factorRate) formData.append("factorRate", factorRate);
-        if (maxUpsell) formData.append("maxUpsell", maxUpsell);
-        const computedApprovalDate = `${approvalYear}-${approvalMonth}-${approvalDay}`;
-        if (computedApprovalDate) formData.append("approvalDate", computedApprovalDate);
-      }
-      
-      // Mark as internal upload to skip GHL webhook
-      formData.append("isInternal", "true");
+        : undefined;
 
-      const response = await fetch("/api/bank-statements/upload", {
+      const payload: Record<string, string | boolean | undefined> = {
+        fileBase64,
+        fileName: file.name,
+        mimeType: file.type,
+        email,
+        businessName,
+        isInternal: "true",
+      };
+
+      if (selectedApplication) payload.applicationId = selectedApplication.id;
+      if (computedReceivedAt) payload.receivedAt = computedReceivedAt;
+      if (approvalStatus && approvalStatus !== "pending") payload.approvalStatus = approvalStatus;
+      if (approvalNotes) payload.approvalNotes = approvalNotes;
+      if (selectedLender) {
+        payload.lenderId = selectedLender.id;
+        payload.lenderName = selectedLender.name;
+      } else if (customLenderName) {
+        payload.lenderName = customLenderName;
+      }
+      if (approvalStatus === "approved") {
+        if (advanceAmount) payload.advanceAmount = advanceAmount;
+        if (term) payload.term = term;
+        if (paymentFrequency) payload.paymentFrequency = paymentFrequency;
+        if (factorRate) payload.factorRate = factorRate;
+        if (maxUpsell) payload.maxUpsell = maxUpsell;
+        const computedApprovalDate = `${approvalYear}-${approvalMonth}-${approvalDay}`;
+        if (computedApprovalDate) payload.approvalDate = computedApprovalDate;
+      }
+
+      const response = await fetch("/api/bank-statements/upload-json", {
         method: "POST",
-        body: formData,
-        credentials: 'include',
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -184,9 +186,7 @@ export default function InternalStatementsUpload() {
           throw new Error(data.error || `Upload failed (${response.status})`);
         }
         if (response.status === 403) {
-          throw new Error(
-            "Upload blocked (403). If you are using a browser extension (ad blocker, etc.), try disabling it or uploading in an incognito window."
-          );
+          throw new Error("Upload blocked (403). Please try in an incognito window or contact support.");
         }
         throw new Error(`Upload failed with status ${response.status}. Please try again.`);
       }

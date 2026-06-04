@@ -1,0 +1,1 @@
+- [Upload 403 production fix](upload-proxy-block.md) — multipart/form-data POST blocked by Replit proxy; fixed by base64 JSON endpoint.

@@ -4287,6 +4287,275 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // JSON-based upload — same logic but accepts { fileBase64, fileName, mimeType, ...metadata }
+  // This bypasses multipart/form-data restrictions at the Replit/CDN proxy layer.
+  app.post("/api/bank-statements/upload-json",
+    express.json({ limit: '50mb' }),
+    async (req: Request, res: Response) => {
+      try {
+        console.log(`[UPLOAD-JSON DIAGNOSTIC] POST /api/bank-statements/upload-json reached Express.`);
+        const { fileBase64, fileName, mimeType: fileMimeType } = req.body;
+
+        if (!fileBase64 || !fileName) {
+          return res.status(400).json({ error: "fileBase64 and fileName are required" });
+        }
+        if (fileMimeType !== 'application/pdf') {
+          return res.status(400).json({ error: "Only PDF files are allowed" });
+        }
+        const fileBuffer = Buffer.from(fileBase64, 'base64');
+        if (fileBuffer.length > 25 * 1024 * 1024) {
+          return res.status(400).json({ error: "File size exceeds 25MB limit" });
+        }
+
+        const file = {
+          buffer: fileBuffer,
+          originalname: fileName as string,
+          mimetype: fileMimeType as string,
+          size: fileBuffer.length,
+        };
+
+        const {
+          applicationId, receivedAt, approvalStatus, approvalNotes,
+          lenderId, lenderName,
+          advanceAmount, term, paymentFrequency, factorRate, totalPayback, netAfterFees, approvalDate,
+          isInternal
+        } = req.body;
+
+        const leadSessionEmail = (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail)
+          ? req.session.user.merchantEmail as string
+          : null;
+        const isLeadPortalUpload = Boolean(leadSessionEmail);
+
+        let email: string = (leadSessionEmail || req.body.email || "").toLowerCase().trim();
+        let businessName: string = req.body.businessName;
+
+        if (!email) {
+          return res.status(400).json({ error: "Email is required" });
+        }
+
+        if (isLeadPortalUpload && !businessName) {
+          try {
+            const acct = await db.execute(sql`SELECT business_name FROM lead_portal_accounts WHERE email = ${email} LIMIT 1`);
+            businessName = (acct.rows[0] as any)?.business_name || businessName;
+          } catch (_) {}
+        }
+
+        let receivedAtDate: Date | null = null;
+        if (receivedAt) {
+          receivedAtDate = new Date(receivedAt);
+          if (isNaN(receivedAtDate.getTime())) receivedAtDate = null;
+        }
+
+        const reviewerEmail = (req.session as any)?.user?.email || 'internal-upload';
+
+        const existingApp = await storage.getLoanApplicationByEmail(email);
+        if (existingApp) {
+          console.log(`[BANK UPLOAD] Found existing application ${existingApp.id} for email: ${email}`);
+        } else {
+          console.log(`[BANK UPLOAD] No application found for email: ${email}, will create orphan upload`);
+        }
+
+        let storedFileName: string;
+        let storageType = "local";
+
+        if (objectStorage.isConfigured()) {
+          try {
+            storedFileName = await objectStorage.uploadFile(file.buffer, file.originalname, file.mimetype);
+            storageType = "object-storage";
+            console.log(`[UPLOAD] ✓ Bank statement uploaded to Object Storage: ${storedFileName}`);
+          } catch (objError) {
+            console.error("[UPLOAD] ✗ Object Storage upload FAILED:", objError);
+            return res.status(500).json({ error: "Failed to save file to permanent storage. Please try again or contact support." });
+          }
+        } else {
+          console.error("[UPLOAD] ✗ Object Storage not configured - cannot accept uploads");
+          return res.status(500).json({ error: "File storage is not configured. Please contact support." });
+        }
+
+        const viewToken = randomBytes(32).toString('hex');
+
+        const upload = await storage.createBankStatementUpload({
+          email,
+          businessName: businessName || null,
+          loanApplicationId: applicationId || null,
+          originalFileName: file.originalname,
+          storedFileName: storedFileName!,
+          mimeType: file.mimetype,
+          fileSize: file.size,
+          source: isLeadPortalUpload ? "lead-portal" : undefined,
+          viewToken,
+          receivedAt: receivedAtDate,
+          approvalStatus: approvalStatus || null,
+          approvalNotes: approvalNotes || null,
+          reviewedBy: approvalStatus ? reviewerEmail : null,
+          reviewedAt: approvalStatus ? new Date() : null,
+          lenderId: lenderId || null,
+          lenderName: lenderName || null,
+        });
+
+        let linkedApplicationId = applicationId;
+        let matchingApp: LoanApplication | undefined;
+        if (!linkedApplicationId) {
+          const applications = await storage.getAllLoanApplications();
+          matchingApp = applications.find((app: LoanApplication) => app.email === email);
+          if (matchingApp) {
+            linkedApplicationId = matchingApp.id;
+            console.log(`Auto-linked bank statement upload ${upload.id} to application ${matchingApp.id}`);
+          }
+        }
+
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const host = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
+        const baseUrl = `${protocol}://${host}`;
+
+        const allStatements = await storage.getBankStatementUploadsByEmail(email);
+        const statementLinks = allStatements
+          .filter(stmt => stmt.viewToken)
+          .map(stmt => ({
+            fileName: stmt.originalFileName,
+            viewUrl: `${baseUrl}/api/bank-statements/public/view/${stmt.viewToken}`,
+          }));
+
+        const combinedViewToken = generateCombinedViewToken(email);
+        const combinedViewUrl = `${baseUrl}/api/bank-statements/public/view-all/${combinedViewToken}`;
+
+        if (isInternal === 'true' || isInternal === true || isLeadPortalUpload) {
+          console.log(`[BANK UPLOAD] Webhook DISABLED for ${isLeadPortalUpload ? 'lead-portal' : 'internal'} upload (${email})`);
+        } else {
+          const nameParts = (matchingApp?.fullName || '').trim().split(' ');
+          ghlService.sendBankStatementUploadedWebhook({
+            email,
+            businessName: businessName || matchingApp?.businessName || matchingApp?.legalBusinessName || undefined,
+            phone: matchingApp?.phone || undefined,
+            firstName: nameParts[0] || undefined,
+            lastName: nameParts.slice(1).join(' ') || undefined,
+            statementLinks,
+            combinedViewUrl,
+          }).then(result => {
+            if (result.sent) {
+              console.log(`[BANK UPLOAD] Webhook sent for ${email} with View All link: ${combinedViewUrl}`);
+            } else {
+              console.log(`[BANK UPLOAD] Webhook skipped for ${email}: ${result.reason}`);
+            }
+          }).catch(err => console.error('[GHL] Bank statement webhook error:', err));
+        }
+
+        if (approvalStatus === 'unqualified' && approvalNotes) {
+          try {
+            const resolvedBusinessName = businessName || matchingApp?.businessName || 'Unknown Business';
+            await storage.createOrUpdateBusinessUnderwritingDecision({
+              businessEmail: email,
+              businessName: resolvedBusinessName,
+              status: 'unqualified',
+              declineReason: approvalNotes,
+            });
+            console.log(`[BANK UPLOAD] Created unqualified underwriting decision for ${resolvedBusinessName}: ${approvalNotes}`);
+          } catch (unqualifiedError) {
+            console.error('[BANK UPLOAD] Failed to create unqualified decision:', unqualifiedError);
+          }
+        }
+
+        let lenderApprovalId = null;
+        if (approvalStatus === 'approved' && lenderName && advanceAmount) {
+          try {
+            const parseAmount = (val: string) => {
+              if (!val) return null;
+              const cleaned = val.replace(/[$,]/g, '');
+              const parsed = parseFloat(cleaned);
+              return isNaN(parsed) ? null : parsed.toString();
+            };
+            const resolvedBusinessName = businessName || matchingApp?.businessName || 'Unknown Business';
+            const lenderApproval = await storage.createLenderApproval({
+              businessName: resolvedBusinessName,
+              businessEmail: email,
+              loanApplicationId: linkedApplicationId || null,
+              lenderName: lenderName,
+              approvedAmount: parseAmount(advanceAmount),
+              termLength: term || null,
+              factorRate: factorRate || null,
+              paybackAmount: parseAmount(totalPayback),
+              paymentFrequency: paymentFrequency || null,
+              paymentAmount: parseAmount(netAfterFees),
+              status: 'accepted',
+              notes: approvalNotes ? `${approvalNotes} (Approval Date: ${approvalDate || new Date().toISOString().split('T')[0]})` : `Approval Date: ${approvalDate || new Date().toISOString().split('T')[0]}`,
+            });
+            lenderApprovalId = lenderApproval.id;
+            console.log(`[BANK UPLOAD] Created lender approval ${lenderApproval.id} for ${resolvedBusinessName}`);
+
+            const approvalEntry = {
+              id: `internal-${Date.now()}`,
+              lender: lenderName,
+              advanceAmount: advanceAmount || '',
+              term: term || '',
+              paymentFrequency: paymentFrequency || 'Weekly',
+              factorRate: factorRate || '',
+              totalPayback: totalPayback || '',
+              netAfterFees: netAfterFees || '',
+              notes: approvalNotes || '',
+              approvalDate: approvalDate || new Date().toISOString().split('T')[0],
+              isPrimary: true,
+              createdAt: new Date().toISOString(),
+            };
+
+            await storage.createOrUpdateBusinessUnderwritingDecision({
+              businessEmail: email,
+              businessName: resolvedBusinessName,
+              status: 'approved',
+              additionalApprovals: [approvalEntry],
+            });
+            console.log(`[BANK UPLOAD] Created/updated underwriting decision for ${resolvedBusinessName}`);
+          } catch (approvalError) {
+            console.error('[BANK UPLOAD] Failed to create lender approval:', approvalError);
+          }
+        }
+
+        const _smsPhone = matchingApp?.phone;
+        if (_smsPhone) {
+          const _smsBsParts = (matchingApp?.fullName || '').trim().split(' ');
+          fireSmsStageEvent({
+            stage: 'bank_statements_uploaded',
+            phone: _smsPhone,
+            email: email || undefined,
+            first_name: _smsBsParts[0] || undefined,
+            last_name: _smsBsParts.slice(1).join(' ') || undefined,
+            business_name: businessName || matchingApp?.businessName || undefined,
+            deal_id: linkedApplicationId || undefined,
+          });
+        }
+
+        res.json({
+          success: true,
+          upload: {
+            id: upload.id,
+            originalFileName: upload.originalFileName,
+            fileSize: upload.fileSize,
+            createdAt: upload.createdAt,
+            linkedApplicationId: linkedApplicationId || null,
+            storageType,
+            lenderApprovalId,
+          },
+        });
+
+        const _uwLastSent = _uwCooldown.get(email);
+        if (!_uwLastSent || Date.now() - _uwLastSent > _UW_COOLDOWN_MS) {
+          _uwCooldown.set(email, Date.now());
+          const _uwProtocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+          const _uwHost = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
+          doSendUnderwritingEmail({
+            email,
+            businessName: businessName || matchingApp?.businessName || matchingApp?.legalBusinessName,
+            baseUrl: `${_uwProtocol}://${_uwHost}`,
+          }).catch(err => console.error('[BANK UPLOAD] Auto underwriting email failed:', err));
+        } else {
+          console.log(`[BANK UPLOAD] Underwriting email cooldown active for ${email}, skipping auto-send`);
+        }
+      } catch (error) {
+        console.error("Bank statement JSON upload error:", error);
+        res.status(500).json({ error: "Failed to upload bank statement" });
+      }
+    }
+  );
+
   // 2. Get all bank statement uploads (for dashboard) - role-based filtering
 
   // POST /api/bank-statements/analyze-for-rep — AI underwriting snapshot for reps + underwriting team
