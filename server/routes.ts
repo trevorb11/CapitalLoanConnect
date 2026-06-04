@@ -3967,14 +3967,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       </div>
     `;
 
+    const ccAddresses = ['marketing@todaycapitalgroup.com', agentEmail].filter(Boolean).join(', ');
     await gmailService.sendEmailWithAttachments(
       'underwriting@todaycapitalgroup.com',
       subject,
       html,
       attachments,
-      agentEmail || undefined,
+      ccAddresses || undefined,
     );
-    console.log(`[SUBMIT-UW] Email sent for: ${normalizedEmail} (${attachments.length} attachments, CC: ${agentEmail || 'none'})`);
+    console.log(`[SUBMIT-UW] Email sent for: ${normalizedEmail} (${attachments.length} attachments, CC: ${ccAddresses || 'none'})`);
     return { uploadCount: uploads.length };
   }
 
