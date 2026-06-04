@@ -178,8 +178,17 @@ export default function InternalStatementsUpload() {
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Upload failed");
+        const ct = response.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await response.json();
+          throw new Error(data.error || `Upload failed (${response.status})`);
+        }
+        if (response.status === 403) {
+          throw new Error(
+            "Upload blocked (403). If you are using a browser extension (ad blocker, etc.), try disabling it or uploading in an incognito window."
+          );
+        }
+        throw new Error(`Upload failed with status ${response.status}. Please try again.`);
       }
 
       return response.json();

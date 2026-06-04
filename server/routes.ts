@@ -3980,6 +3980,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // 1. Upload bank statement PDF
   app.post("/api/bank-statements/upload", (req, res, next) => {
+    console.log(`[UPLOAD DIAGNOSTIC] POST /api/bank-statements/upload reached Express. content-type: ${req.headers['content-type']}, content-length: ${req.headers['content-length']}`);
     bankStatementUpload.single("file")(req, res, (err: any) => {
       if (err) {
         if (err.code === 'LIMIT_FILE_SIZE') {
