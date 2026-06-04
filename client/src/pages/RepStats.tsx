@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   Users,
   Trophy,
@@ -13,8 +14,9 @@ import {
   DollarSign,
   BarChart3,
   ArrowRight,
-  Target,
   Loader2,
+  Download,
+  CheckCircle2,
 } from "lucide-react";
 
 interface RepStat {
@@ -111,11 +113,43 @@ function ScoreCircle({ score, size = 72 }: { score: number; size?: number }) {
 export default function RepStats() {
   const [sortField, setSortField] = useState<SortField>("score");
   const [sortAsc, setSortAsc] = useState(false);
+  const [showBackfill, setShowBackfill] = useState(false);
+  const [backfillFrom, setBackfillFrom] = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 3);
+    return d.toISOString().slice(0, 10);
+  });
+  const [backfillTo, setBackfillTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{ inserted: number; byRep: Record<string, number> } | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: reps, isLoading } = useQuery<RepStat[]>({
     queryKey: ["/api/rep-stats"],
     refetchInterval: 60000,
   });
+
+  const handleBackfill = async () => {
+    setBackfillLoading(true);
+    setBackfillResult(null);
+    try {
+      const res = await fetch("/api/admin/backfill-zoom-calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ from: backfillFrom, to: backfillTo }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Backfill failed");
+      setBackfillResult(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/rep-stats"] });
+      toast({ title: `Backfill complete — ${data.inserted} calls imported` });
+    } catch (err: any) {
+      toast({ title: "Backfill failed", description: err.message, variant: "destructive" });
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -169,15 +203,88 @@ export default function RepStats() {
     <div className="min-h-screen bg-gray-950 text-white p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500/10 border border-blue-500/30">
-            <Users className="w-5 h-5 text-blue-400" />
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-500/10 border border-blue-500/30">
+              <Users className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Team Performance</h1>
+              <p className="text-sm text-gray-400">Rep scorecards and performance metrics</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Team Performance</h1>
-            <p className="text-sm text-gray-400">Rep scorecards and performance metrics</p>
-          </div>
+          <Button
+            variant="outline"
+            className="border-gray-700 text-gray-300"
+            onClick={() => { setShowBackfill(!showBackfill); setBackfillResult(null); }}
+            data-testid="button-backfill-toggle"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Backfill Call History
+          </Button>
         </div>
+
+        {/* Backfill Panel */}
+        {showBackfill && (
+          <Card className="bg-gray-900 border-gray-700">
+            <CardContent className="p-5 space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-white mb-1">Import Historical Zoom Call Logs</p>
+                <p className="text-xs text-gray-400">Pulls call logs from the Zoom Phone API for all reps in the directory and inserts them into the database. Safe to re-run — duplicates are ignored.</p>
+              </div>
+              <div className="flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">From</label>
+                  <input
+                    type="date"
+                    value={backfillFrom}
+                    onChange={e => setBackfillFrom(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 text-white text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    data-testid="input-backfill-from"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">To</label>
+                  <input
+                    type="date"
+                    value={backfillTo}
+                    onChange={e => setBackfillTo(e.target.value)}
+                    className="bg-gray-800 border border-gray-700 text-white text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    data-testid="input-backfill-to"
+                  />
+                </div>
+                <Button
+                  onClick={handleBackfill}
+                  disabled={backfillLoading}
+                  data-testid="button-backfill-run"
+                  className="bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  {backfillLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Importing...</> : "Run Backfill"}
+                </Button>
+              </div>
+              {backfillResult && (
+                <div className="bg-gray-800 rounded-md p-4 text-sm space-y-2">
+                  <div className="flex items-center gap-2 text-green-400 font-semibold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {backfillResult.inserted} calls imported
+                  </div>
+                  {Object.keys(backfillResult.byRep).length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1 text-gray-300 mt-2">
+                      {Object.entries(backfillResult.byRep)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([name, count]) => (
+                          <div key={name} className="flex justify-between gap-2">
+                            <span className="truncate text-gray-400">{name}</span>
+                            <span className="font-mono text-white">{count}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
