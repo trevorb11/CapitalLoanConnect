@@ -14912,72 +14912,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return r.json();
       };
 
-      // 2. List all Zoom Phone users
-      const usersData = await zoomGet("https://api.zoom.us/v2/phone/users?page_size=100") as any;
-      const zoomUsers: Array<{ id: string; email: string; display_name: string }> = usersData.users || [];
-
-      const NAME_ALIASES_BF: Record<string, string> = { "Carlos Batista": "Jonathan Rendon" };
-
+      // 2. Iterate directly through REP_DIRECTORY — use each rep's email as the userId.
+      //    Zoom accepts email as a userId for /phone/users/{userId}/call_logs so we don't
+      //    need the phone:read:list_users:admin scope at all.
       let inserted = 0;
       let skipped = 0;
       const repResults: Record<string, number> = {};
+      const errors: Record<string, string> = {};
 
-      // 3. For each user, fetch their call logs in the date range
-      for (const zu of zoomUsers) {
-        const rawRepName = EMAIL_TO_REP[zu.email?.toLowerCase()] || zu.display_name || "Unknown";
-        const repName = NAME_ALIASES_BF[rawRepName] || rawRepName;
-        const repEmail = REP_DIRECTORY[repName]?.toLowerCase() || zu.email?.toLowerCase() || "";
+      for (const [repName, repEmailRaw] of Object.entries(REP_DIRECTORY)) {
+        const repEmail = repEmailRaw.toLowerCase();
+        const encodedEmail = encodeURIComponent(repEmail);
 
         let nextPageToken = "";
         let pageCount = 0;
-        do {
-          const pageParam = nextPageToken ? `&next_page_token=${encodeURIComponent(nextPageToken)}` : "";
-          const logsData = await zoomGet(
-            `https://api.zoom.us/v2/phone/users/${zu.id}/call_logs?from=${from}&to=${to}&page_size=300&type=all${pageParam}`
-          ) as any;
-          const logs: any[] = logsData.call_logs || [];
-          nextPageToken = logsData.next_page_token || "";
+        try {
+          do {
+            const pageParam = nextPageToken ? `&next_page_token=${encodeURIComponent(nextPageToken)}` : "";
+            const logsData = await zoomGet(
+              `https://api.zoom.us/v2/phone/users/${encodedEmail}/call_logs?from=${from}&to=${to}&page_size=300&type=all${pageParam}`
+            ) as any;
+            const logs: any[] = logsData.call_logs || [];
+            nextPageToken = logsData.next_page_token || "";
 
-          for (const log of logs) {
-            const callId = log.id || log.call_id;
-            if (!callId) { skipped++; continue; }
-            const statId = `zoom-bf-${callId}`;
-            const direction = log.direction || log.call_type || "outbound";
-            const duration = log.duration || 0;
-            const result = log.result || "unknown";
-            const startTime = log.date_time ? new Date(log.date_time) : null;
-            const endTime = log.end_date_time ? new Date(log.end_date_time) : null;
+            for (const log of logs) {
+              const callId = log.id || log.call_id;
+              if (!callId) { skipped++; continue; }
+              const statId = `zoom-bf-${callId}`;
+              const direction = log.direction || log.call_type || "outbound";
+              const duration = log.duration || 0;
+              const result = log.result || "unknown";
+              const startTime = log.date_time ? new Date(log.date_time) : null;
+              const endTime = log.end_date_time ? new Date(log.end_date_time) : null;
 
-            await storage.insertRepCallStat({
-              id: statId,
-              repName,
-              repEmail,
-              callId,
-              callType: direction,
-              direction,
-              duration,
-              callerNumber: log.caller_number || "",
-              calleeNumber: log.callee_number || "",
-              callerName: log.caller_name || log.display_name || "",
-              calleeName: log.callee_name || "",
-              result,
-              startTime,
-              endTime,
-              recordingUrl: log.recording_url || null,
-              zoomUserId: zu.id,
-              zoomUserEmail: zu.email,
-              rawPayload: log,
-              createdAt: startTime || new Date(),
-            });
-            inserted++;
-            repResults[repName] = (repResults[repName] || 0) + 1;
-          }
-          pageCount++;
-        } while (nextPageToken && pageCount < 20);
+              await storage.insertRepCallStat({
+                id: statId,
+                repName,
+                repEmail,
+                callId,
+                callType: direction,
+                direction,
+                duration,
+                callerNumber: log.caller_number || "",
+                calleeNumber: log.callee_number || "",
+                callerName: log.caller_name || log.display_name || "",
+                calleeName: log.callee_name || "",
+                result,
+                startTime,
+                endTime,
+                recordingUrl: log.recording_url || null,
+                zoomUserId: repEmail,
+                zoomUserEmail: repEmail,
+                rawPayload: log,
+                createdAt: startTime || new Date(),
+              });
+              inserted++;
+              repResults[repName] = (repResults[repName] || 0) + 1;
+            }
+            pageCount++;
+          } while (nextPageToken && pageCount < 20);
+        } catch (repErr: any) {
+          console.warn(`[ZOOM-BACKFILL] Skipping ${repName} (${repEmail}): ${repErr.message}`);
+          errors[repName] = repErr.message;
+        }
       }
 
       console.log(`[ZOOM-BACKFILL] Done: ${inserted} inserted, ${skipped} skipped. Range: ${from} → ${to}`);
-      res.json({ success: true, inserted, skipped, byRep: repResults });
+      res.json({ success: true, inserted, skipped, byRep: repResults, errors });
     } catch (err: any) {
       console.error("[ZOOM-BACKFILL] Error:", err.message);
       res.status(500).json({ error: err.message });

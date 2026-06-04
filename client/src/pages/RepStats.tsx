@@ -120,7 +120,7 @@ export default function RepStats() {
   });
   const [backfillTo, setBackfillTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [backfillLoading, setBackfillLoading] = useState(false);
-  const [backfillResult, setBackfillResult] = useState<{ inserted: number; byRep: Record<string, number> } | null>(null);
+  const [backfillResult, setBackfillResult] = useState<{ inserted: number; byRep: Record<string, number>; errors?: Record<string, string> } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -263,21 +263,36 @@ export default function RepStats() {
                 </Button>
               </div>
               {backfillResult && (
-                <div className="bg-gray-800 rounded-md p-4 text-sm space-y-2">
+                <div className="bg-gray-800 rounded-md p-4 text-sm space-y-3">
                   <div className="flex items-center gap-2 text-green-400 font-semibold">
                     <CheckCircle2 className="w-4 h-4" />
                     {backfillResult.inserted} calls imported
                   </div>
                   {Object.keys(backfillResult.byRep).length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1 text-gray-300 mt-2">
-                      {Object.entries(backfillResult.byRep)
-                        .sort((a, b) => b[1] - a[1])
-                        .map(([name, count]) => (
-                          <div key={name} className="flex justify-between gap-2">
-                            <span className="truncate text-gray-400">{name}</span>
-                            <span className="font-mono text-white">{count}</span>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Imported per rep</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1 text-gray-300">
+                        {Object.entries(backfillResult.byRep)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([name, count]) => (
+                            <div key={name} className="flex justify-between gap-2">
+                              <span className="truncate text-gray-400">{name}</span>
+                              <span className="font-mono text-white">{count}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  {backfillResult.errors && Object.keys(backfillResult.errors).length > 0 && (
+                    <div>
+                      <p className="text-xs text-yellow-500 mb-1">Skipped (no Zoom Phone account or no calls in range)</p>
+                      <div className="space-y-0.5">
+                        {Object.entries(backfillResult.errors).map(([name, msg]) => (
+                          <div key={name} className="text-xs text-gray-500 truncate">
+                            <span className="text-gray-400">{name}:</span> {msg}
                           </div>
                         ))}
+                      </div>
                     </div>
                   )}
                 </div>
