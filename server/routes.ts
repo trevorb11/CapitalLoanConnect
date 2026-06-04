@@ -14409,7 +14409,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "Julius Speck": "julius@todaycapitalgroup.com",
     "Kenny Nwobi": "Kenny@todaycapitalgroup.com",
     "Ryan Wilcox": "ryan@todaycapitalgroup.com",
-    "Trevor Bosetti": "trevorbosetti@gmail.com",
   };
 
   // Reverse lookup: email -> name
@@ -14434,9 +14433,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const EXCLUDED_REPS = new Set([
         "Tyler Bernie", "Tyler",
         "Manny Fanalua", "Manny",
-        "James",
+        "James", "James Atkinson",
         "Jonathan Bishop",
-        "Sage",
+        "Sage", "Sage Robinson",
+        "Trevor Bosetti",
+        "Greg Dergevorkian", // alias — rolls up into Gregory Dergevorkian
       ]);
 
       // Reverse alias map: stored-name → canonical rep name (for legacy DB records)
@@ -14473,9 +14474,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .filter(([, canonical]) => canonical === repName)
           .map(([stored]) => stored);
 
-        // Applications
+        // Applications — match canonical name, email, or any legacy alias names
         const repApps = allApplications.filter(a =>
           a.agentName === repName ||
+          aliasNames.includes(a.agentName || "") ||
           (repEmail && a.agentEmail?.toLowerCase() === repEmail)
         );
         const applications_count = repApps.length;
@@ -14483,8 +14485,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           a.createdAt && new Date(a.createdAt) >= thirtyDaysAgo
         ).length;
 
-        // Decisions where assignedRep matches
-        const repDecisions = allDecisions.filter(d => d.assignedRep === repName);
+        // Decisions — match canonical name or any legacy alias names
+        const repDecisions = allDecisions.filter(d =>
+          d.assignedRep === repName || aliasNames.includes(d.assignedRep || "")
+        );
 
         const approvedDecisions = repDecisions.filter(d => d.status === "approved");
         const approvals_count = approvedDecisions.length;
