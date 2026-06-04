@@ -3877,7 +3877,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const normalizedEmail = email.toLowerCase().trim();
     const [uploads, application] = await Promise.all([
       storage.getBankStatementUploadsByEmail(normalizedEmail),
-      storage.getLoanApplicationByEmail(normalizedEmail),
+      storage.getAnyLoanApplicationByEmail(normalizedEmail),
     ]);
 
     const appName = businessName || application?.legalBusinessName || application?.businessName || normalizedEmail;
