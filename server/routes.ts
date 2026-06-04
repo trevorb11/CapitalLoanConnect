@@ -14524,8 +14524,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ));
 
         results.push({
-          rep_name: repName,
-          rep_email: repEmail,
+          name: repName,
+          email: repEmail,
           applications_count,
           applications_30d,
           approvals_count,
