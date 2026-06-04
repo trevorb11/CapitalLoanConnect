@@ -14419,11 +14419,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/rep-stats — aggregated stats for ALL reps
   app.get("/api/rep-stats", async (_req: Request, res: Response) => {
     try {
-      const [allApplications, allDecisions, allCalls] = await Promise.all([
+      const [allApplications, allDecisions] = await Promise.all([
         storage.getAllLoanApplications(),
         storage.getAllBusinessUnderwritingDecisions(),
-        storage.getAllRepCallStats(),
       ]);
+      let allCalls: any[] = [];
+      try { allCalls = await storage.getAllRepCallStats(); } catch { /* table may not exist yet */ }
 
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -14553,7 +14554,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/rep-stats/calls/recent — 50 most recent calls across all reps
   app.get("/api/rep-stats/calls/recent", async (_req: Request, res: Response) => {
     try {
-      const allCalls = await storage.getAllRepCallStats();
+      let allCalls: any[] = [];
+      try { allCalls = await storage.getAllRepCallStats(); } catch { /* table may not exist yet */ }
       const recent = allCalls.slice(0, 50).map(c => ({
         id: c.id,
         rep_name: c.repName,
@@ -14582,11 +14584,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const repName = decodeURIComponent(req.params.repName);
       const repEmail = REP_DIRECTORY[repName]?.toLowerCase() || "";
 
-      const [allApplications, allDecisions, allCalls] = await Promise.all([
+      const [allApplications, allDecisions] = await Promise.all([
         storage.getAllLoanApplications(),
         storage.getAllBusinessUnderwritingDecisions(),
-        storage.getAllRepCallStats(),
       ]);
+      let allCalls: any[] = [];
+      try { allCalls = await storage.getAllRepCallStats(); } catch { /* table may not exist yet */ }
 
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -14809,29 +14812,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const statId = `zoom-${callId}-${Date.now()}`;
 
-        await storage.insertRepCallStat({
-          id: statId,
-          repName,
-          repEmail: repEmail.toLowerCase(),
-          callId,
-          callType: direction,
-          direction,
-          duration,
-          callerNumber,
-          calleeNumber,
-          callerName,
-          calleeName,
-          result,
-          startTime,
-          endTime,
-          recordingUrl: callObj.recording_url || null,
-          zoomUserId,
-          zoomUserEmail,
-          rawPayload: body,
-          createdAt: new Date(),
-        });
-
-        console.log(`[ZOOM-WEBHOOK] Recorded call ${callId} for ${repName} (${direction}, ${duration}s, result: ${result})`);
+        try {
+          await storage.insertRepCallStat({
+            id: statId,
+            repName,
+            repEmail: repEmail.toLowerCase(),
+            callId,
+            callType: direction,
+            direction,
+            duration,
+            callerNumber,
+            calleeNumber,
+            callerName,
+            calleeName,
+            result,
+            startTime,
+            endTime,
+            recordingUrl: callObj.recording_url || null,
+            zoomUserId,
+            zoomUserEmail,
+            rawPayload: body,
+            createdAt: new Date(),
+          });
+          console.log(`[ZOOM-WEBHOOK] Recorded call ${callId} for ${repName} (${direction}, ${duration}s, result: ${result})`);
+        } catch (insertErr: any) {
+          console.error(`[ZOOM-WEBHOOK] Failed to insert call stat (table may not exist): ${insertErr.message}`);
+        }
       }
 
       res.status(200).json({ status: "ok" });
