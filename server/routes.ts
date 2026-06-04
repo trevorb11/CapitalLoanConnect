@@ -3863,6 +3863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Per-email underwriting email debounce (fires 60s after the LAST upload) ──
   // Each new upload resets the timer so all files in a session are included.
   const _uwTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const _uwCooldown = new Map<string, number>(); // tracks last manual submit time (not currently enforced)
   const _UW_DEBOUNCE_MS = 60 * 1000; // 60 seconds after last upload
 
   // Shared helper: build & send underwriting submission email
