@@ -170,6 +170,29 @@ app.use((req, res, next) => {
         files_processed INTEGER DEFAULT 0
       )`);
       console.log('[STARTUP] Migration: underwriting_snapshots ensured');
+      // Rep call stats table (for Zoom Phone webhook dial log)
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS rep_call_stats (
+        id VARCHAR(255) PRIMARY KEY,
+        rep_name TEXT,
+        rep_email TEXT,
+        call_id TEXT,
+        call_type TEXT,
+        direction TEXT,
+        duration INTEGER,
+        caller_number TEXT,
+        callee_number TEXT,
+        caller_name TEXT,
+        callee_name TEXT,
+        result TEXT,
+        start_time TIMESTAMP,
+        end_time TIMESTAMP,
+        recording_url TEXT,
+        zoom_user_id TEXT,
+        zoom_user_email TEXT,
+        raw_payload JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      console.log('[STARTUP] Migration: rep_call_stats ensured');
       // Backfill submitted_at from UUID v7 decision IDs for any rows missing it
       const backfill = await db.execute(sql`
         UPDATE loan_applications
