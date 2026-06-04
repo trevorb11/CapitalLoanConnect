@@ -14403,7 +14403,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const REP_DIRECTORY: Record<string, string> = {
     "Bryce Jennings": "Bryce@todaycapitalgroup.com",
     "Caden Lehto": "caden@todaycapitalgroup.com",
-    "Carlos Batista": "carlos@todaycapitalgroup.com",
     "Dennys Cisne": "Dennys@todaycapitalgroup.com",
     "Diego Orellana": "diego@todaycapitalgroup.com",
     "Dillon LeBlanc": "Dillon@todaycapitalgroup.com",
@@ -14812,9 +14811,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const zoomUserId = callObj.user_id || payload.account_id || "";
         const zoomUserEmail = callObj.user?.email || callObj.email || "";
 
-        // Map Zoom user email to rep
-        const repName = EMAIL_TO_REP[zoomUserEmail.toLowerCase()] || callerName || calleeName || "Unknown";
-        const repEmail = zoomUserEmail || REP_DIRECTORY[repName]?.toLowerCase() || "";
+        // Name aliases: map Zoom display names to the correct rep
+        const NAME_ALIASES: Record<string, string> = {
+          "Carlos Batista": "Jonathan Rendon",
+        };
+
+        // Map Zoom user email to rep, then apply any alias
+        const rawRepName = EMAIL_TO_REP[zoomUserEmail.toLowerCase()] || callerName || calleeName || "Unknown";
+        const repName = NAME_ALIASES[rawRepName] || rawRepName;
+        const repEmail = REP_DIRECTORY[repName]?.toLowerCase() || zoomUserEmail || "";
 
         const statId = `zoom-${callId}-${Date.now()}`;
 
