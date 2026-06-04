@@ -3860,9 +3860,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // BANK STATEMENT UPLOAD ROUTES
   // ========================================
 
-  // ── Per-email underwriting email cooldown (in-memory, 10-min window) ────────
-  const _uwCooldown = new Map<string, number>();
-  const _UW_COOLDOWN_MS = 10 * 60 * 1000;
+  // ── Per-email underwriting email debounce (fires 60s after the LAST upload) ──
+  // Each new upload resets the timer so all files in a session are included.
+  const _uwTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const _UW_DEBOUNCE_MS = 60 * 1000; // 60 seconds after last upload
 
   // Shared helper: build & send underwriting submission email
   async function doSendUnderwritingEmail({
@@ -4268,20 +4269,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
       });
 
-      // ── Auto-submit to underwriting (fire-and-forget, 10-min cooldown per email) ──
-      const _uwLastSent = _uwCooldown.get(email);
-      if (!_uwLastSent || Date.now() - _uwLastSent > _UW_COOLDOWN_MS) {
-        _uwCooldown.set(email, Date.now());
-        const _uwProtocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-        const _uwHost = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
-        doSendUnderwritingEmail({
-          email,
-          businessName: businessName || matchingApp?.businessName || matchingApp?.legalBusinessName,
-          baseUrl: `${_uwProtocol}://${_uwHost}`,
-        }).catch(err => console.error('[BANK UPLOAD] Auto underwriting email failed:', err));
-      } else {
-        console.log(`[BANK UPLOAD] Underwriting email cooldown active for ${email}, skipping auto-send`);
-      }
+      // ── Auto-submit to underwriting (debounced: fires 60s after the last upload) ──
+      const _uwProtocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+      const _uwHost = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
+      const _uwBaseUrl = `${_uwProtocol}://${_uwHost}`;
+      const _uwBizName = businessName || matchingApp?.businessName || matchingApp?.legalBusinessName;
+      if (_uwTimers.has(email)) clearTimeout(_uwTimers.get(email)!);
+      _uwTimers.set(email, setTimeout(() => {
+        _uwTimers.delete(email);
+        doSendUnderwritingEmail({ email, businessName: _uwBizName, baseUrl: _uwBaseUrl })
+          .catch(err => console.error('[BANK UPLOAD] Auto underwriting email failed:', err));
+      }, _UW_DEBOUNCE_MS));
+      console.log(`[BANK UPLOAD] Underwriting email debounce reset for ${email} (fires in 60s)`);
     } catch (error) {
       console.error("Bank statement upload error:", error);
       res.status(500).json({ error: "Failed to upload bank statement" });
@@ -4537,19 +4536,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           },
         });
 
-        const _uwLastSent = _uwCooldown.get(email);
-        if (!_uwLastSent || Date.now() - _uwLastSent > _UW_COOLDOWN_MS) {
-          _uwCooldown.set(email, Date.now());
-          const _uwProtocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-          const _uwHost = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
-          doSendUnderwritingEmail({
-            email,
-            businessName: businessName || matchingApp?.businessName || matchingApp?.legalBusinessName,
-            baseUrl: `${_uwProtocol}://${_uwHost}`,
-          }).catch(err => console.error('[BANK UPLOAD] Auto underwriting email failed:', err));
-        } else {
-          console.log(`[BANK UPLOAD] Underwriting email cooldown active for ${email}, skipping auto-send`);
-        }
+        const _uwProtocol2 = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const _uwHost2 = req.headers['x-forwarded-host'] || req.headers.host || 'capitalloanconnect.com';
+        const _uwBaseUrl2 = `${_uwProtocol2}://${_uwHost2}`;
+        const _uwBizName2 = businessName || matchingApp?.businessName || matchingApp?.legalBusinessName;
+        if (_uwTimers.has(email)) clearTimeout(_uwTimers.get(email)!);
+        _uwTimers.set(email, setTimeout(() => {
+          _uwTimers.delete(email);
+          doSendUnderwritingEmail({ email, businessName: _uwBizName2, baseUrl: _uwBaseUrl2 })
+            .catch(err => console.error('[BANK UPLOAD] Auto underwriting email failed:', err));
+        }, _UW_DEBOUNCE_MS));
+        console.log(`[BANK UPLOAD] Underwriting email debounce reset for ${email} (fires in 60s)`);
       } catch (error) {
         console.error("Bank statement JSON upload error:", error);
         res.status(500).json({ error: "Failed to upload bank statement" });
