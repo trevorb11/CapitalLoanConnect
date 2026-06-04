@@ -14430,6 +14430,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
+      // Reverse alias map: stored-name → canonical rep name (for legacy DB records)
+      const CALL_NAME_ALIASES: Record<string, string> = {
+        "Carlos Batista": "Jonathan Rendon",
+        "Greg Dergevorkian": "Gregory Dergevorkian",
+      };
+
       // Build set of known rep names from all sources
       const repNames = new Set<string>();
       for (const [name] of Object.entries(REP_DIRECTORY)) {
@@ -14441,14 +14447,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const dec of allDecisions) {
         if (dec.assignedRep) repNames.add(dec.assignedRep);
       }
+      // Only add call-sourced names if they're in REP_DIRECTORY (prevents junk entries
+      // like email addresses or company names grabbed from caller ID)
       for (const call of allCalls) {
-        if (call.repName && call.repName !== "Unknown") repNames.add(call.repName);
+        const n = call.repName;
+        if (n && n !== "Unknown" && REP_DIRECTORY[n]) repNames.add(n);
       }
 
       const results: any[] = [];
 
       for (const repName of repNames) {
         const repEmail = REP_DIRECTORY[repName]?.toLowerCase() || "";
+
+        // All stored names that should count toward this rep (includes legacy aliases)
+        const aliasNames = Object.entries(CALL_NAME_ALIASES)
+          .filter(([, canonical]) => canonical === repName)
+          .map(([stored]) => stored);
 
         // Applications
         const repApps = allApplications.filter(a =>
@@ -14490,10 +14504,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const decline_count = repDecisions.filter(d => d.status === "declined").length;
 
-        // Calls
+        // Calls — match by email, canonical name, or any legacy alias names
         const repCalls = allCalls.filter(c =>
-          c.repEmail?.toLowerCase() === repEmail ||
-          c.repName === repName
+          (repEmail && c.repEmail?.toLowerCase() === repEmail) ||
+          c.repName === repName ||
+          aliasNames.includes(c.repName || "")
         );
         const calls_total = repCalls.length;
         const calls_30d = repCalls.filter(c =>

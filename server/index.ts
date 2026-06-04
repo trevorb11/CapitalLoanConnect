@@ -193,6 +193,22 @@ app.use((req, res, next) => {
         created_at TIMESTAMP DEFAULT NOW()
       )`);
       console.log('[STARTUP] Migration: rep_call_stats ensured');
+      // Backfill rep_call_stats: reassign Carlos Batista → Jonathan Rendon
+      const carlosBackfill = await db.execute(sql`
+        UPDATE rep_call_stats
+        SET rep_name = 'Jonathan Rendon', rep_email = 'jonathan@todaycapitalgroup.com'
+        WHERE rep_name = 'Carlos Batista'
+      `);
+      if ((carlosBackfill as any).rowCount > 0)
+        console.log(`[STARTUP] Backfill: reassigned ${(carlosBackfill as any).rowCount} Carlos Batista calls → Jonathan Rendon`);
+      // Backfill rep_call_stats: fill missing email for Gregory Dergevorkian
+      const gregBackfill = await db.execute(sql`
+        UPDATE rep_call_stats
+        SET rep_email = 'greg@todaycapitalgroup.com'
+        WHERE rep_name = 'Gregory Dergevorkian' AND (rep_email IS NULL OR rep_email = '')
+      `);
+      if ((gregBackfill as any).rowCount > 0)
+        console.log(`[STARTUP] Backfill: filled email for ${(gregBackfill as any).rowCount} Gregory Dergevorkian records`);
       // Backfill submitted_at from UUID v7 decision IDs for any rows missing it
       const backfill = await db.execute(sql`
         UPDATE loan_applications
