@@ -263,10 +263,14 @@ export class GmailService {
       const boundary = `boundary_mixed_${Date.now()}`;
       const altBoundary = `boundary_alt_${Date.now()}`;
 
+      // RFC 2047: encode subject as UTF-8 Base64 if it contains any non-ASCII chars
+      const encodeSubject = (s: string) =>
+        /[^\x00-\x7F]/.test(s) ? `=?UTF-8?B?${Buffer.from(s, "utf8").toString("base64")}?=` : s;
+
       const headers = [
         `To: ${to}`,
         cc ? `Cc: ${cc}` : null,
-        `Subject: ${subject}`,
+        `Subject: ${encodeSubject(subject)}`,
         `MIME-Version: 1.0`,
         `Content-Type: multipart/mixed; boundary="${boundary}"`,
       ].filter(Boolean).join("\r\n");
