@@ -129,6 +129,7 @@ export default function Approvals() {
   } | null>(null);
   const [editForm, setEditForm] = useState({
     assignedRep: '',
+    assignedRep2: '',
     advanceAmount: '',
     term: '',
     paymentFrequency: 'weekly',
@@ -488,6 +489,7 @@ export default function Approvals() {
       if (existing) {
         setEditForm({
           assignedRep: decision.assignedRep || '',
+          assignedRep2: (decision as any).assignedRep2 || '',
           advanceAmount: existing.advanceAmount,
           term: existing.term,
           paymentFrequency: existing.paymentFrequency || 'weekly',
@@ -504,6 +506,7 @@ export default function Approvals() {
     } else {
       setEditForm({
         assignedRep: decision.assignedRep || '',
+        assignedRep2: (decision as any).assignedRep2 || '',
         advanceAmount: '',
         term: '',
         paymentFrequency: 'weekly',
@@ -557,6 +560,9 @@ export default function Approvals() {
       const updates: Record<string, unknown> = { additionalApprovals: approvals };
       if (editForm.assignedRep !== (decision.assignedRep || '')) {
         updates.assignedRep = editForm.assignedRep || null;
+      }
+      if (editForm.assignedRep2 !== ((decision as any).assignedRep2 || '')) {
+        updates.assignedRep2 = editForm.assignedRep2 || null;
       }
       await updateMutation.mutateAsync({
         id: decision.id,
@@ -1317,22 +1323,41 @@ export default function Approvals() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
-            <div>
-              <Label htmlFor="edit-assignedRep">Sales Rep</Label>
-              <Select
-                value={editForm.assignedRep}
-                onValueChange={(value) => setEditForm(prev => ({ ...prev, assignedRep: value === '__none__' ? '' : value }))}
-              >
-                <SelectTrigger id="edit-assignedRep" data-testid="select-edit-assigned-rep">
-                  <SelectValue placeholder="Select rep (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None</SelectItem>
-                  {AGENTS.map(agent => (
-                    <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-assignedRep">Rep #1</Label>
+                <Select
+                  value={editForm.assignedRep}
+                  onValueChange={(value) => setEditForm(prev => ({ ...prev, assignedRep: value === '__none__' ? '' : value }))}
+                >
+                  <SelectTrigger id="edit-assignedRep" data-testid="select-edit-assigned-rep">
+                    <SelectValue placeholder="Select rep (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {AGENTS.map(agent => (
+                      <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="edit-assignedRep2">Rep #2</Label>
+                <Select
+                  value={editForm.assignedRep2}
+                  onValueChange={(value) => setEditForm(prev => ({ ...prev, assignedRep2: value === '__none__' ? '' : value }))}
+                >
+                  <SelectTrigger id="edit-assignedRep2" data-testid="select-edit-assigned-rep2">
+                    <SelectValue placeholder="Select rep (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {AGENTS.map(agent => (
+                      <SelectItem key={agent.email} value={agent.name}>{agent.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

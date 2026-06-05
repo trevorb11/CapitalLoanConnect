@@ -5099,6 +5099,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       additionalApprovals,
       fundedDate,
       assignedRep,
+      assignedRep2,
     } = req.body;
 
     console.log(`[UNDERWRITING POST] Data: email=${businessEmail}, name=${businessName}, status=${status}, approvals=${additionalApprovals?.length || 0}`);
@@ -5156,6 +5157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           notes: syncedNotes || null,
           fundedDate: fundedDate ? new Date(fundedDate).toISOString() : new Date().toISOString(),
           assignedRep: assignedRep || null,
+          assignedRep2: assignedRep2 || null,
           createdAt: new Date().toISOString(),
         };
         incomingAdditionalFundings = [fundedEntry];
@@ -5183,6 +5185,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reviewedBy: reviewerEmail,
         fundedDate: fundedDate ? new Date(fundedDate) : null,
         assignedRep: assignedRep || null,
+        assignedRep2: assignedRep2 || null,
       });
       
       console.log(`[UNDERWRITING] ${reviewerEmail} set ${status} for business ${businessEmail}`);
@@ -10702,15 +10705,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const approvalCounts: Record<string, number> = {};
       for (const d of decisions) {
         if (d.status !== "approved") continue;
-        const rep = d.assignedRep;
-        if (!rep) continue;
         const dateRef = d.approvalDate || d.createdAt;
         if (dateRef && new Date(dateRef) < cutoffDate) continue;
         const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
-        if (!isNaN(amount)) {
-          approvalAmounts[rep] = (approvalAmounts[rep] || 0) + amount;
+        const reps = [d.assignedRep, (d as any).assignedRep2].filter(Boolean) as string[];
+        for (const rep of reps) {
+          if (!isNaN(amount)) approvalAmounts[rep] = (approvalAmounts[rep] || 0) + amount;
+          approvalCounts[rep] = (approvalCounts[rep] || 0) + 1;
         }
-        approvalCounts[rep] = (approvalCounts[rep] || 0) + 1;
       }
 
       // Funded: sum advanceAmount per assignedRep where status = "funded" (past week by fundedDate or createdAt)
@@ -10718,14 +10720,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const fundedCounts: Record<string, number> = {};
       for (const d of decisions) {
         if (d.status !== "funded") continue;
-        const rep = d.assignedRep;
-        if (!rep) continue;
         const dateRef = d.fundedDate || d.createdAt;
         if (dateRef && new Date(dateRef) < cutoffDate) continue;
         const amount = d.advanceAmount ? parseFloat(String(d.advanceAmount)) : 0;
         if (isNaN(amount)) continue;
-        fundedAmounts[rep] = (fundedAmounts[rep] || 0) + amount;
-        fundedCounts[rep] = (fundedCounts[rep] || 0) + 1;
+        const reps = [d.assignedRep, (d as any).assignedRep2].filter(Boolean) as string[];
+        for (const rep of reps) {
+          fundedAmounts[rep] = (fundedAmounts[rep] || 0) + amount;
+          fundedCounts[rep] = (fundedCounts[rep] || 0) + 1;
+        }
       }
 
       // Build sorted arrays
