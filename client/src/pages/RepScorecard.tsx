@@ -245,6 +245,7 @@ export default function RepScorecard() {
     { label: "Total Calls", value: rep.calls_total, sub: `${rep.calls_30d} last 30d`, icon: Phone, color: "text-purple-400" },
     { label: "Connected Calls", value: rep.calls_connected, sub: null, icon: PhoneCall, color: "text-indigo-400" },
     { label: "Connect Rate", value: formatPercent(rep.connect_rate), sub: null, icon: Target, color: "text-pink-400" },
+    { label: "Total Minutes", value: `${Math.round(rep.calls_duration_total / 60).toLocaleString()} min`, sub: `${(rep.calls_duration_total / 3600).toFixed(1)} hrs`, icon: Clock, color: "text-cyan-400" },
     { label: "Avg Call Duration", value: formatDuration(rep.calls_avg_duration), sub: null, icon: Clock, color: "text-amber-400" },
     { label: "Conversion Rate", value: formatPercent(rep.conversion_rate), sub: null, icon: Trophy, color: "text-yellow-400" },
   ];

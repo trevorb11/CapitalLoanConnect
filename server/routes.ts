@@ -14550,19 +14550,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? connectedCalls.reduce((sum, c) => sum + (c.duration || 0), 0) / connectedCalls.length
           : 0;
 
+        // Rates as decimals (0-1) — frontend formatPercent() multiplies by 100
         const conversion_rate = applications_count > 0
-          ? (funded_count / applications_count) * 100 : 0;
+          ? funded_count / applications_count : 0;
         const connect_rate = calls_total > 0
-          ? (calls_connected / calls_total) * 100 : 0;
+          ? calls_connected / calls_total : 0;
 
-        // SCORE (0-100)
+        // SCORE (0-100) — connect_rate is now 0-1, scale accordingly
         const score = Math.min(100, Math.round(
           Math.min(15, applications_30d * 1) +
           Math.min(20, approvals_count * 2) +
           Math.min(25, funded_count * 5) +
           Math.min(15, total_funded_amount / 10000) +
           Math.min(15, calls_30d * 0.1) +
-          Math.min(10, connect_rate * 0.1)
+          Math.min(10, connect_rate * 10)
         ));
 
         results.push({
@@ -14583,8 +14584,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           calls_connected,
           calls_duration_total,
           calls_avg_duration: Math.round(calls_avg_duration),
-          conversion_rate: Math.round(conversion_rate * 100) / 100,
-          connect_rate: Math.round(connect_rate * 100) / 100,
+          conversion_rate: Math.round(conversion_rate * 10000) / 10000,
+          connect_rate: Math.round(connect_rate * 10000) / 10000,
           score,
         });
       }
@@ -14696,19 +14697,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? connectedCalls.reduce((sum, c) => sum + (c.duration || 0), 0) / connectedCalls.length
         : 0;
 
+      // Rates as decimals (0-1) — frontend formatPercent() multiplies by 100
       const conversion_rate = applications_count > 0
-        ? (funded_count / applications_count) * 100 : 0;
+        ? funded_count / applications_count : 0;
       const connect_rate = calls_total > 0
-        ? (calls_connected / calls_total) * 100 : 0;
+        ? calls_connected / calls_total : 0;
 
-      // SCORE
+      // SCORE — connect_rate is now 0-1, scale accordingly
       const score = Math.min(100, Math.round(
         Math.min(15, applications_30d * 1) +
         Math.min(20, approvals_count * 2) +
         Math.min(25, funded_count * 5) +
         Math.min(15, total_funded_amount / 10000) +
         Math.min(15, calls_30d * 0.1) +
-        Math.min(10, connect_rate * 0.1)
+        Math.min(10, connect_rate * 10)
       ));
 
       // Recent items
@@ -14802,8 +14804,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         calls_connected,
         calls_duration_total,
         calls_avg_duration: Math.round(calls_avg_duration),
-        conversion_rate: Math.round(conversion_rate * 100) / 100,
-        connect_rate: Math.round(connect_rate * 100) / 100,
+        conversion_rate: Math.round(conversion_rate * 10000) / 10000,
+        connect_rate: Math.round(connect_rate * 10000) / 10000,
         score,
         recent_applications,
         recent_approvals,
