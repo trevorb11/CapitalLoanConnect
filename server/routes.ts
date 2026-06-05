@@ -3888,15 +3888,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // ── PDF attachments ──────────────────────────────────────────────────────
     const attachments: Array<{ filename: string; content: Buffer; mimeType: string }> = [];
 
-    const appPdfBuffer = await generateApplicationPdfBuffer(application);
+    // Use redacted version (SSN/DOB hidden) for internal underwriting submissions
+    const appPdfBuffer = await generateApplicationPdfBuffer(application, true);
     if (appPdfBuffer) {
       attachments.push({ filename: `Application - ${appName}.pdf`, content: appPdfBuffer, mimeType: "application/pdf" });
     }
 
-    // Build download links + attach PDFs
+    // Build download links + attach PDFs (deduplicate by filename to prevent duplicates)
     const downloadLinks: Array<{ name: string; url: string }> = [];
+    const attachedFileNames = new Set<string>();
     for (const u of uploads) {
       try {
+        const fname = u.originalFileName || `Statement-${u.id}.pdf`;
+        // Skip if we already attached a file with the same name
+        if (attachedFileNames.has(fname)) {
+          console.log(`[SUBMIT-UW] Skipping duplicate: ${fname}`);
+          continue;
+        }
         let fileBuffer: Buffer;
         if (u.storedFileName?.includes("bank-statements/")) {
           fileBuffer = await objectStorage.getFileBuffer(u.storedFileName);
@@ -3909,8 +3917,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
         }
-        const fname = u.originalFileName || `Statement-${u.id}.pdf`;
         attachments.push({ filename: fname, content: fileBuffer, mimeType: "application/pdf" });
+        attachedFileNames.add(fname);
         downloadLinks.push({
           name: fname,
           url: u.viewToken ? `${emailBaseUrl}/api/bank-statements/public/download/${u.viewToken}` : '',
@@ -3945,7 +3953,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       </ul>
     ` : `<p style="color:#888;font-size:14px;margin-bottom:24px;">No bank statements on file for this email.</p>`;
 
-    const subject = `[Underwriting] ${appName}`;
+    const subject = `NEW SUBMISSION: ${appName}`;
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:680px;">
         <h2 style="color:#1e40af;margin-bottom:8px;">File Submitted for Underwriting Review</h2>
@@ -14073,6 +14081,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lenderEmails,        // array of { to: string[], cc?: string[], lenderName: string }
         statementIds,        // array of bank statement upload IDs to include
         dealOverview,        // { state, industry, amountSeeking, positionSeeking, outstandingBalance, creditScore, creditLeary, additionalNotes }
+        ccReps,              // optional array of rep email addresses to CC on all lender sends
       } = req.body;
 
       if (!email || !lenderEmails?.length) {
@@ -14084,7 +14093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const businessName = application?.legalBusinessName || application?.businessName || normalizedEmail;
 
       // Generate application PDF in-memory using PDFKit
-      const appPdfBuffer = await generateApplicationPdfBuffer(application);
+      const appPdfBuffer = await generateApplicationPdfBuffer(application, true);
 
       // Gather selected bank statement PDFs
       const attachments: Array<{ filename: string; content: Buffer; mimeType: string }> = [];
@@ -14150,17 +14159,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         </div>
       `;
 
-      // Collect the assigned rep's email to CC on every lender send
-      const repEmail = application?.agentEmail?.trim() || null;
+      // Always CC these internal addresses on every lender submission
+      const ALWAYS_CC = ['dillon@todaycapitalgroup.com', 'admin@todaycapitalgroup.com'];
 
-      // Send to each lender
+      // Send to each lender (separate email thread per lender)
       const results: Array<{ lenderName: string; success: boolean; error?: string }> = [];
       for (const lender of lenderEmails) {
         try {
-          const toAddr = lender.to.join(", ");
-          const ccParts = [...(lender.cc || [])];
-          if (repEmail && !ccParts.includes(repEmail)) ccParts.push(repEmail);
-          const ccAddr = ccParts.length ? ccParts.join(", ") : undefined;
+          // Combine all lender emails (to + cc) into the To field so all contacts receive it
+          const allLenderEmails = [...(lender.to || []), ...(lender.cc || [])];
+          const toAddr = allLenderEmails.join(", ");
+
+          // Build CC list: always-CC addresses + user-selected rep CCs
+          const ccSet = new Set<string>(ALWAYS_CC);
+          if (Array.isArray(ccReps)) {
+            for (const rep of ccReps) {
+              if (rep?.trim()) ccSet.add(rep.trim());
+            }
+          }
+          // Remove any CC addresses that are already in To to avoid duplicates
+          for (const addr of allLenderEmails) {
+            ccSet.delete(addr.toLowerCase());
+          }
+          const ccAddr = ccSet.size > 0 ? Array.from(ccSet).join(", ") : undefined;
+
           const success = await gmailService.sendEmailWithAttachments(
             toAddr,
             subject,
@@ -14170,7 +14192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
           results.push({ lenderName: lender.lenderName, success });
           if (success) {
-            console.log(`[SHOP] Deal sent to ${lender.lenderName} (${toAddr})`);
+            console.log(`[SHOP] Deal sent to ${lender.lenderName} (${toAddr}) CC: ${ccAddr || 'none'}`);
           }
         } catch (sendErr: any) {
           console.error(`[SHOP] Failed to send to ${lender.lenderName}:`, sendErr);
@@ -14296,7 +14318,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Helper: Generate application PDF as a Buffer (for email attachment)
-  async function generateApplicationPdfBuffer(application: any): Promise<Buffer | null> {
+  /**
+   * Generate application PDF in-memory as a Buffer.
+   * @param redacted – if true, SSN and DOB are replaced with [REDACTED]
+   */
+  async function generateApplicationPdfBuffer(application: any, redacted = false): Promise<Buffer | null> {
     if (!application) return null;
 
     return new Promise((resolve, reject) => {
@@ -14365,7 +14391,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         addSection('Owner Information');
         addRowPair('Full Name:', application.fullName, 'Ownership %:', application.ownership || application.ownerPercentage);
         addRowPair('Email:', application.email, 'Phone:', application.phone);
-        addRowPair('Date of Birth:', application.dateOfBirth, 'SSN:', application.socialSecurityNumber ? '***-**-' + String(application.socialSecurityNumber).slice(-4) : null);
+
+        // SSN and DOB: redacted for external submissions, last-4 for internal
+        const ssnDisplay = redacted
+          ? (application.socialSecurityNumber ? '[REDACTED]' : null)
+          : (application.socialSecurityNumber ? '***-**-' + String(application.socialSecurityNumber).slice(-4) : null);
+        const dobDisplay = redacted
+          ? (application.dateOfBirth ? '[REDACTED]' : null)
+          : application.dateOfBirth;
+        addRowPair('Date of Birth:', dobDisplay, 'SSN:', ssnDisplay);
+
         addRowPair('Credit Score:', application.ficoScoreExact || application.personalCreditScoreRange || application.creditScore, 'Best Time to Contact:', application.bestTimeToContact);
         const ownerLine1 = [application.ownerAddress1, application.ownerAddress2].filter(Boolean).join(', ');
         const ownerCsz = application.ownerCsz || [application.ownerCity, application.ownerState, application.ownerZip].filter(Boolean).join(', ');
