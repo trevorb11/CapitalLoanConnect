@@ -3986,6 +3986,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ccAddresses || undefined,
     );
     console.log(`[SUBMIT-UW] Email sent for: ${normalizedEmail} (${attachments.length} attachments, CC: ${ccAddresses || 'none'})`);
+
+    // Stamp the submission timestamp on the matching loan application
+    try {
+      await db.execute(sql`
+        UPDATE loan_applications
+        SET uw_submitted_at = NOW()
+        WHERE LOWER(email) = ${normalizedEmail}
+      `);
+    } catch (stampErr) {
+      console.warn('[SUBMIT-UW] Failed to stamp uw_submitted_at (non-fatal):', stampErr);
+    }
+
     return { uploadCount: uploads.length };
   }
 

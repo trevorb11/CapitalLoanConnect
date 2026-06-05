@@ -130,6 +130,9 @@ export const loanApplications = pgTable("loan_applications", {
   sfSyncedAt: timestamp("sf_synced_at"),
   sfSyncMessage: text("sf_sync_message"),
 
+  // --- Underwriting Submission Tracking ---
+  uwSubmittedAt: timestamp("uw_submitted_at"), // When file was last submitted to underwriting
+
   // --- Bot Detection ---
   isBotAttempt: boolean("is_bot_attempt").default(false), // Honeypot triggered
 

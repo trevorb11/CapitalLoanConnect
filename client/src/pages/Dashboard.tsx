@@ -2356,18 +2356,26 @@ function BankStatementsTab() {
                         if (!bizEmail) return null;
                         const isSubmitting = submittingUnderwritingEmails.has(bizEmail);
                         const isSubmitted = submittedUnderwritingEmails.has(bizEmail);
+                        const matchingApp = applications.find(a => a.email?.toLowerCase() === bizEmail.toLowerCase());
+                        const uwDate = matchingApp?.uwSubmittedAt ? new Date(matchingApp.uwSubmittedAt) : null;
+                        const wasSubmitted = isSubmitted || !!uwDate;
+                        const submittedLabel = uwDate
+                          ? `Submitted ${uwDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                          : 'Submitted';
                         return (
                           <Button
                             variant="outline"
                             onClick={() => handleSubmitToUnderwriting(bizEmail, businessName)}
-                            disabled={isSubmitting || isSubmitted}
-                            className="bg-gradient-to-r from-green-500/10 to-teal-500/10 hover:from-green-500/20 hover:to-teal-500/20 border-green-200 dark:border-green-800"
+                            disabled={isSubmitting || wasSubmitted}
+                            className={wasSubmitted
+                              ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                              : "bg-gradient-to-r from-green-500/10 to-teal-500/10 hover:from-green-500/20 hover:to-teal-500/20 border-green-200 dark:border-green-800"}
                             data-testid={`button-submit-underwriting-${businessName}`}
                           >
                             {isSubmitting ? (
                               <><Loader2 className="w-4 h-4 mr-2 animate-spin text-green-600" />Submitting…</>
-                            ) : isSubmitted ? (
-                              <><CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />Submitted</>
+                            ) : wasSubmitted ? (
+                              <><CheckCircle2 className="w-4 h-4 mr-2 text-amber-600 dark:text-amber-400" />{submittedLabel}</>
                             ) : (
                               <><Send className="w-4 h-4 mr-2 text-green-600" />Submit to Underwriting</>
                             )}
@@ -4416,22 +4424,31 @@ export default function Dashboard() {
                         Upload Statements
                       </Button>
                     </Link>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 text-green-600 border-green-200 dark:border-green-800"
-                      data-testid={`button-submit-underwriting-app-${app.id}`}
-                      disabled={submittingUnderwritingApps.has(app.id) || submittedUnderwritingApps.has(app.id)}
-                      onClick={(e) => { e.stopPropagation(); handleSubmitAppToUnderwriting(app.email!, app.legalBusinessName || app.businessName || '', app.id); }}
-                    >
-                      {submittingUnderwritingApps.has(app.id) ? (
-                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Submitting…</>
-                      ) : submittedUnderwritingApps.has(app.id) ? (
-                        <><CheckCircle2 className="w-3 h-3 mr-1" />Submitted</>
-                      ) : (
-                        <><Send className="w-3 h-3 mr-1" />Submit to UW</>
-                      )}
-                    </Button>
+                    {(() => {
+                      const appUwDate = app.uwSubmittedAt ? new Date(app.uwSubmittedAt) : null;
+                      const appWasSubmitted = submittedUnderwritingApps.has(app.id) || !!appUwDate;
+                      const appSubmittedLabel = appUwDate
+                        ? `Submitted ${appUwDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                        : 'Submitted';
+                      return (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={`flex-1 ${appWasSubmitted ? "text-amber-600 border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-400" : "text-green-600 border-green-200 dark:border-green-800"}`}
+                          data-testid={`button-submit-underwriting-app-${app.id}`}
+                          disabled={submittingUnderwritingApps.has(app.id) || appWasSubmitted}
+                          onClick={(e) => { e.stopPropagation(); handleSubmitAppToUnderwriting(app.email!, app.legalBusinessName || app.businessName || '', app.id); }}
+                        >
+                          {submittingUnderwritingApps.has(app.id) ? (
+                            <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Submitting…</>
+                          ) : appWasSubmitted ? (
+                            <><CheckCircle2 className="w-3 h-3 mr-1" />{appSubmittedLabel}</>
+                          ) : (
+                            <><Send className="w-3 h-3 mr-1" />Submit to UW</>
+                          )}
+                        </Button>
+                      );
+                    })()}
                   </div>
                 )}
               </Card>

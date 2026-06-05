@@ -196,6 +196,9 @@ app.use((req, res, next) => {
       // Rep #2 column on underwriting decisions
       await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS assigned_rep_2 TEXT`);
       console.log('[STARTUP] Migration: assigned_rep_2 column ensured');
+      // UW submission timestamp on loan applications
+      await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS uw_submitted_at TIMESTAMP`);
+      console.log('[STARTUP] Migration: uw_submitted_at column ensured');
       // Backfill rep_call_stats: reassign Carlos Batista → Jonathan Rendon
       const carlosBackfill = await db.execute(sql`
         UPDATE rep_call_stats
