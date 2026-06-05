@@ -204,4 +204,14 @@ export const LENDER_NETWORK: LenderContact[] = [
     emails: ["underwriting@ufcapitalexperts.com"],
     ccEmails: ["Matt@ezrevenuefinance.com"],
   },
+  {
+    name: "Today Capital Group",
+    emails: ["admin@todaycapitalgroup.com", "underwriting@todaycapitalgroup.com", "dillon@todaycapitalgroup.com", "marketing@todaycapitalgroup.com"],
+    notes: "Internal test shop — Today Capital Group team",
+  },
+  {
+    name: "Test Lender",
+    emails: ["marketing@todaycapitalgroup.com", "trevorbosetti@gmail.com", "trevor@rankzone.studio", "tbosetti11@gmail.com"],
+    notes: "Test lender — sandbox submissions only",
+  },
 ];
