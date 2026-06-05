@@ -14575,10 +14575,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           aliasNames.includes(c.repName || "")
         );
         const calls_total = repCalls.length;
-        const calls_30d = repCalls.filter(c =>
-          c.createdAt && new Date(c.createdAt) >= thirtyDaysAgo
-        ).length;
-        const connectedCalls = repCalls.filter(c => c.result === "connected");
+        const calls_30d = repCalls.filter(c => {
+          const callTime = c.startTime || c.createdAt;
+          return callTime && new Date(callTime) >= thirtyDaysAgo;
+        }).length;
+        // Zoom uses "connected", "answered", and "Call connected" depending on source
+        const isConnected = (r: string) => /connected|answered/i.test(r || "");
+        const connectedCalls = repCalls.filter(c => isConnected(c.result));
         const calls_connected = connectedCalls.length;
         const calls_duration_total = repCalls.reduce((sum, c) => sum + (c.duration || 0), 0);
         const calls_avg_duration = connectedCalls.length > 0
@@ -14591,14 +14594,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const connect_rate = calls_total > 0
           ? calls_connected / calls_total : 0;
 
-        // SCORE (0-100) — connect_rate is now 0-1, scale accordingly
+        // SCORE (0-100) — weights: apps 15, approvals 20, funded deals 25, volume 15, calls 15, connect 10
         const score = Math.min(100, Math.round(
-          Math.min(15, applications_30d * 1) +
-          Math.min(20, approvals_count * 2) +
-          Math.min(25, funded_count * 5) +
-          Math.min(15, total_funded_amount / 10000) +
-          Math.min(15, calls_30d * 0.1) +
-          Math.min(10, connect_rate * 10)
+          Math.min(15, (applications_count / 50) * 15) +
+          Math.min(20, (approvals_count / 30) * 20) +
+          Math.min(25, (funded_count / 20) * 25) +
+          Math.min(15, (total_funded_amount / 500000) * 15) +
+          Math.min(15, (calls_total / 500) * 15) +
+          Math.min(10, (connect_rate / 0.5) * 10)
         ));
 
         results.push({
@@ -14722,10 +14725,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         c.repName === repName
       );
       const calls_total = repCalls.length;
-      const calls_30d = repCalls.filter(c =>
-        c.createdAt && new Date(c.createdAt) >= thirtyDaysAgo
-      ).length;
-      const connectedCalls = repCalls.filter(c => c.result === "connected");
+      const calls_30d = repCalls.filter(c => {
+        const callTime = c.startTime || c.createdAt;
+        return callTime && new Date(callTime) >= thirtyDaysAgo;
+      }).length;
+      const isConnected = (r: string) => /connected|answered/i.test(r || "");
+      const connectedCalls = repCalls.filter(c => isConnected(c.result));
       const calls_connected = connectedCalls.length;
       const calls_duration_total = repCalls.reduce((sum, c) => sum + (c.duration || 0), 0);
       const calls_avg_duration = connectedCalls.length > 0
@@ -14738,14 +14743,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const connect_rate = calls_total > 0
         ? calls_connected / calls_total : 0;
 
-      // SCORE — connect_rate is now 0-1, scale accordingly
+      // SCORE — matches frontend computeScoreBreakdown() exactly
       const score = Math.min(100, Math.round(
-        Math.min(15, applications_30d * 1) +
-        Math.min(20, approvals_count * 2) +
-        Math.min(25, funded_count * 5) +
-        Math.min(15, total_funded_amount / 10000) +
-        Math.min(15, calls_30d * 0.1) +
-        Math.min(10, connect_rate * 10)
+        Math.min(15, (applications_count / 50) * 15) +
+        Math.min(20, (approvals_count / 30) * 20) +
+        Math.min(25, (funded_count / 20) * 25) +
+        Math.min(15, (total_funded_amount / 500000) * 15) +
+        Math.min(15, (calls_total / 500) * 15) +
+        Math.min(10, (connect_rate / 0.5) * 10)
       ));
 
       // Recent items
