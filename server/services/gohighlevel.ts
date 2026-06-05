@@ -469,6 +469,39 @@ export class GoHighLevelService {
     }
   }
 
+  /**
+   * Look up a GHL contact by email and return the full contact object.
+   * Returns null if not found or service is disabled.
+   */
+  async getContactByEmail(email: string): Promise<any | null> {
+    if (!this.isEnabled || !email) return null;
+    try {
+      const response = await this.makeRequest(
+        `/contacts/lookup?locationId=${this.locationId}&email=${encodeURIComponent(email)}`,
+        "GET"
+      );
+      const contacts = response.contacts || (response.contact ? [response.contact] : []);
+      if (contacts.length > 0) return contacts[0];
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get a GHL user by ID (for resolving assignedTo → rep name).
+   */
+  async getUser(userId: string): Promise<{ name: string; email: string } | null> {
+    if (!this.isEnabled || !userId) return null;
+    try {
+      const response = await this.makeRequest(`/users/${userId}`, "GET");
+      const user = response.user || response;
+      return { name: user?.name || user?.firstName || "", email: user?.email || "" };
+    } catch {
+      return null;
+    }
+  }
+
   // Get existing contact's tags by contact ID
   private async getContactTags(contactId: string): Promise<string[]> {
     if (!this.isEnabled || !contactId) return [];

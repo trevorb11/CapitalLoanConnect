@@ -15043,6 +15043,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Backfill assignedRep on decisions from GHL contacts ──────────────────
+  app.post("/api/admin/backfill-assigned-reps", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== "admin") {
+      return res.status(403).json({ error: "Admin only" });
+    }
+    try {
+      const allDecisions = await storage.getAllBusinessUnderwritingDecisions();
+      const unassigned = allDecisions.filter(d => !d.assignedRep && d.businessEmail);
+
+      console.log(`[REP-BACKFILL] Found ${unassigned.length} decisions without assignedRep`);
+
+      // Cache GHL user ID → rep name to avoid repeated lookups
+      const userCache = new Map<string, string>();
+      let updated = 0;
+      let notFound = 0;
+      let noAssignment = 0;
+      const results: Record<string, string> = {};
+
+      for (const decision of unassigned) {
+        try {
+          // Rate limit: small delay between GHL API calls
+          await new Promise(r => setTimeout(r, 200));
+
+          const contact = await ghlService.getContactByEmail(decision.businessEmail);
+          if (!contact) {
+            notFound++;
+            continue;
+          }
+
+          const assignedTo = contact.assignedTo || contact.assigned_to;
+          if (!assignedTo) {
+            noAssignment++;
+            continue;
+          }
+
+          // Resolve user ID to name
+          let repName = userCache.get(assignedTo);
+          if (!repName) {
+            const user = await ghlService.getUser(assignedTo);
+            repName = user?.name || null;
+            if (repName) {
+              userCache.set(assignedTo, repName);
+            }
+          }
+
+          if (!repName) {
+            noAssignment++;
+            continue;
+          }
+
+          // Update the decision
+          await storage.updateBusinessUnderwritingDecision(decision.id, { assignedRep: repName });
+          results[decision.businessName || decision.businessEmail] = repName;
+          updated++;
+          console.log(`[REP-BACKFILL] ${decision.businessEmail} → ${repName}`);
+        } catch (lookupErr: any) {
+          console.warn(`[REP-BACKFILL] Error for ${decision.businessEmail}: ${lookupErr.message}`);
+        }
+      }
+
+      console.log(`[REP-BACKFILL] Done: ${updated} updated, ${notFound} not in GHL, ${noAssignment} no rep assigned in GHL`);
+      res.json({
+        success: true,
+        total_unassigned: unassigned.length,
+        updated,
+        not_found_in_ghl: notFound,
+        no_rep_in_ghl: noAssignment,
+        assignments: results,
+      });
+    } catch (err: any) {
+      console.error("[REP-BACKFILL] Error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Ads Leads GHL sync — runs every 2 hours indefinitely ─────────────────
   (function startAdsLeadsPoll() {
     const INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
