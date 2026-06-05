@@ -4667,11 +4667,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, businessName } = req.body;
       if (!email) return res.status(400).json({ error: "Email is required" });
+      const normalizedKey = email.toLowerCase().trim();
       const baseUrl = `${req.protocol}://${req.get('host')}`;
-      // Reset cooldown so a manual trigger always fires
-      _uwCooldown.delete(email.toLowerCase().trim());
+
+      // Enforce 2-minute cooldown to prevent duplicate sends from double-clicks or rapid retries
+      const lastSent = _uwCooldown.get(normalizedKey);
+      if (lastSent && Date.now() - lastSent < 2 * 60 * 1000) {
+        console.log(`[SUBMIT-UW] Cooldown active for ${normalizedKey}, skipping duplicate send`);
+        return res.json({ success: true, skipped: true, uploadCount: 0 });
+      }
+
+      // Cancel any pending auto-debounce timer so the auto-send doesn't fire on top of this manual one
+      if (_uwTimers.has(normalizedKey)) {
+        clearTimeout(_uwTimers.get(normalizedKey)!);
+        _uwTimers.delete(normalizedKey);
+        console.log(`[SUBMIT-UW] Cancelled pending auto-debounce for ${normalizedKey}`);
+      }
+
+      _uwCooldown.set(normalizedKey, Date.now());
       const result = await doSendUnderwritingEmail({ email, businessName, baseUrl });
-      _uwCooldown.set(email.toLowerCase().trim(), Date.now());
       res.json({ success: true, uploadCount: result.uploadCount });
     } catch (err: any) {
       console.error("[BANK STATEMENTS] submit-to-underwriting error:", err);
