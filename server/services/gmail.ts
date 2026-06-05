@@ -257,6 +257,7 @@ export class GmailService {
     htmlBody: string,
     attachments: Array<{ filename: string; content: Buffer; mimeType: string }>,
     cc?: string,
+    from?: string,
   ): Promise<boolean> {
     try {
       const gmail = await getUncachableGmailClient();
@@ -268,6 +269,7 @@ export class GmailService {
         /[^\x00-\x7F]/.test(s) ? `=?UTF-8?B?${Buffer.from(s, "utf8").toString("base64")}?=` : s;
 
       const headers = [
+        from ? `From: ${from}` : null,
         `To: ${to}`,
         cc ? `Cc: ${cc}` : null,
         `Subject: ${encodeSubject(subject)}`,
