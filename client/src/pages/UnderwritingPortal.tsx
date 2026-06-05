@@ -80,7 +80,15 @@ interface UnderwritingSnapshot {
   lowestBalance: number;
   nsfCount: number;
   negativeDays: number;
-  existingPositions: Array<{ funder: string; estimatedPayment: string; frequency: string }>;
+  existingPositions: Array<{
+    funder: string;
+    estimatedPayment: string;
+    frequency: string;
+    estimatedOriginalAmount: string | null;
+    estimatedTerm: string | null;
+    paymentsLowered: boolean;
+    anomalies: string | null;
+  }>;
   totalMonthlyDebtPayments: number;
   debtServiceRatio: number;
   redFlags: Array<{ flag: string; severity: string }>;
@@ -116,6 +124,8 @@ export default function UnderwritingPortal() {
     state: "", industry: "", amountSeeking: "", positionSeeking: "",
     outstandingBalance: "", creditScore: "", creditLeary: "", additionalNotes: "",
   });
+  const [ccReps, setCcReps] = useState<string[]>([]);
+  const [ccRepInput, setCcRepInput] = useState("");
 
   // Unqualified dialog
   const [unqualifiedDialogOpen, setUnqualifiedDialogOpen] = useState(false);
@@ -298,6 +308,8 @@ export default function UnderwritingPortal() {
       additionalNotes: "",
     });
     setSelectedLenders(new Set());
+    setCcReps([]);
+    setCcRepInput("");
     setShopDialogOpen(true);
   };
 
@@ -322,6 +334,7 @@ export default function UnderwritingPortal() {
       lenderEmails,
       statementIds: Array.from(selectedStatements),
       dealOverview,
+      ccReps: ccReps.filter(e => e.trim()),
     });
   };
 
@@ -646,12 +659,38 @@ export default function UnderwritingPortal() {
                       <div className="mt-4 space-y-4">
                         {snapshot.existingPositions.length > 0 && (
                           <div>
-                            <p className="font-semibold mb-1 text-gray-700">Existing Positions:</p>
-                            {snapshot.existingPositions.map((pos, i) => (
-                              <p key={i} className="text-gray-600 text-sm">{pos.funder}: {pos.estimatedPayment} ({pos.frequency})</p>
-                            ))}
+                            <p className="font-semibold mb-2 text-gray-700">Current Financing Positions:</p>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
+                                <thead>
+                                  <tr className="bg-gray-100 text-gray-600">
+                                    <th className="text-left py-2 px-2 font-semibold">Funder</th>
+                                    <th className="text-left py-2 px-2 font-semibold">Payment</th>
+                                    <th className="text-left py-2 px-2 font-semibold">Freq</th>
+                                    <th className="text-left py-2 px-2 font-semibold">Est. Amount</th>
+                                    <th className="text-left py-2 px-2 font-semibold">Est. Term</th>
+                                    <th className="text-left py-2 px-2 font-semibold">Notes</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {snapshot.existingPositions.map((pos, i) => (
+                                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                      <td className="py-1.5 px-2 font-medium text-gray-900">{pos.funder}</td>
+                                      <td className="py-1.5 px-2 text-gray-700">{pos.estimatedPayment}</td>
+                                      <td className="py-1.5 px-2 text-gray-700">{pos.frequency}</td>
+                                      <td className="py-1.5 px-2 text-gray-700">{pos.estimatedOriginalAmount || '—'}</td>
+                                      <td className="py-1.5 px-2 text-gray-700">{pos.estimatedTerm || '—'}</td>
+                                      <td className="py-1.5 px-2 text-gray-600">
+                                        {pos.paymentsLowered && <span className="text-amber-600 font-medium">Payments lowered. </span>}
+                                        {pos.anomalies || (pos.paymentsLowered ? '' : '—')}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                             {snapshot.totalMonthlyDebtPayments > 0 && (
-                              <p className="text-gray-500 text-xs mt-1">Total: ~${snapshot.totalMonthlyDebtPayments.toLocaleString()}/mo · DSR: {(snapshot.debtServiceRatio * 100).toFixed(0)}%</p>
+                              <p className="text-gray-500 text-xs mt-1.5">Total: ~${snapshot.totalMonthlyDebtPayments.toLocaleString()}/mo · DSR: {(snapshot.debtServiceRatio * 100).toFixed(0)}%</p>
                             )}
                           </div>
                         )}
@@ -738,6 +777,51 @@ export default function UnderwritingPortal() {
                 <div>
                   <Label className="text-xs">Additional Notes</Label>
                   <Textarea value={dealOverview.additionalNotes} onChange={e => setDealOverview(p => ({ ...p, additionalNotes: e.target.value }))} placeholder="Any additional notes..." rows={3} />
+                </div>
+
+                {/* CC Reps */}
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-700 uppercase tracking-wide mb-2">CC Reps on Emails</h3>
+                  <p className="text-xs text-gray-500 mb-2">dillon@ and admin@ are always CC'd automatically.</p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={ccRepInput}
+                      onChange={e => setCcRepInput(e.target.value)}
+                      placeholder="rep@todaycapitalgroup.com"
+                      className="text-sm"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && ccRepInput.trim()) {
+                          e.preventDefault();
+                          if (!ccReps.includes(ccRepInput.trim())) {
+                            setCcReps(prev => [...prev, ccRepInput.trim()]);
+                          }
+                          setCcRepInput("");
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (ccRepInput.trim() && !ccReps.includes(ccRepInput.trim())) {
+                          setCcReps(prev => [...prev, ccRepInput.trim()]);
+                        }
+                        setCcRepInput("");
+                      }}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                  {ccReps.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {ccReps.map((rep, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs cursor-pointer" onClick={() => setCcReps(prev => prev.filter((_, idx) => idx !== i))}>
+                          {rep} &times;
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Statement Selection */}

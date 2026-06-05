@@ -858,6 +858,10 @@ export interface UnderwritingSnapshot {
     funder: string;
     estimatedPayment: string;
     frequency: string;
+    estimatedOriginalAmount: string | null;
+    estimatedTerm: string | null;
+    paymentsLowered: boolean;
+    anomalies: string | null;
   }>;
   totalMonthlyDebtPayments: number;
   debtServiceRatio: number; // 0-1, existing payments / monthly revenue
@@ -929,7 +933,15 @@ Respond with ONLY this JSON structure (no extra text):
   "nsfCount": <number>,
   "negativeDays": <number - estimated days with negative balance>,
   "existingPositions": [
-    { "funder": "<name>", "estimatedPayment": "<e.g. $500/day>", "frequency": "<daily, weekly, monthly>" }
+    {
+      "funder": "<name>",
+      "estimatedPayment": "<e.g. $500/day>",
+      "frequency": "<daily, weekly, monthly>",
+      "estimatedOriginalAmount": "<estimated total advance amount based on payment patterns, e.g. '$50,000', or null if uncertain>",
+      "estimatedTerm": "<estimated term length based on first/last payment dates, e.g. '6 months', or null if uncertain>",
+      "paymentsLowered": <true if payment amounts decreased at any point during the period (could indicate renegotiation), false otherwise>,
+      "anomalies": "<any unusual patterns — missed payments, irregular amounts, sudden stops/restarts, double payments, etc. null if nothing unusual>"
+    }
   ],
   "totalMonthlyDebtPayments": <number - sum of all existing position payments per month>,
   "debtServiceRatio": <number 0-1, e.g. 0.35 means 35% of revenue goes to existing debt>,
