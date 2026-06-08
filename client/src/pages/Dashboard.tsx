@@ -1145,7 +1145,7 @@ function UnderwriterSnapshot({ email }: { email: string }) {
   );
 }
 
-function BankStatementsTab() {
+function BankStatementsTab({ applications = [] }: { applications: LoanApplication[] }) {
   const { toast } = useToast();
   const [expandedBusinesses, setExpandedBusinesses] = useState<Set<string>>(new Set());
   const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
@@ -4487,7 +4487,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="bank-statements">
-            <BankStatementsTab />
+            <BankStatementsTab applications={applications} />
           </TabsContent>
 
         </Tabs>
