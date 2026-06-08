@@ -7471,6 +7471,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/processing/submit — public endpoint for credit card processing review requests
+  app.post("/api/processing/submit", express.json({ limit: '30mb' }), async (req: Request, res: Response) => {
+    try {
+      const { firstName, lastName, email, phone, businessName, currentProcessor, monthlyVolume, fileBase64, fileName, fileMimeType } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Record service interest
+      await db.execute(sql`INSERT INTO service_interests (email, first_name, last_name, phone, business_name, service, other_details, source)
+        VALUES (${normalizedEmail}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, 'credit-card-processing',
+          ${[currentProcessor && `Processor: ${currentProcessor}`, monthlyVolume && `Volume: ${monthlyVolume}`].filter(Boolean).join(' | ') || null},
+          'processing-review'
+        ) ON CONFLICT DO NOTHING`);
+
+      console.log(`[PROCESSING] Review request from ${normalizedEmail} — ${businessName || 'no biz name'}`);
+
+      // Upload file to Object Storage if provided
+      if (fileBase64 && fileName) {
+        try {
+          const fileBuffer = Buffer.from(fileBase64, 'base64');
+          if (objectStorage.isConfigured()) {
+            const storedFileName = await objectStorage.uploadFile(fileBuffer, fileName, fileMimeType || 'application/pdf');
+            const { randomBytes } = await import('crypto');
+            const viewToken = randomBytes(32).toString('hex');
+            await storage.createBankStatementUpload({
+              email: normalizedEmail,
+              businessName: businessName || null,
+              loanApplicationId: null,
+              originalFileName: fileName,
+              storedFileName,
+              mimeType: fileMimeType || 'application/pdf',
+              fileSize: fileBuffer.length,
+              source: 'credit-card-processing',
+              viewToken,
+              receivedAt: null,
+              approvalStatus: null,
+              approvalNotes: null,
+              reviewedBy: null,
+              reviewedAt: null,
+              lenderId: null,
+              lenderName: null,
+            });
+            console.log(`[PROCESSING] Statement stored for ${normalizedEmail}: ${storedFileName}`);
+          }
+        } catch (uploadErr) {
+          console.warn('[PROCESSING] File upload failed (non-fatal):', uploadErr);
+        }
+      }
+
+      // Send team notification email
+      try {
+        const details = [
+          firstName || lastName ? `Name: ${[firstName, lastName].filter(Boolean).join(' ')}` : null,
+          phone ? `Phone: ${phone}` : null,
+          businessName ? `Business: ${businessName}` : null,
+          currentProcessor ? `Current Processor: ${currentProcessor}` : null,
+          monthlyVolume ? `Monthly Volume: ${monthlyVolume}` : null,
+          fileBase64 ? `Statement: Uploaded (${fileName})` : 'Statement: Not uploaded',
+        ].filter(Boolean).join('<br>');
+
+        const html = `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+            <h2 style="color:#0f1729;margin-bottom:16px;">New Credit Card Processing Review Request</h2>
+            <p style="color:#334155;font-size:15px;margin-bottom:20px;">A business has submitted a processing statement review request from the landing page.</p>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:20px;font-size:14px;color:#334155;line-height:1.8;">
+              <strong>Email:</strong> ${normalizedEmail}<br>${details}
+            </div>
+          </div>`;
+        await sendMarketingNotification(`New Processing Review: ${normalizedEmail}`, html);
+      } catch (emailErr) {
+        console.warn('[PROCESSING] Notification email failed (non-fatal):', emailErr);
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('[PROCESSING] submit error:', err);
+      res.status(500).json({ error: 'Failed to submit. Please try again.' });
+    }
+  });
+
   // Ensure website_contracts table exists with all columns
   try {
     await db.execute(sql`CREATE TABLE IF NOT EXISTS website_contracts (

@@ -79,6 +79,7 @@ import WhatWeNeed from "@/pages/WhatWeNeed";
 import UnderwritingPortal from "@/pages/UnderwritingPortal";
 import RepStats from "@/pages/RepStats";
 import RepScorecard from "@/pages/RepScorecard";
+import ProcessingReview from "@/pages/ProcessingReview";
 import NotFound from "@/pages/not-found";
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
@@ -193,6 +194,9 @@ function Router() {
       {/* Rep Stats & Scorecards */}
       <Route path="/admin/rep-stats" component={RepStats} />
       <Route path="/admin/rep-stats/:repName" component={RepScorecard} />
+
+      {/* Credit Card Processing Review — public landing page */}
+      <Route path="/processing-review" component={ProcessingReview} />
 
       {/* Lead Portal Routes */}
       <Route path="/what-we-need" component={WhatWeNeed} />

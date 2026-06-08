@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="x-apple-disable-message-reformatting">
+  <title>Keep more on every sale</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;700&display=swap');
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+    body { margin: 0; padding: 0; width: 100% !important; background-color: #eef1f6; }
+    .serif { font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif; }
+    .sans { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
+
+    @media screen and (max-width: 600px) {
+      .container { width: 100% !important; }
+      .px { padding-left: 24px !important; padding-right: 24px !important; }
+      .hero-h { font-size: 38px !important; line-height: 1.1 !important; }
+      .stack { display: block !important; width: 100% !important; }
+      .stat-num { font-size: 30px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0; padding:0; background-color:#eef1f6;">
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#eef1f6;">
+    A quick look at what you pay per transaction, and what you would keep.
+  </div>
+
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:#eef1f6;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+
+        <table role="presentation" class="container" border="0" cellpadding="0" cellspacing="0" width="600" style="width:600px; max-width:600px; background-color:#ffffff; border-radius:16px; overflow:hidden;">
+
+          <!-- HERO -->
+          <tr>
+            <td style="background-color:#0f1729; background-image:linear-gradient(135deg, #0f1729 0%, #16223f 60%, #15313a 100%); padding:48px 40px 44px 40px;" class="px">
+              <p class="sans" style="margin:0 0 14px 0; font-size:12px; letter-spacing:2px; text-transform:uppercase; color:#2dd4bf; font-weight:700;">Card processing</p>
+              <h1 class="serif hero-h" style="margin:0 0 16px 0; font-size:48px; line-height:1.05; color:#ffffff; font-weight:400;">Keep More On Every Sale</h1>
+              <p class="sans" style="margin:0; font-size:16px; line-height:1.5; color:#c7d2e3;">Have you checked your processing rates in the last year? We can beat them.</p>
+            </td>
+          </tr>
+
+          <!-- BODY -->
+          <tr>
+            <td style="padding:40px 40px 8px 40px;" class="px">
+              <p class="sans" style="margin:0 0 18px 0; font-size:16px; line-height:1.6; color:#1a1a1a;">Hi {{contact.first_name}},</p>
+              <p class="sans" style="margin:0 0 18px 0; font-size:16px; line-height:1.6; color:#334155;">If {{contact.company_name}} runs cards through Stripe, Square, or a similar platform, your rate may have crept up since you signed up. Most owners set it once and never look at it again.</p>
+              <p class="sans" style="margin:0 0 18px 0; font-size:16px; line-height:1.6; color:#334155;">We work with a processor that comes in under those rates. Same cards, same checkout your customers already use. The only thing that changes is your cost per transaction.</p>
+              <p class="sans" style="margin:0; font-size:16px; line-height:1.6; color:#334155;">Send one recent processing statement and we will show you the exact savings, side by side. Seeing the number costs nothing and commits you to nothing.</p>
+            </td>
+          </tr>
+
+          <!-- FEATURE CARDS -->
+          <tr>
+            <td style="padding:28px 40px 8px 40px;" class="px">
+
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="padding:0 0 14px 0;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">
+                      <tr>
+                        <td width="52" valign="top" style="padding:20px 0 20px 20px;">
+                          <div class="serif" style="font-size:30px; line-height:1; color:#2dd4bf;">1</div>
+                        </td>
+                        <td valign="top" style="padding:20px 20px 20px 8px;">
+                          <p class="sans" style="margin:0 0 4px 0; font-size:16px; font-weight:700; color:#0f1729;">Beat your current rate</p>
+                          <p class="sans" style="margin:0; font-size:14px; line-height:1.5; color:#475569;">Whatever you pay now, we work to come in under it.</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 0 14px 0;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">
+                      <tr>
+                        <td width="52" valign="top" style="padding:20px 0 20px 20px;">
+                          <div class="serif" style="font-size:30px; line-height:1; color:#2dd4bf;">2</div>
+                        </td>
+                        <td valign="top" style="padding:20px 20px 20px 8px;">
+                          <p class="sans" style="margin:0 0 4px 0; font-size:16px; font-weight:700; color:#0f1729;">Keep your setup</p>
+                          <p class="sans" style="margin:0; font-size:14px; line-height:1.5; color:#475569;">No new hardware required and minimal disruption to how you take payments.</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;">
+                      <tr>
+                        <td width="52" valign="top" style="padding:20px 0 20px 20px;">
+                          <div class="serif" style="font-size:30px; line-height:1; color:#2dd4bf;">3</div>
+                        </td>
+                        <td valign="top" style="padding:20px 20px 20px 8px;">
+                          <p class="sans" style="margin:0 0 4px 0; font-size:16px; font-weight:700; color:#0f1729;">Free statement review</p>
+                          <p class="sans" style="margin:0; font-size:14px; line-height:1.5; color:#475569;">Send one statement, get a clear side-by-side. No obligation.</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- STAT CALLOUT -->
+          <tr>
+            <td style="padding:28px 40px 8px 40px;" class="px">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:#0f1729; border-radius:12px;">
+                <tr>
+                  <td style="padding:26px 28px;">
+                    <p class="sans" style="margin:0 0 6px 0; font-size:12px; letter-spacing:1.5px; text-transform:uppercase; color:#2dd4bf; font-weight:700;">The review</p>
+                    <p class="serif stat-num" style="margin:0 0 6px 0; font-size:36px; line-height:1.1; color:#ffffff;">Two minutes, zero cost</p>
+                    <p class="sans" style="margin:0; font-size:14px; line-height:1.5; color:#c7d2e3;">Send one statement. We show you exactly what you would save against your current rate. No switch required to see the number.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- CTA -->
+          <tr>
+            <td align="center" style="padding:32px 40px 8px 40px;" class="px">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="border-radius:10px; background-color:#2dd4bf;">
+                    <a href="https://app.todaycapitalgroup.com/processing-review" target="_blank" class="sans" style="display:inline-block; padding:16px 40px; font-size:16px; font-weight:700; color:#0f1729; text-decoration:none; border-radius:10px;">See my savings</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- SIGNOFF -->
+          <tr>
+            <td style="padding:28px 40px 40px 40px;" class="px">
+              <p class="sans" style="margin:0 0 4px 0; font-size:16px; line-height:1.6; color:#334155;">Worth a two-minute look?</p>
+              <p class="sans" style="margin:0; font-size:16px; line-height:1.6; color:#1a1a1a; font-weight:700;">Trevor</p>
+              <p class="sans" style="margin:2px 0 0 0; font-size:14px; line-height:1.6; color:#64748b;">{{user.phone}}</p>
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color:#0f1729; padding:28px 40px;" class="px">
+              <p class="sans" style="margin:0 0 8px 0; font-size:13px; line-height:1.5; color:#8ea0bd; font-weight:700;">Today Capital Group, now operating as Guide Funding Group</p>
+              <p class="sans" style="margin:0 0 12px 0; font-size:12px; line-height:1.6; color:#64748b;">Woodland Hills, CA &nbsp;&middot;&nbsp; (818) 351-0225</p>
+              <p class="sans" style="margin:0 0 12px 0; font-size:11px; line-height:1.5; color:#5a6a85;">We are a broker, not a direct lender or payment processor. Savings estimates are illustrative and depend on your processing volume, card mix, and current rate. Actual rates are set by the processing partner.</p>
+              <p class="sans" style="margin:0; font-size:11px; line-height:1.5; color:#5a6a85;">You received this because you are a business contact of ours. <a href="{{unsubscribe_url}}" style="color:#8ea0bd; text-decoration:underline;">Unsubscribe</a></p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
