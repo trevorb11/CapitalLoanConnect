@@ -16,7 +16,7 @@ import {
   Search, FileText, Send, Ban, MessageSquare, Bot, Loader2,
   ChevronLeft, Building2, DollarSign, Clock, User, Phone, Mail,
   AlertTriangle, CheckCircle2, XCircle, Eye, Download, Shield,
-  Sparkles, ExternalLink, LogOut, Filter,
+  Sparkles, ExternalLink, LogOut,
 } from "lucide-react";
 
 interface AuthState {
@@ -45,6 +45,7 @@ interface QueueItem {
   hasDecision: boolean;
   decisionStatus: string | null;
   decisionId: string | null;
+  uwSubmittedAt: string | null;
 }
 
 interface LenderContact {
@@ -360,17 +361,24 @@ export default function UnderwritingPortal() {
     );
   }
 
+  const TERMINAL_STATUSES = new Set(['approved', 'declined', 'unqualified']);
+
   // Filtered queue
   const filteredQueue = queue.filter(item => {
     const matchesSearch = !searchQuery ||
       item.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.fullName || "").toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === "all" ||
-      (filterStatus === "pending" && !item.hasDecision) ||
+
+    const isTerminal = TERMINAL_STATUSES.has(item.decisionStatus || '');
+    const matchesFilter =
+      filterStatus === "all" ||
+      (filterStatus === "not-submitted" && !item.uwSubmittedAt && !isTerminal) ||
+      (filterStatus === "submitted" && !!item.uwSubmittedAt && !isTerminal) ||
       (filterStatus === "approved" && item.decisionStatus === "approved") ||
-      (filterStatus === "declined" && (item.decisionStatus === "declined" || item.decisionStatus === "unqualified")) ||
-      (filterStatus === "funded" && item.decisionStatus === "funded");
+      (filterStatus === "declined" && item.decisionStatus === "declined") ||
+      (filterStatus === "unqualified" && item.decisionStatus === "unqualified");
+
     return matchesSearch && matchesFilter;
   });
 
@@ -963,6 +971,30 @@ export default function UnderwritingPortal() {
     );
   }
 
+  const TAB_DEFS = [
+    { value: "all",           label: "All" },
+    { value: "not-submitted", label: "Not Yet Submitted" },
+    { value: "submitted",     label: "Submitted" },
+    { value: "approved",      label: "Approved" },
+    { value: "declined",      label: "Declined" },
+    { value: "unqualified",   label: "Unqualified" },
+  ] as const;
+
+  // Count per tab (unaffected by search so the numbers are always stable)
+  const tabCounts = TAB_DEFS.reduce((acc, tab) => {
+    const isTerminal = (s: string | null) => TERMINAL_STATUSES.has(s || '');
+    acc[tab.value] = queue.filter(item => {
+      if (tab.value === "all") return true;
+      if (tab.value === "not-submitted") return !item.uwSubmittedAt && !isTerminal(item.decisionStatus);
+      if (tab.value === "submitted")     return !!item.uwSubmittedAt && !isTerminal(item.decisionStatus);
+      if (tab.value === "approved")      return item.decisionStatus === "approved";
+      if (tab.value === "declined")      return item.decisionStatus === "declined";
+      if (tab.value === "unqualified")   return item.decisionStatus === "unqualified";
+      return false;
+    }).length;
+    return acc;
+  }, {} as Record<string, number>);
+
   // ── QUEUE VIEW ──
   return (
     <div className="min-h-screen bg-slate-50">
@@ -973,7 +1005,7 @@ export default function UnderwritingPortal() {
             <Shield className="h-6 w-6" />
             <div>
               <h1 className="text-lg font-bold">Underwriting Portal</h1>
-              <p className="text-xs text-blue-200">Showing files with statements uploaded in the past 30 days that have not yet been approved, declined, or marked unqualified</p>
+              <p className="text-xs text-blue-200">All files with bank statements uploaded in the past 30 days</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -986,125 +1018,137 @@ export default function UnderwritingPortal() {
       </div>
 
       <div className="max-w-7xl mx-auto p-6">
-        {/* Search + Filter Bar */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search by business name, email, or contact..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex items-center gap-1">
-            <Filter className="h-4 w-4 text-gray-400 mr-1" />
-            {["all", "pending", "approved", "declined", "funded"].map(f => (
-              <Button
-                key={f}
-                variant={filterStatus === f ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilterStatus(f)}
-                className={filterStatus === f ? "bg-[#1e3a5f]" : ""}
-              >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </Button>
-            ))}
-          </div>
-          <Badge variant="secondary" className="ml-auto">{filteredQueue.length} file{filteredQueue.length !== 1 ? 's' : ''}</Badge>
-        </div>
+        {/* Tabs */}
+        <Tabs value={filterStatus} onValueChange={setFilterStatus} className="mb-0">
+          <div className="flex items-center gap-4 mb-4 flex-wrap gap-y-2">
+            <TabsList className="bg-white border h-auto p-1 flex-wrap gap-1">
+              {TAB_DEFS.map(tab => (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  data-testid={`tab-uw-${tab.value}`}
+                  className="text-xs px-3 py-1.5 gap-1.5"
+                >
+                  {tab.label}
+                  <span className={`inline-flex items-center justify-center rounded-full text-xs font-semibold min-w-[18px] px-1 ${
+                    filterStatus === tab.value
+                      ? "bg-[#1e3a5f] text-white"
+                      : "bg-gray-100 text-gray-600"
+                  }`}>
+                    {tabCounts[tab.value] ?? 0}
+                  </span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-        {/* Queue Loading */}
-        {queueLoading && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            {/* Search */}
+            <div className="relative flex-1 min-w-48 max-w-sm ml-auto">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search by business, email, or contact..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-10"
+                data-testid="input-uw-search"
+              />
+            </div>
           </div>
-        )}
 
-        {/* Queue Table */}
-        {!queueLoading && filteredQueue.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-            <p className="font-medium">
-              {searchQuery
-                ? "No files matching your search."
-                : filterStatus !== "all"
-                  ? `No files with "${filterStatus}" status in the current queue.`
-                  : "All caught up — no files need review right now."}
-            </p>
-            {!searchQuery && filterStatus === "all" && (
-              <p className="text-sm text-gray-400 mt-1">Files appear here when bank statements have been uploaded in the past 30 days and no decision has been made yet.</p>
-            )}
-          </div>
-        )}
+          {TAB_DEFS.map(tab => (
+            <TabsContent key={tab.value} value={tab.value} className="mt-0">
+              {/* Queue Loading */}
+              {queueLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                </div>
+              )}
 
-        {!queueLoading && filteredQueue.length > 0 && (
-          <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600">Business</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600">Contact</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600">State</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600">Revenue</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600">Stmts</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600">Status</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600">Rep</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600">Uploaded</th>
-                  <th className="text-right py-3 px-4"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredQueue.map(item => (
-                  <tr
-                    key={item.email}
-                    className="border-b hover:bg-blue-50/50 cursor-pointer transition-colors"
-                    onClick={() => setSelectedEmail(item.email)}
-                  >
-                    <td className="py-3 px-4">
-                      <p className="font-medium text-[#1e3a5f]">{item.businessName}</p>
-                      <p className="text-xs text-gray-500">{item.email}</p>
-                    </td>
-                    <td className="py-3 px-4 text-gray-700">{item.fullName || "—"}</td>
-                    <td className="py-3 px-4 text-gray-700">{item.state || "—"}</td>
-                    <td className="py-3 px-4 text-gray-700">
-                      {item.monthlyRevenue ? "$" + Number(item.monthlyRevenue).toLocaleString() : "—"}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge variant="secondary">{item.statementCount}</Badge>
-                    </td>
-                    <td className="py-3 px-4">
-                      <StatusBadge status={item.decisionStatus} />
-                    </td>
-                    <td className="py-3 px-4 text-gray-700 text-xs">{item.agentName || "—"}</td>
-                    <td className="py-3 px-4 text-gray-500 text-xs">
-                      {item.latestUploadAt ? new Date(item.latestUploadAt).toLocaleDateString() : "—"}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {item.applicationId && (
-                          <a
-                            href={`/api/applications/${item.applicationId}/view`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                          >
-                            <Button variant="ghost" size="sm" className="text-gray-500 hover:text-blue-600" title="View Application">
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </Button>
-                          </a>
-                        )}
-                        <Button variant="ghost" size="sm" className="text-blue-600">
-                          Review <ChevronLeft className="h-3 w-3 ml-1 rotate-180" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              {/* Empty state */}
+              {!queueLoading && filteredQueue.length === 0 && (
+                <div className="text-center py-12 text-gray-500">
+                  <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                  <p className="font-medium">
+                    {searchQuery
+                      ? "No files match your search in this tab."
+                      : tab.value === "all"
+                        ? "No files with bank statements in the past 30 days."
+                        : `No files in "${tab.label}" right now.`}
+                  </p>
+                </div>
+              )}
+
+              {/* Table */}
+              {!queueLoading && filteredQueue.length > 0 && (
+                <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="text-left py-3 px-4 font-semibold text-gray-600">Business</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-600">Contact</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-600">State</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-600">Revenue</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-600">Stmts</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-600">Status</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-600">Rep</th>
+                        <th className="text-left py-3 px-4 font-semibold text-gray-600">Uploaded</th>
+                        <th className="text-right py-3 px-4"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredQueue.map(item => (
+                        <tr
+                          key={item.email}
+                          data-testid={`row-uw-${item.email}`}
+                          className="border-b hover:bg-blue-50/50 cursor-pointer transition-colors"
+                          onClick={() => setSelectedEmail(item.email)}
+                        >
+                          <td className="py-3 px-4">
+                            <p className="font-medium text-[#1e3a5f]">{item.businessName}</p>
+                            <p className="text-xs text-gray-500">{item.email}</p>
+                          </td>
+                          <td className="py-3 px-4 text-gray-700">{item.fullName || "—"}</td>
+                          <td className="py-3 px-4 text-gray-700">{item.state || "—"}</td>
+                          <td className="py-3 px-4 text-gray-700">
+                            {item.monthlyRevenue ? "$" + Number(item.monthlyRevenue).toLocaleString() : "—"}
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge variant="secondary">{item.statementCount}</Badge>
+                          </td>
+                          <td className="py-3 px-4">
+                            <QueueStatusBadge item={item} />
+                          </td>
+                          <td className="py-3 px-4 text-gray-700 text-xs">{item.agentName || "—"}</td>
+                          <td className="py-3 px-4 text-gray-500 text-xs">
+                            {item.latestUploadAt ? new Date(item.latestUploadAt).toLocaleDateString() : "—"}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {item.applicationId && (
+                                <a
+                                  href={`/api/applications/${item.applicationId}/view`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  <Button variant="ghost" size="sm" className="text-gray-500 hover:text-blue-600" title="View Application">
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </Button>
+                                </a>
+                              )}
+                              <Button variant="ghost" size="sm" className="text-blue-600">
+                                Review <ChevronLeft className="h-3 w-3 ml-1 rotate-180" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+          ))}
+        </Tabs>
       </div>
     </div>
   );
@@ -1139,4 +1183,15 @@ function StatusBadge({ status }: { status: string | null }) {
     case 'unqualified': return <Badge className="bg-orange-500 text-white">Unqualified</Badge>;
     default: return <Badge variant="outline">{status}</Badge>;
   }
+}
+
+function QueueStatusBadge({ item }: { item: QueueItem }) {
+  const TERMINAL = new Set(['approved', 'declined', 'unqualified', 'funded']);
+  if (item.decisionStatus && TERMINAL.has(item.decisionStatus)) {
+    return <StatusBadge status={item.decisionStatus} />;
+  }
+  if (item.uwSubmittedAt) {
+    return <Badge className="bg-indigo-600 text-white">Submitted</Badge>;
+  }
+  return <Badge variant="outline" className="text-gray-500 border-gray-300">Not Submitted</Badge>;
 }

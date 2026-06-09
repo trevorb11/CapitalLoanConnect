@@ -14099,7 +14099,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         uploadsByEmail.get(key)!.push(u);
       }
 
-      // Build queue items, then filter out files resolved within the past 30 days
+      // Build queue items — include ALL files with statements (no terminal-decision filter)
       // allDecisions is ordered updatedAt DESC so [0] is the most recent per email
       const queue = Array.from(uploadsByEmail.entries())
         .map(([email, uploads]) => {
@@ -14107,13 +14107,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const decisions = allDecisions.filter(d => d.businessEmail?.toLowerCase() === email);
           // Most recent decision (allDecisions sorted updatedAt DESC)
           const latestDecision = decisions.length > 0 ? decisions[0] : null;
-
-          // Has a terminal decision been made within the past 30 days?
-          const hasRecentTerminalDecision = decisions.some(d => {
-            if (!TERMINAL_STATUSES.has(d.status || '')) return false;
-            const decided = d.updatedAt || d.createdAt;
-            return decided && new Date(decided) >= thirtyDaysAgo;
-          });
 
           return {
             email,
@@ -14137,11 +14130,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             hasDecision: !!latestDecision,
             decisionStatus: latestDecision?.status || null,
             decisionId: latestDecision?.id || null,
-            hasRecentTerminalDecision,
+            // When the file was submitted to lenders via Shop File
+            uwSubmittedAt: (app as any)?.uwSubmittedAt || null,
           };
-        })
-        // Exclude files that already received a terminal decision in the past 30 days
-        .filter(item => !item.hasRecentTerminalDecision);
+        });
 
       // Sort by latest upload date descending (oldest uploads rise to the top of urgency)
       queue.sort((a, b) => b.latestUploadAt - a.latestUploadAt);
@@ -14311,6 +14303,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (sendErr: any) {
           console.error(`[SHOP] Failed to send to ${lender.lenderName}:`, sendErr);
           results.push({ lenderName: lender.lenderName, success: false, error: sendErr.message });
+        }
+      }
+
+      // Stamp uw_submitted_at on the loan application if at least one send succeeded
+      const anySuccess = results.some(r => r.success);
+      if (anySuccess) {
+        const normalizedEmail = email.toLowerCase().trim();
+        try {
+          await db.execute(sql`
+            UPDATE loan_applications
+            SET uw_submitted_at = NOW()
+            WHERE LOWER(email) = ${normalizedEmail}
+          `);
+          console.log(`[SHOP] Stamped uw_submitted_at for ${normalizedEmail}`);
+        } catch (stampErr) {
+          console.warn('[SHOP] Failed to stamp uw_submitted_at (non-fatal):', stampErr);
         }
       }
 
