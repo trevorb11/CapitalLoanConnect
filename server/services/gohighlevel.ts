@@ -767,6 +767,10 @@ export class GoHighLevelService {
       submission_date: new Date().toISOString(),
       source: "Full Application Form",
       
+      // ===== SIGNATURE =====
+      applicant_signature: application.applicantSignature || null,
+      signature_date: application.signatureDate || null,
+
       // ===== TAGS FOR GHL =====
       tags: ["application complete"],
     };
@@ -914,6 +918,10 @@ export class GoHighLevelService {
       source: "Partial Application Form",
       is_complete: application.isCompleted ? "Yes" : "No",
       current_step: application.currentStep,
+
+      // ===== SIGNATURE =====
+      applicant_signature: application.applicantSignature || null,
+      signature_date: application.signatureDate || null,
       
       // ===== TAGS FOR GHL =====
       tags: ["App Started"],
@@ -977,6 +985,10 @@ export class GoHighLevelService {
       utm_term: application.utmTerm || null,
       utm_content: application.utmContent || null,
       referrer_url: application.referrerUrl || null,
+
+      // ===== SIGNATURE =====
+      applicant_signature: application.applicantSignature || null,
+      signature_date: application.signatureDate || null,
       
       // ===== TAGS FOR GHL =====
       tags: ["lead-source-website", "interest form"],
