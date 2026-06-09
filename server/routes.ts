@@ -763,6 +763,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // POST /api/admin/claude/upsert/:table — convenience: update rows matching a where clause
+  // SAFETY: `where` with at least one key is REQUIRED — a missing or empty where would
+  // otherwise run an unguarded UPDATE with no WHERE clause and overwrite every row.
   app.post("/api/admin/claude/upsert/:name", claudeAuth, async (req, res) => {
     const tableName = req.params.name;
     if (!CLAUDE_WRITABLE_TABLES.includes(tableName)) {
@@ -772,15 +774,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!set || Object.keys(set).length === 0) {
       return res.status(400).json({ error: "body.set is required" });
     }
+    // Require at least one WHERE condition — without it the UPDATE would hit every row
+    if (!where || Object.keys(where).length === 0) {
+      return res.status(400).json({
+        error: "body.where is required and must contain at least one condition. An empty where clause would update every row in the table.",
+      });
+    }
     try {
       const params: any[] = [];
       const setClauses = Object.entries(set).map(([k, v]) => { params.push(v); return `${k} = $${params.length}`; });
-      let whereClause = '';
-      if (where && Object.keys(where).length > 0) {
-        const whereParts = Object.entries(where).map(([k, v]) => { params.push(v); return `${k} = $${params.length}`; });
-        whereClause = `WHERE ${whereParts.join(' AND ')}`;
-      }
-      const q = `UPDATE ${tableName} SET ${setClauses.join(', ')} ${whereClause} RETURNING *`;
+      const whereParts = Object.entries(where).map(([k, v]) => { params.push(v); return `${k} = $${params.length}`; });
+      const q = `UPDATE ${tableName} SET ${setClauses.join(', ')} WHERE ${whereParts.join(' AND ')} RETURNING *`;
       const result = await pool.query(q, params);
       res.json({ rowCount: result.rowCount, rows: result.rows });
     } catch (error) {
