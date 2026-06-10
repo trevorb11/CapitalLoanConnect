@@ -7544,6 +7544,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       utm_source TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     )`);
+    await db.execute(sql`ALTER TABLE service_interests ADD COLUMN IF NOT EXISTS rep_email TEXT`);
+    await db.execute(sql`ALTER TABLE service_interests ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'new'`);
   } catch (err) {
     console.error("[SERVICES] Failed to ensure table:", err);
   }
@@ -7551,10 +7553,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/services/interest — record a service interest click (no auth required)
   app.post("/api/services/interest", async (req: Request, res: Response) => {
     try {
-      const { email, firstName, lastName, phone, businessName, service, otherDetails, source, utmCampaign, utmSource } = req.body;
+      const { email, firstName, lastName, phone, businessName, service, otherDetails, source, utmCampaign, utmSource, repEmail } = req.body;
       if (!email || !service) return res.status(400).json({ error: "Email and service are required" });
 
       const normalizedEmail = email.toLowerCase().trim();
+      // repEmail: the logged-in rep's email, stored for dashboard filtering
+      const normalizedRepEmail = repEmail ? repEmail.toLowerCase().trim() : null;
 
       // Skip dedup for rep-referral — reps should always be able to submit
       if (source !== "rep-referral") {
@@ -7564,16 +7568,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      await db.execute(sql`INSERT INTO service_interests (email, first_name, last_name, phone, business_name, service, other_details, source, utm_campaign, utm_source)
-        VALUES (${normalizedEmail}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${service}, ${otherDetails || null}, ${source || 'direct'}, ${utmCampaign || null}, ${utmSource || null})`);
+      await db.execute(sql`INSERT INTO service_interests (email, first_name, last_name, phone, business_name, service, other_details, source, utm_campaign, utm_source, rep_email)
+        VALUES (${normalizedEmail}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${service}, ${otherDetails || null}, ${source || 'direct'}, ${utmCampaign || null}, ${utmSource || null}, ${normalizedRepEmail})`);
 
-      console.log(`[SERVICES] Interest recorded: ${normalizedEmail} -> ${service} (source: ${source || 'direct'})`);
+      console.log(`[SERVICES] Interest recorded: ${normalizedEmail} -> ${service} (source: ${source || 'direct'}, rep: ${normalizedRepEmail || 'none'})`);
       const { subject: svcSub, html: svcHtml } = buildServicesInterestEmail({ email: normalizedEmail, firstName, lastName, phone, businessName, service, otherDetails, source, utmSource });
       sendMarketingNotification(svcSub, svcHtml).catch(() => {});
       res.json({ success: true });
     } catch (err: any) {
       console.error("[SERVICES] interest error:", err);
       res.status(500).json({ error: "Failed to record interest" });
+    }
+  });
+
+  // GET /api/rep/website-referrals — rep sees their own referrals; admin sees all
+  app.get("/api/rep/website-referrals", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    try {
+      const { role, agentEmail } = req.session.user as any;
+      const isAdmin = role === 'admin' || role === 'underwriting';
+      let rows;
+      if (isAdmin) {
+        const result = await db.execute(sql`
+          SELECT * FROM service_interests
+          WHERE source = 'rep-referral'
+          ORDER BY created_at DESC
+        `);
+        rows = result.rows;
+      } else {
+        // Match by stored rep_email first; fall back to utm_source name match for legacy records
+        const result = await db.execute(sql`
+          SELECT * FROM service_interests
+          WHERE source = 'rep-referral'
+            AND (
+              LOWER(rep_email) = ${agentEmail.toLowerCase()}
+              OR (rep_email IS NULL AND LOWER(utm_source) = LOWER((
+                SELECT name FROM unnest(ARRAY[${agentEmail}]::text[]) AS name LIMIT 1
+              )))
+            )
+          ORDER BY created_at DESC
+        `);
+        // Simpler: just match by rep_email
+        const result2 = await db.execute(sql`
+          SELECT * FROM service_interests
+          WHERE source = 'rep-referral'
+            AND LOWER(rep_email) = ${agentEmail.toLowerCase()}
+          ORDER BY created_at DESC
+        `);
+        rows = result2.rows;
+      }
+      res.json(rows);
+    } catch (err: any) {
+      console.error("[REP-REFERRALS] fetch error:", err);
+      res.status(500).json({ error: "Failed to fetch referrals" });
+    }
+  });
+
+  // PATCH /api/rep/website-referrals/:id/status — update referral status (admin only)
+  app.patch("/api/rep/website-referrals/:id/status", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Auth required" });
+    const { role } = req.session.user as any;
+    if (role !== 'admin' && role !== 'underwriting') return res.status(403).json({ error: "Admin only" });
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      if (!status) return res.status(400).json({ error: "Status required" });
+      await db.execute(sql`UPDATE service_interests SET status = ${status} WHERE id = ${Number(id)}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to update status" });
     }
   });
 

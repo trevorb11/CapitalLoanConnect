@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, Globe, Loader2 } from "lucide-react";
+import { CheckCircle2, Globe, Loader2, LayoutList } from "lucide-react";
+import { Link } from "wouter";
 
 export default function RepWebsiteReferral() {
   const [repName, setRepName] = useState("");
+  const [repEmail, setRepEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -17,6 +19,21 @@ export default function RepWebsiteReferral() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // Auto-populate rep name/email from session if logged in
+  useEffect(() => {
+    fetch("/api/auth/check", { credentials: "include" })
+      .then(r => r.json())
+      .then(data => {
+        if (data.isAuthenticated && data.agentName) {
+          setRepName(data.agentName);
+          setRepEmail(data.agentEmail || "");
+          setIsLoggedIn(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const resetForm = () => {
     setFirstName(""); setLastName(""); setEmail(""); setPhone("");
@@ -44,6 +61,7 @@ export default function RepWebsiteReferral() {
           source: "rep-referral",
           utmSource: repName.trim(),
           utmCampaign: "rep-referral",
+          repEmail: repEmail.trim() || null,
         }),
       });
       const data = await res.json();
@@ -66,13 +84,22 @@ export default function RepWebsiteReferral() {
             <p className="text-gray-400 text-sm">
               The website lead has been saved and marketing has been notified.
             </p>
-            <Button
-              onClick={() => { setSubmitted(false); resetForm(); }}
-              className="bg-blue-600 text-white"
-              data-testid="button-submit-another"
-            >
-              Submit Another Lead
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => { setSubmitted(false); resetForm(); }}
+                className="bg-blue-600 text-white"
+                data-testid="button-submit-another"
+              >
+                Submit Another Lead
+              </Button>
+              {isLoggedIn && (
+                <Link href="/rep/website-referral-dashboard">
+                  <Button variant="outline" className="w-full border-gray-700 text-gray-300 hover:text-white gap-2" data-testid="button-view-dashboard">
+                    <LayoutList className="w-4 h-4" /> View My Referrals
+                  </Button>
+                </Link>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -91,6 +118,13 @@ export default function RepWebsiteReferral() {
           <p className="text-gray-400 text-sm max-w-sm mx-auto">
             Fill this out for any client interested in a website build. Marketing will be notified and follow up directly.
           </p>
+          {isLoggedIn && (
+            <Link href="/rep/website-referral-dashboard">
+              <button className="text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-2 transition-colors" data-testid="link-my-referrals">
+                View my referral leads
+              </button>
+            </Link>
+          )}
         </div>
 
         <Card className="bg-gray-900 border-gray-800">
@@ -107,8 +141,12 @@ export default function RepWebsiteReferral() {
                   placeholder="e.g. Jonathan Rendon"
                   className="bg-gray-800 border-gray-700 text-white placeholder:text-gray-500"
                   data-testid="input-rep-name"
+                  readOnly={isLoggedIn}
                   required
                 />
+                {isLoggedIn && (
+                  <p className="text-xs text-gray-600">Auto-filled from your login session.</p>
+                )}
               </div>
 
               <div className="border-t border-gray-800 pt-4">
