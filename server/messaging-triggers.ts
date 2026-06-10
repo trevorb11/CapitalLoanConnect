@@ -31,6 +31,8 @@ export const TRIGGER_KEYS = {
   SCHEDULED_CHECKS:       'trigger.scheduled_checks',
   PORTAL_AFTER_INTAKE:    'trigger.portal_after_intake',
   PORTAL_AFTER_APPLICATION:'trigger.portal_after_application',
+  LEAD_NURTURE:           'trigger.lead_nurture',
+  LEAD_QUALIFIED:         'trigger.lead_qualified',
 } as const;
 
 // In-memory cache so we don't query DB on every single trigger fire.

@@ -144,6 +144,11 @@ export const loanApplications = pgTable("loan_applications", {
   utmContent: text("utm_content"),    // A/B test or ad variation identifier
   referrerUrl: text("referrer_url"),  // The full referring URL
 
+  // --- Submission Tracking ---
+  // Most recent completed intake/full-app submission (re-submissions update this
+  // so the file bubbles to the top of the dashboard without creating duplicates)
+  lastSubmissionAt: timestamp("last_submission_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -152,6 +157,7 @@ export const insertLoanApplicationSchema = createInsertSchema(loanApplications).
   id: true,
   createdAt: true,
   updatedAt: true,
+  lastSubmissionAt: true,
 }).extend({
   utmSource: z.string().optional(),
   utmMedium: z.string().optional(),
@@ -160,6 +166,20 @@ export const insertLoanApplicationSchema = createInsertSchema(loanApplications).
   utmContent: z.string().optional(),
   referrerUrl: z.string().optional(),
 });
+
+// One row per completed intake/full-application submission. Keeps the single
+// loan_applications record per business (no duplicates) while preserving the
+// full submission history for the dashboard dropdown.
+export const applicationSubmissions = pgTable("application_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  loanApplicationId: varchar("loan_application_id").notNull(),
+  email: text("email"),
+  submissionType: text("submission_type").notNull(), // 'intake' | 'full_application'
+  requestedAmount: decimal("requested_amount", { precision: 12, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type ApplicationSubmission = typeof applicationSubmissions.$inferSelect;
 
 export type InsertLoanApplication = z.infer<typeof insertLoanApplicationSchema>;
 export type LoanApplication = typeof loanApplications.$inferSelect;
@@ -733,6 +753,9 @@ export const leadPortalAccounts = pgTable("lead_portal_accounts", {
   qualificationScore: integer("qualification_score"), // 0-100
   qualificationTier: text("qualification_tier"), // from analysis
   isQualified: boolean("is_qualified").default(false),
+  qualifiedAt: timestamp("qualified_at"), // when all signals were first met
+  qualifiedNotifiedAt: timestamp("qualified_notified_at"), // when the qualified email was sent
+  nurtureStepsSent: text("nurture_steps_sent"), // CSV of nurture steps already sent (day1,day3,day7)
   // Admin tracking
   assignedRep: text("assigned_rep"), // rep email if claimed
   notes: text("notes"), // internal notes
@@ -778,6 +801,16 @@ export const insertLeadPositionSchema = createInsertSchema(leadPositions).omit({
 
 export type InsertLeadPosition = z.infer<typeof insertLeadPositionSchema>;
 export type LeadPosition = typeof leadPositions.$inferSelect;
+
+// Lead OTP codes — DB-backed SMS sign-in codes for /track (one active code per phone)
+export const leadOtpCodes = pgTable("lead_otp_codes", {
+  phone: text("phone").primaryKey(),
+  code: text("code").notNull(),
+  email: text("email").notNull(),
+  attempts: integer("attempts").default(0),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
 // ═══════════════════════════════════════════════════════════════
 // SERVICES INTEREST TRACKING

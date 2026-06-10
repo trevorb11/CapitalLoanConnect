@@ -19,9 +19,11 @@ import {
   type MerchantBankSnapshot, type InsertMerchantBankSnapshot,
   repCallStats,
   type RepCallStat, type InsertRepCallStat,
+  applicationSubmissions,
+  type ApplicationSubmission,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, desc, sql, ilike, getTableColumns, isNotNull, isNull, gte } from "drizzle-orm";
+import { eq, and, or, desc, sql, ilike, getTableColumns, isNotNull, isNull, gte, inArray } from "drizzle-orm";
 
 // Retry wrapper for database operations to handle connection drops
 async function withRetry<T>(
@@ -72,6 +74,7 @@ export interface IStorage {
   updateLoanApplication(id: string, application: Partial<InsertLoanApplication>): Promise<LoanApplication | undefined>;
   getAllLoanApplications(): Promise<LoanApplication[]>;
   getAllLoanApplicationsSummary(): Promise<Omit<LoanApplication, 'applicantSignature'>[]>;
+  getSubmissionsForApplicationIds(ids: string[]): Promise<ApplicationSubmission[]>;
   getApplicationsSummaryFiltered(opts: { search?: string; limit?: number; agentEmail?: string }): Promise<Omit<LoanApplication, 'applicantSignature'>[]>;
   getApplicationsCount(opts?: { search?: string; agentEmail?: string }): Promise<number>;
   getApplicationEmailsByAgentEmail(agentEmail: string): Promise<string[]>;
@@ -328,7 +331,17 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select(cols)
       .from(loanApplications)
-      .orderBy(desc(loanApplications.createdAt));
+      .orderBy(desc(sql`COALESCE(${loanApplications.lastSubmissionAt}, ${loanApplications.createdAt})`));
+  }
+
+  // Submission history for a set of applications (dashboard dropdown)
+  async getSubmissionsForApplicationIds(ids: string[]): Promise<ApplicationSubmission[]> {
+    if (ids.length === 0) return [];
+    return await db
+      .select()
+      .from(applicationSubmissions)
+      .where(inArray(applicationSubmissions.loanApplicationId, ids))
+      .orderBy(desc(applicationSubmissions.createdAt));
   }
 
   async getApplicationsSummaryFiltered(opts: {
@@ -354,9 +367,10 @@ export class DatabaseStorage implements IStorage {
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const base = db.select(cols).from(loanApplications);
+    const recency = desc(sql`COALESCE(${loanApplications.lastSubmissionAt}, ${loanApplications.createdAt})`);
     const ordered = where
-      ? base.where(where).orderBy(desc(loanApplications.createdAt))
-      : base.orderBy(desc(loanApplications.createdAt));
+      ? base.where(where).orderBy(recency)
+      : base.orderBy(recency);
     const limited  = opts.limit  ? ordered.limit(opts.limit)   : ordered;
     const paginated = opts.offset ? limited.offset(opts.offset) : limited;
     return await paginated;

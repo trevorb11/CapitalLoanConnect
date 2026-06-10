@@ -197,6 +197,31 @@ export function buildServicesInterestEmail(data: {
   };
 }
 
+export function buildLeadQualifiedAlertEmail(data: {
+  email: string;
+  name?: string | null;
+  businessName?: string | null;
+  phone?: string | null;
+  monthlyRevenue?: string | null;
+  signals?: string | null;
+}): { subject: string; html: string } {
+  return {
+    subject: `[Qualified Lead] ${data.businessName || data.name || data.email} just met all funding signals`,
+    html: emailWrapper(
+      "Lead Portal Account Fully Qualified",
+      "/track",
+      "#059669",
+      row("Email", data.email) +
+      row("Name", data.name) +
+      row("Business", data.businessName) +
+      row("Phone", data.phone) +
+      row("Monthly Revenue", data.monthlyRevenue) +
+      row("Signals", data.signals) +
+      row("Next Step", "Lead was emailed an apply CTA — follow up within 24h"),
+    ),
+  };
+}
+
 export function buildLeadPortalSignupEmail(data: {
   email: string;
   firstName?: string | null;

@@ -24,7 +24,7 @@ interface TriggerConfig {
   label: string;
   description: string;
   icon: React.ReactNode;
-  category: "instant" | "scheduled" | "portal";
+  category: "instant" | "scheduled" | "portal" | "lead";
 }
 
 const TRIGGERS: TriggerConfig[] = [
@@ -91,6 +91,22 @@ const TRIGGERS: TriggerConfig[] = [
       "Automatically send a merchant portal activation link after someone completes the full application. For rep-specific applications, fires after the app is submitted.",
     icon: <Send className="w-5 h-5 text-indigo-500" />,
     category: "portal",
+  },
+  {
+    key: "trigger.lead_nurture",
+    label: "Lead Nurture Sequence",
+    description:
+      "Email sequence for /track signups: day 1 (add a position), day 3 (connect bank), day 7 (readiness check-in). Off by default — no nurture emails send until enabled here.",
+    icon: <Clock className="w-5 h-5 text-cyan-500" />,
+    category: "lead",
+  },
+  {
+    key: "trigger.lead_qualified",
+    label: "Qualified Lead Notifications",
+    description:
+      "When a /track lead meets all funding-readiness signals: emails the lead a pre-qualified message and alerts the assigned rep. Qualification is still tracked when off — only the emails pause.",
+    icon: <CheckCircle2 className="w-5 h-5 text-teal-500" />,
+    category: "lead",
   },
 ];
 
@@ -201,6 +217,7 @@ export default function AutomatedTriggers() {
   const instantTriggers = TRIGGERS.filter((t) => t.category === "instant");
   const scheduledTriggers = TRIGGERS.filter((t) => t.category === "scheduled");
   const portalTriggers = TRIGGERS.filter((t) => t.category === "portal");
+  const leadTriggers = TRIGGERS.filter((t) => t.category === "lead");
   const allEnabled = TRIGGERS.every((t) => isEnabled(t.key));
   const allDisabled = TRIGGERS.every((t) => !isEnabled(t.key));
 
@@ -296,6 +313,26 @@ export default function AutomatedTriggers() {
         </p>
         <div className="space-y-3">
           {portalTriggers.map((trigger) => (
+            <TriggerCard
+              key={trigger.key}
+              trigger={trigger}
+              enabled={isEnabled(trigger.key)}
+              onToggle={() => handleToggle(trigger.key)}
+              isPending={toggleMutation.isPending}
+            />
+          ))}
+        </div>
+
+        {/* Lead Portal Triggers */}
+        <h2 className="text-lg font-semibold mb-3 text-muted-foreground uppercase tracking-wide text-sm mt-8">
+          Lead Portal (/track)
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Automated emails for free tracking-dashboard signups at /track. The
+          nurture sequence is off by default and only runs when enabled here.
+        </p>
+        <div className="space-y-3">
+          {leadTriggers.map((trigger) => (
             <TriggerCard
               key={trigger.key}
               trigger={trigger}

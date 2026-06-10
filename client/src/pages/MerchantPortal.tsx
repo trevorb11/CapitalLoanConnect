@@ -2538,7 +2538,7 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
   );
 }
 
-function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
+function DealDetail({ deal, onBack, previewToken }: { deal: Deal; onBack: () => void; previewToken?: string | null }) {
   const calc = calcDeal(deal);
 
   return (
@@ -2649,6 +2649,9 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
       {/* Renewal Eligibility Tracker */}
       <RenewalEligibilityTracker deal={deal} />
 
+      {/* Payment Schedule + Payoff Letter */}
+      <PaymentScheduleCard deal={deal} previewToken={previewToken} />
+
       <div className="contact-strip" style={{ marginTop: "20px" }}>
         <div className="contact-strip-text">
           Questions about your position?{" "}
@@ -2670,6 +2673,131 @@ function DealDetail({ deal, onBack }: { deal: Deal; onBack: () => void }) {
         >
           Contact My Rep
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── PAYMENT SCHEDULE + PAYOFF LETTER ─────────────────────────────────────
+function PaymentScheduleCard({ deal, previewToken }: { deal: Deal; previewToken?: string | null }) {
+  const calc = calcDeal(deal);
+  const [expanded, setExpanded] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const paymentDate = (n: number): Date => {
+    const funded = new Date(deal.fundedDate);
+    const freq = deal.paymentFrequency;
+    if (freq === "daily") return addBusinessDays(funded, n);
+    if (freq === "weekly") return new Date(funded.getTime() + n * 7 * 86400000);
+    if (freq === "bi-weekly" || freq === "biweekly") return new Date(funded.getTime() + n * 14 * 86400000);
+    const d = new Date(funded);
+    d.setMonth(d.getMonth() + n);
+    return d;
+  };
+
+  const allRows = Array.from({ length: calc.totalPayments }, (_, i) => {
+    const n = i + 1;
+    return {
+      n,
+      date: paymentDate(n),
+      status: n <= calc.paymentsMade ? "paid" : n === calc.paymentsMade + 1 ? "next" : "upcoming",
+    };
+  });
+  // Collapsed view: last 3 paid + next 5 scheduled
+  const windowStart = Math.max(0, calc.paymentsMade - 3);
+  const visibleRows = expanded ? allRows : allRows.slice(windowStart, calc.paymentsMade + 5);
+
+  const downloadLetter = async () => {
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const headers: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
+      const res = await fetch(`/api/merchant/payoff-letter?dealId=${encodeURIComponent(String(deal.id))}`, {
+        credentials: "include", headers,
+      });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `payoff-statement-${deal.lender.replace(/\s+/g, "-").toLowerCase()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setDownloadError("Download failed — please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="tracker-card" style={{ marginTop: 20, textAlign: "left" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#1B2E4D" }}>Payment Schedule</div>
+          <div style={{ fontSize: 12, color: "#6B7280" }}>
+            Estimated {deal.paymentFrequency} payments of {fmt$(calc.paymentAmount)} based on your original terms
+          </div>
+        </div>
+        <button
+          onClick={downloadLetter}
+          disabled={downloading}
+          style={{
+            background: "#fff", color: "#0d9488", border: "1px solid #0d9488", borderRadius: 8,
+            padding: "8px 16px", fontSize: 13, fontWeight: 600,
+            cursor: downloading ? "wait" : "pointer", opacity: downloading ? 0.7 : 1,
+          }}
+        >
+          {downloading ? "Preparing..." : "Download Payoff Letter (PDF)"}
+        </button>
+      </div>
+      {downloadError && <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 10 }}>{downloadError}</div>}
+
+      <div style={{ maxHeight: expanded ? 360 : "none", overflowY: expanded ? "auto" : "visible", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: "#f9fafb", color: "#6B7280", textAlign: "left" }}>
+              <th style={{ padding: "8px 12px", fontWeight: 600 }}>#</th>
+              <th style={{ padding: "8px 12px", fontWeight: 600 }}>Date</th>
+              <th style={{ padding: "8px 12px", fontWeight: 600 }}>Amount</th>
+              <th style={{ padding: "8px 12px", fontWeight: 600 }}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((r) => (
+              <tr key={r.n} style={{ borderTop: "1px solid #f3f4f6", background: r.status === "next" ? "#f0fdfa" : "transparent" }}>
+                <td style={{ padding: "8px 12px", color: "#6B7280" }}>{r.n}</td>
+                <td style={{ padding: "8px 12px" }}>{fmtDate(r.date)}</td>
+                <td style={{ padding: "8px 12px" }}>{fmt$(calc.paymentAmount)}</td>
+                <td style={{ padding: "8px 12px" }}>
+                  {r.status === "paid" ? (
+                    <span style={{ color: "#059669", fontWeight: 600 }}>&#10003; Paid</span>
+                  ) : r.status === "next" ? (
+                    <span style={{ color: "#0d9488", fontWeight: 700 }}>Next payment</span>
+                  ) : (
+                    <span style={{ color: "#9ca3af" }}>Scheduled</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {allRows.length > visibleRows.length || expanded ? (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{ background: "none", border: "none", color: "#0d9488", fontWeight: 600, fontSize: 13, cursor: "pointer", marginTop: 10, padding: 0 }}
+        >
+          {expanded ? "Show fewer payments" : `Show full schedule (${allRows.length} payments)`}
+        </button>
+      ) : null}
+
+      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 10 }}>
+        Estimates assume all scheduled payments were made on time. Confirm exact payoff figures with {deal.lender} or your rep.
       </div>
     </div>
   );
@@ -3314,7 +3442,7 @@ interface FinancialInsights {
     revenueTrend: 'growing' | 'stable' | 'declining';
     lastUpdated: string;
   } | null;
-  renewalNudge: { eligible: boolean; message: string };
+  renewalNudge: { eligible: boolean; message: string; reasons?: string[] };
   statements: StatementFile[];
 }
 
@@ -3538,6 +3666,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   const [syncError, setSyncError] = useState<string | null>(null);
   const [showBanks, setShowBanks] = useState(false);
   const [dataSource, setDataSource] = useState<DataSource>("chirp");
+  const [renewalReqState, setRenewalReqState] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
@@ -4195,12 +4324,74 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
       )}
 
       {/* ── Renewal Nudge ── */}
-      {(insights?.renewalNudge?.eligible || (chirpConnected && monthlyRevenue > 10000 && healthScore >= 60)) && (
-        <div className="renewal-nudge" onClick={onSwitchToMessages} role="button" tabIndex={0}>
-          <span>{insights?.renewalNudge?.message || "Your financials look great! You may qualify for additional funding."}</span>
-          <span style={{ color: "#0d9488", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>Talk to your rep &rarr;</span>
-        </div>
-      )}
+      {(insights?.renewalNudge?.eligible || (chirpConnected && monthlyRevenue > 10000 && healthScore >= 60)) && (() => {
+        const reasons = (insights?.renewalNudge?.reasons?.length
+          ? insights.renewalNudge.reasons
+          : [
+              healthScore >= 60 ? `Financial health score of ${healthScore}/100 — above our renewal threshold of 60` : null,
+              monthlyRevenue > 10000 ? `Verified monthly revenue of ~${fmt$(monthlyRevenue)} — above the $10,000 minimum` : null,
+            ].filter(Boolean) as string[]);
+        const requestRenewal = async () => {
+          if (renewalReqState === "sending" || renewalReqState === "sent") return;
+          setRenewalReqState("sending");
+          try {
+            const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+            if (previewToken) reqHeaders["x-admin-preview-token"] = previewToken;
+            const res = await fetch("/api/merchant/renewal-request", {
+              method: "POST", credentials: "include",
+              headers: reqHeaders,
+              body: JSON.stringify({}),
+            });
+            if (!res.ok) throw new Error();
+            setRenewalReqState("sent");
+          } catch {
+            setRenewalReqState("error");
+          }
+        };
+        return (
+          <div className="renewal-nudge" style={{ display: "block", cursor: "default" }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+              {insights?.renewalNudge?.message || "Your financials look great! You may qualify for additional funding."}
+            </div>
+            {reasons.length > 0 && (
+              <ul style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 13, lineHeight: 1.7 }}>
+                {reasons.map((r, i) => <li key={i}>{r}</li>)}
+              </ul>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              {renewalReqState === "sent" ? (
+                <span style={{ color: "#059669", fontWeight: 600, fontSize: 13 }}>
+                  &#10003; Request sent — your rep will reach out within 1 business day.
+                </span>
+              ) : (
+                <button
+                  onClick={requestRenewal}
+                  disabled={renewalReqState === "sending"}
+                  style={{
+                    background: "#0d9488", color: "#fff", border: "none", borderRadius: 8,
+                    padding: "8px 18px", fontSize: 13, fontWeight: 600,
+                    cursor: renewalReqState === "sending" ? "wait" : "pointer",
+                    opacity: renewalReqState === "sending" ? 0.7 : 1,
+                  }}
+                >
+                  {renewalReqState === "sending" ? "Sending..." : "Request Renewal Review"}
+                </button>
+              )}
+              <span
+                onClick={onSwitchToMessages}
+                role="button"
+                tabIndex={0}
+                style={{ color: "#0d9488", fontWeight: 600, cursor: "pointer", fontSize: 13 }}
+              >
+                Message your rep &rarr;
+              </span>
+              {renewalReqState === "error" && (
+                <span style={{ color: "#dc2626", fontSize: 13 }}>Something went wrong — please try again.</span>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -5246,7 +5437,7 @@ export default function MerchantPortal() {
 
             <div className="page-wrap">
               {selectedDeal ? (
-                <DealDetail deal={selectedDeal} onBack={() => { setSelectedDeal(null); setActiveTab('positions'); }} />
+                <DealDetail deal={selectedDeal} previewToken={adminPreviewToken} onBack={() => { setSelectedDeal(null); setActiveTab('positions'); }} />
               ) : (
                 <>
                   <div className="page-title">My Portal</div>

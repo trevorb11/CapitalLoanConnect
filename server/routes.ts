@@ -28,6 +28,8 @@ const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
 import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail } from "./services/email";
+import { evaluateLeadQualification } from "./services/leadQualification";
+import { startLeadNurtureScheduler } from "./services/leadNurture";
 import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncDecisionToProductionSf } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
@@ -1326,6 +1328,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Ensure submission-history table exists (one row per completed intake/full-app
+  // submission — keeps a single file per business while tracking re-submissions)
+  try {
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS application_submissions (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      loan_application_id VARCHAR NOT NULL,
+      email TEXT,
+      submission_type TEXT NOT NULL,
+      requested_amount DECIMAL(12,2),
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_application_submissions_app_id ON application_submissions (loan_application_id)`);
+    await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS last_submission_at TIMESTAMP`);
+    // Backfill once: original submission row + last_submission_at for existing completed apps
+    await db.execute(sql`INSERT INTO application_submissions (loan_application_id, email, submission_type, requested_amount, created_at)
+      SELECT id, email,
+             CASE WHEN is_full_application_completed THEN 'full_application' ELSE 'intake' END,
+             requested_amount, created_at
+      FROM loan_applications
+      WHERE (is_completed = true OR is_full_application_completed = true)
+        AND NOT EXISTS (SELECT 1 FROM application_submissions s WHERE s.loan_application_id = loan_applications.id)`);
+    await db.execute(sql`UPDATE loan_applications SET last_submission_at = created_at WHERE last_submission_at IS NULL`);
+  } catch (err) {
+    console.error("[SUBMISSIONS] Failed to ensure application_submissions table:", err);
+  }
+
+  // Record a completed submission on a file and bump it to the top of the
+  // dashboard. Dedupes within 1 hour per (application, type) so autosaves and
+  // double-clicks don't create noise. Never throws.
+  async function recordApplicationSubmission(
+    loanApplicationId: string,
+    email: string | null | undefined,
+    submissionType: 'intake' | 'full_application',
+    requestedAmount?: string | number | null,
+  ): Promise<void> {
+    try {
+      const recent = await db.execute(
+        sql`SELECT id FROM application_submissions
+            WHERE loan_application_id = ${loanApplicationId}
+              AND submission_type = ${submissionType}
+              AND created_at >= NOW() - INTERVAL '1 hour'
+            LIMIT 1`,
+      );
+      if (recent.rows.length === 0) {
+        const amount = requestedAmount !== undefined && requestedAmount !== null && String(requestedAmount).trim() !== ''
+          ? String(requestedAmount) : null;
+        await db.execute(
+          sql`INSERT INTO application_submissions (loan_application_id, email, submission_type, requested_amount)
+              VALUES (${loanApplicationId}, ${email ? email.toLowerCase() : null}, ${submissionType}, ${amount})`,
+        );
+        console.log(`[SUBMISSIONS] Recorded ${submissionType} submission for app ${loanApplicationId}`);
+      }
+      // Always bump recency so the file surfaces at the top of the dashboard
+      await db.execute(
+        sql`UPDATE loan_applications SET last_submission_at = NOW() WHERE id = ${loanApplicationId}`,
+      );
+    } catch (err: any) {
+      console.error(`[SUBMISSIONS] Failed to record submission for ${loanApplicationId}:`, err?.message || err);
+    }
+  }
+
   // Create new loan application
   app.post("/api/applications", async (req, res) => {
     try {
@@ -1488,7 +1551,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Filter out empty values to preserve previously entered data
         const filteredApplicationData = filterEmptyValues(applicationData);
         const updatedApp = await storage.updateLoanApplication(existingApp.id, filteredApplicationData);
-        
+
+        // A completed intake on an existing file = a new submission. Record it
+        // (instead of creating a duplicate record) and bump the file to the top.
+        if (applicationData.isCompleted) {
+          await recordApplicationSubmission(
+            existingApp.id,
+            applicationData.email || existingApp.email,
+            'intake',
+            applicationData.requestedAmount ?? existingApp.requestedAmount,
+          );
+        }
+
         // Send webhook only (GHL API sync disabled for now)
         // Only send intake webhook when explicitly completed
         if (applicationData.isCompleted && updatedApp) {
@@ -1546,6 +1620,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         agentViewUrl,
         ...(fundingReportUrl && { fundingReportUrl }),
       });
+
+      // Record the first submission when the intake completes in one shot
+      if (applicationData.isCompleted) {
+        await recordApplicationSubmission(application.id, applicationData.email, 'intake', applicationData.requestedAmount);
+      }
 
       // Sync to Salesforce (fire-and-forget — never blocks the merchant experience)
       syncApplicationToSalesforce(updatedApp || application).then(sfResult => {
@@ -1912,8 +1991,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Send webhook only when full application is NEWLY completed in this request
       // (not on every subsequent auto-save after it was already completed)
+      // Record full-application submissions: first completion, plus re-signed
+      // re-submissions (signatureDate is only sent on the final signing step)
+      if (updates.isFullApplicationCompleted && updatedApp.isFullApplicationCompleted && (!wasAlreadyCompleted || updates.signatureDate)) {
+        await recordApplicationSubmission(id, updatedApp.email, 'full_application', updatedApp.requestedAmount);
+      }
+
       if (updates.isFullApplicationCompleted && updatedApp.isFullApplicationCompleted && !wasAlreadyCompleted) {
-        ghlService.sendWebhook(updatedApp).catch(err => 
+        ghlService.sendWebhook(updatedApp).catch(err =>
           console.error("Webhook error (non-blocking):", err)
         );
         // SMS: app_submitted (full 11-step application)
@@ -2075,10 +2160,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allPartners = await storage.getAllPartners();
       const partnerNameMap = new Map(allPartners.map(p => [p.id, p.contactName]));
 
-      const enrich = (apps: any[]) => apps.map(app => ({
-        ...app,
-        referralPartnerName: app.referralPartnerId ? (partnerNameMap.get(app.referralPartnerId) ?? null) : null,
-      }));
+      const enrich = async (apps: any[]) => {
+        // Attach submission history so the dashboard can show all intake/full-app
+        // submissions on a file (one record per business, many submissions)
+        const subsByApp = new Map<string, { id: string; submissionType: string; requestedAmount: string | null; createdAt: Date | null }[]>();
+        try {
+          const subs = await storage.getSubmissionsForApplicationIds(apps.map(a => a.id));
+          for (const s of subs) {
+            const list = subsByApp.get(s.loanApplicationId) || [];
+            list.push({ id: s.id, submissionType: s.submissionType, requestedAmount: s.requestedAmount, createdAt: s.createdAt });
+            subsByApp.set(s.loanApplicationId, list);
+          }
+        } catch (err: any) {
+          console.error("[DASHBOARD] Failed to load submissions:", err?.message || err);
+        }
+        return apps.map(app => ({
+          ...app,
+          referralPartnerName: app.referralPartnerId ? (partnerNameMap.get(app.referralPartnerId) ?? null) : null,
+          submissions: subsByApp.get(app.id) || [],
+        }));
+      };
 
       const role = req.session.user.role;
       console.log(`[DASHBOARD] User role: ${role}, search: "${search || ''}", email: ${req.session.user.agentEmail || 'N/A'}`);
@@ -2091,7 +2192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           storage.getApplicationsSummaryFiltered({ search, limit, offset: pageOffset }),
           storage.getApplicationsCount({ search }),
         ]);
-        const enriched = enrich(apps);
+        const enriched = await enrich(apps);
         console.log(`[DASHBOARD] Returning ${enriched.length} (offset ${pageOffset}) of ${total} for ${role}`);
         res.setHeader('X-Total-Count', String(total));
         return res.json(enriched);
@@ -2101,7 +2202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const apps = await storage.getApplicationsSummaryFiltered({ search, agentEmail });
         console.log(`[DASHBOARD] Returning ${apps.length} applications for ${role} ${agentEmail}`);
         res.setHeader('X-Total-Count', String(apps.length));
-        return res.json(enrich(apps));
+        return res.json(await enrich(apps));
       }
 
       return res.status(403).json({ error: "Access denied" });
@@ -3892,8 +3993,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // ── PDF attachments ──────────────────────────────────────────────────────
     const attachments: Array<{ filename: string; content: Buffer; mimeType: string }> = [];
 
-    // Use redacted version (SSN/DOB hidden) for internal underwriting submissions
-    const appPdfBuffer = await generateApplicationPdfBuffer(application, true);
+    // Attach the same redacted PDF the agent view produces via "Download Redacted PDF"
+    // (email and phone omitted — matches client/public/ApplicationView.html downloadPDF(true))
+    const appPdfBuffer = await generateAgentViewRedactedPdfBuffer(application);
     if (appPdfBuffer) {
       attachments.push({ filename: `Application - ${appName}.pdf`, content: appPdfBuffer, mimeType: "application/pdf" });
     }
@@ -8021,6 +8123,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     )`);
     await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS referral_code TEXT`);
     await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS onboarding_step TEXT DEFAULT 'add_position'`);
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS qualified_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS qualified_notified_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS nurture_steps_sent TEXT`);
     await db.execute(sql`CREATE TABLE IF NOT EXISTS lead_positions (
       id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
       lead_email TEXT NOT NULL,
@@ -8038,6 +8143,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       notes TEXT,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
+    )`);
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS lead_otp_codes (
+      phone TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      email TEXT NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
     )`);
     console.log("[LEAD] Lead portal tables ensured");
   } catch (err) {
@@ -8179,8 +8292,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── SMS OTP Auth ──
-  // In-memory store: normalizedPhone → { code, email, expires }
-  const _otpStore = new Map<string, { code: string; email: string; expires: number }>();
+  // Codes are stored in lead_otp_codes (DB-backed so they survive restarts
+  // and work across instances). One active code per phone, 10-min expiry,
+  // max 5 verify attempts, 60s resend cooldown.
 
   function normalizePhoneForOtp(raw: string): string {
     const digits = raw.replace(/\D/g, '');
@@ -8212,8 +8326,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const row = result.rows[0] as any;
+
+      // Resend cooldown: max one code per phone per 60 seconds
+      const recent = await db.execute(
+        sql`SELECT 1 FROM lead_otp_codes WHERE phone = ${normalized} AND created_at > NOW() - INTERVAL '60 seconds'`,
+      );
+      if (recent.rows.length > 0) {
+        return res.status(429).json({ error: "A code was just sent. Please wait a minute before requesting another." });
+      }
+
       const code = String(Math.floor(100000 + Math.random() * 900000));
-      _otpStore.set(normalized, { code, email: row.email, expires: Date.now() + 10 * 60 * 1000 });
+      await db.execute(sql`
+        INSERT INTO lead_otp_codes (phone, code, email, attempts, expires_at, created_at)
+        VALUES (${normalized}, ${code}, ${row.email}, 0, NOW() + INTERVAL '10 minutes', NOW())
+        ON CONFLICT (phone) DO UPDATE SET
+          code = EXCLUDED.code, email = EXCLUDED.email, attempts = 0,
+          expires_at = EXCLUDED.expires_at, created_at = NOW()
+      `);
 
       const { sendSms } = await import('./services/twilio');
       const smsResult = await sendSms(normalized, `Your Today Capital Group sign-in code is: ${code}\n\nExpires in 10 minutes. Do not share this code.`);
@@ -8237,18 +8366,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!phone || !code) return res.status(400).json({ error: "Phone and code are required" });
 
       const normalized = normalizePhoneForOtp(phone.trim());
-      const entry = _otpStore.get(normalized);
+      const otpRes = await db.execute(
+        sql`SELECT code, email, attempts, expires_at FROM lead_otp_codes WHERE phone = ${normalized}`,
+      );
+      const entry = otpRes.rows[0] as any;
 
-      if (!entry || Date.now() > entry.expires) {
-        _otpStore.delete(normalized);
+      if (!entry || new Date(entry.expires_at).getTime() < Date.now()) {
+        await db.execute(sql`DELETE FROM lead_otp_codes WHERE phone = ${normalized}`);
         return res.status(401).json({ error: "This code has expired. Please request a new one." });
       }
 
+      if (Number(entry.attempts) >= 5) {
+        await db.execute(sql`DELETE FROM lead_otp_codes WHERE phone = ${normalized}`);
+        return res.status(401).json({ error: "Too many incorrect attempts. Please request a new code." });
+      }
+
       if (entry.code !== String(code).trim()) {
+        await db.execute(sql`UPDATE lead_otp_codes SET attempts = attempts + 1 WHERE phone = ${normalized}`);
         return res.status(401).json({ error: "Incorrect code. Please check your text and try again." });
       }
 
-      _otpStore.delete(normalized); // one-time use
+      await db.execute(sql`DELETE FROM lead_otp_codes WHERE phone = ${normalized}`); // one-time use
 
       const result = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${entry.email}`);
       if (result.rows.length === 0) return res.status(404).json({ error: "Account not found" });
@@ -8396,17 +8534,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(result.rows);
   });
 
+  // Helper: validate optional position dollar amounts. Returns the parsed
+  // number (or null if not provided) — throws a message string on bad input.
+  function parsePositionAmount(value: any, field: string): number | null {
+    if (value === undefined || value === null || value === "") return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) throw `${field} must be a valid number`;
+    if (n <= 0) throw `${field} must be greater than zero`;
+    if (n > 50_000_000) throw `${field} looks too large — please double-check the amount`;
+    return n;
+  }
+
   // POST /api/lead/positions
   app.post("/api/lead/positions", async (req: Request, res: Response) => {
     const email = getLeadEmail(req);
     if (!email) return res.status(401).json({ error: "Authentication required" });
 
     const { funderName, productType, fundedAmount, paybackAmount, factorRate, paymentAmount, paymentFrequency, fundedDate, remainingBalance } = req.body;
-    if (!funderName) return res.status(400).json({ error: "Funder name is required" });
+    if (!funderName || !String(funderName).trim()) return res.status(400).json({ error: "Funder name is required" });
+
+    let funded: number | null, payback: number | null, payment: number | null, remaining: number | null;
+    try {
+      funded = parsePositionAmount(fundedAmount, "Funded amount");
+      payback = parsePositionAmount(paybackAmount, "Payback amount");
+      payment = parsePositionAmount(paymentAmount, "Payment amount");
+      remaining = parsePositionAmount(remainingBalance, "Remaining balance");
+    } catch (msg) {
+      return res.status(400).json({ error: String(msg) });
+    }
+    if (remaining != null && payback != null && remaining > payback) {
+      return res.status(400).json({ error: "Remaining balance can't be more than the total payback amount" });
+    }
+    if (funded != null && payback != null && payback < funded) {
+      return res.status(400).json({ error: "Payback amount can't be less than the funded amount" });
+    }
 
     await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, factor_rate, payment_amount, payment_frequency, funded_date, remaining_balance)
-      VALUES (${email}, ${funderName}, ${productType || null}, ${fundedAmount || null}, ${paybackAmount || null}, ${factorRate || null}, ${paymentAmount || null}, ${paymentFrequency || null}, ${fundedDate || null}, ${remainingBalance || null})`);
+      VALUES (${email}, ${String(funderName).trim().slice(0, 200)}, ${productType || null}, ${funded}, ${payback}, ${factorRate || null}, ${payment}, ${paymentFrequency || null}, ${fundedDate || null}, ${remaining})`);
 
+    evaluateLeadQualification(email).catch(() => {});
     res.json({ success: true });
   });
 
@@ -8416,14 +8582,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!email) return res.status(401).json({ error: "Authentication required" });
 
     const { remainingBalance, status, paymentAmount, paymentFrequency } = req.body;
+
+    let remaining: number | null, payment: number | null;
+    try {
+      remaining = parsePositionAmount(remainingBalance, "Remaining balance");
+      payment = parsePositionAmount(paymentAmount, "Payment amount");
+    } catch (msg) {
+      return res.status(400).json({ error: String(msg) });
+    }
+
+    const existing = await db.execute(
+      sql`SELECT payback_amount FROM lead_positions WHERE id = ${req.params.id} AND lead_email = ${email}`,
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: "Position not found" });
+    const payback = Number((existing.rows[0] as any).payback_amount) || 0;
+    if (remaining != null && payback > 0 && remaining > payback) {
+      return res.status(400).json({ error: "Remaining balance can't be more than the total payback amount" });
+    }
+
     await db.execute(sql`
       UPDATE lead_positions SET
-        remaining_balance = COALESCE(${remainingBalance ?? null}, remaining_balance),
+        remaining_balance = COALESCE(${remaining}, remaining_balance),
         status = COALESCE(${status ?? null}, status),
-        payment_amount = COALESCE(${paymentAmount ?? null}, payment_amount),
+        payment_amount = COALESCE(${payment}, payment_amount),
         payment_frequency = COALESCE(${paymentFrequency ?? null}, payment_frequency)
       WHERE id = ${req.params.id} AND lead_email = ${email}
     `);
+    evaluateLeadQualification(email).catch(() => {});
     res.json({ success: true });
   });
 
@@ -8481,6 +8666,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const snapshot = await storage.getMerchantBankSnapshot(email);
     if (!snapshot) return res.json({ connected: false, hasPendingConnection: false });
+
+    // Bank data can arrive via the Chirp webhook while the lead is away —
+    // re-evaluate qualification whenever they view their financials.
+    if (snapshot.isAccountConnected) evaluateLeadQualification(email).catch(() => {});
 
     const accounts: any[] = Array.isArray(snapshot.accountsData) ? snapshot.accountsData : [];
     const metrics = (snapshot.metrics as any) || {};
@@ -8758,6 +8947,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!existing?.chirpRequestCode) return res.status(400).json({ error: "No bank connection found." });
 
     const snapshot = await syncMerchantSnapshotFromChirp(email, existing.chirpRequestCode);
+    evaluateLeadQualification(email).catch(() => {});
     res.json({ success: true, lastSyncedAt: snapshot?.lastSyncedAt });
   });
 
@@ -11788,6 +11978,217 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Merchant requests a renewal / additional-funding review — alerts the team
+  app.post("/api/merchant/renewal-request", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    const email = req.session.user.merchantEmail;
+    try {
+      const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(email);
+      const latest = decisions[0];
+      const note = typeof req.body?.note === "string" ? req.body.note.slice(0, 500) : "";
+      // Cooldown prevents duplicate alert emails from repeat clicks
+      if (shouldSendMerchantAlert(`renewal_request:${email}`, 60 * 60 * 1000)) {
+        sendAdminMerchantAlert({
+          title: "Merchant Requested a Renewal Review",
+          event: "renewal_requested",
+          merchantEmail: email,
+          businessName: latest?.businessName || null,
+          details: {
+            "Assigned Rep": latest?.assignedRep || "Unassigned",
+            "Lender": latest?.lender || null,
+            "Merchant Note": note || null,
+            "Next Step": "Reach out within 1 business day",
+          },
+        }).catch(() => {});
+        console.log(`[MERCHANT] Renewal review requested by ${email}`);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[MERCHANT] renewal-request error:", error);
+      res.status(500).json({ error: "Failed to submit renewal request" });
+    }
+  });
+
+  // Merchant payoff letter (PDF) — estimated payoff statement for a funded position
+  app.get("/api/merchant/payoff-letter", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const dealId = String(req.query.dealId || "");
+      const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(req.session.user.merchantEmail);
+
+      // Rebuild the merchant's deals (same shape as /api/merchant/deals)
+      let deal: any = null;
+      for (const decision of decisions) {
+        if (decision.status !== 'funded') continue;
+        const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
+        const candidates = fundings.length > 0
+          ? fundings.map((f) => ({
+              id: f.id || decision.id,
+              businessName: decision.businessName || 'N/A',
+              lender: f.lender || decision.lender || 'N/A',
+              advanceAmount: parseFloat(f.advanceAmount || decision.advanceAmount || '0'),
+              factorRate: parseFloat(f.factorRate || decision.factorRate || '1'),
+              totalPayback: parseFloat(f.totalPayback || decision.totalPayback || '0'),
+              paymentFrequency: f.paymentFrequency || decision.paymentFrequency || 'daily',
+              fundedDate: f.fundedDate || (decision.fundedDate ? new Date(decision.fundedDate).toISOString() : new Date().toISOString()),
+              term: f.term || decision.term || '6 months',
+              assignedRep: f.assignedRep || decision.assignedRep || null,
+            }))
+          : [{
+              id: decision.id,
+              businessName: decision.businessName || 'N/A',
+              lender: decision.lender || 'N/A',
+              advanceAmount: parseFloat(decision.advanceAmount || '0'),
+              factorRate: parseFloat(decision.factorRate || '1'),
+              totalPayback: parseFloat(decision.totalPayback || '0'),
+              paymentFrequency: decision.paymentFrequency || 'daily',
+              fundedDate: decision.fundedDate ? new Date(decision.fundedDate).toISOString() : new Date().toISOString(),
+              term: decision.term || '6 months',
+              assignedRep: decision.assignedRep || null,
+            }];
+        deal = candidates.find((c) => String(c.id) === dealId) || deal;
+      }
+      if (!deal) return res.status(404).json({ error: "Position not found" });
+
+      // ── Server-side payoff math (mirrors calcDeal in MerchantPortal.tsx) ──
+      const today = new Date();
+      const funded = new Date(deal.fundedDate);
+      const derivedPayback = deal.advanceAmount * deal.factorRate;
+      const totalPayback = deal.advanceAmount > 0 && deal.factorRate > 1
+        ? derivedPayback : (deal.totalPayback || derivedPayback || 0);
+      const freq = String(deal.paymentFrequency || "daily").toLowerCase();
+      const isDaily = freq === "daily";
+      const isBiWeekly = freq.includes("bi");
+      const isWeekly = !isBiWeekly && freq.includes("week");
+      const isMonthly = freq.includes("month");
+
+      const termStr = String(deal.term || "").toLowerCase();
+      const termMatch = termStr.match(/(\d+(?:\.\d+)?)/);
+      const termVal = termMatch ? parseFloat(termMatch[1]) : 6;
+      const termUnit: 'days' | 'weeks' | 'months' =
+        /day/.test(termStr) ? 'days' : /week|wk/.test(termStr) ? 'weeks' : /month|mo\b/.test(termStr) ? 'months'
+        : isDaily ? 'days' : (isWeekly || isBiWeekly) ? 'weeks' : 'months';
+
+      let totalPayments: number;
+      if (isDaily) totalPayments = termUnit === 'days' ? Math.round(termVal) : termUnit === 'weeks' ? Math.round(termVal * 5) : Math.round(termVal * 21);
+      else if (isWeekly) totalPayments = termUnit === 'weeks' ? Math.round(termVal) : termUnit === 'months' ? Math.round(termVal * 4.33) : Math.round(termVal / 7);
+      else if (isBiWeekly) totalPayments = termUnit === 'weeks' ? Math.round(termVal / 2) : termUnit === 'months' ? Math.round(termVal * 2) : Math.round(termVal / 14);
+      else totalPayments = termUnit === 'months' ? Math.round(termVal) : termUnit === 'weeks' ? Math.round(termVal / 4.33) : Math.round(termVal / 30);
+      totalPayments = Math.max(1, totalPayments);
+      const paymentAmount = totalPayback / totalPayments;
+
+      let paymentsMade: number;
+      if (isDaily) {
+        // Business days between funded and today
+        let count = 0;
+        const d = new Date(funded);
+        while (d < today) {
+          d.setDate(d.getDate() + 1);
+          if (d.getDay() !== 0 && d.getDay() !== 6) count++;
+        }
+        paymentsMade = count;
+      } else if (isMonthly) {
+        paymentsMade = Math.max(0, (today.getFullYear() - funded.getFullYear()) * 12 + (today.getMonth() - funded.getMonth()));
+      } else {
+        const msPerPeriod = (isBiWeekly ? 14 : 7) * 24 * 60 * 60 * 1000;
+        paymentsMade = Math.max(0, Math.floor((today.getTime() - funded.getTime()) / msPerPeriod));
+      }
+      paymentsMade = Math.min(paymentsMade, totalPayments);
+      const amountPaid = Math.min(paymentsMade * paymentAmount, totalPayback);
+      const remaining = Math.max(totalPayback - amountPaid, 0);
+      const paymentsRemaining = totalPayments - paymentsMade;
+
+      let projectedPayoff = new Date(today);
+      if (isDaily) {
+        let added = 0;
+        while (added < paymentsRemaining) {
+          projectedPayoff.setDate(projectedPayoff.getDate() + 1);
+          if (projectedPayoff.getDay() !== 0 && projectedPayoff.getDay() !== 6) added++;
+        }
+      } else if (isMonthly) {
+        projectedPayoff.setMonth(projectedPayoff.getMonth() + paymentsRemaining);
+      } else {
+        projectedPayoff = new Date(today.getTime() + paymentsRemaining * (isBiWeekly ? 14 : 7) * 24 * 60 * 60 * 1000);
+      }
+
+      const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const dateFmt = (d: Date) => d.toLocaleDateString("en-US", { month: 'long', day: 'numeric', year: 'numeric' });
+
+      // ── Build PDF ──
+      const pdfBuffer: Buffer = await new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
+        const chunks: Buffer[] = [];
+        doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        const darkNavy = '#1B2E4D';
+        const teal = '#5FBFB8';
+        const labelColor = '#6B7280';
+
+        doc.rect(0, 0, 595, 80).fill('#E8EEF3');
+        doc.fillColor(teal).fontSize(20).font('Helvetica-Bold').text('TODAY', 50, 25);
+        doc.fillColor(darkNavy).fontSize(20).font('Helvetica-Bold').text('CAPITAL GROUP', 130, 25);
+        doc.fillColor(labelColor).fontSize(10).font('Helvetica').text(`Date: ${dateFmt(today)}`, 400, 30);
+        doc.fillColor(darkNavy).fontSize(10).font('Helvetica').text('Estimated Payoff Statement', 400, 45);
+
+        let y = 110;
+        doc.fillColor(darkNavy).fontSize(16).font('Helvetica-Bold').text('Estimated Payoff Statement', 50, y);
+        y += 30;
+        doc.fillColor('#111827').fontSize(11).font('Helvetica')
+          .text(`RE: ${deal.businessName} — funded position with ${deal.lender}`, 50, y);
+        y += 30;
+
+        const addLine = (label: string, value: string, bold = false) => {
+          doc.fillColor(labelColor).fontSize(10).font('Helvetica').text(label, 50, y, { width: 220 });
+          doc.fillColor(bold ? darkNavy : '#111827').fontSize(bold ? 12 : 10).font(bold ? 'Helvetica-Bold' : 'Helvetica').text(value, 280, y - (bold ? 1 : 0));
+          y += bold ? 26 : 22;
+        };
+
+        addLine('Funded Date', dateFmt(funded));
+        addLine('Advance Amount', money(deal.advanceAmount));
+        addLine('Factor Rate', `${deal.factorRate}x`);
+        addLine('Total Payback', money(totalPayback));
+        addLine('Payment Frequency', deal.paymentFrequency);
+        addLine('Per-Payment Amount', money(paymentAmount));
+        addLine('Estimated Payments Made', `${paymentsMade} of ${totalPayments}`);
+        addLine('Estimated Amount Paid', money(amountPaid));
+        y += 6;
+        doc.strokeColor(teal).lineWidth(1).moveTo(50, y).lineTo(545, y).stroke();
+        y += 14;
+        addLine('Estimated Remaining Balance', money(remaining), true);
+        addLine('Projected Payoff Date', dateFmt(projectedPayoff), true);
+
+        y += 20;
+        doc.fillColor(labelColor).fontSize(9).font('Helvetica').text(
+          'This statement reflects estimated figures based on your original payment schedule and assumes all scheduled ' +
+          'payments have been made on time. It is provided for informational purposes only and is not a binding payoff ' +
+          'quote. Actual payoff amounts, including any fees, discounts, or adjustments, must be confirmed directly with ' +
+          `${deal.lender} or your Today Capital Group representative before remitting payment.`,
+          50, y, { width: 495, lineGap: 3 },
+        );
+        y += 80;
+        doc.fillColor(darkNavy).fontSize(10).font('Helvetica-Bold').text('Today Capital Group', 50, y);
+        y += 14;
+        doc.fillColor(labelColor).fontSize(9).font('Helvetica')
+          .text('6303 Owensmouth Ave, Woodland Hills, CA 91367  ·  (818) 351-0225  ·  info@todaycapitalgroup.com', 50, y);
+
+        doc.end();
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="payoff-statement-${dealId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("[MERCHANT] payoff-letter error:", error);
+      res.status(500).json({ error: "Failed to generate payoff letter" });
+    }
+  });
+
   // Merchant Bank Statements - returns uploaded statements for authenticated merchant
   app.get("/api/merchant/statements", async (req, res) => {
     if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
@@ -12598,11 +12999,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Determine renewal nudge
       const bestScore = pdfData?.overallScore || 0;
       const revenue = pdfData?.estimatedMonthlyRevenue || plaidData?.monthlyRevenue || 0;
+      const renewalEligible = bestScore >= 60 && revenue > 10000;
+      const renewalReasons: string[] = [];
+      if (renewalEligible) {
+        renewalReasons.push(`Financial health score of ${bestScore}/100 — above our renewal threshold of 60`);
+        renewalReasons.push(`Verified monthly revenue of ~$${Math.round(revenue).toLocaleString("en-US")} — above the $10,000 minimum`);
+        if (Number(pdfData?.netCashFlow) > 0) {
+          renewalReasons.push(`Positive net cash flow of ~$${Math.round(pdfData.netCashFlow).toLocaleString("en-US")}/mo`);
+        }
+      }
       const renewalNudge = {
-        eligible: bestScore >= 60 && revenue > 10000,
-        message: bestScore >= 60 && revenue > 10000
+        eligible: renewalEligible,
+        message: renewalEligible
           ? "Based on your financial activity, you may qualify for additional funding. Talk to your rep to explore options."
           : "",
+        reasons: renewalReasons,
       };
 
       res.json({
@@ -12781,6 +13192,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (decision?.businessPhone) {
         notifyMerchantNewMessage(decision.businessPhone, senderName || 'Today Capital Group').catch(err => {
           console.error('[TWILIO] Failed to notify merchant:', err);
+        });
+      }
+
+      // Email the merchant so portal replies don't go unseen (async, non-blocking)
+      {
+        const fromName = senderName || 'Today Capital Group';
+        const preview = String(message).trim().slice(0, 300);
+        const html = `<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px;">
+    <table width="580" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;">
+      <tr><td style="background:#0f1e38;padding:24px 28px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;">New message from ${fromName}</p>
+      </td></tr>
+      <tr><td style="padding:28px;">
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">You have a new message waiting in your Today Capital Group merchant portal:</p>
+        <div style="background:#f9fafb;border-left:3px solid #0d9488;border-radius:6px;padding:14px 16px;margin:0 0 20px;font-size:14px;line-height:1.6;color:#111827;">${preview.replace(/</g, "&lt;")}</div>
+        <table cellpadding="0" cellspacing="0" align="center"><tr><td style="background:#0d9488;border-radius:50px;">
+          <a href="https://app.todaycapitalgroup.com/merchant" style="display:inline-block;padding:13px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">View &amp; Reply in Portal</a>
+        </td></tr></table>
+      </td></tr>
+      <tr><td style="background:#f9fafb;padding:18px 28px;border-top:1px solid #e5e7eb;">
+        <p style="margin:0;font-size:12px;color:#9ca3af;">Today Capital Group &middot; 6303 Owensmouth Ave, Woodland Hills, CA 91367 &middot; (818) 351-0225</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+        gmailService.sendEmail(merchantEmail.toLowerCase(), `New message from ${fromName} — Today Capital Group`, html).catch(err => {
+          console.error('[MERCHANT] Failed to email merchant message notification:', err);
         });
       }
 
@@ -14548,6 +14988,182 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
+  /**
+   * Server-side replica of the agent view's "Download Redacted PDF"
+   * (client/public/ApplicationView.html → downloadPDF(true)). Produces a PDF
+   * that looks identical to the jsPDF version: same layout, colors, boxed
+   * fields, and signature block. Redacted = merchant email and phone omitted
+   * (SSN/DOB stay visible, matching the agent-view redacted output).
+   *
+   * jsPDF works in millimeters with baseline-positioned text; pdfkit works in
+   * points with top-positioned text, so coordinates are mm→pt converted and
+   * text is shifted up by the font ascent to match baselines.
+   */
+  async function generateAgentViewRedactedPdfBuffer(application: any): Promise<Buffer | null> {
+    if (!application) return null;
+
+    return new Promise((resolve, reject) => {
+      try {
+        const MM = 2.83465; // 1mm in PDF points
+        const doc = new PDFDocument({ margin: 0, size: 'A4' });
+        const chunks: Buffer[] = [];
+        doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        const darkNavy = '#1B2E4D';
+        const teal = '#5FBFB8';
+        const labelGray = '#646464';
+        const boxBorder = '#C8C8C8';
+        const boxFill = '#FAFAFA';
+
+        // Text at a jsPDF-style baseline position (x/y in mm)
+        const textAt = (str: string, xMm: number, yMm: number, size: number, opts: { font?: string; color?: string; width?: number } = {}) => {
+          doc.font(opts.font || 'Helvetica').fontSize(size).fillColor(opts.color || '#000000');
+          const yPt = yMm * MM - size * 0.75; // approximate Helvetica ascent
+          doc.text(str, xMm * MM, yPt, { lineBreak: !!opts.width, width: opts.width ? opts.width * MM : undefined });
+        };
+
+        // Header (matches jsPDF: light blue-gray band + logo + date)
+        doc.rect(0, 0, 210 * MM, 40 * MM).fill('#E8EEF3');
+        let logoDrawn = false;
+        try {
+          const logoPath = path.join(process.cwd(), 'client', 'public', 'assets', 'tcg-logo.png');
+          if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 20 * MM, 10 * MM, { width: 60 * MM, height: 18.4 * MM });
+            logoDrawn = true;
+          }
+        } catch { /* fall back to text header */ }
+        if (!logoDrawn) {
+          textAt('TODAY CAPITAL GROUP', 20, 20, 18, { font: 'Helvetica-Bold', color: darkNavy });
+        }
+        const dateText = application.updatedAt
+          ? new Date(application.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+          : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        textAt(`Date: ${dateText}`, 150, 20, 10, { color: darkNavy });
+
+        let yPos = 50; // mm, same starting point as the agent view
+
+        const addSectionHeader = (title: string) => {
+          textAt(title, 20, yPos, 14, { font: 'Helvetica-Bold', color: darkNavy });
+          doc.strokeColor(teal).lineWidth(0.5 * MM)
+            .moveTo(20 * MM, (yPos + 2) * MM).lineTo(60 * MM, (yPos + 2) * MM).stroke();
+          yPos += 10;
+        };
+
+        const addField = (label: string, value: string | null | undefined, x: number, width: number) => {
+          if (yPos > 270) { doc.addPage(); yPos = 20; }
+          textAt(label, x, yPos, 9, { font: 'Helvetica-Bold', color: labelGray });
+          doc.rect(x * MM, (yPos + 2) * MM, width * MM, 8 * MM)
+            .fillAndStroke(boxFill, boxBorder);
+          doc.lineWidth(0.57); // jsPDF default ~0.2mm
+          textAt(String(value || '—').substring(0, 40), x + 2, yPos + 7, 10);
+        };
+
+        // Same value resolution as the agent view page (loadApplicationData)
+        const fmtMoney = (v: any) => (v ? `$${parseFloat(v).toLocaleString()}` : '');
+        const parseCsz = (csz: string) => {
+          const parts = (csz || '').split(',').map((p: string) => p.trim());
+          if (parts.length >= 2) {
+            const stateZip = parts[1].split(' ').filter(Boolean);
+            return { city: parts[0], state: stateZip[0] || '', zip: stateZip[1] || '' };
+          }
+          return { city: '', state: '', zip: '' };
+        };
+        let bizCity = application.city || '', bizState = application.state || '', bizZip = application.zipCode || '';
+        if (!bizCity && !bizState && !bizZip && application.businessCsz) {
+          ({ city: bizCity, state: bizState, zip: bizZip } = parseCsz(application.businessCsz));
+        }
+        let oCity = application.ownerCity || '', oState = application.ownerState || '', oZip = application.ownerZip || '';
+        if (!oCity && !oState && !oZip && application.ownerCsz) {
+          ({ city: oCity, state: oState, zip: oZip } = parseCsz(application.ownerCsz));
+        }
+
+        // Business Information (identical field order/positions to the agent view)
+        addSectionHeader('Business Information');
+        addField('Legal Name:', application.legalBusinessName || application.businessName, 20, 85);
+        addField('DBA:', application.doingBusinessAs, 110, 85);
+        yPos += 13;
+        addField('Website:', application.companyWebsite, 20, 85);
+        addField('Start Date:', application.businessStartDate, 110, 85);
+        yPos += 13;
+        addField('EIN:', application.ein, 20, 85);
+        addField('Industry:', application.industry, 110, 85);
+        yPos += 13;
+        addField('Address:', application.businessStreetAddress || application.businessAddress, 20, 85);
+        addField('City:', bizCity, 110, 85);
+        yPos += 13;
+        addField('State:', bizState, 20, 40);
+        addField('ZIP:', bizZip, 65, 40);
+        addField('State of Inc:', application.stateOfIncorporation, 110, 85);
+        yPos += 13;
+        addField('Requested Amount:', fmtMoney(application.requestedAmount), 20, 85);
+        addField('MCA Balance:', fmtMoney(application.mcaBalanceAmount), 110, 85);
+        yPos += 13;
+        addField('Credit Cards:', application.doYouProcessCreditCards, 20, 85);
+        addField('MCA Bank:', application.mcaBalanceBankName, 110, 85);
+        yPos += 20;
+
+        // Owner Information — redacted layout (email and phone omitted)
+        addSectionHeader('Owner Information');
+        addField('Full Name:', application.fullName, 20, 85);
+        addField('SSN:', application.socialSecurityNumber, 110, 85);
+        yPos += 13;
+        addField('Date of Birth:', application.dateOfBirth, 20, 85);
+        addField('FICO Score:', application.personalCreditScoreRange || application.ficoScoreExact || application.creditScore, 110, 85);
+        yPos += 13;
+        addField('Ownership %:', application.ownerPercentage || application.ownership, 20, 85);
+        addField('Home Address:', application.ownerAddress1, 110, 85);
+        yPos += 13;
+        addField('City:', oCity, 20, 85);
+        addField('State:', oState, 110, 40);
+        addField('ZIP:', oZip, 155, 40);
+        yPos += 25;
+
+        // Signature section — disclosure left, signature right (same as agent view)
+        if (application.applicantSignature) {
+          if (yPos > 240) { doc.addPage(); yPos = 20; }
+          const disclosureText = 'Confirm Application\nBy signing below, each of the listed business and business owner/officer (individually and collectively, "you") authorize Today Capital Group and its representatives, successors, assigns, and designees involved with or acquiring commercial loans or purchases of future receivables, including Merchant Cash Advance transactions (collectively, "Transactions"), to obtain consumer or personal, business, and investigative reports and other information about you. This includes credit card processor statements and bank statements from consumer reporting agencies such as TransUnion, Experian, and Equifax, Identity IQ, and other credit bureaus, banks, creditors, government agencies, and third parties (the "Recipients"). You also authorize Today Capital Group to transmit this application form, along with any obtained information, to any or all of the Recipients for the stated purposes. Furthermore, you consent to any creditor or financial institution releasing information about you to Today Capital Group and the Recipients. You authorize Today Capital Group to communicate with the Recipients on your behalf and represent you in dealings with them. Additionally, you permit Today Capital Group and its Recipients to contact you via text message, automated call, or email using the contact information provided above.';
+          textAt(disclosureText, 20, yPos, 7, { color: labelGray, width: 95 });
+
+          const sigY = yPos;
+          textAt('Applicant Signature', 120, sigY, 14, { font: 'Helvetica-Bold', color: darkNavy });
+          doc.strokeColor(teal).lineWidth(0.5 * MM)
+            .moveTo(120 * MM, (sigY + 2) * MM).lineTo(175 * MM, (sigY + 2) * MM).stroke();
+
+          if (String(application.applicantSignature).startsWith('data:image')) {
+            // Drawn signature image with date stamp below
+            try {
+              const base64 = String(application.applicantSignature).split(',')[1];
+              const sigBuf = Buffer.from(base64, 'base64');
+              doc.image(sigBuf, 120 * MM, (sigY + 8) * MM, { width: 70 * MM, height: 21 * MM });
+            } catch (sigErr) {
+              console.warn('[SUBMIT-UW] Failed to embed signature image:', sigErr);
+            }
+            const signedDate = application.updatedAt
+              ? new Date(application.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+              : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            textAt(`Date: ${signedDate}`, 120, sigY + 33, 9, { color: labelGray });
+          } else {
+            // Checkbox/e-sig — digital stamp
+            const stampY = sigY + 10;
+            const rawDate = application.signatureDate || application.updatedAt || application.createdAt;
+            const timestamp = rawDate
+              ? new Date(rawDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+              : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            textAt(`Digitally Signed by: ${application.fullName || 'Unknown'}`, 120, stampY, 11, { font: 'Helvetica-Bold' });
+            textAt(`Date: ${timestamp}`, 120, stampY + 6, 9, { color: labelGray });
+            textAt('Electronic Consent Accepted', 120, stampY + 11, 9, { font: 'Helvetica-Oblique', color: labelGray });
+          }
+        }
+
+        doc.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // REP STATISTICS ROUTES
   // ══════════════════════════════════════════════════════════════════════════
@@ -15255,6 +15871,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }, INTERVAL_MS);
     console.log("[ADS-SYNC] GHL tag polling started — tag='clicked ads', every 2 hours");
   })();
+
+  // ── /track lead nurture sequence — day 1 / 3 / 7 onboarding emails ──────
+  startLeadNurtureScheduler();
 
   return httpServer;
 }

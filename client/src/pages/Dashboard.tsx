@@ -3405,6 +3405,7 @@ export default function Dashboard() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<LoanApplication>>({});
   const [resignApplication, setResignApplication] = useState(false);
+  const [expandedSubmissions, setExpandedSubmissions] = useState<Set<string>>(new Set());
 
   const { data: authData, isLoading: authLoading, refetch: refetchAuth } = useQuery<AuthState | null>({
     queryKey: ["/api/auth/check"],
@@ -3722,8 +3723,11 @@ export default function Dashboard() {
           return matchesFilter && matchesAgentFilter;
         })
         .sort((a, b) => {
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          // Most recent submission first (falls back to original creation date)
+          const recencyA = (a as any).lastSubmissionAt || a.createdAt;
+          const recencyB = (b as any).lastSubmissionAt || b.createdAt;
+          const dateA = recencyA ? new Date(recencyA).getTime() : 0;
+          const dateB = recencyB ? new Date(recencyB).getTime() : 0;
           return dateB - dateA;
         })
     : [];
@@ -4259,7 +4263,10 @@ export default function Dashboard() {
                       </div>
                       <div>
                         <span className="font-medium">Submitted:</span>{" "}
-                        <span data-testid={`value-submitted-${app.id}`}>{app.createdAt ? format(new Date(app.createdAt), "MMM d, yyyy h:mm a") : "N/A"}</span>
+                        <span data-testid={`value-submitted-${app.id}`}>{(() => {
+                          const latest = (app as any).lastSubmissionAt || app.createdAt;
+                          return latest ? format(new Date(latest), "MMM d, yyyy h:mm a") : "N/A";
+                        })()}</span>
                       </div>
                       {app.requestedAmount && (
                         <div>
@@ -4293,6 +4300,44 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
+
+                    {/* Submission history dropdown — shown when the file has multiple submissions */}
+                    {(() => {
+                      const submissions = (((app as any).submissions || []) as { id: string; submissionType: string; createdAt: string | null; requestedAmount: string | null }[]);
+                      if (submissions.length <= 1) return null;
+                      const isExpanded = expandedSubmissions.has(app.id);
+                      return (
+                        <div className="mt-2">
+                          <button
+                            onClick={() => setExpandedSubmissions(prev => {
+                              const next = new Set(prev);
+                              if (next.has(app.id)) next.delete(app.id); else next.add(app.id);
+                              return next;
+                            })}
+                            className="flex items-center gap-1 text-sm text-primary hover:underline"
+                            data-testid={`button-toggle-submissions-${app.id}`}
+                          >
+                            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                            {isExpanded ? 'Hide' : 'View'} {submissions.length} Submissions
+                          </button>
+                          {isExpanded && (
+                            <div className="mt-2 space-y-1 border-l-2 border-muted pl-3">
+                              {submissions.map((s) => (
+                                <div key={s.id} className="flex items-center gap-2 text-sm text-muted-foreground" data-testid={`submission-${s.id}`}>
+                                  <Badge variant={s.submissionType === 'full_application' ? 'default' : 'secondary'} className="text-[10px]">
+                                    {s.submissionType === 'full_application' ? 'Full App' : 'Intake'}
+                                  </Badge>
+                                  <span>{s.createdAt ? format(new Date(s.createdAt), "MMM d, yyyy h:mm a") : 'Unknown date'}</span>
+                                  {s.requestedAmount && Number(s.requestedAmount) > 0 && (
+                                    <span>· ${Number(s.requestedAmount).toLocaleString()} requested</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="flex flex-col gap-1.5">
