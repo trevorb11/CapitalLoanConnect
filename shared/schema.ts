@@ -46,7 +46,7 @@ export const loanApplications = pgTable("loan_applications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
 
   // --- Merchant grouping (links all rounds for the same business) ---
-  merchantId: varchar("merchant_id"),
+  merchantId: varchar("merchant_id").references(() => merchants.id, { onDelete: "set null" }),
 
   // --- Referral Partner Tracking ---
   referralPartnerId: varchar("referral_partner_id").references(() => partners.id),

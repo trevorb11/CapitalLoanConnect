@@ -3448,6 +3448,27 @@ export default function Dashboard() {
   // Merge first page + any additional pages loaded via "Load More"
   const applications = [...(firstPageApps ?? []), ...additionalApps];
 
+  // Merchant-level groups from server (drives the card list — no pagination split problem)
+  type MerchantGroup = { key: string; merchantId: string | null; businessName: string | null; primaryEmail: string | null; primaryPhone: string | null; apps: LoanApplication[]; latestActivity: string | null };
+  const { data: merchantGroupsData, isLoading: merchantGroupsLoading } = useQuery<MerchantGroup[]>({
+    queryKey: ["/api/merchants", debouncedSearch, filterStatus, selectedAgentFilter],
+    enabled: authData?.isAuthenticated === true,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
+      if (selectedAgentFilter && selectedAgentFilter !== "all") params.set("agent", selectedAgentFilter);
+      const res = await fetch(`/api/merchants?${params}`, { credentials: "include" });
+      if (res.status === 401) return [];
+      if (!res.ok) throw new Error("Failed to fetch merchant groups");
+      const data: MerchantGroup[] = await res.json();
+      setHasMore(data.length === 100);
+      return data;
+    },
+    retry: false,
+    staleTime: 30_000,
+  });
+
   const loadMore = async () => {
     setIsLoadingMore(true);
     try {
@@ -3470,6 +3491,7 @@ export default function Dashboard() {
     setLoadMoreOffset(100);
     setHasMore(false);
     queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/merchants"] });
   };
 
 
@@ -3734,17 +3756,8 @@ export default function Dashboard() {
     : [];
 
 
-  // Group filteredApplications by merchant_id for multi-round display
-  const merchantGroups: { key: string; apps: LoanApplication[] }[] = (() => {
-    if (!filteredApplications || filteredApplications.length === 0) return [];
-    const map = new Map<string, LoanApplication[]>();
-    for (const app of filteredApplications) {
-      const key = (app as any).merchantId || `__solo__${app.id}`;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(app);
-    }
-    return Array.from(map.entries()).map(([key, apps]) => ({ key, apps }));
-  })();
+  // Merchant groups driven by server-side query (correct grouping across all pages)
+  const merchantGroups = merchantGroupsData ?? [];
 
   // Helper to check if app has low revenue
   const isAppLowRevenue = (app: LoanApplication) => {
@@ -4170,11 +4183,11 @@ export default function Dashboard() {
         </Card>
 
 
-        {appsLoading ? (
+        {(appsLoading || merchantGroupsLoading) ? (
           <Card className="p-12" data-testid="card-loading-state">
             <p className="text-center text-muted-foreground" data-testid="text-loading-message">Loading applications...</p>
           </Card>
-        ) : filteredApplications && filteredApplications.length > 0 ? (
+        ) : merchantGroups.length > 0 ? (
           <div className="space-y-2">
             {merchantGroups.map(({ key, apps: groupApps }) => {
               const app = groupApps[0];

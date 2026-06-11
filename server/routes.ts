@@ -2271,7 +2271,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/merchants — return all merchants with their application rounds (agent-scoped)
+  // GET /api/merchants — merchant-level view with nested rounds (auth-scoped, search/status/agent filtered)
   app.get("/api/merchants", async (req, res) => {
     try {
       if (!req.session.user?.isAuthenticated) {
@@ -2279,53 +2279,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const role = req.session.user.role;
       const agentEmail = req.session.user.agentEmail?.toLowerCase();
-      const search = (req.query.search as string) || undefined;
+      const search   = (req.query.search  as string) || undefined;
+      const status   = (req.query.status  as string) || "all";
+      const agent    = (req.query.agent   as string) || "all";
+      const offset   = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+      const MERCHANT_PAGE = 100; // merchants per page
 
-      let appsQuery = `
-        SELECT la.*, m.business_name AS m_business_name, m.primary_email AS m_primary_email,
-               m.primary_phone AS m_primary_phone
-        FROM loan_applications la
-        LEFT JOIN merchants m ON la.merchant_id = m.id
-        WHERE la.applicant_signature IS NOT DISTINCT FROM la.applicant_signature
-      `;
-      const params: any[] = [];
-      let idx = 1;
+      // Convert snake_case DB row → camelCase for frontend compatibility
+      const toCamel = (s: string) => s.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+      const rowToApp = (row: any) => {
+        const app: any = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (!k.startsWith('m_')) app[toCamel(k)] = v;
+        }
+        return app;
+      };
 
+      // Step 1: rank merchants by latest activity, apply all filters
+      const cteParams: any[] = [];
+      let cteIdx = 1;
+
+      let cteWhere = `WHERE 1=1`;
       if (role === "agent" && agentEmail) {
-        appsQuery += ` AND LOWER(la.agent_email) = $${idx++}`;
-        params.push(agentEmail);
+        cteWhere += ` AND LOWER(la.agent_email) = $${cteIdx++}`;
+        cteParams.push(agentEmail);
+      }
+      if (agent !== "all" && role !== "agent") {
+        if (agent === "unassigned") {
+          cteWhere += ` AND la.agent_name IS NULL`;
+        } else {
+          cteWhere += ` AND la.agent_name = $${cteIdx++}`;
+          cteParams.push(agent);
+        }
       }
       if (search) {
         const pat = `%${search}%`;
-        appsQuery += ` AND (la.full_name ILIKE $${idx} OR la.email ILIKE $${idx} OR la.business_name ILIKE $${idx} OR la.legal_business_name ILIKE $${idx} OR la.phone ILIKE $${idx})`;
-        params.push(pat);
-        idx++;
+        cteWhere += ` AND (la.full_name ILIKE $${cteIdx} OR la.email ILIKE $${cteIdx} OR la.business_name ILIKE $${cteIdx} OR la.legal_business_name ILIKE $${cteIdx} OR la.phone ILIKE $${cteIdx})`;
+        cteParams.push(pat); cteIdx++;
       }
-      appsQuery += ` ORDER BY COALESCE(la.last_submission_at, la.created_at) DESC LIMIT 500`;
 
-      const rawResult = await pool.query(appsQuery, params);
+      // Revenue threshold for low-revenue filter
+      let statusHaving = '';
+      if (status === 'intake')      statusHaving = `AND BOOL_OR(la.is_completed AND NOT la.is_full_application_completed) = true`;
+      else if (status === 'full')   statusHaving = `AND BOOL_OR(la.is_full_application_completed) = true`;
+      else if (status === 'partial') statusHaving = `AND BOOL_OR(NOT la.is_completed AND NOT la.is_full_application_completed) = true`;
+      // low-revenue handled post-grouping below
 
-      // Group by merchant_id
-      const groupMap = new Map<string, { merchantId: string | null; businessName: string | null; primaryEmail: string | null; primaryPhone: string | null; apps: any[] }>();
+      cteParams.push(MERCHANT_PAGE, offset);
+      const limitIdx = cteIdx; cteIdx++;
+      const offsetIdx = cteIdx; cteIdx++;
+
+      const rankedQuery = `
+        WITH ranked AS (
+          SELECT
+            COALESCE(la.merchant_id, 'solo_' || la.id)          AS merchant_key,
+            MAX(COALESCE(la.last_submission_at, la.created_at))  AS latest_activity
+          FROM loan_applications la
+          ${cteWhere}
+          GROUP BY COALESCE(la.merchant_id, 'solo_' || la.id)
+          ${statusHaving}
+          ORDER BY latest_activity DESC
+          LIMIT $${limitIdx} OFFSET $${offsetIdx}
+        )
+        SELECT la.*, m.business_name AS m_business_name, m.primary_email AS m_primary_email,
+               m.primary_phone AS m_primary_phone,
+               COALESCE(la.merchant_id, 'solo_' || la.id) AS merchant_key,
+               r.latest_activity
+        FROM ranked r
+        JOIN loan_applications la ON COALESCE(la.merchant_id, 'solo_' || la.id) = r.merchant_key
+        LEFT JOIN merchants m ON la.merchant_id = m.id
+        ORDER BY r.latest_activity DESC, COALESCE(la.last_submission_at, la.created_at) DESC
+      `;
+
+      const rawResult = await pool.query(rankedQuery, cteParams);
+
+      // Group rows by merchant_key; apps already ordered newest-first per merchant
+      const groupMap = new Map<string, { key: string; merchantId: string | null; businessName: string | null; primaryEmail: string | null; primaryPhone: string | null; apps: any[]; latestActivity: any }>();
       for (const row of rawResult.rows) {
-        const key = row.merchant_id || `__solo__${row.id}`;
+        const key = row.merchant_key as string;
         if (!groupMap.has(key)) {
           groupMap.set(key, {
+            key,
             merchantId: row.merchant_id || null,
             businessName: row.m_business_name || row.legal_business_name || row.business_name || null,
             primaryEmail: row.m_primary_email || row.email || null,
             primaryPhone: row.m_primary_phone || row.phone || null,
             apps: [],
+            latestActivity: row.latest_activity || null,
           });
         }
-        groupMap.get(key)!.apps.push(row);
+        groupMap.get(key)!.apps.push(rowToApp(row));
       }
 
-      const groups = Array.from(groupMap.values()).map(g => ({
-        ...g,
-        roundCount: g.apps.length,
-        latestActivity: g.apps[0]?.last_submission_at || g.apps[0]?.created_at || null,
-      }));
+      let groups = Array.from(groupMap.values());
+
+      // Low-revenue filter: keep group if primary app has monthly revenue < 10 000
+      if (status === 'low-revenue') {
+        groups = groups.filter(g => {
+          const app = g.apps[0];
+          const rev = parseFloat(String(app?.monthlyRevenue || app?.averageMonthlyRevenue || '0').replace(/[$,]/g, ''));
+          return !isNaN(rev) && rev > 0 && rev < 10000;
+        });
+      }
 
       res.json(groups);
     } catch (err: any) {

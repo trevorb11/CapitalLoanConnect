@@ -210,60 +210,80 @@ app.use((req, res, next) => {
         )
       `);
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS merchant_id VARCHAR(255)`);
+      // FK constraint: loan_applications.merchant_id → merchants.id
+      await db.execute(sql`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'fk_loan_applications_merchant_id'
+          ) THEN
+            ALTER TABLE loan_applications
+              ADD CONSTRAINT fk_loan_applications_merchant_id
+              FOREIGN KEY (merchant_id) REFERENCES merchants(id) ON DELETE SET NULL;
+          END IF;
+        END $$
+      `);
+      // Helpful lookup indexes (idempotent)
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_merchants_primary_email ON merchants (LOWER(primary_email))`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_loan_applications_merchant_id ON loan_applications (merchant_id)`);
       console.log('[STARTUP] Migration: merchants table + merchant_id column ensured');
-      // Backfill: create one merchant per unique email, link apps to it
+      // Sequential per-app backfill: email → phone → business name (same logic as findOrCreateMerchant)
       await db.execute(sql`
-        INSERT INTO merchants (id, business_name, primary_email, primary_phone, created_at)
-        SELECT
-          gen_random_uuid(),
-          COALESCE(MAX(legal_business_name), MAX(business_name)),
-          LOWER(TRIM(email)),
-          MAX(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g')),
-          MIN(created_at)
-        FROM loan_applications
-        WHERE merchant_id IS NULL
-          AND email IS NOT NULL
-          AND TRIM(email) != ''
-        GROUP BY LOWER(TRIM(email))
-      `);
-      await db.execute(sql`
-        UPDATE loan_applications la
-        SET merchant_id = m.id
-        FROM merchants m
-        WHERE LOWER(TRIM(la.email)) = LOWER(TRIM(m.primary_email))
-          AND la.merchant_id IS NULL
-      `);
-      // Second pass: link remaining apps by normalized phone
-      await db.execute(sql`
-        UPDATE loan_applications la
-        SET merchant_id = m.id
-        FROM merchants m
-        WHERE la.merchant_id IS NULL
-          AND la.phone IS NOT NULL
-          AND LENGTH(REGEXP_REPLACE(la.phone, '[^0-9]', '', 'g')) >= 10
-          AND REGEXP_REPLACE(la.phone, '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE(m.primary_phone,''), '[^0-9]', '', 'g')
-      `);
-      // Third pass: create merchants for any remaining apps and link by business name
-      await db.execute(sql`
-        INSERT INTO merchants (id, business_name, primary_email, primary_phone, created_at)
-        SELECT
-          gen_random_uuid(),
-          COALESCE(MAX(legal_business_name), MAX(business_name)),
-          LOWER(TRIM(MIN(email))),
-          MAX(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g')),
-          MIN(created_at)
-        FROM loan_applications
-        WHERE merchant_id IS NULL
-          AND TRIM(COALESCE(legal_business_name, business_name, '')) != ''
-        GROUP BY LOWER(TRIM(COALESCE(legal_business_name, business_name, '')))
-      `);
-      await db.execute(sql`
-        UPDATE loan_applications la
-        SET merchant_id = m.id
-        FROM merchants m
-        WHERE la.merchant_id IS NULL
-          AND LOWER(TRIM(COALESCE(la.legal_business_name, la.business_name, ''))) = LOWER(TRIM(COALESCE(m.business_name, '')))
-          AND TRIM(COALESCE(la.legal_business_name, la.business_name, '')) != ''
+        DO $$
+        DECLARE
+          r RECORD;
+          norm_email TEXT;
+          norm_phone TEXT;
+          norm_biz   TEXT;
+          mid        VARCHAR(255);
+        BEGIN
+          FOR r IN
+            SELECT id, email, phone, legal_business_name, business_name
+            FROM loan_applications
+            WHERE merchant_id IS NULL
+            ORDER BY created_at
+          LOOP
+            norm_email := LOWER(TRIM(COALESCE(r.email, '')));
+            norm_phone := REGEXP_REPLACE(COALESCE(r.phone, ''), '[^0-9]', '', 'g');
+            norm_biz   := LOWER(TRIM(COALESCE(r.legal_business_name, r.business_name, '')));
+            mid := NULL;
+
+            -- 1. Match by email
+            IF norm_email != '' THEN
+              SELECT id INTO mid FROM merchants WHERE LOWER(primary_email) = norm_email LIMIT 1;
+            END IF;
+
+            -- 2. Match by phone
+            IF mid IS NULL AND LENGTH(norm_phone) >= 10 THEN
+              SELECT id INTO mid FROM merchants
+              WHERE REGEXP_REPLACE(COALESCE(primary_phone,''), '[^0-9]', '', 'g') = norm_phone
+                AND LENGTH(REGEXP_REPLACE(COALESCE(primary_phone,''), '[^0-9]', '', 'g')) >= 10
+              LIMIT 1;
+            END IF;
+
+            -- 3. Match by business name
+            IF mid IS NULL AND LENGTH(norm_biz) > 2 THEN
+              SELECT id INTO mid FROM merchants
+              WHERE LOWER(TRIM(COALESCE(business_name, ''))) = norm_biz
+              LIMIT 1;
+            END IF;
+
+            -- 4. Create new merchant if still not found
+            IF mid IS NULL THEN
+              INSERT INTO merchants (id, business_name, primary_email, primary_phone, created_at)
+              VALUES (
+                gen_random_uuid(),
+                COALESCE(r.legal_business_name, r.business_name),
+                CASE WHEN norm_email != '' THEN norm_email ELSE NULL END,
+                CASE WHEN LENGTH(norm_phone) >= 10 THEN norm_phone ELSE NULL END,
+                NOW()
+              )
+              RETURNING id INTO mid;
+            END IF;
+
+            UPDATE loan_applications SET merchant_id = mid WHERE id = r.id;
+          END LOOP;
+        END;
+        $$
       `);
       const backfillResult = await db.execute(sql`SELECT COUNT(*) FROM merchants`);
       console.log(`[STARTUP] Merchant backfill complete: ${(backfillResult.rows[0] as any).count} merchants`);
