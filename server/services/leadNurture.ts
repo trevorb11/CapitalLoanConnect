@@ -163,7 +163,21 @@ export async function runLeadNurtureSweep(): Promise<void> {
   }
 }
 
+async function isUnsubscribed(email: string): Promise<boolean> {
+  try {
+    const res = await db.execute(sql`SELECT 1 FROM email_unsubscribes WHERE email = ${email.toLowerCase()} LIMIT 1`);
+    return res.rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function processAccount(account: NurtureAccount): Promise<void> {
+  if (await isUnsubscribed(account.email)) {
+    console.log(`[LEAD-NURTURE] skipping ${account.email} — unsubscribed`);
+    return;
+  }
+
   const sent = new Set((account.nurture_steps_sent || "").split(",").filter(Boolean));
   const ageHours = (Date.now() - new Date(account.created_at).getTime()) / (1000 * 60 * 60);
 

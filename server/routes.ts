@@ -9304,6 +9304,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error("[PARTNER] Failed to ensure partners table:", err);
   }
 
+  // ── Email unsubscribes table ───────────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS email_unsubscribes (
+        email TEXT PRIMARY KEY,
+        unsubscribed_at TIMESTAMP DEFAULT NOW(),
+        source TEXT DEFAULT 'one-click'
+      )
+    `);
+    console.log("[UNSUB] email_unsubscribes table ensured");
+  } catch (err) {
+    console.error("[UNSUB] Failed to ensure email_unsubscribes table:", err);
+  }
+
+  // ── Unsubscribe page (GET /unsubscribe) ───────────────────────────────────
+  app.get("/unsubscribe", (req: Request, res: Response) => {
+    const email = (req.query.email as string) || "";
+    const safeEmail = email.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const status = req.query.status as string;
+    const isConfirmed = status === "done";
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Unsubscribe – Today Capital Group</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .card{background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.08);max-width:480px;width:100%;padding:48px 40px;text-align:center}
+    .logo{font-size:13px;font-weight:700;letter-spacing:2px;color:#2dd4bf;text-transform:uppercase;margin-bottom:32px}
+    h1{font-size:24px;font-weight:700;color:#0f172a;margin-bottom:12px}
+    p{font-size:15px;color:#64748b;line-height:1.6;margin-bottom:24px}
+    .email-pill{display:inline-block;background:#f1f5f9;border-radius:6px;padding:6px 14px;font-size:14px;color:#334155;margin-bottom:28px;word-break:break-all}
+    button,a.btn{display:inline-block;background:#0f1e38;color:#fff;border:none;border-radius:8px;padding:13px 32px;font-size:15px;font-weight:600;cursor:pointer;text-decoration:none;transition:opacity .15s}
+    button:hover,a.btn:hover{opacity:.85}
+    .check{width:56px;height:56px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;font-size:28px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Today Capital Group</div>
+    ${isConfirmed ? `
+    <div class="check">&#10003;</div>
+    <h1>You've been unsubscribed</h1>
+    <p>You won't receive any more marketing emails from us${safeEmail ? ` at <strong>${safeEmail}</strong>` : ""}.</p>
+    <a class="btn" href="https://todaycapitalgroup.com">Back to website</a>
+    ` : `
+    <h1>Unsubscribe from emails</h1>
+    ${safeEmail ? `<div class="email-pill">${safeEmail}</div>` : ""}
+    <p>Click the button below to stop receiving marketing emails from Today Capital Group.</p>
+    <form method="POST" action="/api/unsubscribe">
+      <input type="hidden" name="email" value="${safeEmail}"/>
+      <button type="submit">Confirm unsubscribe</button>
+    </form>
+    `}
+  </div>
+</body>
+</html>`);
+  });
+
+  // ── One-click unsubscribe (POST /api/unsubscribe) ─────────────────────────
+  // Called by email clients that support List-Unsubscribe-Post (RFC 8058)
+  // AND by our own confirm-unsubscribe form above.
+  app.post("/api/unsubscribe", async (req: Request, res: Response) => {
+    const email = (req.body?.email || req.query.email || "").toString().trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: "email required" });
+    try {
+      await db.execute(sql`
+        INSERT INTO email_unsubscribes (email, unsubscribed_at, source)
+        VALUES (${email}, NOW(), 'one-click')
+        ON CONFLICT (email) DO NOTHING
+      `);
+      console.log(`[UNSUB] ${email} unsubscribed`);
+      // RFC 8058 one-click callers expect 200 with no body; browser form
+      // submissions get a friendly confirmation redirect.
+      const isFormSubmit = req.headers["content-type"]?.includes("application/x-www-form-urlencoded");
+      if (isFormSubmit) {
+        return res.redirect(302, `/unsubscribe?email=${encodeURIComponent(email)}&status=done`);
+      }
+      return res.status(200).send("OK");
+    } catch (err) {
+      console.error("[UNSUB] Failed to record unsubscribe:", err);
+      return res.status(500).json({ error: "internal error" });
+    }
+  });
+
   // Helper functions for password hashing
   const hashPassword = (password: string): string => {
     const salt = randomBytes(16).toString("hex");

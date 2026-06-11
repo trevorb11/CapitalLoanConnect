@@ -190,6 +190,13 @@ export async function evaluateLeadQualification(email: string): Promise<void> {
       return;
     }
 
+    // Skip email if the lead unsubscribed
+    const unsubRes = await db.execute(sql`SELECT 1 FROM email_unsubscribes WHERE email = ${email.toLowerCase()} LIMIT 1`).catch(() => ({ rows: [] }));
+    if (unsubRes.rows.length > 0) {
+      console.log(`[LEAD-QUALIFY] skipping email to ${email} — unsubscribed`);
+      return;
+    }
+
     // 1) Email the lead
     const leadEmail = buildLeadQualifiedEmail(account.first_name, signals);
     const sent = await gmailService.sendEmail(email, leadEmail.subject, leadEmail.html);

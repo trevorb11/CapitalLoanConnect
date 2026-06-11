@@ -247,13 +247,14 @@ export class GmailService {
       const boundary = `boundary_${Date.now()}`;
       const messageId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@todaycapitalgroup.com>`;
       const unsubscribeEmail = "marketing@todaycapitalgroup.com";
+      const unsubscribeUrl = `https://app.todaycapitalgroup.com/unsubscribe?email=${encodeURIComponent(to)}`;
 
       const messageParts = [
         fromHeader,
         `To: ${to}`,
         `Subject: ${subject}`,
         `Message-ID: ${messageId}`,
-        `List-Unsubscribe: <mailto:${unsubscribeEmail}?subject=Unsubscribe>`,
+        `List-Unsubscribe: <${unsubscribeUrl}>, <mailto:${unsubscribeEmail}?subject=Unsubscribe>`,
         `List-Unsubscribe-Post: List-Unsubscribe=One-Click`,
         `MIME-Version: 1.0`,
         `Content-Type: multipart/alternative; boundary="${boundary}"`,
