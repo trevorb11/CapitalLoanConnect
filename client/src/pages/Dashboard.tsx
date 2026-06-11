@@ -3426,6 +3426,13 @@ export default function Dashboard() {
     setHasMore(false);
   }, [debouncedSearch]);
 
+  // Reset merchant pagination whenever any filter changes (prevents stale rows mixing into results)
+  useEffect(() => {
+    setAdditionalMerchantGroups([]);
+    setMerchantLoadMoreOffset(100);
+    setHasMore(false);
+  }, [debouncedSearch, filterStatus, selectedAgentFilter]);
+
   const { data: firstPageApps, isLoading: appsLoading } = useQuery<LoanApplication[]>({
     queryKey: ["/api/applications", debouncedSearch],
     enabled: authData?.isAuthenticated === true,

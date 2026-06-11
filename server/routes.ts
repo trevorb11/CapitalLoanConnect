@@ -2324,10 +2324,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Revenue threshold for low-revenue filter
       let statusHaving = '';
-      if (status === 'intake')       statusHaving = `HAVING BOOL_OR(la.is_completed AND NOT la.is_full_application_completed) = true`;
-      else if (status === 'full')    statusHaving = `HAVING BOOL_OR(la.is_full_application_completed) = true`;
-      else if (status === 'partial') statusHaving = `HAVING BOOL_OR(NOT la.is_completed AND NOT la.is_full_application_completed) = true`;
-      // low-revenue handled post-grouping below
+      // Helper expression: parse revenue string (may contain "$", ",") to numeric
+      const revExpr = `MAX(CASE
+        WHEN REGEXP_REPLACE(COALESCE(la.monthly_revenue, la.average_monthly_revenue, '0'), '[^0-9.]', '', 'g') ~ '^[0-9]+(\\.[0-9]+)?$'
+        THEN CAST(REGEXP_REPLACE(COALESCE(la.monthly_revenue, la.average_monthly_revenue, '0'), '[^0-9.]', '', 'g') AS NUMERIC)
+        ELSE 0 END)`;
+      if (status === 'intake')        statusHaving = `HAVING BOOL_OR(la.is_completed AND NOT la.is_full_application_completed) = true`;
+      else if (status === 'full')     statusHaving = `HAVING BOOL_OR(la.is_full_application_completed) = true`;
+      else if (status === 'partial')  statusHaving = `HAVING BOOL_OR(NOT la.is_completed AND NOT la.is_full_application_completed) = true`;
+      else if (status === 'low-revenue') statusHaving = `HAVING ${revExpr} > 0 AND ${revExpr} < 10000`;
 
       cteParams.push(MERCHANT_PAGE, offset);
       const limitIdx = cteIdx; cteIdx++;
@@ -2375,16 +2380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         groupMap.get(key)!.apps.push(rowToApp(row));
       }
 
-      let groups = Array.from(groupMap.values());
-
-      // Low-revenue filter: keep group if primary app has monthly revenue < 10 000
-      if (status === 'low-revenue') {
-        groups = groups.filter(g => {
-          const app = g.apps[0];
-          const rev = parseFloat(String(app?.monthlyRevenue || app?.averageMonthlyRevenue || '0').replace(/[$,]/g, ''));
-          return !isNaN(rev) && rev > 0 && rev < 10000;
-        });
-      }
+      const groups = Array.from(groupMap.values());
 
       res.json(groups);
     } catch (err: any) {
