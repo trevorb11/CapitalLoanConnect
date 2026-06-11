@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy, Phone, Send } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronUp, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy, Phone, Send } from "lucide-react";
 import { Link } from "wouter";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { BotAttemptsTab } from "@/components/dashboard/BotAttemptsTab";
@@ -3406,6 +3406,7 @@ export default function Dashboard() {
   const [editFormData, setEditFormData] = useState<Partial<LoanApplication>>({});
   const [resignApplication, setResignApplication] = useState(false);
   const [expandedSubmissions, setExpandedSubmissions] = useState<Set<string>>(new Set());
+  const [expandedMerchants, setExpandedMerchants] = useState<Set<string>>(new Set());
 
   const { data: authData, isLoading: authLoading, refetch: refetchAuth } = useQuery<AuthState | null>({
     queryKey: ["/api/auth/check"],
@@ -3732,6 +3733,18 @@ export default function Dashboard() {
         })
     : [];
 
+
+  // Group filteredApplications by merchant_id for multi-round display
+  const merchantGroups: { key: string; apps: LoanApplication[] }[] = (() => {
+    if (!filteredApplications || filteredApplications.length === 0) return [];
+    const map = new Map<string, LoanApplication[]>();
+    for (const app of filteredApplications) {
+      const key = (app as any).merchantId || `__solo__${app.id}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(app);
+    }
+    return Array.from(map.entries()).map(([key, apps]) => ({ key, apps }));
+  })();
 
   // Helper to check if app has low revenue
   const isAppLowRevenue = (app: LoanApplication) => {
@@ -4163,8 +4176,12 @@ export default function Dashboard() {
           </Card>
         ) : filteredApplications && filteredApplications.length > 0 ? (
           <div className="space-y-2">
-            {filteredApplications.map((app) => (
-              <Card key={app.id} className="p-4 hover-elevate" data-testid={`card-application-${app.id}`}>
+            {merchantGroups.map(({ key, apps: groupApps }) => {
+              const app = groupApps[0];
+              const otherRounds = groupApps.slice(1);
+              const isMerchantExpanded = expandedMerchants.has(key);
+              return (
+              <Card key={key} className="p-4 hover-elevate" data-testid={`card-application-${app.id}`}>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -4496,8 +4513,57 @@ export default function Dashboard() {
                     })()}
                   </div>
                 )}
+
+                {/* Other application rounds for this merchant */}
+                {otherRounds.length > 0 && (
+                  <div className="mt-3 pt-3 border-t">
+                    <button
+                      data-testid={`button-toggle-rounds-${app.id}`}
+                      onClick={() => setExpandedMerchants(prev => {
+                        const next = new Set(prev);
+                        if (next.has(key)) next.delete(key); else next.add(key);
+                        return next;
+                      })}
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {isMerchantExpanded ? (
+                        <ChevronUp className="w-3 h-3" />
+                      ) : (
+                        <ChevronDown className="w-3 h-3" />
+                      )}
+                      {otherRounds.length} older round{otherRounds.length > 1 ? "s" : ""}
+                    </button>
+                    {isMerchantExpanded && (
+                      <div className="mt-2 space-y-1 pl-1" data-testid={`div-other-rounds-${app.id}`}>
+                        {otherRounds.map(r => (
+                          <div key={r.id} className="flex items-center justify-between gap-2 py-1 text-sm">
+                            <span className="text-muted-foreground">
+                              {r.legalBusinessName || r.businessName || "Round"}{" "}
+                              <span className="text-xs opacity-60">
+                                {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ""}
+                              </span>
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs" data-testid={`badge-round-status-${r.id}`}>
+                                {r.isFullApplicationCompleted ? "Full App" : r.isCompleted ? "Intake" : "Partial"}
+                              </Badge>
+                              <a
+                                href={`/dashboard/application/${r.id}`}
+                                className="text-xs text-blue-600 hover:underline"
+                                data-testid={`link-round-view-${r.id}`}
+                              >
+                                View
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </Card>
-            ))}
+              );
+            })}
 
             {/* Load more */}
             {hasMore && (

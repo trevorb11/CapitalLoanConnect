@@ -20,7 +20,7 @@ import { fireSmsStageEvent } from "./sms-middleware";
 import { triggerAppAbandoned, triggerApprovalCongratulations, triggerFundedCongratulations } from "./messaging-triggers";
 import { createRequire } from "module";
 import { pool, neonPool, db } from "./db";
-import { loanApplications, pageVisits, serviceInterests } from "@shared/schema";
+import { loanApplications, pageVisits, serviceInterests, merchants } from "@shared/schema";
 import { ilike, or, desc, sql, sql as drizzleSql } from "drizzle-orm";
 const require = createRequire(import.meta.url);
 const pdfParseModule = require("pdf-parse");
@@ -1389,6 +1389,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // --- Merchant find-or-create helper ---
+  async function findOrCreateMerchant(
+    email: string | null | undefined,
+    phone: string | null | undefined,
+    businessName: string | null | undefined,
+  ): Promise<string | null> {
+    const normEmail = email?.toLowerCase().trim() || null;
+    const normPhone = phone?.replace(/\D/g, '') || null;
+    const normBiz = businessName?.toLowerCase().trim() || null;
+    if (!normEmail && !normPhone && !normBiz) return null;
+    try {
+      if (normEmail) {
+        const r = await db.execute(sql`SELECT id FROM merchants WHERE LOWER(primary_email) = ${normEmail} LIMIT 1`);
+        if (r.rows.length) return (r.rows[0] as any).id as string;
+      }
+      if (normPhone && normPhone.length >= 10) {
+        const r = await db.execute(sql`
+          SELECT id FROM merchants
+          WHERE LENGTH(REGEXP_REPLACE(COALESCE(primary_phone,''),'[^0-9]','','g')) >= 10
+            AND REGEXP_REPLACE(COALESCE(primary_phone,''),'[^0-9]','','g') = ${normPhone}
+          LIMIT 1`);
+        if (r.rows.length) return (r.rows[0] as any).id as string;
+      }
+      if (normBiz && normBiz.length > 2) {
+        const r = await db.execute(sql`
+          SELECT id FROM merchants
+          WHERE LOWER(TRIM(COALESCE(business_name,''))) = ${normBiz}
+          LIMIT 1`);
+        if (r.rows.length) return (r.rows[0] as any).id as string;
+      }
+      const r = await db.execute(sql`
+        INSERT INTO merchants (id, business_name, primary_email, primary_phone, created_at)
+        VALUES (gen_random_uuid(), ${businessName || null}, ${normEmail},
+                ${normPhone && normPhone.length >= 10 ? normPhone : null}, NOW())
+        RETURNING id`);
+      return (r.rows[0] as any).id as string;
+    } catch (err: any) {
+      console.error('[MERCHANT] find-or-create error:', err?.message);
+      return null;
+    }
+  }
+
   // Create new loan application
   app.post("/api/applications", async (req, res) => {
     try {
@@ -1550,6 +1592,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Update existing application with new data instead of just returning old data
         // Filter out empty values to preserve previously entered data
         const filteredApplicationData = filterEmptyValues(applicationData);
+        // Ensure merchant linkage if not yet set
+        if (!existingApp.merchantId) {
+          const mId = await findOrCreateMerchant(
+            applicationData.email || existingApp.email,
+            (applicationData.phone as string | undefined) || existingApp.phone,
+            (applicationData.businessName as string | undefined) || (applicationData as any).legalBusinessName || existingApp.businessName,
+          );
+          if (mId) (filteredApplicationData as any).merchantId = mId;
+        }
         const updatedApp = await storage.updateLoanApplication(existingApp.id, filteredApplicationData);
 
         // A completed intake on an existing file = a new submission. Record it
@@ -1615,10 +1666,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('[FUNDING REPORT] Generated URL for new app:', fundingReportUrl);
       }
 
-      // Update with agentViewUrl and fundingReportUrl (GHL API sync disabled for now)
+      // Assign merchant (find existing or create new)
+      const newMerchantId = await findOrCreateMerchant(
+        applicationData.email,
+        applicationData.phone as string | undefined,
+        (applicationData.businessName as string | undefined) || (applicationData as any).legalBusinessName,
+      );
+
+      // Update with agentViewUrl, fundingReportUrl, and merchantId
       const updatedApp = await storage.updateLoanApplication(application.id, {
         agentViewUrl,
         ...(fundingReportUrl && { fundingReportUrl }),
+        ...(newMerchantId && { merchantId: newMerchantId }),
       });
 
       // Record the first submission when the intake completes in one shot
@@ -2209,6 +2268,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching applications:", error);
       res.status(500).json({ error: "Failed to fetch applications" });
+    }
+  });
+
+  // GET /api/merchants — return all merchants with their application rounds (agent-scoped)
+  app.get("/api/merchants", async (req, res) => {
+    try {
+      if (!req.session.user?.isAuthenticated) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const role = req.session.user.role;
+      const agentEmail = req.session.user.agentEmail?.toLowerCase();
+      const search = (req.query.search as string) || undefined;
+
+      let appsQuery = `
+        SELECT la.*, m.business_name AS m_business_name, m.primary_email AS m_primary_email,
+               m.primary_phone AS m_primary_phone
+        FROM loan_applications la
+        LEFT JOIN merchants m ON la.merchant_id = m.id
+        WHERE la.applicant_signature IS NOT DISTINCT FROM la.applicant_signature
+      `;
+      const params: any[] = [];
+      let idx = 1;
+
+      if (role === "agent" && agentEmail) {
+        appsQuery += ` AND LOWER(la.agent_email) = $${idx++}`;
+        params.push(agentEmail);
+      }
+      if (search) {
+        const pat = `%${search}%`;
+        appsQuery += ` AND (la.full_name ILIKE $${idx} OR la.email ILIKE $${idx} OR la.business_name ILIKE $${idx} OR la.legal_business_name ILIKE $${idx} OR la.phone ILIKE $${idx})`;
+        params.push(pat);
+        idx++;
+      }
+      appsQuery += ` ORDER BY COALESCE(la.last_submission_at, la.created_at) DESC LIMIT 500`;
+
+      const rawResult = await pool.query(appsQuery, params);
+
+      // Group by merchant_id
+      const groupMap = new Map<string, { merchantId: string | null; businessName: string | null; primaryEmail: string | null; primaryPhone: string | null; apps: any[] }>();
+      for (const row of rawResult.rows) {
+        const key = row.merchant_id || `__solo__${row.id}`;
+        if (!groupMap.has(key)) {
+          groupMap.set(key, {
+            merchantId: row.merchant_id || null,
+            businessName: row.m_business_name || row.legal_business_name || row.business_name || null,
+            primaryEmail: row.m_primary_email || row.email || null,
+            primaryPhone: row.m_primary_phone || row.phone || null,
+            apps: [],
+          });
+        }
+        groupMap.get(key)!.apps.push(row);
+      }
+
+      const groups = Array.from(groupMap.values()).map(g => ({
+        ...g,
+        roundCount: g.apps.length,
+        latestActivity: g.apps[0]?.last_submission_at || g.apps[0]?.created_at || null,
+      }));
+
+      res.json(groups);
+    } catch (err: any) {
+      console.error("[MERCHANTS] Failed:", err?.message);
+      res.status(500).json({ error: "Failed to fetch merchants" });
     }
   });
 

@@ -199,6 +199,74 @@ app.use((req, res, next) => {
       // UW submission timestamp on loan applications
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS uw_submitted_at TIMESTAMP`);
       console.log('[STARTUP] Migration: uw_submitted_at column ensured');
+      // Merchants table + merchant_id FK on loan_applications
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS merchants (
+          id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid(),
+          business_name TEXT,
+          primary_email TEXT,
+          primary_phone TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS merchant_id VARCHAR(255)`);
+      console.log('[STARTUP] Migration: merchants table + merchant_id column ensured');
+      // Backfill: create one merchant per unique email, link apps to it
+      await db.execute(sql`
+        INSERT INTO merchants (id, business_name, primary_email, primary_phone, created_at)
+        SELECT
+          gen_random_uuid(),
+          COALESCE(MAX(legal_business_name), MAX(business_name)),
+          LOWER(TRIM(email)),
+          MAX(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g')),
+          MIN(created_at)
+        FROM loan_applications
+        WHERE merchant_id IS NULL
+          AND email IS NOT NULL
+          AND TRIM(email) != ''
+        GROUP BY LOWER(TRIM(email))
+      `);
+      await db.execute(sql`
+        UPDATE loan_applications la
+        SET merchant_id = m.id
+        FROM merchants m
+        WHERE LOWER(TRIM(la.email)) = LOWER(TRIM(m.primary_email))
+          AND la.merchant_id IS NULL
+      `);
+      // Second pass: link remaining apps by normalized phone
+      await db.execute(sql`
+        UPDATE loan_applications la
+        SET merchant_id = m.id
+        FROM merchants m
+        WHERE la.merchant_id IS NULL
+          AND la.phone IS NOT NULL
+          AND LENGTH(REGEXP_REPLACE(la.phone, '[^0-9]', '', 'g')) >= 10
+          AND REGEXP_REPLACE(la.phone, '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE(m.primary_phone,''), '[^0-9]', '', 'g')
+      `);
+      // Third pass: create merchants for any remaining apps and link by business name
+      await db.execute(sql`
+        INSERT INTO merchants (id, business_name, primary_email, primary_phone, created_at)
+        SELECT
+          gen_random_uuid(),
+          COALESCE(MAX(legal_business_name), MAX(business_name)),
+          LOWER(TRIM(MIN(email))),
+          MAX(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g')),
+          MIN(created_at)
+        FROM loan_applications
+        WHERE merchant_id IS NULL
+          AND TRIM(COALESCE(legal_business_name, business_name, '')) != ''
+        GROUP BY LOWER(TRIM(COALESCE(legal_business_name, business_name, '')))
+      `);
+      await db.execute(sql`
+        UPDATE loan_applications la
+        SET merchant_id = m.id
+        FROM merchants m
+        WHERE la.merchant_id IS NULL
+          AND LOWER(TRIM(COALESCE(la.legal_business_name, la.business_name, ''))) = LOWER(TRIM(COALESCE(m.business_name, '')))
+          AND TRIM(COALESCE(la.legal_business_name, la.business_name, '')) != ''
+      `);
+      const backfillResult = await db.execute(sql`SELECT COUNT(*) FROM merchants`);
+      console.log(`[STARTUP] Merchant backfill complete: ${(backfillResult.rows[0] as any).count} merchants`);
       // Backfill rep_call_stats: reassign Carlos Batista → Jonathan Rendon
       const carlosBackfill = await db.execute(sql`
         UPDATE rep_call_stats
