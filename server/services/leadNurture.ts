@@ -51,7 +51,8 @@ function nurtureWrapper(headline: string, bodyHtml: string, ctaLabel: string, ct
         </tr>
         <tr>
           <td style="background:#f9fafb;padding:18px 28px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0;font-size:12px;color:#9ca3af;">Today Capital Group &middot; 6303 Owensmouth Ave, Woodland Hills, CA 91367 &middot; (818) 351-0225</p>
+            <p style="margin:0 0 6px;font-size:12px;color:#9ca3af;">Today Capital Group &middot; 6303 Owensmouth Ave, Woodland Hills, CA 91367 &middot; (818) 351-0225</p>
+            <p style="margin:0;font-size:11px;color:#c0c6cf;">You received this email because you signed up at app.todaycapitalgroup.com. To stop receiving these emails, reply with &ldquo;Unsubscribe&rdquo; or email <a href="mailto:marketing@todaycapitalgroup.com?subject=Unsubscribe" style="color:#9ca3af;">marketing@todaycapitalgroup.com</a>.</p>
           </td>
         </tr>
       </table>

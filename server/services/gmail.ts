@@ -219,12 +219,50 @@ export class GmailService {
   async sendEmail(to: string, subject: string, htmlBody: string): Promise<boolean> {
     try {
       const gmail = await getUncachableGmailClient();
+
+      // Fetch authenticated sender address (cached after first call) for display-name From header
+      let senderEmail = "";
+      try {
+        const profile = await gmail.users.getProfile({ userId: "me" });
+        senderEmail = profile.data.emailAddress || "";
+      } catch { /* fall back to no display name */ }
+
+      const fromHeader = senderEmail
+        ? `From: Today Capital Group <${senderEmail}>`
+        : `From: Today Capital Group`;
+
+      // Build a plain-text version by stripping HTML tags (spam filters penalise HTML-only)
+      const plainText = htmlBody
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&middot;/g, "·")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&nbsp;/g, " ")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
       const boundary = `boundary_${Date.now()}`;
+      const messageId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@todaycapitalgroup.com>`;
+      const unsubscribeEmail = "marketing@todaycapitalgroup.com";
+
       const messageParts = [
+        fromHeader,
         `To: ${to}`,
         `Subject: ${subject}`,
+        `Message-ID: ${messageId}`,
+        `List-Unsubscribe: <mailto:${unsubscribeEmail}?subject=Unsubscribe>`,
+        `List-Unsubscribe-Post: List-Unsubscribe=One-Click`,
         `MIME-Version: 1.0`,
         `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        ``,
+        `--${boundary}`,
+        `Content-Type: text/plain; charset=UTF-8`,
+        `Content-Transfer-Encoding: quoted-printable`,
+        ``,
+        plainText,
         ``,
         `--${boundary}`,
         `Content-Type: text/html; charset=UTF-8`,
