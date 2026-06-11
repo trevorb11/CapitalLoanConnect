@@ -31,8 +31,22 @@ export const insertPartnerSchema = createInsertSchema(partners).omit({
 export type InsertPartner = z.infer<typeof insertPartnerSchema>;
 export type Partner = typeof partners.$inferSelect;
 
+// Merchants — one record per unique business, groups all application rounds
+export const merchants = pgTable("merchants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  businessName: text("business_name"),
+  primaryEmail: text("primary_email"),
+  primaryPhone: text("primary_phone"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type Merchant = typeof merchants.$inferSelect;
+
 export const loanApplications = pgTable("loan_applications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  // --- Merchant grouping (links all rounds for the same business) ---
+  merchantId: varchar("merchant_id"),
 
   // --- Referral Partner Tracking ---
   referralPartnerId: varchar("referral_partner_id").references(() => partners.id),
