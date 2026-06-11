@@ -16117,5 +16117,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── /track lead nurture sequence — day 1 / 3 / 7 onboarding emails ──────
   startLeadNurtureScheduler();
 
+  // ── OG meta injection for agent application links ─────────────────────────
+  // When email clients crawl /{initials} to build a link preview, they receive
+  // index.html with proper og:title / og:description / og:image injected so the
+  // link card looks professional and doesn't trigger spam heuristics.
+  // Regular browsers receive the same HTML — React boots normally via the module
+  // script tags. In development Vite handles the route instead (next() falls
+  // through); in production we read the built index.html and patch the head.
+  const AGENT_INITIALS_SET = new Set(AGENTS.map((a) => a.initials.toLowerCase()));
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "GET") return next();
+
+    // Match /{2-3 lowercase letters} — agent initials and quiz variants
+    const match = req.path.match(/^\/([a-z]{2,3})(\/quiz)?$/);
+    if (!match) return next();
+    const initials = match[1];
+    if (!AGENT_INITIALS_SET.has(initials)) return next();
+
+    const agent = AGENTS.find((a) => a.initials.toLowerCase() === initials);
+    const agentFirstName = agent ? agent.name.split(" ")[0] : "a Today Capital Group advisor";
+    const canonicalBase = "https://app.todaycapitalgroup.com";
+    const canonicalUrl = `${canonicalBase}/${initials}${match[2] || ""}`;
+
+    const ogTitle = "Apply for Business Funding — Today Capital Group";
+    const ogDesc = `Get funded in as little as 24–48 hours. ${agentFirstName} will walk you through your options. Complete a short application — it takes about 5 minutes.`;
+    const ogImage = `${canonicalBase}/og-preview.svg`;
+
+    const ogTags = `
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Today Capital Group" />
+    <meta property="og:title" content="${ogTitle}" />
+    <meta property="og:description" content="${ogDesc}" />
+    <meta property="og:image" content="${ogImage}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content="${canonicalUrl}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${ogTitle}" />
+    <meta name="twitter:description" content="${ogDesc}" />
+    <meta name="twitter:image" content="${ogImage}" />`;
+
+    const isProduction = process.env.NODE_ENV === "production";
+    const htmlCandidates = isProduction
+      ? [path.join(process.cwd(), "dist", "public", "index.html")]
+      : [path.join(process.cwd(), "client", "index.html")];
+
+    for (const htmlPath of htmlCandidates) {
+      try {
+        let html = fs.readFileSync(htmlPath, "utf-8");
+        // Replace the generic og:title (if present) or inject before </head>
+        if (html.includes('property="og:title"')) {
+          html = html
+            .replace(/(<meta property="og:title"[^>]*>)/, `<meta property="og:title" content="${ogTitle}" />`)
+            .replace(/(<meta property="og:description"[^>]*>)/, `<meta property="og:description" content="${ogDesc}" />`)
+            .replace(/(<meta property="og:url"[^>]*>)/, `<meta property="og:url" content="${canonicalUrl}" />`)
+            .replace(/(<meta name="twitter:title"[^>]*>)/, `<meta name="twitter:title" content="${ogTitle}" />`)
+            .replace(/(<meta name="twitter:description"[^>]*>)/, `<meta name="twitter:description" content="${ogDesc}" />`);
+        } else {
+          html = html.replace("</head>", `${ogTags}\n  </head>`);
+        }
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        return res.send(html);
+      } catch {
+        // file not found — fall through to next candidate or Vite
+      }
+    }
+    next();
+  });
+
   return httpServer;
 }
