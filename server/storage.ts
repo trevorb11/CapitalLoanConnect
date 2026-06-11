@@ -238,12 +238,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLoanApplicationByEmail(email: string): Promise<LoanApplication | undefined> {
+    // Case-insensitive and matches the business contact email too, so intake
+    // re-submissions find agent-created files (which often only set companyEmail)
+    const normalized = email?.trim().toLowerCase();
+    if (!normalized) return undefined;
     const [application] = await db
       .select()
       .from(loanApplications)
       .where(
         and(
-          eq(loanApplications.email, email),
+          or(
+            sql`lower(trim(${loanApplications.email})) = ${normalized}`,
+            sql`lower(trim(${loanApplications.companyEmail})) = ${normalized}`
+          ),
           eq(loanApplications.isCompleted, false)
         )
       )
@@ -253,11 +260,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAnyLoanApplicationByEmail(email: string): Promise<LoanApplication | undefined> {
-    if (!email) return undefined;
+    const normalized = email?.trim().toLowerCase();
+    if (!normalized) return undefined;
     const [application] = await db
       .select()
       .from(loanApplications)
-      .where(eq(loanApplications.email, email))
+      .where(
+        or(
+          sql`lower(trim(${loanApplications.email})) = ${normalized}`,
+          sql`lower(trim(${loanApplications.companyEmail})) = ${normalized}`
+        )
+      )
       .orderBy(desc(loanApplications.createdAt))
       .limit(1);
     return application || undefined;
