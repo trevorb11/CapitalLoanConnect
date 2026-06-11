@@ -2324,9 +2324,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Revenue threshold for low-revenue filter
       let statusHaving = '';
-      if (status === 'intake')      statusHaving = `AND BOOL_OR(la.is_completed AND NOT la.is_full_application_completed) = true`;
-      else if (status === 'full')   statusHaving = `AND BOOL_OR(la.is_full_application_completed) = true`;
-      else if (status === 'partial') statusHaving = `AND BOOL_OR(NOT la.is_completed AND NOT la.is_full_application_completed) = true`;
+      if (status === 'intake')       statusHaving = `HAVING BOOL_OR(la.is_completed AND NOT la.is_full_application_completed) = true`;
+      else if (status === 'full')    statusHaving = `HAVING BOOL_OR(la.is_full_application_completed) = true`;
+      else if (status === 'partial') statusHaving = `HAVING BOOL_OR(NOT la.is_completed AND NOT la.is_full_application_completed) = true`;
       // low-revenue handled post-grouping below
 
       cteParams.push(MERCHANT_PAGE, offset);
