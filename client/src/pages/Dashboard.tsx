@@ -3469,14 +3469,22 @@ export default function Dashboard() {
     staleTime: 30_000,
   });
 
+  const [additionalMerchantGroups, setAdditionalMerchantGroups] = useState<any[]>([]);
+  const [merchantLoadMoreOffset, setMerchantLoadMoreOffset] = useState(100);
+
   const loadMore = async () => {
     setIsLoadingMore(true);
     try {
-      const res = await fetch(`/api/applications?offset=${loadMoreOffset}`, { credentials: "include" });
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
+      if (selectedAgentFilter && selectedAgentFilter !== "all") params.set("agent", selectedAgentFilter);
+      params.set("offset", String(merchantLoadMoreOffset));
+      const res = await fetch(`/api/merchants?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
-      const data: LoanApplication[] = await res.json();
-      setAdditionalApps(prev => [...prev, ...data]);
-      setLoadMoreOffset(prev => prev + 100);
+      const data: any[] = await res.json();
+      setAdditionalMerchantGroups(prev => [...prev, ...data]);
+      setMerchantLoadMoreOffset(prev => prev + 100);
       setHasMore(data.length === 100);
     } catch {
       /* silently fail — user can try again */
@@ -3489,6 +3497,8 @@ export default function Dashboard() {
   const resetAndRefetch = () => {
     setAdditionalApps([]);
     setLoadMoreOffset(100);
+    setAdditionalMerchantGroups([]);
+    setMerchantLoadMoreOffset(100);
     setHasMore(false);
     queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
     queryClient.invalidateQueries({ queryKey: ["/api/merchants"] });
@@ -3757,7 +3767,8 @@ export default function Dashboard() {
 
 
   // Merchant groups driven by server-side query (correct grouping across all pages)
-  const merchantGroups = merchantGroupsData ?? [];
+  // Merge first page + additional pages loaded via "Load More"
+  const merchantGroups = [...(merchantGroupsData ?? []), ...additionalMerchantGroups];
 
   // Helper to check if app has low revenue
   const isAppLowRevenue = (app: LoanApplication) => {
@@ -4549,14 +4560,21 @@ export default function Dashboard() {
                     {isMerchantExpanded && (
                       <div className="mt-2 space-y-1 pl-1" data-testid={`div-other-rounds-${app.id}`}>
                         {otherRounds.map(r => (
-                          <div key={r.id} className="flex items-center justify-between gap-2 py-1 text-sm">
-                            <span className="text-muted-foreground">
-                              {r.legalBusinessName || r.businessName || "Round"}{" "}
-                              <span className="text-xs opacity-60">
-                                {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ""}
+                          <div key={r.id} className="flex items-center justify-between gap-2 py-1 text-sm border-b last:border-0">
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-muted-foreground text-xs">
+                                {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "—"}
+                                {(r as any).agentName && (
+                                  <span className="ml-2 opacity-70">{(r as any).agentName}</span>
+                                )}
                               </span>
-                            </span>
-                            <div className="flex items-center gap-2">
+                              {((r as any).requestedAmount) && (
+                                <span className="text-xs font-medium">
+                                  ${Number((r as any).requestedAmount).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               <Badge variant="outline" className="text-xs" data-testid={`badge-round-status-${r.id}`}>
                                 {r.isFullApplicationCompleted ? "Full App" : r.isCompleted ? "Intake" : "Partial"}
                               </Badge>

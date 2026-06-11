@@ -2299,12 +2299,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cteParams: any[] = [];
       let cteIdx = 1;
 
+      // Mirror /api/applications auth scoping: agent + user both restricted to their own files
       let cteWhere = `WHERE 1=1`;
-      if (role === "agent" && agentEmail) {
+      if ((role === "agent" || role === "user") && agentEmail) {
         cteWhere += ` AND LOWER(la.agent_email) = $${cteIdx++}`;
         cteParams.push(agentEmail);
+      } else if ((role === "agent" || role === "user") && !agentEmail) {
+        // No agentEmail on file → return nothing rather than everything
+        return res.status(403).json({ error: "Agent email required for scoped access" });
       }
-      if (agent !== "all" && role !== "agent") {
+      if (agent !== "all" && role !== "agent" && role !== "user") {
         if (agent === "unassigned") {
           cteWhere += ` AND la.agent_name IS NULL`;
         } else {
