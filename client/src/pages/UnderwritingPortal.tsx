@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { LoginForm } from "@/components/auth/LoginForm";
 import {
   Search, FileText, Send, Ban, MessageSquare, Bot, Loader2,
-  ChevronLeft, Building2, DollarSign, Clock, User, Phone, Mail,
+  ChevronLeft, ChevronDown, Building2, DollarSign, Clock, User, Phone, Mail,
   AlertTriangle, CheckCircle2, XCircle, Eye, Download, Shield,
   Sparkles, ExternalLink, LogOut, Pencil, Check, X,
 } from "lucide-react";
@@ -126,7 +126,11 @@ export default function UnderwritingPortal() {
     outstandingBalance: "", creditScore: "", additionalNotes: "",
   });
   const [ccReps, setCcReps] = useState<string[]>([]);
-  const [ccRepInput, setCcRepInput] = useState("");
+  const [ccRepsOpen, setCcRepsOpen] = useState(false);
+
+  const { data: agentList = [] } = useQuery<{ name: string; email: string }[]>({
+    queryKey: ["/api/agents"],
+  });
 
   // Generic inline field edit (company name, owner name, time in business, etc.)
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -841,42 +845,40 @@ export default function UnderwritingPortal() {
 
                 {/* CC Reps */}
                 <div>
-                  <h3 className="font-semibold text-sm text-gray-700 uppercase tracking-wide mb-2">CC Reps on Emails</h3>
+                  <h3 className="font-semibold text-sm text-gray-700 uppercase tracking-wide mb-1">CC Reps on Emails</h3>
                   <p className="text-xs text-gray-500 mb-2">dillon@ and admin@ are always CC'd automatically.</p>
-                  <div className="flex gap-2">
-                    <Input
-                      value={ccRepInput}
-                      onChange={e => setCcRepInput(e.target.value)}
-                      placeholder="rep@todaycapitalgroup.com"
-                      className="text-sm"
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && ccRepInput.trim()) {
-                          e.preventDefault();
-                          if (!ccReps.includes(ccRepInput.trim())) {
-                            setCcReps(prev => [...prev, ccRepInput.trim()]);
-                          }
-                          setCcRepInput("");
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (ccRepInput.trim() && !ccReps.includes(ccRepInput.trim())) {
-                          setCcReps(prev => [...prev, ccRepInput.trim()]);
-                        }
-                        setCcRepInput("");
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded border text-sm hover:bg-gray-50 transition-colors"
+                    onClick={() => setCcRepsOpen(o => !o)}
+                  >
+                    <span className="text-gray-700">
+                      {ccReps.length === 0 ? "Select sales reps to CC…" : `${ccReps.length} rep${ccReps.length !== 1 ? "s" : ""} selected`}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${ccRepsOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {ccRepsOpen && (
+                    <div className="border rounded mt-1 max-h-48 overflow-y-auto">
+                      {agentList.map(agent => (
+                        <label key={agent.email} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                          <Checkbox
+                            checked={ccReps.includes(agent.email)}
+                            onCheckedChange={(checked) => {
+                              setCcReps(prev => checked ? [...prev, agent.email] : prev.filter(e => e !== agent.email));
+                            }}
+                          />
+                          <div>
+                            <p className="text-sm font-medium">{agent.name}</p>
+                            <p className="text-xs text-gray-500">{agent.email}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                   {ccReps.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
-                      {ccReps.map((rep, i) => (
-                        <Badge key={i} variant="secondary" className="text-xs cursor-pointer" onClick={() => setCcReps(prev => prev.filter((_, idx) => idx !== i))}>
+                      {ccReps.map((rep) => (
+                        <Badge key={rep} variant="secondary" className="text-xs cursor-pointer" onClick={() => setCcReps(prev => prev.filter(e => e !== rep))}>
                           {rep} &times;
                         </Badge>
                       ))}
