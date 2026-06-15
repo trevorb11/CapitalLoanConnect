@@ -931,7 +931,7 @@ export default function UnderwritingPortal() {
                         />
                         <div>
                           <p className="text-sm font-medium">{lender.name}</p>
-                          <p className="text-xs text-gray-500">{lender.emails.join(", ")}</p>
+                          <p className="text-xs text-gray-500">{[...lender.emails, ...(lender.ccEmails || [])].join(", ")}</p>
                         </div>
                       </div>
                       {selectedLenders.has(lender.name) && (
