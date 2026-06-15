@@ -16,7 +16,7 @@ import {
   Search, FileText, Send, Ban, MessageSquare, Bot, Loader2,
   ChevronLeft, Building2, DollarSign, Clock, User, Phone, Mail,
   AlertTriangle, CheckCircle2, XCircle, Eye, Download, Shield,
-  Sparkles, ExternalLink, LogOut,
+  Sparkles, ExternalLink, LogOut, Pencil, Check, X,
 } from "lucide-react";
 
 interface AuthState {
@@ -127,6 +127,29 @@ export default function UnderwritingPortal() {
   });
   const [ccReps, setCcReps] = useState<string[]>([]);
   const [ccRepInput, setCcRepInput] = useState("");
+
+  // Inline company name edit
+  const [editingBusinessName, setEditingBusinessName] = useState(false);
+  const [businessNameDraft, setBusinessNameDraft] = useState("");
+
+  const saveBusinessNameMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: number; name: string }) => {
+      const res = await fetch(`/api/applications/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ businessName: name || null, legalBusinessName: name || null }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/underwriting/file/" + encodeURIComponent(selectedEmail || "")] });
+      setEditingBusinessName(false);
+      toast({ title: "Company name updated" });
+    },
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+  });
 
   // Unqualified dialog
   const [unqualifiedDialogOpen, setUnqualifiedDialogOpen] = useState(false);
@@ -434,7 +457,37 @@ export default function UnderwritingPortal() {
               </h2>
               {app ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                  <InfoField label="Legal Name" value={app.legalBusinessName || app.businessName} />
+                  {/* Inline editable Company Name */}
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">Company Name</p>
+                    {editingBusinessName ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          autoFocus
+                          className="h-7 text-sm py-0"
+                          value={businessNameDraft}
+                          onChange={e => setBusinessNameDraft(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") saveBusinessNameMutation.mutate({ id: app.id, name: businessNameDraft });
+                            if (e.key === "Escape") setEditingBusinessName(false);
+                          }}
+                        />
+                        <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => saveBusinessNameMutation.mutate({ id: app.id, name: businessNameDraft })} disabled={saveBusinessNameMutation.isPending}>
+                          {saveBusinessNameMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 text-emerald-600" />}
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => setEditingBusinessName(false)}>
+                          <X className="h-3 w-3 text-gray-400" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 group">
+                        <p className="text-sm text-gray-900">{app.legalBusinessName || app.businessName || "—"}</p>
+                        <Button size="icon" variant="ghost" className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0" onClick={() => { setBusinessNameDraft(app.legalBusinessName || app.businessName || ""); setEditingBusinessName(true); }}>
+                          <Pencil className="h-3 w-3 text-gray-400" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                   <InfoField label="DBA" value={app.doingBusinessAs} />
                   <InfoField label="Contact" value={app.fullName} />
                   <InfoField label="Phone" value={app.phone} />
