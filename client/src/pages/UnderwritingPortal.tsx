@@ -122,6 +122,7 @@ export default function UnderwritingPortal() {
   const [selectedLenders, setSelectedLenders] = useState<Set<string>>(new Set());
   const [selectedStatements, setSelectedStatements] = useState<Set<string>>(new Set());
   const [dealOverview, setDealOverview] = useState({
+    ownerName: "", timeInBusiness: "",
     state: "", industry: "", amountSeeking: "", positionSeeking: "",
     outstandingBalance: "", creditScore: "", additionalNotes: "",
   });
@@ -326,6 +327,8 @@ export default function UnderwritingPortal() {
     setSelectedStatements(new Set(stmts.map((s: any) => s.id)));
     // Pre-fill deal overview from app data
     setDealOverview({
+      ownerName: app?.fullName || "",
+      timeInBusiness: app?.timeInBusiness || "",
       state: app?.state || "",
       industry: app?.industry || "",
       amountSeeking: app?.requestedAmount ? "$" + Number(app.requestedAmount).toLocaleString() : "MAX",
@@ -813,6 +816,14 @@ export default function UnderwritingPortal() {
               <div className="space-y-4">
                 <h3 className="font-semibold text-sm text-gray-700 uppercase tracking-wide">Deal Overview</h3>
                 <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Owner Name</Label>
+                    <Input value={dealOverview.ownerName} onChange={e => setDealOverview(p => ({ ...p, ownerName: e.target.value }))} placeholder="John Smith" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Time in Business</Label>
+                    <Input value={dealOverview.timeInBusiness} onChange={e => setDealOverview(p => ({ ...p, timeInBusiness: e.target.value }))} placeholder="2 years" />
+                  </div>
                   <div>
                     <Label className="text-xs">State</Label>
                     <Input value={dealOverview.state} onChange={e => setDealOverview(p => ({ ...p, state: e.target.value }))} placeholder="CA" />

@@ -15015,9 +15015,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Build the deal overview for the email body
       const ov = dealOverview || {};
+      const ownerNameVal = ov.ownerName || application?.fullName;
+      const timeInBusinessVal = ov.timeInBusiness || application?.timeInBusiness;
       const overviewRows = [
-        application?.fullName ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;width:180px;">Owner Name:</td><td style="padding:4px 12px;">${application.fullName}</td></tr>` : '',
-        application?.timeInBusiness ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Time in Business:</td><td style="padding:4px 12px;">${application.timeInBusiness}</td></tr>` : '',
+        ownerNameVal ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;width:180px;">Owner Name:</td><td style="padding:4px 12px;">${ownerNameVal}</td></tr>` : '',
+        timeInBusinessVal ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Time in Business:</td><td style="padding:4px 12px;">${timeInBusinessVal}</td></tr>` : '',
         ov.state ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">State:</td><td style="padding:4px 12px;">${ov.state}</td></tr>` : '',
         ov.industry ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Industry:</td><td style="padding:4px 12px;">${ov.industry}</td></tr>` : '',
         ov.amountSeeking ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Amount Seeking:</td><td style="padding:4px 12px;">${ov.amountSeeking}</td></tr>` : '',
