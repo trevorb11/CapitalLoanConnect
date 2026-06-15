@@ -339,8 +339,11 @@ function parseCityStateZip(csz: string | undefined | null): { city?: string; sta
 function filterEmptyValues(data: Record<string, any>): Record<string, any> {
   const filtered: Record<string, any> = {};
   for (const [key, value] of Object.entries(data)) {
-    // Keep the value if it's not empty
-    if (value !== undefined && value !== null && value !== '') {
+    // Keep the value if it's not undefined or empty string.
+    // null IS allowed through — it means "explicitly clear this field" (e.g. admin
+    // edits a field back to blank). Filtering null here would prevent any field from
+    // ever being cleared via the dashboard edit form.
+    if (value !== undefined && value !== '') {
       filtered[key] = value;
     }
   }

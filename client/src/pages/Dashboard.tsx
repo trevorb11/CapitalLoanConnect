@@ -3697,6 +3697,14 @@ export default function Dashboard() {
   const handleSaveEdit = () => {
     if (selectedAppDetails?.id) {
       const dataToSave: Partial<LoanApplication> = { ...editFormData };
+      // Convert empty strings to null so the server's filterEmptyValues passes them
+      // through and the DB column is actually cleared (empty string gets dropped by
+      // the filter, null does not).
+      (Object.keys(dataToSave) as (keyof LoanApplication)[]).forEach((key) => {
+        if ((dataToSave as any)[key] === "") {
+          (dataToSave as any)[key] = null;
+        }
+      });
       if (resignApplication) {
         dataToSave.signatureDate = new Date().toISOString();
       }
