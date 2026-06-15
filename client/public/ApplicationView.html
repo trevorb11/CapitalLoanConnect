@@ -399,6 +399,7 @@
                     const signedDate = data.updatedAt ? new Date(data.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
                     signaturePlaceholder.innerHTML = `
                         <div style="padding: 8px 0; text-align: left;">
+                            <div style="font-size: 13px; color: #6b7280;">Date: ${signedDate}</div>
                         </div>
                     `;
                     signaturePlaceholder.style.display = 'block';
@@ -415,11 +416,12 @@
                     // It's a checkbox/text signature - display stamp with proper date
                     const rawDate = data.signatureDate || data.updatedAt || data.createdAt;
                     const signedDate = rawDate
-                        ? new Date(rawDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        ? new Date(rawDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
                         : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
                     signaturePlaceholder.innerHTML = `
                         <div style="padding: 20px; text-align: left;">
                             <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px;">Digitally Signed by: ${data.fullName || 'Unknown'}</div>
+                            <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">Date: ${signedDate}</div>
                             <div style="font-size: 13px; font-style: italic; color: #6b7280;">Electronic Consent Accepted</div>
                         </div>
                     `;
@@ -669,12 +671,21 @@
                     doc.text(`Digitally Signed by: ${signatureData.fullName}`, 120, stampY);
                     
                     doc.setFontSize(9);
-                    doc.setFont('helvetica', 'italic');
+                    doc.setFont('helvetica', 'normal');
                     doc.setTextColor(100, 100, 100);
-                    doc.text('Electronic Consent Accepted', 120, stampY + 6);
+                    const timestampMatch = signaturePlaceholder.innerHTML.match(/Date: ([^<]+)</);
+                    const dateOnly = timestampMatch ? timestampMatch[1].trim() : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                    doc.text(`Date: ${dateOnly}`, 120, stampY + 6);
+                    doc.setFont('helvetica', 'italic');
+                    doc.text('Electronic Consent Accepted', 120, stampY + 11);
                 } else if (signatureData.src && signatureData.isVisible) {
-                    // Drawn signature - show image with date stamp below
+                    // Drawn signature - show image with date below
                     doc.addImage(signatureData.src, 'PNG', 120, signatureStartY + 8, 70, 21);
+                    const drawnDate = signatureData.updatedAt ? new Date(signatureData.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(100, 100, 100);
+                    doc.text(`Date: ${drawnDate}`, 120, signatureStartY + 33);
                 }
             } catch (error) {
                 console.error('Failed to add signature to PDF:', error);
@@ -864,6 +875,7 @@
         const stampHTML = originalSigSnapshot.placeholderHTML || `
             <div style="padding: 20px; text-align: left;">
                 <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px;">Digitally Signed by: ${fullName}</div>
+                <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">Date: ${signedDate}</div>
                 <div style="font-size: 13px; font-style: italic; color: #6b7280;">Electronic Consent Accepted</div>
             </div>`;
 
