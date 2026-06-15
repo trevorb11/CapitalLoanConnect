@@ -14971,8 +14971,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const application = await storage.getLoanApplicationByEmail(normalizedEmail);
       const businessName = application?.legalBusinessName || application?.businessName || normalizedEmail;
 
-      // Generate application PDF in-memory using PDFKit
-      const appPdfBuffer = await generateApplicationPdfBuffer(application, true);
+      // Generate the same redacted PDF used for underwriting submissions
+      const appPdfBuffer = await generateAgentViewRedactedPdfBuffer(application);
 
       // Gather selected bank statement PDFs
       const attachments: Array<{ filename: string; content: Buffer; mimeType: string }> = [];
@@ -15022,7 +15022,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ov.positionSeeking ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Position Seeking:</td><td style="padding:4px 12px;">${ov.positionSeeking}</td></tr>` : '',
         ov.outstandingBalance ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Outstanding Balance:</td><td style="padding:4px 12px;">${ov.outstandingBalance}</td></tr>` : '',
         ov.creditScore ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Credit Score:</td><td style="padding:4px 12px;">${ov.creditScore}</td></tr>` : '',
-        ov.creditLeary ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Credit Leary:</td><td style="padding:4px 12px;">${ov.creditLeary}</td></tr>` : '',
         ov.additionalNotes ? `<tr><td style="padding:4px 12px;color:#555;font-weight:600;">Additional Notes:</td><td style="padding:4px 12px;">${ov.additionalNotes}</td></tr>` : '',
       ].filter(Boolean).join('\n');
 

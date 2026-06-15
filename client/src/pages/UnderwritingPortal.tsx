@@ -123,7 +123,7 @@ export default function UnderwritingPortal() {
   const [selectedStatements, setSelectedStatements] = useState<Set<string>>(new Set());
   const [dealOverview, setDealOverview] = useState({
     state: "", industry: "", amountSeeking: "", positionSeeking: "",
-    outstandingBalance: "", creditScore: "", creditLeary: "", additionalNotes: "",
+    outstandingBalance: "", creditScore: "", additionalNotes: "",
   });
   const [ccReps, setCcReps] = useState<string[]>([]);
   const [ccRepInput, setCcRepInput] = useState("");
@@ -305,7 +305,6 @@ export default function UnderwritingPortal() {
       positionSeeking: "",
       outstandingBalance: "",
       creditScore: app?.ficoScoreExact || app?.creditScore || "",
-      creditLeary: "",
       additionalNotes: "",
     });
     setSelectedLenders(new Set());
@@ -776,10 +775,6 @@ export default function UnderwritingPortal() {
                   <div>
                     <Label className="text-xs">Credit Score</Label>
                     <Input value={dealOverview.creditScore} onChange={e => setDealOverview(p => ({ ...p, creditScore: e.target.value }))} placeholder="800" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Credit Leary</Label>
-                    <Input value={dealOverview.creditLeary} onChange={e => setDealOverview(p => ({ ...p, creditLeary: e.target.value }))} placeholder="--" />
                   </div>
                 </div>
                 <div>
