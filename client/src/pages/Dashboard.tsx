@@ -3659,6 +3659,7 @@ export default function Dashboard() {
         email: selectedAppDetails.email || "",
         phone: selectedAppDetails.phone || "",
         dateOfBirth: selectedAppDetails.dateOfBirth || "",
+        businessName: selectedAppDetails.businessName || "",
         legalBusinessName: selectedAppDetails.legalBusinessName || selectedAppDetails.businessName || "",
         doingBusinessAs: selectedAppDetails.doingBusinessAs || "",
         industry: selectedAppDetails.industry || "",
@@ -4870,6 +4871,15 @@ export default function Dashboard() {
               <div>
                 <h4 className="font-semibold text-sm text-muted-foreground mb-3 uppercase tracking-wide">Business Information</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-businessName">Company Name</Label>
+                    <Input
+                      id="edit-businessName"
+                      value={editFormData.businessName || ""}
+                      onChange={(e) => handleEditFieldChange("businessName", e.target.value)}
+                      placeholder="Company Name"
+                    />
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-legalBusinessName">Legal Business Name</Label>
                     <Input
