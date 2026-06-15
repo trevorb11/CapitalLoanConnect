@@ -336,7 +336,7 @@ export default function UnderwritingPortal() {
     });
     setSelectedLenders(new Set());
     setCcReps([]);
-    setCcRepInput("");
+    setCcRepsOpen(false);
     setShopDialogOpen(true);
   };
 
