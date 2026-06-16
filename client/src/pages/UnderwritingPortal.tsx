@@ -122,8 +122,7 @@ export default function UnderwritingPortal() {
   const [selectedLenders, setSelectedLenders] = useState<Set<string>>(new Set());
   const [selectedStatements, setSelectedStatements] = useState<Set<string>>(new Set());
   const [dealOverview, setDealOverview] = useState({
-    state: "", industry: "", amountSeeking: "", positionSeeking: "",
-    outstandingBalance: "", creditScore: "", creditLeary: "", additionalNotes: "",
+    state: "", industry: "", creditLeary: "", additionalNotes: "",
   });
   const [ccReps, setCcReps] = useState<string[]>([]);
   const [ccRepInput, setCcRepInput] = useState("");
@@ -301,10 +300,6 @@ export default function UnderwritingPortal() {
     setDealOverview({
       state: app?.state || "",
       industry: app?.industry || "",
-      amountSeeking: app?.requestedAmount ? "$" + Number(app.requestedAmount).toLocaleString() : "MAX",
-      positionSeeking: "",
-      outstandingBalance: "",
-      creditScore: app?.ficoScoreExact || app?.creditScore || "",
       creditLeary: "",
       additionalNotes: "",
     });
@@ -760,22 +755,6 @@ export default function UnderwritingPortal() {
                   <div>
                     <Label className="text-xs">Industry</Label>
                     <Input value={dealOverview.industry} onChange={e => setDealOverview(p => ({ ...p, industry: e.target.value }))} placeholder="Restaurant" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Amount Seeking</Label>
-                    <Input value={dealOverview.amountSeeking} onChange={e => setDealOverview(p => ({ ...p, amountSeeking: e.target.value }))} placeholder="MAX" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Position Seeking</Label>
-                    <Input value={dealOverview.positionSeeking} onChange={e => setDealOverview(p => ({ ...p, positionSeeking: e.target.value }))} placeholder="1st / reverse" />
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="text-xs">Outstanding Balance</Label>
-                    <Input value={dealOverview.outstandingBalance} onChange={e => setDealOverview(p => ({ ...p, outstandingBalance: e.target.value }))} placeholder="Vital 45k, Specialty 65k" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Credit Score</Label>
-                    <Input value={dealOverview.creditScore} onChange={e => setDealOverview(p => ({ ...p, creditScore: e.target.value }))} placeholder="800" />
                   </div>
                   <div>
                     <Label className="text-xs">Credit Leary</Label>
