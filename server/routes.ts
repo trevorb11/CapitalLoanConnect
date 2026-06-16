@@ -2289,7 +2289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const MERCHANT_PAGE = 100; // merchants per page
 
       // Convert snake_case DB row → camelCase for frontend compatibility
-      const toCamel = (s: string) => s.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+      const toCamel = (s: string) => s.replace(/_([a-z0-9])/g, (_: string, c: string) => c.toUpperCase());
       const rowToApp = (row: any) => {
         const app: any = {};
         for (const [k, v] of Object.entries(row)) {
