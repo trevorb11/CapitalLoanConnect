@@ -422,39 +422,41 @@ export default function UnderwritingPortal() {
     return (
       <div className="min-h-screen bg-slate-50">
         {/* Header */}
-        <div className="bg-[#1e3a5f] text-white px-6 py-4">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10" onClick={() => { setSelectedEmail(null); setSnapshot(null); }}>
-                <ChevronLeft className="h-4 w-4 mr-1" /> Back to Queue
-              </Button>
-              <div>
-                <h1 className="text-lg font-bold">{businessName}</h1>
-                <p className="text-sm text-blue-200">{selectedEmail}</p>
+        <div className="bg-[#1e3a5f] text-white px-3 sm:px-6 py-3 sm:py-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 shrink-0" onClick={() => { setSelectedEmail(null); setSnapshot(null); }}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Back
+                </Button>
+                <div className="min-w-0">
+                  <h1 className="text-base sm:text-lg font-bold truncate">{businessName}</h1>
+                  <p className="text-xs sm:text-sm text-blue-200 truncate">{selectedEmail}</p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {app?.id && (
-                <a href={`/api/applications/${app.id}/view`} target="_blank" rel="noopener noreferrer">
-                  <Button size="sm" variant="outline" className="text-white border-white/30 hover:bg-white/10">
-                    <ExternalLink className="h-4 w-4 mr-1" /> View Application
-                  </Button>
-                </a>
-              )}
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={openShopDialog}>
-                <Send className="h-4 w-4 mr-1" /> Shop File
-              </Button>
-              <Button size="sm" variant="outline" className="text-white border-white/30 hover:bg-white/10" onClick={() => setRequestInfoDialogOpen(true)}>
-                <MessageSquare className="h-4 w-4 mr-1" /> Request Info
-              </Button>
-              <Button size="sm" variant="outline" className="text-red-300 border-red-400/40 hover:bg-red-500/20" onClick={() => setUnqualifiedDialogOpen(true)}>
-                <Ban className="h-4 w-4 mr-1" /> Unqualified
-              </Button>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {app?.id && (
+                  <a href={`/api/applications/${app.id}/view`} target="_blank" rel="noopener noreferrer">
+                    <Button size="sm" variant="outline" className="text-white border-white/30 hover:bg-white/10">
+                      <ExternalLink className="h-4 w-4" /><span className="hidden sm:inline ml-1">View Application</span>
+                    </Button>
+                  </a>
+                )}
+                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={openShopDialog}>
+                  <Send className="h-4 w-4" /><span className="hidden sm:inline ml-1">Shop File</span>
+                </Button>
+                <Button size="sm" variant="outline" className="text-white border-white/30 hover:bg-white/10" onClick={() => setRequestInfoDialogOpen(true)}>
+                  <MessageSquare className="h-4 w-4" /><span className="hidden sm:inline ml-1">Request Info</span>
+                </Button>
+                <Button size="sm" variant="outline" className="text-red-300 border-red-400/40 hover:bg-red-500/20" onClick={() => setUnqualifiedDialogOpen(true)}>
+                  <Ban className="h-4 w-4" /><span className="hidden sm:inline ml-1">Unqualified</span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="max-w-7xl mx-auto p-3 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left column — Application + Bank Statements */}
           <div className="lg:col-span-2 space-y-6">
             {/* Application Details */}
@@ -1064,17 +1066,17 @@ export default function UnderwritingPortal() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="bg-[#1e3a5f] text-white px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Shield className="h-6 w-6" />
-            <div>
-              <h1 className="text-lg font-bold">Underwriting Portal</h1>
-              <p className="text-xs text-blue-200">All files with bank statements uploaded in the past 30 days</p>
+      <div className="bg-[#1e3a5f] text-white px-3 sm:px-6 py-3 sm:py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <Shield className="h-6 w-6 shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-bold">Underwriting Portal</h1>
+              <p className="text-xs text-blue-200 hidden sm:block">All files with bank statements uploaded in the past 30 days</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-blue-200">{auth.agentName || auth.agentEmail}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-sm text-blue-200 hidden sm:block truncate max-w-40">{auth.agentName || auth.agentEmail}</span>
             <Button variant="ghost" size="sm" className="text-white hover:bg-white/10" onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
             </Button>
@@ -1082,17 +1084,17 @@ export default function UnderwritingPortal() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-3 sm:p-6">
         {/* Tabs */}
         <Tabs value={filterStatus} onValueChange={setFilterStatus} className="mb-0">
-          <div className="flex items-center gap-4 mb-4 flex-wrap gap-y-2">
-            <TabsList className="bg-white border h-auto p-1 flex-wrap gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-4">
+            <TabsList className="bg-white border h-auto p-1 flex-wrap gap-1 w-full sm:w-auto">
               {TAB_DEFS.map(tab => (
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
                   data-testid={`tab-uw-${tab.value}`}
-                  className="text-xs px-3 py-1.5 gap-1.5"
+                  className="text-xs px-2 sm:px-3 py-1.5 gap-1"
                 >
                   {tab.label}
                   <span className={`inline-flex items-center justify-center rounded-full text-xs font-semibold min-w-[18px] px-1 ${
@@ -1107,7 +1109,7 @@ export default function UnderwritingPortal() {
             </TabsList>
 
             {/* Search */}
-            <div className="relative flex-1 min-w-48 max-w-sm ml-auto">
+            <div className="relative w-full sm:flex-1 sm:min-w-48 sm:max-w-sm sm:ml-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Search by business, email, or contact..."
@@ -1142,9 +1144,43 @@ export default function UnderwritingPortal() {
                 </div>
               )}
 
-              {/* Table */}
+              {/* Mobile card list */}
               {!queueLoading && filteredQueue.length > 0 && (
-                <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                <div className="md:hidden space-y-2">
+                  {filteredQueue.map(item => (
+                    <div
+                      key={item.email}
+                      data-testid={`row-uw-${item.email}`}
+                      className="bg-white rounded-lg border shadow-sm p-4 cursor-pointer active:bg-blue-50/60"
+                      onClick={() => setSelectedEmail(item.email)}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-[#1e3a5f] truncate">{item.businessName}</p>
+                          <p className="text-xs text-gray-500 truncate">{item.email}</p>
+                        </div>
+                        <QueueStatusBadge item={item} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                          {item.fullName && <span>{item.fullName}</span>}
+                          {item.state && <span>{item.state}</span>}
+                          {item.monthlyRevenue && <span>${Number(item.monthlyRevenue).toLocaleString()}/mo</span>}
+                          <span>{item.statementCount} stmt{item.statementCount !== 1 ? "s" : ""}</span>
+                          {item.agentName && <span>{item.agentName}</span>}
+                        </div>
+                        <Button variant="ghost" size="sm" className="text-blue-600 shrink-0 -mr-2">
+                          Review <ChevronLeft className="h-3 w-3 ml-1 rotate-180" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Desktop table */}
+              {!queueLoading && filteredQueue.length > 0 && (
+                <div className="hidden md:block bg-white rounded-lg border shadow-sm overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50 border-b">
