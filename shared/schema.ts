@@ -508,7 +508,8 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   additionalFundings: jsonb("additional_fundings"), // Array of { id, lender, advanceAmount, term, paymentFrequency, factorRate, maxUpsell, notes, fundedDate, assignedRep, createdAt }
 
   // Decline fields (populated when status = "declined")
-  declineReason: text("decline_reason"),
+  declineReason: text("decline_reason"), // Legacy semicolon-delimited text — kept in sync with additionalDeclines
+  additionalDeclines: jsonb("additional_declines"), // Array of { id, lender, reason, date, createdAt }
   
   // Follow-up tracking (for declined/unqualified)
   followUpWorthy: boolean("follow_up_worthy"),
