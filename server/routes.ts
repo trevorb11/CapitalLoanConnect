@@ -15486,7 +15486,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const stampY = sigY + 10;
             const rawDate = application.signatureDate || application.updatedAt || application.createdAt;
             const timestamp = rawDate
-              ? new Date(rawDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+              ? new Date(rawDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
               : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
             textAt(`Digitally Signed by: ${application.fullName || 'Unknown'}`, 120, stampY, 11, { font: 'Helvetica-Bold' });
             textAt(`Date: ${timestamp}`, 120, stampY + 6, 9, { color: labelGray });
