@@ -214,6 +214,41 @@ app.use((req, res, next) => {
         created_at TIMESTAMP DEFAULT NOW()
       )`);
       console.log('[STARTUP] Migration: pipeline_reports table ensured');
+      // Structured declines JSONB column
+      await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS additional_declines JSONB`);
+      console.log('[STARTUP] Migration: additional_declines column ensured');
+      // One-time backfill: parse legacy decline_reason text into additional_declines JSONB
+      const backfillDeclines = await db.execute(sql`
+        UPDATE business_underwriting_decisions
+        SET additional_declines = (
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', 'decl-legacy-' || row_number,
+            'lender', CASE
+              WHEN part LIKE '%(%' THEN trim(substring(part FROM '\(([^)]+)\)'))
+              ELSE 'Unknown'
+            END,
+            'reason', CASE
+              WHEN part LIKE '%(%' THEN trim(substring(part FROM '^(.+)\s*\('))
+              ELSE trim(part)
+            END,
+            'date', CASE
+              WHEN part ~ '\d{4}-\d{2}-\d{2}' THEN substring(part FROM '(\d{4}-\d{2}-\d{2})')
+              ELSE null
+            END,
+            'createdAt', NOW()
+          ))
+          FROM (
+            SELECT trim(unnest(string_to_array(decline_reason, ';'))) AS part,
+                   row_number() OVER () AS row_number
+          ) parts
+          WHERE part != ''
+        )
+        WHERE decline_reason IS NOT NULL
+          AND decline_reason != ''
+          AND additional_declines IS NULL
+      `);
+      if ((backfillDeclines as any).rowCount > 0)
+        console.log(`[STARTUP] Backfill: parsed decline_reason into additional_declines for ${(backfillDeclines as any).rowCount} rows`);
       // Merchants table + merchant_id FK on loan_applications
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS merchants (

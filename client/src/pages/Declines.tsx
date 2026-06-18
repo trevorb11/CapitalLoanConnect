@@ -94,14 +94,28 @@ export default function Declines() {
     followUpWorthy: false,
     followUpDate: '',
   });
+  const [editDeclines, setEditDeclines] = useState<Array<{ id: string; lender: string; reason: string; date: string }>>([]);
+  const [newDeclineLender, setNewDeclineLender] = useState('');
+  const [newDeclineReason, setNewDeclineReason] = useState('');
+  const [newDeclineDate, setNewDeclineDate] = useState('');
 
   const openEditDialog = (decision: BusinessUnderwritingDecision) => {
+    const declines = Array.isArray((decision as any).additionalDeclines) ? (decision as any).additionalDeclines : [];
+    setEditDeclines(declines.map((d: any) => ({
+      id: d.id || `decl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      lender: d.lender || '',
+      reason: d.reason || '',
+      date: d.date || '',
+    })));
     setEditForm({
       declineReason: decision.declineReason || '',
       notes: decision.notes || '',
       followUpWorthy: decision.followUpWorthy || false,
       followUpDate: decision.followUpDate ? new Date(decision.followUpDate).toISOString().split('T')[0] : '',
     });
+    setNewDeclineLender('');
+    setNewDeclineReason('');
+    setNewDeclineDate('');
     setEditDialog(decision);
   };
 
@@ -139,6 +153,10 @@ export default function Declines() {
     editMutation.mutate({
       id: editDialog.id,
       data: {
+        additionalDeclines: editDeclines.length > 0 ? editDeclines.map(d => ({
+          ...d,
+          createdAt: new Date().toISOString(),
+        })) : null,
         declineReason: editForm.declineReason,
         notes: editForm.notes || null,
         followUpWorthy: editForm.followUpWorthy,
@@ -147,6 +165,23 @@ export default function Declines() {
           : null,
       },
     });
+  };
+
+  const addDeclineEntry = () => {
+    if (!newDeclineLender.trim()) return;
+    setEditDeclines(prev => [...prev, {
+      id: `decl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      lender: newDeclineLender.trim(),
+      reason: newDeclineReason.trim(),
+      date: newDeclineDate || new Date().toISOString().slice(0, 10),
+    }]);
+    setNewDeclineLender('');
+    setNewDeclineReason('');
+    setNewDeclineDate('');
+  };
+
+  const removeDeclineEntry = (id: string) => {
+    setEditDeclines(prev => prev.filter(d => d.id !== id));
   };
 
   // Delete mutation
@@ -233,10 +268,16 @@ export default function Declines() {
   const filteredDecisions = repFilteredDecisions.filter(d => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
+    const declinesMatch = Array.isArray((d as any).additionalDeclines)
+      ? (d as any).additionalDeclines.some((decl: any) =>
+          (decl.lender || "").toLowerCase().includes(q) ||
+          (decl.reason || "").toLowerCase().includes(q))
+      : false;
     return (
       (d.businessName || "").toLowerCase().includes(q) ||
       (d.businessEmail || "").toLowerCase().includes(q) ||
-      (d.declineReason || "").toLowerCase().includes(q)
+      (d.declineReason || "").toLowerCase().includes(q) ||
+      declinesMatch
     );
   });
 
@@ -345,17 +386,23 @@ export default function Declines() {
       return `"${str}"`;
     };
 
-    const rows = filteredDecisions.map((d) => [
+    const rows = filteredDecisions.map((d) => {
+      // Build decline text from structured data if available, else fall back to legacy
+      const declineText = Array.isArray((d as any).additionalDeclines) && (d as any).additionalDeclines.length > 0
+        ? (d as any).additionalDeclines.map((decl: any) => `${decl.lender}: ${decl.reason || 'No reason'}${decl.date ? ` (${decl.date})` : ''}`).join('; ')
+        : (d.declineReason || "");
+      return [
       escape(d.businessName || ""),
       escape(d.businessEmail || ""),
       escape(d.assignedRep || ""),
-      escape(d.declineReason || ""),
+      escape(declineText),
       escape(d.notes || ""),
       escape(d.reviewedBy || ""),
       escape(d.followUpWorthy ? "Yes" : "No"),
       escape(d.followUpDate ? formatDate(d.followUpDate) : ""),
       escape(formatDate(d.approvalDate || d.updatedAt || d.createdAt)),
-    ]);
+    ];
+    });
 
     const csv = [headers.map(h => `"${h}"`).join(","), ...rows.map(r => r.join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -565,14 +612,31 @@ export default function Declines() {
                       )}
                     </div>
 
-                    {decision.declineReason && (
+                    {/* Structured declines (per-lender entries) */}
+                    {Array.isArray((decision as any).additionalDeclines) && (decision as any).additionalDeclines.length > 0 ? (
+                      <div className="text-sm mb-3">
+                        <div className="text-muted-foreground mb-1">Declines ({(decision as any).additionalDeclines.length})</div>
+                        <div className="space-y-1.5">
+                          {(decision as any).additionalDeclines.map((d: any, i: number) => (
+                            <div key={d.id || i} className="flex items-start gap-2 p-2 bg-red-50 dark:bg-red-950/30 rounded border border-red-200 dark:border-red-900">
+                              <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <span className="font-medium text-foreground">{d.lender || 'Unknown Lender'}</span>
+                                {d.reason && <span className="text-muted-foreground"> — {d.reason}</span>}
+                                {d.date && <span className="text-xs text-muted-foreground ml-2">({d.date})</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : decision.declineReason ? (
                       <div className="text-sm mb-3">
                         <div className="text-muted-foreground mb-1">Decline Reason</div>
                         <div className="p-3 bg-red-50 dark:bg-red-950/30 rounded-md border border-red-200 dark:border-red-900">
                           {decision.declineReason}
                         </div>
                       </div>
-                    )}
+                    ) : null}
 
                     {decision.notes && (
                       <div className="text-sm">
@@ -730,15 +794,67 @@ export default function Declines() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
+            {/* Structured decline entries */}
             <div>
-              <Label htmlFor="edit-declineReason">Decline Reason</Label>
-              <Textarea
-                id="edit-declineReason"
-                value={editForm.declineReason}
-                onChange={(e) => setEditForm(prev => ({ ...prev, declineReason: e.target.value }))}
-                rows={3}
-                data-testid="input-edit-decline-reason"
-              />
+              <Label className="mb-2 block">Decline Entries</Label>
+              {editDeclines.length > 0 && (
+                <div className="space-y-1.5 mb-3">
+                  {editDeclines.map((d) => (
+                    <div key={d.id} className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-950/30 rounded border border-red-200 dark:border-red-900 text-sm">
+                      <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium">{d.lender}</span>
+                        {d.reason && <span className="text-muted-foreground"> — {d.reason}</span>}
+                        {d.date && <span className="text-xs text-muted-foreground ml-1">({d.date})</span>}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-red-400 hover:text-red-600 shrink-0"
+                        onClick={() => removeDeclineEntry(d.id)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground">Lender</Label>
+                  <Input
+                    value={newDeclineLender}
+                    onChange={(e) => setNewDeclineLender(e.target.value)}
+                    placeholder="e.g. Ace Funding"
+                    className="h-8 text-sm"
+                    data-testid="input-new-decline-lender"
+                  />
+                </div>
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground">Reason</Label>
+                  <Input
+                    value={newDeclineReason}
+                    onChange={(e) => setNewDeclineReason(e.target.value)}
+                    placeholder="e.g. Low balances"
+                    className="h-8 text-sm"
+                    data-testid="input-new-decline-reason"
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDeclineEntry(); } }}
+                  />
+                </div>
+                <div className="w-28">
+                  <Label className="text-xs text-muted-foreground">Date</Label>
+                  <Input
+                    type="date"
+                    value={newDeclineDate}
+                    onChange={(e) => setNewDeclineDate(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <Button type="button" size="sm" variant="outline" className="h-8 shrink-0" onClick={addDeclineEntry} disabled={!newDeclineLender.trim()}>
+                  Add
+                </Button>
+              </div>
             </div>
             <div>
               <Label htmlFor="edit-notes">Notes</Label>

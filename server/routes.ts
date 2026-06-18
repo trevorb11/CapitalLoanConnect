@@ -5409,6 +5409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       followUpWorthy,
       followUpDate,
       additionalApprovals,
+      additionalDeclines,
       fundedDate,
       assignedRep,
       assignedRep2,
@@ -5475,6 +5476,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         incomingAdditionalFundings = [fundedEntry];
       }
 
+      // Rebuild declineReason text from additionalDeclines JSONB (source of truth)
+      let finalDeclineReason = declineReason || null;
+      let finalAdditionalDeclines = additionalDeclines || null;
+      if (Array.isArray(finalAdditionalDeclines) && finalAdditionalDeclines.length > 0) {
+        finalDeclineReason = finalAdditionalDeclines
+          .map((d: any) => {
+            const parts = [d.reason || 'No reason stated'];
+            const lenderDate = [d.lender, d.date].filter(Boolean).join(' - ');
+            if (lenderDate) parts[0] += ` (${lenderDate})`;
+            return parts[0];
+          })
+          .join('; ');
+      }
+
       const decision = await storage.createOrUpdateBusinessUnderwritingDecision({
         businessEmail,
         businessName: businessName || null,
@@ -5489,7 +5504,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lender: syncedLender,
         notes: syncedNotes,
         approvalDate: syncedApprovalDate,
-        declineReason: declineReason || null,
+        declineReason: finalDeclineReason,
+        additionalDeclines: finalAdditionalDeclines,
         followUpWorthy: followUpWorthy || false,
         followUpDate: followUpDate ? new Date(followUpDate) : null,
         additionalApprovals: additionalApprovals || null,
@@ -5686,6 +5702,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       updates.reviewedBy = req.session.user.agentEmail || 'admin';
+
+      // Rebuild declineReason text from additionalDeclines JSONB when provided
+      if (Array.isArray(updates.additionalDeclines) && updates.additionalDeclines.length > 0) {
+        updates.declineReason = updates.additionalDeclines
+          .map((d: any) => {
+            const parts = [d.reason || 'No reason stated'];
+            const lenderDate = [d.lender, d.date].filter(Boolean).join(' - ');
+            if (lenderDate) parts[0] += ` (${lenderDate})`;
+            return parts[0];
+          })
+          .join('; ');
+      }
 
       const updated = await storage.updateBusinessUnderwritingDecision(id, updates);
       if (!updated) {
