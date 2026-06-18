@@ -78,6 +78,7 @@ import WebsiteContract from "@/pages/WebsiteContract";
 import Agreements from "@/pages/Agreements";
 import WhatWeNeed from "@/pages/WhatWeNeed";
 import UnderwritingPortal from "@/pages/UnderwritingPortal";
+import PipelineReports from "@/pages/PipelineReports";
 import RepStats from "@/pages/RepStats";
 import RepScorecard from "@/pages/RepScorecard";
 import ProcessingReview from "@/pages/ProcessingReview";
@@ -192,6 +193,9 @@ function Router() {
 
       {/* Underwriting Portal */}
       <Route path="/underwriting" component={UnderwritingPortal} />
+
+      {/* Pipeline Reports */}
+      <Route path="/pipeline-reports" component={PipelineReports} />
 
       {/* Rep Stats & Scorecards */}
       <Route path="/admin/rep-stats" component={RepStats} />

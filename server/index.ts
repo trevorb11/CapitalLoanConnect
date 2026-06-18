@@ -199,6 +199,21 @@ app.use((req, res, next) => {
       // UW submission timestamp on loan applications
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS uw_submitted_at TIMESTAMP`);
       console.log('[STARTUP] Migration: uw_submitted_at column ensured');
+      // Pipeline reports table
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS pipeline_reports (
+        id SERIAL PRIMARY KEY,
+        rep_name TEXT NOT NULL,
+        rep_email TEXT,
+        report_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        report_type TEXT NOT NULL DEFAULT 'daily',
+        html_content TEXT NOT NULL,
+        deal_count INTEGER DEFAULT 0,
+        high_count INTEGER DEFAULT 0,
+        total_value NUMERIC(12,2) DEFAULT 0,
+        deals_data JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      console.log('[STARTUP] Migration: pipeline_reports table ensured');
       // Merchants table + merchant_id FK on loan_applications
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS merchants (

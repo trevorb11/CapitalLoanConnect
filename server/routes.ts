@@ -16193,6 +16193,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // PIPELINE REPORTS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // POST /api/pipeline-reports — save a pipeline report
+  app.post("/api/pipeline-reports", async (req: Request, res: Response) => {
+    // Allow Claude API key OR authenticated admin/underwriting session
+    const claudeKey = req.headers['x-claude-api-key'];
+    const isClaudeAuth = claudeKey === process.env.CLAUDE_API_KEY;
+    const isSessionAuth = req.session.user?.isAuthenticated &&
+      (req.session.user.role === 'admin' || req.session.user.role === 'underwriting');
+
+    if (!isClaudeAuth && !isSessionAuth) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    try {
+      const { repName, repEmail, reportDate, reportType, htmlContent, dealCount, highCount, totalValue, dealsData } = req.body;
+      if (!repName || !htmlContent) {
+        return res.status(400).json({ error: "repName and htmlContent are required" });
+      }
+
+      const result = await db.execute(sql`
+        INSERT INTO pipeline_reports (rep_name, rep_email, report_date, report_type, html_content, deal_count, high_count, total_value, deals_data)
+        VALUES (${repName}, ${repEmail || null}, ${reportDate || new Date().toISOString().slice(0, 10)}, ${reportType || 'daily'}, ${htmlContent}, ${dealCount || 0}, ${highCount || 0}, ${totalValue || 0}, ${dealsData ? JSON.stringify(dealsData) : null}::jsonb)
+        RETURNING id
+      `);
+
+      const id = (result as any).rows?.[0]?.id;
+      console.log(`[PIPELINE-REPORTS] Saved report for ${repName} (id: ${id})`);
+      res.json({ success: true, id });
+    } catch (err: any) {
+      console.error("[PIPELINE-REPORTS] Save error:", err.message);
+      res.status(500).json({ error: "Failed to save report" });
+    }
+  });
+
+  // GET /api/pipeline-reports — list reports (with optional filters)
+  app.get("/api/pipeline-reports", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { rep, date, type, limit: limitParam } = req.query;
+      const lim = Math.min(Number(limitParam) || 50, 200);
+
+      // For agents, force filter to their own name
+      const repFilter = req.session.user.role === 'agent' && req.session.user.agentName
+        ? req.session.user.agentName
+        : (rep && rep !== 'all' ? String(rep) : null);
+
+      const result = await db.execute(sql`
+        SELECT id, rep_name, rep_email, report_date, report_type, deal_count, high_count, total_value, created_at
+        FROM pipeline_reports
+        WHERE (${repFilter}::text IS NULL OR rep_name = ${repFilter})
+          AND (${date ? String(date) : null}::text IS NULL OR report_date = ${date ? String(date) : null}::date)
+          AND (${type ? String(type) : null}::text IS NULL OR report_type = ${type ? String(type) : null})
+        ORDER BY report_date DESC, created_at DESC
+        LIMIT ${lim}
+      `);
+      res.json((result as any).rows || []);
+    } catch (err: any) {
+      console.error("[PIPELINE-REPORTS] List error:", err.message);
+      res.status(500).json({ error: "Failed to list reports" });
+    }
+  });
+
+  // GET /api/pipeline-reports/:id — get a single report (includes HTML)
+  app.get("/api/pipeline-reports/:id", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const { id } = req.params;
+      const result = await db.execute(sql`SELECT * FROM pipeline_reports WHERE id = ${Number(id)}`);
+      const report = (result as any).rows?.[0];
+      if (!report) return res.status(404).json({ error: "Report not found" });
+
+      // Agents can only view their own
+      if (req.session.user.role === 'agent' && req.session.user.agentName &&
+          report.rep_name !== req.session.user.agentName) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      res.json(report);
+    } catch (err: any) {
+      console.error("[PIPELINE-REPORTS] Get error:", err.message);
+      res.status(500).json({ error: "Failed to get report" });
+    }
+  });
+
   // ── Ads Leads GHL sync — runs every 2 hours indefinitely ─────────────────
   (function startAdsLeadsPoll() {
     const INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours
