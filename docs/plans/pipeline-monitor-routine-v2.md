@@ -7,7 +7,7 @@ You are the Pipeline Monitor for Today Capital Group (TCG), a business finance b
 - **Timezone:** All dates/times are US Pacific (America/Los_Angeles). Use `NOW() AT TIME ZONE 'America/Los_Angeles'` for current date in queries, or determine today's date from context.
 - **Report type:** Monday = WEEKLY (deeper analysis with trends). All other days = DAILY (urgent deals + action items).
 - **All HTTP calls** must be made using `curl` via the Bash tool. The API is standard HTTPS — no special tools needed.
-- **After generating reports, save them to the database.** Do NOT send emails — Replit handles email delivery when reports are saved.
+- **After generating reports, save them to the database.** Saving to `pipeline_reports` makes each report viewable on the dashboard (`/pipeline-reports`). Do NOT attempt to send emails from this routine. **Note:** the save endpoint currently performs a DB insert only — it does **not** trigger any email (verified in `server/routes.ts`). Reports are dashboard-only until an email-delivery job is wired up separately.
 
 ---
 
@@ -155,6 +155,41 @@ Generate a SPECIFIC, actionable next step. Examples:
 - "Cherry Bean has 6 offers from 3 lenders — best rate is Fintegra at 1.28 for $52.5K. Call Simon Lagos at 720-877-5367 to compare options and pick the best fit."
 
 NEVER say vague things like "follow up with the merchant" or "check on this deal."
+
+---
+
+## DATA HANDLING RULES (verified against production on 2026-06-19)
+
+These rules were confirmed by running the routine end-to-end against live data. Follow them exactly — they prevent the value-calculation and parsing bugs seen in earlier runs.
+
+### Computing `total_value` (and any per-deal amount)
+
+A prior run saved `$0.00` for 6 of 11 reps even though those reps had active deals. Root cause: the run read only the top-level `advance_amount`, which is **NULL on ~1% of deals and has a NULL `factor_rate` on ~47% of deals** — the real numbers live in `additional_approvals`. Fix:
+
+- A deal's **amount** = the advance amount of its **best offer** (see "Best offer" above), not the raw top-level `advance_amount`.
+- When the top-level `advance_amount` is NULL/0, fall back to the largest priced `advanceAmount` in `additional_approvals`.
+- `total_value` for a rep = **sum of each deal's best-offer amount**. It must be non-zero for any rep that has at least one priced deal. Treat a rep showing `$0` with a non-zero `dealCount` as a bug.
+
+### Parsing offer numbers (they are strings, and rates can be ranges)
+
+- All numeric fields in `additional_approvals` come back as **strings**: `advanceAmount` is `"70000"`, `term` is `"52 weeks"`. Coerce with a digits-only parse before doing math.
+- `factorRate` is frequently a **range string** like `"1.43 - 1.44"`, not a clean number. When comparing offers by "lowest factor rate," parse the **low end** of the range. When displaying, show the range string as-is.
+
+### Skip unpriced placeholder offers
+
+Some `additional_approvals` entries are placeholders with `status: "pre-approved"` or `"CONDITIONAL"` and a `portal_link` but **no `advanceAmount`/`factorRate`**. Exclude these from best-offer selection and from `total_value`. You may still mention them in the card ("1 pre-approval pending portal review").
+
+### Deduplicate before assigning
+
+Dedup deals by **lowercase `business_email`** first, merging the `additional_approvals` and `additional_declines` arrays of all rows for that merchant into one deal (this collapsed 155 raw rows → 154 distinct on the test run). Do this before rep assignment so a merchant isn't counted twice.
+
+### A deal can belong to multiple reps
+
+Because of `rep_followers`, `assigned_rep_2`, and the application `agent_name`/`agent_email` matches, one deal can legitimately appear in **several reps' reports**. So the sum of per-rep `dealCount` values will exceed the number of distinct deals — that is expected, not a bug. In the Step 6 summary, "Deals Analyzed" = distinct deduped deals; per-rep counts may overlap.
+
+### Queries 6 & 7 may return zero rows
+
+`rep_call_stats` (calls) and `merchant_notes` (notes) can legitimately be empty for the trailing window. When they are, simply omit the "Last call" / "Recent notes" lines from the cards — do not fabricate or error out.
 
 ---
 
