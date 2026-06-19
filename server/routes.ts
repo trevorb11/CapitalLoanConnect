@@ -581,6 +581,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/admin/claude/sf-query — run a read-only SOQL query against Salesforce
+  app.post("/api/admin/claude/sf-query", claudeAuth, async (req, res) => {
+    try {
+      const { query: soql } = req.body;
+      if (!soql || typeof soql !== "string") {
+        return res.status(400).json({ error: "Body must include { query: 'SELECT ...' }" });
+      }
+      // Only allow SELECT / DESCRIBE
+      const trimmed = soql.trim().toUpperCase();
+      if (!trimmed.startsWith("SELECT") && !trimmed.startsWith("DESCRIBE")) {
+        return res.status(400).json({ error: "Only SELECT and DESCRIBE queries are allowed" });
+      }
+      const { getAccessToken } = await import("./services/salesforce");
+      const token = await getAccessToken();
+      const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
+      if (!SF_INSTANCE_URL || !token) {
+        return res.status(503).json({ error: "Salesforce not configured" });
+      }
+      // DESCRIBE uses a different endpoint pattern
+      if (trimmed.startsWith("DESCRIBE")) {
+        const objectName = soql.trim().split(/\s+/)[1];
+        if (!objectName) return res.status(400).json({ error: "Usage: DESCRIBE ObjectName" });
+        const sfRes = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0/sobjects/${objectName}/describe`, {
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        });
+        const data = await sfRes.json();
+        if (!sfRes.ok) return res.status(sfRes.status).json(data);
+        // Return just the fields array for readability
+        const fields = (data as any).fields?.map((f: any) => ({
+          name: f.name,
+          label: f.label,
+          type: f.type,
+          length: f.length,
+          custom: f.custom,
+          updateable: f.updateable,
+          picklistValues: f.picklistValues?.length > 0 ? f.picklistValues.map((p: any) => p.value) : undefined,
+        })) || [];
+        return res.json({ object: objectName, fieldCount: fields.length, fields });
+      }
+      // SELECT query
+      const sfRes = await fetch(
+        `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
+        { headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } }
+      );
+      const data = await sfRes.json() as any;
+      if (!sfRes.ok) return res.status(sfRes.status).json(data);
+      res.json({ totalSize: data.totalSize, records: data.records });
+    } catch (err: any) {
+      console.error("[SF Query] Error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/admin/claude/ping", claudeAuth, (_req, res) => {
     res.json({ ok: true, message: "Claude API authenticated", timestamp: new Date().toISOString() });
   });
