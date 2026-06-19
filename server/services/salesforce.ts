@@ -1235,6 +1235,54 @@ async function findSfOpportunityByEmail(email: string): Promise<{ Id: string; Ac
   return null;
 }
 
+// ─── Value mappers for picklist / numeric SF fields ──────────────────────────
+
+/** Parse "2 years", "18 months", "1 year 6 months" → number of months (double). */
+function parseMonths(v: any): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const s = String(v).toLowerCase().trim();
+  const num = parseNum(s);
+  if (num !== null && !s.includes("year") && !s.includes("month")) return num;
+  let months = 0;
+  const years = s.match(/(\d+\.?\d*)\s*year/);
+  const mos   = s.match(/(\d+\.?\d*)\s*month/);
+  if (years) months += Math.round(parseFloat(years[1]) * 12);
+  if (mos)   months += Math.round(parseFloat(mos[1]));
+  return months > 0 ? months : (num !== null ? num : null);
+}
+
+/** Map free-text revenue trend → SF picklist value (Increasing | Stable | Declining). */
+function mapRevenueTrend(v: any): string | null {
+  if (!v) return null;
+  const s = String(v).toLowerCase();
+  if (s.includes("increas") || s.includes("up") || s.includes("grow")) return "Increasing";
+  if (s.includes("declin") || s.includes("decreas") || s.includes("down")) return "Declining";
+  if (s.includes("stable") || s.includes("flat") || s.includes("consistent")) return "Stable";
+  return null;
+}
+
+/** Map worthSubmitting / qualificationTier → SF picklist (Submit | Conditional | Needs Review | Do Not Submit). */
+function mapUwRecommendation(worthSubmitting: any, qualificationTier: any): string | null {
+  if (worthSubmitting === true)  return "Submit";
+  if (worthSubmitting === false) return "Do Not Submit";
+  const t = String(qualificationTier || "").toLowerCase();
+  if (t.includes("tier 1") || t.includes("strong")) return "Submit";
+  if (t.includes("tier 2") || t.includes("moderate")) return "Conditional";
+  if (t.includes("tier 3") || t.includes("weak"))    return "Needs Review";
+  if (t.includes("tier 4") || t.includes("decline") || t.includes("not")) return "Do Not Submit";
+  return null;
+}
+
+/** Normalise position string → SF picklist value (1st | 2nd | 3rd | 4th | 5th). */
+function mapPosition(v: any): string | null {
+  if (!v) return null;
+  const s = String(v).toLowerCase().trim();
+  const map: Record<string, string> = { "1": "1st", "2": "2nd", "3": "3rd", "4": "4th", "5": "5th",
+    "1st": "1st", "2nd": "2nd", "3rd": "3rd", "4th": "4th", "5th": "5th",
+    "first": "1st", "second": "2nd", "third": "3rd", "fourth": "4th", "fifth": "5th" };
+  return map[s] ?? null;
+}
+
 // ─── Deal Qualification sync (called on UW submission / shop file) ─────────────
 
 /**
@@ -1277,34 +1325,23 @@ export async function syncUwSubmissionToSalesforce(
       }
     }
 
-    // Build a readable summary of existing MCA positions detected by the snapshot
-    let positionSummary: string | null = null;
-    if (snap.existingPositions?.length) {
-      positionSummary = (snap.existingPositions as any[])
-        .map((p: any) => `${p.funder}: ~$${p.estimatedPayment}/${p.frequency}`)
-        .join('; ');
-    }
-
     const fields = clean({
       // Application-level deal qualification
-      Amount_Requested__c:           parseNum(ov.amountSeeking || app.requestedAmount || app.requested_amount),
-      Monthly_Revenue__c:            parseNum(snap.avgMonthlyRevenue || app.monthlyRevenue || app.monthly_revenue),
+      Amount_Requested__c:            parseNum(ov.amountSeeking || app.requestedAmount || app.requested_amount),
+      Monthly_Revenue__c:             parseNum(snap.avgMonthlyRevenue || app.monthlyRevenue || app.monthly_revenue),
       Personal_Credit_Score_Range__c: mapCreditScore(ov.creditScore || app.creditScore || app.credit_score || app.personalCreditScoreRange),
-      Time_in_Business_Months__c:    ov.timeInBusiness || app.timeInBusiness || app.time_in_business || null,
+      Time_in_Business_Months__c:     parseMonths(ov.timeInBusiness || app.timeInBusiness || app.time_in_business),
 
-      // Position & stacking (from shop-dialog deal overview)
-      Position__c:                   ov.positionSeeking || null,
-      Active_Positions_Count__c:     snap.existingPositions?.length != null ? Number(snap.existingPositions.length) : null,
-      Stacking_Policy__c:            ov.outstandingBalance ? `Outstanding Balance: ${ov.outstandingBalance}` : null,
+      // Position — picklist field, requires exact value
+      Position__c:                    mapPosition(ov.positionSeeking),
 
       // Bank-analysis fields (from saved AI snapshot, if available)
-      Average_Daily_Balance__c:      parseNum(snap.avgDailyBalance),
-      Monthly_Deposit_Count__c:      avgMonthlyDeposits,
-      Number_of_NSFs__c:             snap.nsfCount != null ? Number(snap.nsfCount) : null,
-      Revenue_Trend__c:              snap.revenueTrend || null,
-      Total_Monthly_Debt__c:         parseNum(snap.totalMonthlyDebtPayments),
-      Factor_Rate__c:                parseNum(snap.estimatedFactor),
-      Existing_Positions__c:         positionSummary,
+      Average_Daily_Balance__c:       parseNum(snap.avgDailyBalance),
+      Monthly_Deposit_Count__c:       avgMonthlyDeposits,
+      Number_of_NSFs_Overdrafts__c:   snap.nsfCount != null ? Number(snap.nsfCount) : null,
+      Revenue_Trend__c:               mapRevenueTrend(snap.revenueTrend),
+      Total_Monthly_Debt__c:          parseNum(snap.totalMonthlyDebtPayments),
+      Factor_Rate__c:                 parseNum(snap.estimatedFactor),
     });
 
     if (Object.keys(fields).length === 0) return;
@@ -1326,6 +1363,10 @@ export async function syncUwSubmissionToSalesforce(
  * Push AI Snapshot fields to the SF Opportunity after the AI underwriting
  * snapshot is generated and persisted. Also refreshes snapshot-derived Deal
  * Qualification fields so both sections stay in sync.
+ *
+ * Confirmed SF field names (queried from production org):
+ *   UW_Score__c, UW_Summary__c, UW_Red_Flags__c, UW_Recommendation__c, Last_UW_Run__c
+ *   Number_of_NSFs_Overdrafts__c, Monthly_Deposit_Count__c, Revenue_Trend__c (picklist)
  */
 export async function syncAiSnapshotToSalesforce(
   email: string,
@@ -1342,7 +1383,7 @@ export async function syncAiSnapshotToSalesforce(
       return;
     }
 
-    // Format red flags as a newline-separated list
+    // Red flags as newline-separated list → UW_Red_Flags__c (textarea, 32 768 chars)
     const redFlagsText = Array.isArray(snapshot.redFlags) && snapshot.redFlags.length
       ? (snapshot.redFlags as any[]).map((f: any) => `${f.flag} [${f.severity}]`).join('\n')
       : null;
@@ -1358,40 +1399,22 @@ export async function syncAiSnapshotToSalesforce(
       }
     }
 
-    // Existing position summary
-    let positionSummary: string | null = null;
-    if (snapshot.existingPositions?.length) {
-      positionSummary = (snapshot.existingPositions as any[])
-        .map((p: any) => `${p.funder}: ~$${p.estimatedPayment}/${p.frequency}`)
-        .join('; ');
-    }
-
-    const worthLabel = snapshot.worthSubmitting != null
-      ? (snapshot.worthSubmitting ? "Worth Submitting" : "Not Worth Submitting")
-      : null;
-    const underwrtingValue = worthLabel && snapshot.qualificationTier
-      ? `${worthLabel} — ${snapshot.qualificationTier}`
-      : (worthLabel || snapshot.qualificationTier || null);
-
     const fields = clean({
-      // AI Snapshot section
-      UW_Recommendation__c:   snapshot.recommendedProduct || null,
-      UW_Score__c:            snapshot.overallScore != null ? Number(snapshot.overallScore) : null,
-      Last_UW_Run__c:         new Date().toISOString(),
-      UW_Summary__c:          snapshot.summary || null,
-      Red_Flags__c:           redFlagsText,
-      Underwriting__c:        underwrtingValue,
+      // AI Snapshot section — confirmed field names from production org
+      UW_Recommendation__c:  mapUwRecommendation(snapshot.worthSubmitting, snapshot.qualificationTier),
+      UW_Score__c:           snapshot.overallScore != null ? Number(snapshot.overallScore) : null,
+      Last_UW_Run__c:        new Date().toISOString(),
+      UW_Summary__c:         snapshot.summary || null,
+      UW_Red_Flags__c:       redFlagsText,
 
-      // Keep Deal Qualification in sync with snapshot data
-      Monthly_Revenue__c:         parseNum(snapshot.avgMonthlyRevenue),
-      Average_Daily_Balance__c:   parseNum(snapshot.avgDailyBalance),
-      Monthly_Deposit_Count__c:   avgMonthlyDeposits,
-      Number_of_NSFs__c:          snapshot.nsfCount != null ? Number(snapshot.nsfCount) : null,
-      Revenue_Trend__c:           snapshot.revenueTrend || null,
-      Total_Monthly_Debt__c:      parseNum(snapshot.totalMonthlyDebtPayments),
-      Factor_Rate__c:             parseNum(snapshot.estimatedFactor),
-      Active_Positions_Count__c:  snapshot.existingPositions?.length != null ? Number(snapshot.existingPositions.length) : null,
-      Existing_Positions__c:      positionSummary,
+      // Deal Qualification fields refreshed from snapshot data
+      Monthly_Revenue__c:           parseNum(snapshot.avgMonthlyRevenue),
+      Average_Daily_Balance__c:     parseNum(snapshot.avgDailyBalance),
+      Monthly_Deposit_Count__c:     avgMonthlyDeposits,
+      Number_of_NSFs_Overdrafts__c: snapshot.nsfCount != null ? Number(snapshot.nsfCount) : null,
+      Revenue_Trend__c:             mapRevenueTrend(snapshot.revenueTrend),
+      Total_Monthly_Debt__c:        parseNum(snapshot.totalMonthlyDebtPayments),
+      Factor_Rate__c:               parseNum(snapshot.estimatedFactor),
     });
 
     if (Object.keys(fields).length === 0) return;
