@@ -60,6 +60,7 @@ GIGFI_API_KEY = "fcaa4dea-c9b4-47f5-997d-69f534f6c370"
 GIGFI_ENVIRONMENT = "live"
 SF_INSTANCE_URL = "https://customization-data-47--dev.sandbox.my.salesforce.com"
 CHIRP_CLIENT_ID = "95019adf-7fda-4819-843b-6d54dd477271"
+SF_LOGIN_URL = "https://login.salesforce.com"
 
 [userenv.production]
 PUBLIC_BASE_URL = "https://app.todaycapitalgroup.com"
