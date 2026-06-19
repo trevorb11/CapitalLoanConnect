@@ -214,6 +214,18 @@ app.use((req, res, next) => {
         created_at TIMESTAMP DEFAULT NOW()
       )`);
       console.log('[STARTUP] Migration: pipeline_reports table ensured');
+      // Merchant notes table (rep-facing notes per business)
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS merchant_notes (
+        id SERIAL PRIMARY KEY,
+        business_email TEXT NOT NULL,
+        business_name TEXT,
+        note TEXT NOT NULL,
+        author_name TEXT,
+        author_email TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_merchant_notes_email ON merchant_notes (LOWER(business_email))`);
+      console.log('[STARTUP] Migration: merchant_notes table ensured');
       // Structured declines JSONB column
       await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS additional_declines JSONB`);
       console.log('[STARTUP] Migration: additional_declines column ensured');

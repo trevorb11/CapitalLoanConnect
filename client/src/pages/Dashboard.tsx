@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { type LoanApplication, type BankStatementUpload, type BusinessUnderwritingDecision } from "@shared/schema";
 import { queryClient, getQueryFn } from "@/lib/queryClient";
 import { BankStatementSnapshot } from "@/components/BankStatementSnapshot";
+import { CallHistory, MerchantNotes, GHLPipelineStatus } from "@/components/MerchantProfileEnhancements";
 import { useToast } from "@/hooks/use-toast";
 import { usePlaidLink } from "react-plaid-link";
 import { Card } from "@/components/ui/card";
@@ -2502,14 +2503,28 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                     );
                   })()}
 
-                  {/* Bank Statement AI Snapshot */}
-                  {uploads[0]?.email && (
-                    <BankStatementSnapshot
-                      email={uploads[0].email}
-                      businessName={businessName}
-                      compact
-                    />
-                  )}
+                  {/* Merchant Profile Enhancements */}
+                  {uploads[0]?.email && (() => {
+                    const profileEmail = uploads[0].email;
+                    const profileApp = applications.find(a => a.email?.toLowerCase() === profileEmail.toLowerCase());
+                    const profileDecision = getBusinessDecision(profileEmail);
+                    const profilePhone = profileApp?.phone || profileDecision?.businessPhone || '';
+                    return (
+                      <div className="space-y-0">
+                        <BankStatementSnapshot
+                          email={profileEmail}
+                          businessName={businessName}
+                          creditScore={profileApp?.ficoScoreExact || profileApp?.creditScore || undefined}
+                          timeInBusiness={(profileApp as any)?.timeInBusiness || undefined}
+                          industry={profileApp?.industry || undefined}
+                          compact
+                        />
+                        <CallHistory phone={profilePhone} />
+                        <MerchantNotes email={profileEmail} businessName={businessName} />
+                        <GHLPipelineStatus email={profileEmail} />
+                      </div>
+                    );
+                  })()}
 
                   {/* Individual Files - Collapsible */}
                   {expandedBusinesses.has(businessName) && (

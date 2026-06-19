@@ -4940,6 +4940,126 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // MERCHANT PROFILE ENHANCEMENTS (call history, notes, GHL pipeline)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // GET /api/merchant-profile/calls/:phone — call history for a phone number
+  app.get("/api/merchant-profile/calls/:phone", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Auth required" });
+    try {
+      const phone = decodeURIComponent(req.params.phone).replace(/\D/g, '');
+      if (phone.length < 7) return res.json({ calls: [] });
+      // Match on last 10 digits to handle country code variations
+      const phoneSuffix = phone.slice(-10);
+      const result = await db.execute(sql`
+        SELECT id, rep_name, direction, duration, caller_number, callee_number,
+               caller_name, callee_name, result, start_time, end_time
+        FROM rep_call_stats
+        WHERE RIGHT(REGEXP_REPLACE(caller_number, '[^0-9]', '', 'g'), 10) = ${phoneSuffix}
+           OR RIGHT(REGEXP_REPLACE(callee_number, '[^0-9]', '', 'g'), 10) = ${phoneSuffix}
+        ORDER BY start_time DESC NULLS LAST
+        LIMIT 25
+      `);
+      res.json({ calls: (result as any).rows || [] });
+    } catch (err: any) {
+      console.error("[MERCHANT-PROFILE] Call history error:", err.message);
+      res.status(500).json({ error: "Failed to load call history" });
+    }
+  });
+
+  // GET /api/merchant-profile/notes/:email — get notes for a business
+  app.get("/api/merchant-profile/notes/:email", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Auth required" });
+    try {
+      const email = decodeURIComponent(req.params.email).toLowerCase().trim();
+      const result = await db.execute(sql`
+        SELECT id, note, author_name, author_email, created_at
+        FROM merchant_notes
+        WHERE LOWER(business_email) = ${email}
+        ORDER BY created_at DESC
+        LIMIT 50
+      `);
+      res.json({ notes: (result as any).rows || [] });
+    } catch (err: any) {
+      console.error("[MERCHANT-PROFILE] Notes error:", err.message);
+      res.status(500).json({ error: "Failed to load notes" });
+    }
+  });
+
+  // POST /api/merchant-profile/notes — add a note
+  app.post("/api/merchant-profile/notes", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Auth required" });
+    try {
+      const { email, businessName, note } = req.body;
+      if (!email || !note?.trim()) return res.status(400).json({ error: "Email and note are required" });
+      const authorName = req.session.user.agentName || req.session.user.agentEmail || 'Unknown';
+      const authorEmail = req.session.user.agentEmail || '';
+      const result = await db.execute(sql`
+        INSERT INTO merchant_notes (business_email, business_name, note, author_name, author_email)
+        VALUES (${email.toLowerCase().trim()}, ${businessName || null}, ${note.trim()}, ${authorName}, ${authorEmail})
+        RETURNING id, note, author_name, author_email, created_at
+      `);
+      const newNote = (result as any).rows?.[0];
+      res.json({ success: true, note: newNote });
+    } catch (err: any) {
+      console.error("[MERCHANT-PROFILE] Add note error:", err.message);
+      res.status(500).json({ error: "Failed to add note" });
+    }
+  });
+
+  // DELETE /api/merchant-profile/notes/:id — delete a note
+  app.delete("/api/merchant-profile/notes/:id", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Auth required" });
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
+      return res.status(403).json({ error: "Only admins can delete notes" });
+    }
+    try {
+      await db.execute(sql`DELETE FROM merchant_notes WHERE id = ${Number(req.params.id)}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to delete note" });
+    }
+  });
+
+  // GET /api/merchant-profile/ghl/:email — GHL pipeline stage + contact info
+  app.get("/api/merchant-profile/ghl/:email", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Auth required" });
+    try {
+      const email = decodeURIComponent(req.params.email).toLowerCase().trim();
+      const contact = await ghlService.getContactByEmail(email);
+      if (!contact) return res.json({ found: false });
+
+      // Get opportunities for this contact
+      let opportunities: any[] = [];
+      try {
+        opportunities = await ghlService.searchOpportunitiesByContact(contact.id);
+      } catch { /* no opportunities */ }
+
+      // Find the most recent/active opportunity
+      const activeOpp = opportunities
+        .filter((o: any) => o.status?.toLowerCase() !== 'lost')
+        .sort((a: any, b: any) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())[0] || null;
+
+      res.json({
+        found: true,
+        contactId: contact.id,
+        contactName: [contact.firstName, contact.lastName].filter(Boolean).join(' '),
+        tags: contact.tags || [],
+        assignedTo: contact.assignedTo || null,
+        pipelineStage: activeOpp?.pipelineStageId || activeOpp?.status || null,
+        pipelineName: activeOpp?.pipelineId || null,
+        opportunityName: activeOpp?.name || null,
+        opportunityStatus: activeOpp?.status || null,
+        opportunityValue: activeOpp?.monetaryValue || null,
+        lastActivity: contact.dateUpdated || contact.dateAdded || null,
+      });
+    } catch (err: any) {
+      console.error("[MERCHANT-PROFILE] GHL lookup error:", err.message);
+      res.status(500).json({ error: "Failed to look up GHL data" });
+    }
+  });
+
   // POST /api/bank-statements/analyze-for-rep — AI underwriting snapshot for reps + underwriting team
   app.post("/api/bank-statements/analyze-for-rep", async (req: Request, res: Response) => {
     if (!req.session.user?.isAuthenticated) {
