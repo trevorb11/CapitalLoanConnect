@@ -1215,3 +1215,194 @@ async function syncLenderSubmissionsToProductionSf(oppId: string, decision: Reco
     }
   }
 }
+
+// ─── Shared opportunity lookup ────────────────────────────────────────────────
+
+async function findSfOpportunityByEmail(email: string): Promise<{ Id: string; AccountId?: string } | null> {
+  if (!email) return null;
+  const safeEmail = email.replace(/'/g, "\\'");
+
+  const byEmail = await sfQuery(
+    `SELECT Id, AccountId FROM Opportunity WHERE Email__c = '${safeEmail}' ORDER BY LastModifiedDate DESC LIMIT 1`
+  );
+  if (byEmail.length) return byEmail[0];
+
+  const byContact = await sfQuery(
+    `SELECT Id, AccountId FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${safeEmail}') ORDER BY LastModifiedDate DESC LIMIT 1`
+  );
+  if (byContact.length) return byContact[0];
+
+  return null;
+}
+
+// ─── Deal Qualification sync (called on UW submission / shop file) ─────────────
+
+/**
+ * Push Deal Qualification fields to the SF Opportunity when a file is submitted
+ * to underwriting. Accepts the application record plus an optional saved AI
+ * snapshot and/or the shop-dialog dealOverview object.
+ */
+export async function syncUwSubmissionToSalesforce(
+  email: string,
+  application: Record<string, any> | null,
+  options?: {
+    snapshot?: Record<string, any> | null;
+    dealOverview?: Record<string, any> | null;
+  }
+): Promise<void> {
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) return;
+
+  const { snapshot, dealOverview } = options || {};
+  const safeEmail = email.toLowerCase().trim();
+
+  try {
+    const opp = await findSfOpportunityByEmail(safeEmail);
+    if (!opp) {
+      console.log(`[SF UW Sync] No opportunity found for ${safeEmail} — skipping`);
+      return;
+    }
+
+    const ov = dealOverview || {};
+    const app = application || {};
+    const snap = snapshot || {};
+
+    // Average monthly deposit count from snapshot monthly breakdown
+    let avgMonthlyDeposits: number | null = null;
+    if (snap.monthlyData?.length) {
+      const counts = (snap.monthlyData as any[])
+        .map((m: any) => parseNum(m.numDeposits))
+        .filter((n): n is number => n !== null);
+      if (counts.length) {
+        avgMonthlyDeposits = Math.round(counts.reduce((a, b) => a + b, 0) / counts.length);
+      }
+    }
+
+    // Build a readable summary of existing MCA positions detected by the snapshot
+    let positionSummary: string | null = null;
+    if (snap.existingPositions?.length) {
+      positionSummary = (snap.existingPositions as any[])
+        .map((p: any) => `${p.funder}: ~$${p.estimatedPayment}/${p.frequency}`)
+        .join('; ');
+    }
+
+    const fields = clean({
+      // Application-level deal qualification
+      Amount_Requested__c:           parseNum(ov.amountSeeking || app.requestedAmount || app.requested_amount),
+      Monthly_Revenue__c:            parseNum(snap.avgMonthlyRevenue || app.monthlyRevenue || app.monthly_revenue),
+      Personal_Credit_Score_Range__c: mapCreditScore(ov.creditScore || app.creditScore || app.credit_score || app.personalCreditScoreRange),
+      Time_in_Business_Months__c:    ov.timeInBusiness || app.timeInBusiness || app.time_in_business || null,
+
+      // Position & stacking (from shop-dialog deal overview)
+      Position__c:                   ov.positionSeeking || null,
+      Active_Positions_Count__c:     snap.existingPositions?.length != null ? Number(snap.existingPositions.length) : null,
+      Stacking_Policy__c:            ov.outstandingBalance ? `Outstanding Balance: ${ov.outstandingBalance}` : null,
+
+      // Bank-analysis fields (from saved AI snapshot, if available)
+      Average_Daily_Balance__c:      parseNum(snap.avgDailyBalance),
+      Monthly_Deposit_Count__c:      avgMonthlyDeposits,
+      Number_of_NSFs__c:             snap.nsfCount != null ? Number(snap.nsfCount) : null,
+      Revenue_Trend__c:              snap.revenueTrend || null,
+      Total_Monthly_Debt__c:         parseNum(snap.totalMonthlyDebtPayments),
+      Factor_Rate__c:                parseNum(snap.estimatedFactor),
+      Existing_Positions__c:         positionSummary,
+    });
+
+    if (Object.keys(fields).length === 0) return;
+
+    const res = await sfApi("PATCH", `/sobjects/Opportunity/${opp.Id}`, fields);
+    if (res.success) {
+      console.log(`[SF UW Sync] Deal Qualification updated on Opp ${opp.Id} — ${Object.keys(fields).length} fields`);
+    } else {
+      console.warn(`[SF UW Sync] Opp ${opp.Id} update failed: ${res.error}`);
+    }
+  } catch (err: any) {
+    console.error("[SF UW Sync] Error:", err.message);
+  }
+}
+
+// ─── AI Snapshot sync (called after generateUnderwritingSnapshot is saved) ───
+
+/**
+ * Push AI Snapshot fields to the SF Opportunity after the AI underwriting
+ * snapshot is generated and persisted. Also refreshes snapshot-derived Deal
+ * Qualification fields so both sections stay in sync.
+ */
+export async function syncAiSnapshotToSalesforce(
+  email: string,
+  snapshot: Record<string, any>
+): Promise<void> {
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) return;
+
+  const safeEmail = email.toLowerCase().trim();
+
+  try {
+    const opp = await findSfOpportunityByEmail(safeEmail);
+    if (!opp) {
+      console.log(`[SF Snapshot Sync] No opportunity found for ${safeEmail} — skipping`);
+      return;
+    }
+
+    // Format red flags as a newline-separated list
+    const redFlagsText = Array.isArray(snapshot.redFlags) && snapshot.redFlags.length
+      ? (snapshot.redFlags as any[]).map((f: any) => `${f.flag} [${f.severity}]`).join('\n')
+      : null;
+
+    // Average monthly deposit count
+    let avgMonthlyDeposits: number | null = null;
+    if (snapshot.monthlyData?.length) {
+      const counts = (snapshot.monthlyData as any[])
+        .map((m: any) => parseNum(m.numDeposits))
+        .filter((n): n is number => n !== null);
+      if (counts.length) {
+        avgMonthlyDeposits = Math.round(counts.reduce((a, b) => a + b, 0) / counts.length);
+      }
+    }
+
+    // Existing position summary
+    let positionSummary: string | null = null;
+    if (snapshot.existingPositions?.length) {
+      positionSummary = (snapshot.existingPositions as any[])
+        .map((p: any) => `${p.funder}: ~$${p.estimatedPayment}/${p.frequency}`)
+        .join('; ');
+    }
+
+    const worthLabel = snapshot.worthSubmitting != null
+      ? (snapshot.worthSubmitting ? "Worth Submitting" : "Not Worth Submitting")
+      : null;
+    const underwrtingValue = worthLabel && snapshot.qualificationTier
+      ? `${worthLabel} — ${snapshot.qualificationTier}`
+      : (worthLabel || snapshot.qualificationTier || null);
+
+    const fields = clean({
+      // AI Snapshot section
+      UW_Recommendation__c:   snapshot.recommendedProduct || null,
+      UW_Score__c:            snapshot.overallScore != null ? Number(snapshot.overallScore) : null,
+      Last_UW_Run__c:         new Date().toISOString(),
+      UW_Summary__c:          snapshot.summary || null,
+      Red_Flags__c:           redFlagsText,
+      Underwriting__c:        underwrtingValue,
+
+      // Keep Deal Qualification in sync with snapshot data
+      Monthly_Revenue__c:         parseNum(snapshot.avgMonthlyRevenue),
+      Average_Daily_Balance__c:   parseNum(snapshot.avgDailyBalance),
+      Monthly_Deposit_Count__c:   avgMonthlyDeposits,
+      Number_of_NSFs__c:          snapshot.nsfCount != null ? Number(snapshot.nsfCount) : null,
+      Revenue_Trend__c:           snapshot.revenueTrend || null,
+      Total_Monthly_Debt__c:      parseNum(snapshot.totalMonthlyDebtPayments),
+      Factor_Rate__c:             parseNum(snapshot.estimatedFactor),
+      Active_Positions_Count__c:  snapshot.existingPositions?.length != null ? Number(snapshot.existingPositions.length) : null,
+      Existing_Positions__c:      positionSummary,
+    });
+
+    if (Object.keys(fields).length === 0) return;
+
+    const res = await sfApi("PATCH", `/sobjects/Opportunity/${opp.Id}`, fields);
+    if (res.success) {
+      console.log(`[SF Snapshot Sync] AI Snapshot + Deal Qual updated on Opp ${opp.Id} — ${Object.keys(fields).length} fields`);
+    } else {
+      console.warn(`[SF Snapshot Sync] Opp ${opp.Id} update failed: ${res.error}`);
+    }
+  } catch (err: any) {
+    console.error("[SF Snapshot Sync] Error:", err.message);
+  }
+}
