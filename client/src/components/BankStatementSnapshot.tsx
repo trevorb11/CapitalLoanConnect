@@ -43,6 +43,10 @@ interface SnapshotData {
 interface Props {
   email: string;
   compact?: boolean; // If true, show minimal version (just table + key stats)
+  businessName?: string;
+  creditScore?: string;
+  timeInBusiness?: string;
+  industry?: string;
 }
 
 const fmtK = (n: number) => {
@@ -52,13 +56,14 @@ const fmtK = (n: number) => {
   return '$' + n.toLocaleString();
 };
 
-export function BankStatementSnapshot({ email, compact = false }: Props) {
+export function BankStatementSnapshot({ email, compact = false, businessName, creditScore, timeInBusiness, industry }: Props) {
   const [snapshot, setSnapshot] = useState<SnapshotData | null>(null);
   const [ranAt, setRanAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [running, setRunning] = useState(false);
 
   useEffect(() => {
     if (!expanded || loaded) return;
@@ -74,6 +79,37 @@ export function BankStatementSnapshot({ email, compact = false }: Props) {
       .catch(() => {})
       .finally(() => { setLoading(false); setLoaded(true); });
   }, [email, expanded, loaded]);
+
+  const runSnapshot = async () => {
+    setRunning(true);
+    try {
+      const res = await fetch("/api/bank-statements/analyze-for-rep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email,
+          businessName: businessName || undefined,
+          creditScoreRange: creditScore || undefined,
+          timeInBusiness: timeInBusiness || undefined,
+          industry: industry || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Analysis failed");
+      }
+      const data = await res.json();
+      if (data.snapshot) {
+        setSnapshot(data.snapshot);
+        setRanAt(new Date().toISOString());
+      }
+    } catch (err: any) {
+      console.error("Snapshot failed:", err.message);
+    } finally {
+      setRunning(false);
+    }
+  };
 
   return (
     <div className="mt-2">
@@ -95,7 +131,19 @@ export function BankStatementSnapshot({ email, compact = false }: Props) {
           )}
 
           {loaded && !snapshot && (
-            <p className="text-xs text-gray-400 p-4">No AI snapshot available for this file. Run the snapshot from the underwriting portal.</p>
+            <div className="flex items-center justify-between p-4">
+              <p className="text-xs text-gray-400">No AI snapshot available for this file.</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={runSnapshot}
+                disabled={running}
+                className="text-xs h-7"
+              >
+                {running ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <BarChart3 className="h-3 w-3 mr-1" />}
+                Run Snapshot
+              </Button>
+            </div>
           )}
 
           {snapshot && (
@@ -251,12 +299,22 @@ export function BankStatementSnapshot({ email, compact = false }: Props) {
                 </div>
               )}
 
-              {/* Timestamp */}
-              {ranAt && (
-                <p className="text-[10px] text-gray-400 px-4 pb-2">
-                  Analyzed {new Date(ranAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at {new Date(ranAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                </p>
-              )}
+              {/* Timestamp + Re-run */}
+              <div className="flex items-center justify-between px-4 pb-2">
+                {ranAt && (
+                  <p className="text-[10px] text-gray-400">
+                    Analyzed {new Date(ranAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at {new Date(ranAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                  </p>
+                )}
+                <button
+                  onClick={runSnapshot}
+                  disabled={running}
+                  className="text-[10px] text-blue-600 hover:text-blue-500 font-medium flex items-center gap-1 disabled:opacity-50"
+                >
+                  {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <BarChart3 className="h-3 w-3" />}
+                  {running ? 'Analyzing...' : 'Re-run'}
+                </button>
+              </div>
             </div>
           )}
         </div>

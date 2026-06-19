@@ -2504,7 +2504,11 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
 
                   {/* Bank Statement AI Snapshot */}
                   {uploads[0]?.email && (
-                    <BankStatementSnapshot email={uploads[0].email} compact />
+                    <BankStatementSnapshot
+                      email={uploads[0].email}
+                      businessName={businessName}
+                      compact
+                    />
                   )}
 
                   {/* Individual Files - Collapsible */}
