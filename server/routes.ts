@@ -4863,6 +4863,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // 2. Get all bank statement uploads (for dashboard) - role-based filtering
 
+  // GET /api/bank-statements/snapshot/:email — retrieve saved AI snapshot for a merchant
+  app.get("/api/bank-statements/snapshot/:email", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    try {
+      const email = decodeURIComponent(req.params.email).toLowerCase().trim();
+      const result = await db.execute(
+        sql`SELECT snapshot, ran_at, ran_by, files_processed FROM underwriting_snapshots WHERE email = ${email} LIMIT 1`
+      );
+      const row = (result as any).rows?.[0];
+      if (!row) return res.json({ snapshot: null });
+      res.json({
+        snapshot: row.snapshot,
+        ranAt: row.ran_at,
+        ranBy: row.ran_by,
+        filesProcessed: row.files_processed,
+      });
+    } catch (err: any) {
+      console.error("[SNAPSHOT] Error fetching snapshot:", err.message);
+      res.status(500).json({ error: "Failed to load snapshot" });
+    }
+  });
+
   // POST /api/bank-statements/analyze-for-rep — AI underwriting snapshot for reps + underwriting team
   app.post("/api/bank-statements/analyze-for-rep", async (req: Request, res: Response) => {
     if (!req.session.user?.isAuthenticated) {
