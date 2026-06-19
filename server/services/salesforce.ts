@@ -1368,6 +1368,70 @@ export async function syncUwSubmissionToSalesforce(
  *   UW_Score__c, UW_Summary__c, UW_Red_Flags__c, UW_Recommendation__c, Last_UW_Run__c
  *   Number_of_NSFs_Overdrafts__c, Monthly_Deposit_Count__c, Revenue_Trend__c (picklist)
  */
+// Convert "Jan 2024" / "January 2024" / "2024-01" style month strings → "YYYY-MM-DD"
+function parsePeriodStart(month: string): string | null {
+  if (!month) return null;
+  const s = String(month).trim();
+  // "YYYY-MM" format
+  const iso = s.match(/^(\d{4})-(\d{2})$/);
+  if (iso) return `${iso[1]}-${iso[2]}-01`;
+  // "Mon YYYY" or "Month YYYY"
+  const named = s.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (named) {
+    const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+    const idx = months.indexOf(named[1].toLowerCase().slice(0, 3));
+    if (idx >= 0) return `${named[2]}-${String(idx + 1).padStart(2, "0")}-01`;
+  }
+  return null;
+}
+
+function mapPaymentFrequency(v: any): string | null {
+  if (!v) return null;
+  const s = String(v).toLowerCase().trim();
+  if (s.includes("daily") || s === "day") return "Daily";
+  if (s.includes("bi-weekly") || s.includes("biweekly") || s.includes("bi weekly")) return "Bi-Weekly";
+  if (s.includes("weekly") || s === "week") return "Weekly";
+  if (s.includes("monthly") || s === "month") return "Monthly";
+  return "Irregular";
+}
+
+// Delete all child records of a given type for an opportunity, then bulk-create new ones
+async function replaceChildRecords(
+  oppId: string,
+  objectType: string,
+  newRecords: Record<string, any>[]
+): Promise<void> {
+  // 1. Query existing IDs
+  const existing = await sfQuery(`SELECT Id FROM ${objectType} WHERE Opportunity__c = '${oppId}'`);
+  // 2. Delete each one (Collections DELETE requires IDs in query string — easier to loop)
+  for (const rec of existing) {
+    await sfApi("DELETE", `/sobjects/${objectType}/${rec.Id}`);
+  }
+  if (existing.length > 0) {
+    console.log(`[SF Child Sync] Deleted ${existing.length} existing ${objectType} records for opp ${oppId}`);
+  }
+
+  // 3. Bulk-create new records via Collections API
+  if (!newRecords.length) return;
+  const payload = {
+    allOrNone: false,
+    records: newRecords.map(r => ({
+      attributes: { type: objectType },
+      Opportunity__c: oppId,
+      ...r,
+    })),
+  };
+  const res = await sfApi("POST", `/composite/sobjects`, payload);
+  if (res.success && Array.isArray(res.data)) {
+    const ok = (res.data as any[]).filter(r => r.success).length;
+    const fail = (res.data as any[]).filter(r => !r.success);
+    console.log(`[SF Child Sync] Created ${ok}/${newRecords.length} ${objectType} records`);
+    if (fail.length) console.warn(`[SF Child Sync] ${fail.length} failures:`, JSON.stringify(fail));
+  } else if (!res.success) {
+    console.warn(`[SF Child Sync] ${objectType} bulk create failed: ${res.error}`);
+  }
+}
+
 export async function syncAiSnapshotToSalesforce(
   email: string,
   snapshot: Record<string, any>
@@ -1400,14 +1464,11 @@ export async function syncAiSnapshotToSalesforce(
     }
 
     const fields = clean({
-      // AI Snapshot section — confirmed field names from production org
       UW_Recommendation__c:  mapUwRecommendation(snapshot.worthSubmitting, snapshot.qualificationTier),
       UW_Score__c:           snapshot.overallScore != null ? Number(snapshot.overallScore) : null,
       Last_UW_Run__c:        new Date().toISOString(),
       UW_Summary__c:         snapshot.summary || null,
       UW_Red_Flags__c:       redFlagsText,
-
-      // Deal Qualification fields refreshed from snapshot data
       Monthly_Revenue__c:           parseNum(snapshot.avgMonthlyRevenue),
       Average_Daily_Balance__c:     parseNum(snapshot.avgDailyBalance),
       Monthly_Deposit_Count__c:     avgMonthlyDeposits,
@@ -1417,14 +1478,42 @@ export async function syncAiSnapshotToSalesforce(
       Factor_Rate__c:               parseNum(snapshot.estimatedFactor),
     });
 
-    if (Object.keys(fields).length === 0) return;
-
-    const res = await sfApi("PATCH", `/sobjects/Opportunity/${opp.Id}`, fields);
-    if (res.success) {
-      console.log(`[SF Snapshot Sync] AI Snapshot + Deal Qual updated on Opp ${opp.Id} — ${Object.keys(fields).length} fields`);
-    } else {
-      console.warn(`[SF Snapshot Sync] Opp ${opp.Id} update failed: ${res.error}`);
+    if (Object.keys(fields).length > 0) {
+      const res = await sfApi("PATCH", `/sobjects/Opportunity/${opp.Id}`, fields);
+      if (res.success) {
+        console.log(`[SF Snapshot Sync] AI Snapshot + Deal Qual updated on Opp ${opp.Id} — ${Object.keys(fields).length} fields`);
+      } else {
+        console.warn(`[SF Snapshot Sync] Opp ${opp.Id} update failed: ${res.error}`);
+      }
     }
+
+    // ── Bank_Statement_Period__c child records (one per month) ──────────────
+    if (Array.isArray(snapshot.monthlyData) && snapshot.monthlyData.length > 0) {
+      const bankPeriods = (snapshot.monthlyData as any[]).map((m: any) => clean({
+        Statement_Month__c:    m.month ? String(m.month) : null,
+        Period_Start__c:       parsePeriodStart(m.month),
+        Statement_Key__c:      m.month ? `${opp.Id}-${m.month}` : null,
+        Deposits__c:           parseNum(m.totalDeposits),
+        Average_Balance__c:    parseNum(m.avgDailyBalance),
+        Number_of_Deposits__c: m.numDeposits != null ? Number(m.numDeposits) : null,
+        NSF_Count__c:          m.nsfCount != null ? Number(m.nsfCount) : null,
+        Negative_Days__c:      m.negativeDays != null ? Number(m.negativeDays) : null,
+      }));
+      await replaceChildRecords(opp.Id, "Bank_Statement_Period__c", bankPeriods);
+    }
+
+    // ── Existing_Position__c child records (one per MCA position) ───────────
+    if (Array.isArray(snapshot.existingPositions) && snapshot.existingPositions.length > 0) {
+      const positions = (snapshot.existingPositions as any[]).map((p: any) => clean({
+        Funder_Name__c:       p.funder ? String(p.funder) : null,
+        Payment_Amount__c:    parseNum(p.estimatedPayment),
+        Payment_Frequency__c: mapPaymentFrequency(p.frequency),
+        Current_Balance__c:   parseNum(p.balance),
+        Position_Notes__c:    p.notes ? String(p.notes) : null,
+      }));
+      await replaceChildRecords(opp.Id, "Existing_Position__c", positions);
+    }
+
   } catch (err: any) {
     console.error("[SF Snapshot Sync] Error:", err.message);
   }
