@@ -30,7 +30,7 @@ import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services
 import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail } from "./services/email";
 import { evaluateLeadQualification } from "./services/leadQualification";
 import { startLeadNurtureScheduler } from "./services/leadNurture";
-import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncDecisionToProductionSf } from "./services/salesforce";
+import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncDecisionToProductionSf, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { z } from "zod";
@@ -4337,6 +4337,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.warn('[SUBMIT-UW] Failed to stamp uw_submitted_at (non-fatal):', stampErr);
     }
 
+    // Push Deal Qualification fields to Salesforce (non-fatal)
+    try {
+      const snapResult = await db.execute(sql`
+        SELECT snapshot FROM underwriting_snapshots WHERE LOWER(email) = ${normalizedEmail} LIMIT 1
+      `);
+      const savedSnapshot = (snapResult.rows?.[0] as any)?.snapshot ?? null;
+      syncUwSubmissionToSalesforce(normalizedEmail, application, { snapshot: savedSnapshot }).catch(err =>
+        console.warn('[SUBMIT-UW] SF Deal Qual sync error (non-fatal):', err.message)
+      );
+    } catch (sfErr: any) {
+      console.warn('[SUBMIT-UW] SF Deal Qual sync error (non-fatal):', sfErr.message);
+    }
+
     return { uploadCount: uploads.length };
   }
 
@@ -5149,6 +5162,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (saveErr: any) {
         console.error("[SNAPSHOT] Failed to save to DB (non-fatal):", saveErr.message);
       }
+
+      // Push AI Snapshot + Deal Qualification fields to Salesforce (non-fatal)
+      syncAiSnapshotToSalesforce(normalizedEmail, snapshot as any).catch(err =>
+        console.warn('[SNAPSHOT] SF AI Snapshot sync error (non-fatal):', err.message)
+      );
 
       res.json({ success: true, snapshot, filesProcessed: extractedTexts.length });
     } catch (err: any) {
@@ -15322,6 +15340,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (stampErr) {
           console.warn('[SHOP] Failed to stamp uw_submitted_at (non-fatal):', stampErr);
         }
+
+        // Push Deal Qualification fields to Salesforce using shop deal overview (non-fatal)
+        syncUwSubmissionToSalesforce(normalizedEmail, application, { dealOverview: ov }).catch(err =>
+          console.warn('[SHOP] SF Deal Qual sync error (non-fatal):', err.message)
+        );
       }
 
       res.json({ success: true, results, attachmentCount: attachments.length });
