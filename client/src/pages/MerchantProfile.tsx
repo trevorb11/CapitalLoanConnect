@@ -105,6 +105,7 @@ interface MerchantProfileData {
   }>;
   declines: Array<{
     id: string;
+    lender?: string;
     declineReason: string;
     followUpWorthy: boolean;
     followUpDate: string;
@@ -438,6 +439,53 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
         {/* ── OVERVIEW TAB ── */}
         <TabsContent value="overview" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Lender Decisions — shown first when any approvals or declines exist */}
+            {(approvals.length > 0 || declines.length > 0) && (
+              <Card className="md:col-span-2">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                    <Landmark className="w-4 h-4" /> Lender Decisions
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left p-2">Lender</th>
+                          <th className="text-left p-2">Amount</th>
+                          <th className="text-left p-2">Factor Rate</th>
+                          <th className="text-left p-2">Term</th>
+                          <th className="text-left p-2">Status</th>
+                          <th className="text-left p-2">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {approvals.map((a) => (
+                          <tr key={a.id} className="border-b">
+                            <td className="p-2 font-medium">{a.lender || "—"}</td>
+                            <td className="p-2">{a.advanceAmount ? fmt$(a.advanceAmount) : "N/A"}</td>
+                            <td className="p-2">{a.factorRate || "N/A"}</td>
+                            <td className="p-2">{a.term || "N/A"}</td>
+                            <td className="p-2"><Badge className="bg-green-600 text-white">Approved</Badge></td>
+                            <td className="p-2">{fmtDate(a.approvalDate || a.createdAt)}</td>
+                          </tr>
+                        ))}
+                        {declines.map((d) => (
+                          <tr key={d.id} className="border-b">
+                            <td className="p-2 font-medium">{d.lender || "—"}</td>
+                            <td className="p-2">—</td>
+                            <td className="p-2">—</td>
+                            <td className="p-2">{d.declineReason || "—"}</td>
+                            <td className="p-2"><Badge variant="destructive">Declined</Badge></td>
+                            <td className="p-2">{fmtDate(d.createdAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Business Info */}
             <Card>
               <CardContent className="p-6">
@@ -527,42 +575,6 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
               </CardContent>
             </Card>
 
-            {/* Lender Approvals (from email parsing) */}
-            {lenderApprovals.length > 0 && (
-              <Card className="md:col-span-2">
-                <CardContent className="p-6">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2">
-                    <Landmark className="w-4 h-4" /> Lender Approvals (Email)
-                  </h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left p-2">Lender</th>
-                          <th className="text-left p-2">Amount</th>
-                          <th className="text-left p-2">Term</th>
-                          <th className="text-left p-2">Product</th>
-                          <th className="text-left p-2">Status</th>
-                          <th className="text-left p-2">Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lenderApprovals.map((la) => (
-                          <tr key={la.id} className="border-b">
-                            <td className="p-2 font-medium">{la.lenderName}</td>
-                            <td className="p-2">{fmt$(la.approvedAmount)}</td>
-                            <td className="p-2">{la.termLength || "N/A"}</td>
-                            <td className="p-2">{la.productType || "N/A"}</td>
-                            <td className="p-2"><Badge variant="outline">{la.status}</Badge></td>
-                            <td className="p-2">{fmtDate(la.createdAt)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
           </div>
         </TabsContent>
 

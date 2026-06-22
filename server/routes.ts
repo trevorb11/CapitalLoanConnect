@@ -14606,6 +14606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })),
         declines: declines.map(d => ({
           id: d.id,
+          lender: d.lender,
           declineReason: d.declineReason,
           followUpWorthy: d.followUpWorthy,
           followUpDate: d.followUpDate,
