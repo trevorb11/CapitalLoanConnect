@@ -5978,15 +5978,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log(`[UNDERWRITING PATCH] Updating decision ${id}, keys: ${Object.keys(updates).join(', ')}, approvals count: ${updates.additionalApprovals?.length || 'N/A'}`);
 
     try {
-      // Convert date strings to Date objects if provided
-      if (updates.approvalDate && typeof updates.approvalDate === 'string') {
-        updates.approvalDate = new Date(updates.approvalDate);
+      // Convert date strings to Date objects if provided; treat empty strings as null
+      if (updates.approvalDate !== undefined && typeof updates.approvalDate === 'string') {
+        updates.approvalDate = updates.approvalDate ? new Date(updates.approvalDate) : null;
       }
-      if (updates.followUpDate && typeof updates.followUpDate === 'string') {
-        updates.followUpDate = new Date(updates.followUpDate);
+      if (updates.followUpDate !== undefined && typeof updates.followUpDate === 'string') {
+        updates.followUpDate = updates.followUpDate ? new Date(updates.followUpDate) : null;
       }
-      if (updates.fundedDate && typeof updates.fundedDate === 'string') {
-        updates.fundedDate = new Date(updates.fundedDate);
+      if (updates.fundedDate !== undefined && typeof updates.fundedDate === 'string') {
+        updates.fundedDate = updates.fundedDate ? new Date(updates.fundedDate) : null;
+      }
+      if (updates.approvalDeadline !== undefined && typeof updates.approvalDeadline === 'string') {
+        updates.approvalDeadline = updates.approvalDeadline ? new Date(updates.approvalDeadline) : null;
       }
 
       // Sync primary approval data from additionalApprovals JSONB to top-level columns
