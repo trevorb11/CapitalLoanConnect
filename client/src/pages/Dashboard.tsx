@@ -1322,9 +1322,36 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
 
     const raw = decision.additionalApprovals as any[] | null;
 
-    // Check if already in new format (has isPrimary field)
+    // Check if already in new format (has isPrimary field) AND primary entry is present
     if (raw && raw.length > 0 && raw[0].isPrimary !== undefined) {
-      return raw as FullApprovalEntry[];
+      const hasPrimary = (raw as any[]).some((r) => r.isPrimary === true);
+      if (hasPrimary) {
+        return raw as FullApprovalEntry[];
+      }
+      // New-format array exists but primary entry was never migrated into it —
+      // prepend the flat column data as the primary entry
+      const extras = raw as FullApprovalEntry[];
+      if (decision.advanceAmount || decision.lender) {
+        return [
+          {
+            id: 'primary-' + decision.id,
+            lender: decision.lender || '',
+            advanceAmount: decision.advanceAmount?.toString() || '',
+            term: decision.term || '',
+            paymentFrequency: decision.paymentFrequency || 'weekly',
+            factorRate: decision.factorRate?.toString() || '',
+            maxUpsell: decision.maxUpsell?.toString() || '',
+            totalPayback: decision.totalPayback?.toString() || '',
+            netAfterFees: decision.netAfterFees?.toString() || '',
+            notes: decision.notes || '',
+            approvalDate: decision.approvalDate ? new Date(decision.approvalDate).toISOString().split('T')[0] : '',
+            isPrimary: true,
+            createdAt: decision.createdAt ? new Date(decision.createdAt).toISOString() : new Date().toISOString(),
+          },
+          ...extras,
+        ];
+      }
+      return extras;
     }
 
     // Migration: convert old format to new
