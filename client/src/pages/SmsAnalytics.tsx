@@ -63,6 +63,17 @@ export default function SmsAnalytics() {
     enabled: isAuthenticated,
   });
 
+  // SMS 90-day historical stats
+  const { data: sms90Stats } = useQuery<any>({
+    queryKey: ["/api/admin/sms/90day-stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/sms/90day-stats", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
+
   // GHL email campaign stats (historical)
   const { data: ghlStats } = useQuery<any>({
     queryKey: ["/api/admin/email/ghl-stats"],
@@ -307,6 +318,191 @@ export default function SmsAnalytics() {
           <div className="text-center py-16 text-gray-500">
             <AlertTriangle className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p>Failed to load SMS analytics</p>
+          </div>
+        )}
+
+        {/* ═══ SMS 90-DAY CAMPAIGN REPORT ═══ */}
+        {sms90Stats?.totals && (
+          <div className="border-t border-gray-800 pt-6 mt-6">
+            <div className="flex items-center gap-2 mb-2">
+              <MessageSquare className="w-5 h-5 text-blue-400" />
+              <h2 className="text-lg font-bold text-white">SMS Campaign Report</h2>
+              <Badge variant="outline" className="border-blue-500/30 text-blue-400 text-xs ml-2">{sms90Stats.period}</Badge>
+            </div>
+            <p className="text-xs text-gray-500 mb-5">195K messages across 2 Twilio numbers — {sms90Stats.totals.uniqueYes} YES replies, {sms90Stats.totals.uniqueStops} opt-outs</p>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+              {[
+                { label: "Sent", value: sms90Stats.totals.sent, icon: Send, color: "text-blue-400" },
+                { label: "Delivered", value: sms90Stats.totals.delivered, icon: CheckCircle2, color: "text-emerald-400" },
+                { label: "Delivery Rate", value: sms90Stats.totals.deliveryRate + "%", icon: CheckCircle2, color: "text-emerald-400", isText: true },
+                { label: "Replies", value: sms90Stats.totals.totalReplies, icon: ArrowDownLeft, color: "text-green-400" },
+                { label: "YES Replies", value: sms90Stats.totals.uniqueYes, icon: TrendingUp, color: "text-orange-400" },
+                { label: "STOP", value: sms90Stats.totals.uniqueStops, icon: XCircle, color: "text-red-400" },
+                { label: "Failed", value: sms90Stats.totals.failed, icon: AlertTriangle, color: "text-yellow-400" },
+              ].map(s => (
+                <Card key={s.label} className="bg-gray-900 border-gray-800">
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wide">{s.label}</span>
+                    </div>
+                    <p className="text-lg font-bold text-white">{(s as any).isText ? s.value : fmt(s.value || 0)}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Key Takeaways */}
+            <Card className="bg-gray-900 border-gray-800 mb-6">
+              <CardContent className="p-5">
+                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-400" /> Key Takeaways
+                </h3>
+                <div className="space-y-2 text-sm text-gray-300">
+                  {sms90Stats.keyTakeaways?.map((t: string, i: number) => (
+                    <p key={i}>&#8226; {t}</p>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Campaign Performance Table */}
+            <Card className="bg-gray-900 border-gray-800 mb-6">
+              <CardContent className="p-6">
+                <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-blue-400" /> Campaign Performance
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-800">
+                        <th className="text-left p-2 text-gray-500">Campaign</th>
+                        <th className="text-right p-2 text-gray-500">Sent</th>
+                        <th className="text-right p-2 text-gray-500">Recipients</th>
+                        <th className="text-right p-2 text-gray-500">YES</th>
+                        <th className="text-right p-2 text-gray-500">STOP</th>
+                        <th className="text-right p-2 text-gray-500">STOP %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sms90Stats.campaigns?.map((c: any) => (
+                        <tr key={c.name} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                          <td className="p-2 text-white font-medium">{c.name}</td>
+                          <td className="p-2 text-right text-gray-300">{fmt(c.sent)}</td>
+                          <td className="p-2 text-right text-gray-400">{fmt(c.uniqueRecipients)}</td>
+                          <td className="p-2 text-right text-orange-400 font-bold">{c.yes}</td>
+                          <td className="p-2 text-right text-red-400">{fmt(c.stop)}</td>
+                          <td className="p-2 text-right text-gray-400">{c.stopRate}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Monthly Trend + Post-YES Engagement side by side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {/* Monthly Breakdown */}
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-5">
+                  <h3 className="font-semibold text-white mb-3 text-sm flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-blue-400" /> Monthly Volume
+                  </h3>
+                  <div className="space-y-3">
+                    {sms90Stats.monthly?.map((m: any) => {
+                      const maxSent = Math.max(...(sms90Stats.monthly || []).map((x: any) => x.sent));
+                      return (
+                        <div key={m.month}>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-gray-400">{m.month}</span>
+                            <span className="text-gray-300">{fmt(m.sent)} sent / {m.yes} YES</span>
+                          </div>
+                          <div className="h-4 bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-teal-500" style={{ width: `${(m.sent / maxSent) * 100}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Post-YES Engagement */}
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-5">
+                  <h3 className="font-semibold text-white mb-3 text-sm flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-orange-400" /> Post-YES Engagement
+                  </h3>
+                  <div className="space-y-3">
+                    {sms90Stats.postYesEngagement?.map((p: any) => (
+                      <div key={p.status}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-400">{p.status}</span>
+                          <span className={p.status.includes("Productive") ? "text-emerald-400 font-bold" : p.status.includes("Ghosted") ? "text-red-400" : "text-yellow-400"}>{p.count} ({p.pct}%)</span>
+                        </div>
+                        <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{
+                            width: `${p.pct}%`,
+                            background: p.status.includes("Productive") ? "#10b981" : p.status.includes("Ghosted") ? "#ef4444" : "#eab308"
+                          }} />
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-xs text-gray-500 mt-2">268 unique YES contacts total</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Best Times + Number Performance side by side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {/* Best Days */}
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-5">
+                  <h3 className="font-semibold text-white mb-3 text-sm">Best Days for YES Replies</h3>
+                  <div className="space-y-1">
+                    {sms90Stats.bestDays?.map((d: any) => {
+                      const maxYes = Math.max(...(sms90Stats.bestDays || []).map((x: any) => x.yes));
+                      return (
+                        <div key={d.day} className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 w-8">{d.day}</span>
+                          <div className="flex-1 h-4 bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-to-r from-orange-500 to-yellow-500" style={{ width: `${(d.yes / maxYes) * 100}%` }} />
+                          </div>
+                          <span className="text-xs text-orange-400 w-6 text-right">{d.yes}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Number Performance */}
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-5">
+                  <h3 className="font-semibold text-white mb-3 text-sm">Performance by Number</h3>
+                  <div className="space-y-3">
+                    {sms90Stats.numbers?.map((n: any) => (
+                      <div key={n.number} className="p-3 bg-gray-800/50 rounded-lg">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-white font-medium text-sm">{n.label} Number</span>
+                          <span className="text-xs text-gray-500">{n.number}</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                          <div><p className="text-blue-400 font-bold">{fmt(n.sent)}</p><p className="text-gray-500">Sent</p></div>
+                          <div><p className="text-emerald-400 font-bold">{n.deliveryRate}%</p><p className="text-gray-500">Delivery</p></div>
+                          <div><p className="text-orange-400 font-bold">{n.yes}</p><p className="text-gray-500">YES</p></div>
+                          <div><p className="text-red-400 font-bold">{fmt(n.stop)}</p><p className="text-gray-500">STOP</p></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
 
