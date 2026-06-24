@@ -226,6 +226,62 @@ app.use((req, res, next) => {
       )`);
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_merchant_notes_email ON merchant_notes (LOWER(business_email))`);
       console.log('[STARTUP] Migration: merchant_notes table ensured');
+      // GHL Pipeline Reports — per-rep pipeline analysis reports
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS ghl_pipeline_reports (
+        id SERIAL PRIMARY KEY,
+        rep_name TEXT NOT NULL,
+        rep_email TEXT,
+        report_date DATE NOT NULL,
+        report_type TEXT NOT NULL DEFAULT 'daily',
+        pipeline_name TEXT NOT NULL DEFAULT '1. App Sent',
+        html_content TEXT NOT NULL,
+        deal_count INTEGER DEFAULT 0,
+        stale_count INTEGER DEFAULT 0,
+        high_count INTEGER DEFAULT 0,
+        total_value NUMERIC(12,2) DEFAULT 0,
+        avg_days NUMERIC(5,1) DEFAULT 0,
+        health_rating TEXT,
+        deals_data JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      console.log('[STARTUP] Migration: ghl_pipeline_reports table ensured');
+      // GHL Pipeline Snapshots — company-wide overarching reports
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS ghl_pipeline_snapshots (
+        id SERIAL PRIMARY KEY,
+        report_date DATE NOT NULL,
+        pipeline_name TEXT NOT NULL,
+        report_type TEXT NOT NULL DEFAULT 'daily',
+        total_opps INTEGER,
+        total_value NUMERIC(12,2),
+        total_stale_30_plus INTEGER,
+        total_fresh_7_or_less INTEGER,
+        total_unassigned INTEGER,
+        opps_with_value INTEGER,
+        avg_days_in_stage NUMERIC(5,1),
+        report_html TEXT,
+        rep_summary JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      console.log('[STARTUP] Migration: ghl_pipeline_snapshots table ensured');
+      // GHL Opportunity Snapshots — per-opp granular tracking
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS ghl_opportunity_snapshots (
+        id SERIAL PRIMARY KEY,
+        snapshot_date DATE NOT NULL,
+        pipeline_name TEXT NOT NULL DEFAULT '1. App Sent',
+        opp_id TEXT NOT NULL,
+        opp_name TEXT,
+        company_name TEXT,
+        rep_name TEXT,
+        stage_name TEXT,
+        monetary_value NUMERIC(12,2),
+        days_in_stage INTEGER,
+        has_email BOOLEAN,
+        has_phone BOOLEAN,
+        status TEXT,
+        last_stage_change TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      console.log('[STARTUP] Migration: ghl_opportunity_snapshots table ensured');
       // Structured declines JSONB column
       await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS additional_declines JSONB`);
       console.log('[STARTUP] Migration: additional_declines column ensured');

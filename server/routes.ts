@@ -581,6 +581,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/ghl-pipeline-reports — save a per-rep GHL pipeline analysis report
+  app.post("/api/ghl-pipeline-reports", claudeAuth, async (req: Request, res: Response) => {
+    try {
+      const {
+        repName, repEmail, reportDate, reportType, pipelineName,
+        htmlContent, dealCount, staleCount, highCount, totalValue,
+        avgDays, healthRating, dealsData
+      } = req.body;
+
+      if (!repName || !htmlContent) {
+        return res.status(400).json({ error: "repName and htmlContent are required" });
+      }
+
+      const result = await db.execute(sql`
+        INSERT INTO ghl_pipeline_reports
+          (rep_name, rep_email, report_date, report_type, pipeline_name,
+           html_content, deal_count, stale_count, high_count, total_value,
+           avg_days, health_rating, deals_data)
+        VALUES (${repName}, ${repEmail || null}, ${reportDate || new Date().toISOString().split('T')[0]},
+                ${reportType || 'daily'}, ${pipelineName || '1. App Sent'},
+                ${htmlContent}, ${dealCount || 0}, ${staleCount || 0}, ${highCount || 0},
+                ${totalValue || 0}, ${avgDays || 0}, ${healthRating || null},
+                ${JSON.stringify(dealsData || [])})
+        RETURNING id
+      `);
+      const id = (result as any).rows?.[0]?.id;
+      res.json({ success: true, id });
+    } catch (err: any) {
+      console.error("[GHL Pipeline Reports] Save error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/ghl-pipeline-snapshots — save the overarching company-wide pipeline snapshot
+  app.post("/api/ghl-pipeline-snapshots", claudeAuth, async (req: Request, res: Response) => {
+    try {
+      const {
+        reportDate, reportType, pipelineName, totalOpps, totalValue,
+        totalStale30Plus, totalFresh7OrLess, totalUnassigned,
+        oppsWithValue, avgDaysInStage, reportHtml, repSummary
+      } = req.body;
+
+      const result = await db.execute(sql`
+        INSERT INTO ghl_pipeline_snapshots
+          (report_date, pipeline_name, report_type, total_opps, total_value,
+           total_stale_30_plus, total_fresh_7_or_less, total_unassigned,
+           opps_with_value, avg_days_in_stage, report_html, rep_summary)
+        VALUES (${reportDate || new Date().toISOString().split('T')[0]},
+                ${pipelineName || '1. App Sent'}, ${reportType || 'daily'},
+                ${totalOpps || 0}, ${totalValue || 0}, ${totalStale30Plus || 0},
+                ${totalFresh7OrLess || 0}, ${totalUnassigned || 0},
+                ${oppsWithValue || 0}, ${avgDaysInStage || 0},
+                ${reportHtml || ''}, ${JSON.stringify(repSummary || [])})
+        RETURNING id
+      `);
+      const id = (result as any).rows?.[0]?.id;
+      res.json({ success: true, id });
+    } catch (err: any) {
+      console.error("[GHL Pipeline Snapshots] Save error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/ghl-pipeline-reports — retrieve saved reports (latest per rep, or by date)
+  app.get("/api/ghl-pipeline-reports", claudeAuth, async (req: Request, res: Response) => {
+    try {
+      const repName = req.query.rep as string;
+      const reportDate = req.query.date as string;
+      const pipelineName = (req.query.pipeline as string) || '1. App Sent';
+
+      if (repName) {
+        // Get latest report for a specific rep
+        const result = await db.execute(sql`
+          SELECT * FROM ghl_pipeline_reports
+          WHERE rep_name = ${repName} AND pipeline_name = ${pipelineName}
+          ORDER BY created_at DESC LIMIT 1
+        `);
+        return res.json((result as any).rows?.[0] || null);
+      }
+
+      if (reportDate) {
+        // Get all reports for a specific date
+        const result = await db.execute(sql`
+          SELECT id, rep_name, rep_email, report_date, report_type, pipeline_name,
+                 deal_count, stale_count, high_count, total_value, avg_days,
+                 health_rating, deals_data, created_at
+          FROM ghl_pipeline_reports
+          WHERE report_date = ${reportDate} AND pipeline_name = ${pipelineName}
+          ORDER BY rep_name
+        `);
+        return res.json((result as any).rows);
+      }
+
+      // Default: latest report per rep
+      const result = await db.execute(sql`
+        SELECT DISTINCT ON (rep_name) id, rep_name, rep_email, report_date, report_type,
+               pipeline_name, deal_count, stale_count, high_count, total_value, avg_days,
+               health_rating, deals_data, created_at
+        FROM ghl_pipeline_reports
+        WHERE pipeline_name = ${pipelineName}
+        ORDER BY rep_name, created_at DESC
+      `);
+      res.json((result as any).rows);
+    } catch (err: any) {
+      console.error("[GHL Pipeline Reports] Read error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/ghl-pipeline-snapshots — retrieve saved snapshots
+  app.get("/api/ghl-pipeline-snapshots", claudeAuth, async (req: Request, res: Response) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+      const pipelineName = (req.query.pipeline as string) || '1. App Sent';
+
+      const result = await db.execute(sql`
+        SELECT id, report_date, pipeline_name, report_type, total_opps, total_value,
+               total_stale_30_plus, total_fresh_7_or_less, total_unassigned,
+               opps_with_value, avg_days_in_stage, rep_summary, created_at
+        FROM ghl_pipeline_snapshots
+        WHERE pipeline_name = ${pipelineName}
+        ORDER BY report_date DESC
+        LIMIT ${limit}
+      `);
+      res.json((result as any).rows);
+    } catch (err: any) {
+      console.error("[GHL Pipeline Snapshots] Read error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // POST /api/admin/claude/sf-query — run a read-only SOQL query against Salesforce
   app.post("/api/admin/claude/sf-query", claudeAuth, async (req, res) => {
     try {
