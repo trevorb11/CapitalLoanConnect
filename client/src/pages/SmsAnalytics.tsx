@@ -1,0 +1,291 @@
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { LoginForm } from "@/components/auth/LoginForm";
+import { Link } from "wouter";
+import {
+  MessageSquare, Send, ArrowDownLeft, BarChart3, Loader2, RefreshCw,
+  TrendingUp, AlertTriangle, ChevronLeft, CheckCircle2, XCircle,
+} from "lucide-react";
+
+interface SmsAnalytics {
+  period: { days: number; since: string };
+  totals: { outbound: number; inbound: number; replyRate: string };
+  deliveryStats: { delivered: number; undelivered: number; failed: number; sent: number; queued: number; sampleSize: number };
+  campaigns: Array<{ stage: string; send_count: string; unique_recipients: string; first_sent: string; last_sent: string }>;
+  dailyVolume: Array<{ date: string; stage: string; count: string }>;
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  app_abandoned: "App Abandoned",
+  approval_congratulations: "Approval Congrats",
+  funded_congratulations: "Funded Congrats",
+  bank_statements_reminder: "Bank Stmt Reminder",
+  approval_stale_reminder: "Stale Approval",
+  portal_notification: "Portal Notification",
+  outreach: "Outreach",
+  unknown: "Other",
+  bank_statements_uploaded: "Stmts Uploaded",
+  approval_issued: "Approval Issued",
+  funded: "Funded",
+};
+
+function fmt(n: number | string) {
+  return Number(n).toLocaleString();
+}
+
+export default function SmsAnalytics() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [days, setDays] = useState(30);
+
+  useEffect(() => {
+    fetch("/api/auth/check", { credentials: "include" })
+      .then(r => r.json())
+      .then(data => {
+        if (data.isAuthenticated && data.role === "admin") setIsAuthenticated(true);
+        setAuthChecked(true);
+      })
+      .catch(() => setAuthChecked(true));
+  }, []);
+
+  const { data: analytics, isLoading, refetch } = useQuery<SmsAnalytics>({
+    queryKey: ["/api/admin/sms/analytics", days],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/sms/analytics?days=${days}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load SMS analytics");
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
+
+  const backfillMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/sms/backfill", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days }),
+      });
+      if (!res.ok) throw new Error("Backfill failed");
+      return res.json();
+    },
+    onSuccess: () => refetch(),
+  });
+
+  if (!authChecked) return <div className="min-h-screen bg-gray-950 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-400" /></div>;
+  if (!isAuthenticated) return <LoginForm onLoginSuccess={() => {
+    fetch("/api/auth/check", { credentials: "include" }).then(r => r.json()).then(data => {
+      if (data.isAuthenticated && data.role === "admin") setIsAuthenticated(true);
+    });
+  }} />;
+
+  const stats = analytics;
+  const deliveryRate = stats?.deliveryStats.sampleSize
+    ? ((stats.deliveryStats.delivered / stats.deliveryStats.sampleSize) * 100).toFixed(1)
+    : "—";
+
+  // Aggregate daily volume into date totals
+  const dailyTotals: Record<string, number> = {};
+  for (const row of stats?.dailyVolume || []) {
+    dailyTotals[row.date] = (dailyTotals[row.date] || 0) + Number(row.count);
+  }
+  const dailyEntries = Object.entries(dailyTotals).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14);
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white">
+      <div className="bg-[#1e3a5f] px-6 py-4">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard"><Button variant="ghost" size="sm" className="text-white hover:bg-white/10"><ChevronLeft className="w-4 h-4 mr-1" />Dashboard</Button></Link>
+            <MessageSquare className="h-6 w-6" />
+            <div>
+              <h1 className="text-lg font-bold">SMS Analytics</h1>
+              <p className="text-xs text-blue-200">Campaign performance and delivery stats from Twilio</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {[7, 30, 60, 90].map(d => (
+              <Button key={d} variant={days === d ? "default" : "outline"} size="sm"
+                className={days === d ? "" : "border-white/20 text-white hover:bg-white/10"}
+                onClick={() => setDays(d)}>
+                {d}d
+              </Button>
+            ))}
+            <Button variant="outline" size="sm" className="border-white/20 text-white hover:bg-white/10 ml-2"
+              onClick={() => backfillMutation.mutate()} disabled={backfillMutation.isPending}>
+              {backfillMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+              Sync History
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+        ) : stats ? (
+          <>
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1"><Send className="w-4 h-4 text-blue-400" /><span className="text-xs text-gray-500 uppercase">Sent</span></div>
+                  <p className="text-2xl font-bold text-white">{fmt(stats.totals.outbound)}</p>
+                  <p className="text-xs text-gray-500">outbound messages</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1"><ArrowDownLeft className="w-4 h-4 text-green-400" /><span className="text-xs text-gray-500 uppercase">Replies</span></div>
+                  <p className="text-2xl font-bold text-white">{fmt(stats.totals.inbound)}</p>
+                  <p className="text-xs text-gray-500">inbound replies</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1"><TrendingUp className="w-4 h-4 text-teal-400" /><span className="text-xs text-gray-500 uppercase">Reply Rate</span></div>
+                  <p className="text-2xl font-bold text-white">{stats.totals.replyRate}</p>
+                  <p className="text-xs text-gray-500">inbound / outbound</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-1"><CheckCircle2 className="w-4 h-4 text-emerald-400" /><span className="text-xs text-gray-500 uppercase">Delivery</span></div>
+                  <p className="text-2xl font-bold text-white">{deliveryRate}%</p>
+                  <p className="text-xs text-gray-500">
+                    {stats.deliveryStats.delivered} delivered / {stats.deliveryStats.sampleSize} sampled
+                    {stats.deliveryStats.failed > 0 && <span className="text-red-400 ml-1">({stats.deliveryStats.failed} failed)</span>}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Campaign Breakdown */}
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-6">
+                <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-blue-400" /> Campaign Breakdown
+                </h3>
+                {stats.campaigns.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <p>No campaign data yet. Click "Sync History" to pull from Twilio.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          <th className="text-left p-3 text-gray-500">Campaign</th>
+                          <th className="text-right p-3 text-gray-500">Messages Sent</th>
+                          <th className="text-right p-3 text-gray-500">Unique Recipients</th>
+                          <th className="text-left p-3 text-gray-500">First Sent</th>
+                          <th className="text-left p-3 text-gray-500">Last Sent</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stats.campaigns.map(c => (
+                          <tr key={c.stage} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                            <td className="p-3">
+                              <Badge variant="outline" className="border-gray-700 text-gray-300">
+                                {STAGE_LABELS[c.stage] || c.stage}
+                              </Badge>
+                            </td>
+                            <td className="p-3 text-right font-medium text-white">{fmt(c.send_count)}</td>
+                            <td className="p-3 text-right text-gray-400">{fmt(c.unique_recipients)}</td>
+                            <td className="p-3 text-gray-400 text-xs">{c.first_sent ? new Date(c.first_sent).toLocaleDateString() : "—"}</td>
+                            <td className="p-3 text-gray-400 text-xs">{c.last_sent ? new Date(c.last_sent).toLocaleDateString() : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Daily Volume */}
+            {dailyEntries.length > 0 && (
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-teal-400" /> Daily Send Volume (last 14 days)
+                  </h3>
+                  <div className="space-y-1">
+                    {dailyEntries.map(([date, count]) => {
+                      const maxCount = Math.max(...dailyEntries.map(([, c]) => c));
+                      const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                      return (
+                        <div key={date} className="flex items-center gap-3">
+                          <span className="text-xs text-gray-500 w-20 shrink-0">
+                            {new Date(date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                          <div className="flex-1 h-5 bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-teal-500 transition-all duration-500"
+                              style={{ width: `${Math.max(pct, 2)}%` }} />
+                          </div>
+                          <span className="text-xs text-gray-400 w-10 text-right">{count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Backfill Result */}
+            {backfillMutation.data && (
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-4">
+                  <p className="text-sm text-green-400 font-medium">
+                    Sync complete: {backfillMutation.data.scanned} messages scanned, {backfillMutation.data.inserted} new records added
+                  </p>
+                  {Object.entries(backfillMutation.data.byCampaign || {}).length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {Object.entries(backfillMutation.data.byCampaign).map(([stage, count]) => (
+                        <Badge key={stage} variant="secondary" className="text-xs">
+                          {STAGE_LABELS[stage] || stage}: {String(count)}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Delivery Breakdown */}
+            {stats.deliveryStats.sampleSize > 0 && (
+              <Card className="bg-gray-900 border-gray-800">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Delivery Status (last {stats.deliveryStats.sampleSize} messages)
+                  </h3>
+                  <div className="grid grid-cols-5 gap-3 text-center">
+                    {[
+                      { label: "Delivered", value: stats.deliveryStats.delivered, color: "text-emerald-400" },
+                      { label: "Sent", value: stats.deliveryStats.sent, color: "text-blue-400" },
+                      { label: "Queued", value: stats.deliveryStats.queued, color: "text-gray-400" },
+                      { label: "Undelivered", value: stats.deliveryStats.undelivered, color: "text-yellow-400" },
+                      { label: "Failed", value: stats.deliveryStats.failed, color: "text-red-400" },
+                    ].map(s => (
+                      <div key={s.label}>
+                        <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+                        <p className="text-[10px] text-gray-500 uppercase">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-16 text-gray-500">
+            <AlertTriangle className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p>Failed to load SMS analytics</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -44,4 +44,24 @@ export async function fireSmsStageEvent(payload: StageEventPayload): Promise<voi
     // Non-blocking — log and continue. Never throw, never block the main flow.
     console.error('[SMS] Stage event error (non-fatal):', payload.stage, err);
   }
+
+  // Log to sms_campaign_log for analytics (non-blocking)
+  try {
+    const { pool: dbPool } = await import('./db');
+    await dbPool.query(
+      `INSERT INTO sms_campaign_log (phone, email, stage, message_body, business_name, deal_id, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        payload.phone,
+        payload.email || null,
+        payload.stage,
+        (payload.metadata as any)?.sms_body || null,
+        payload.business_name || null,
+        payload.deal_id || null,
+        payload.metadata ? JSON.stringify(payload.metadata) : null,
+      ]
+    );
+  } catch {
+    // Never block main flow for analytics logging
+  }
 }

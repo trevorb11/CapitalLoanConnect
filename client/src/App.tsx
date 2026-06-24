@@ -54,6 +54,7 @@ import Leaderboard from "@/pages/Leaderboard";
 import Messaging from "@/pages/Messaging";
 import AutomatedTriggers from "@/pages/AutomatedTriggers";
 import SmsInbox from "@/pages/SmsInbox";
+import SmsAnalytics from "@/pages/SmsAnalytics";
 import GigFiStandalone from "@/pages/GigFiStandalone";
 import GigFiInternal from "@/pages/GigFiInternal";
 import GigFiSubmissions from "@/pages/GigFiSubmissions";
@@ -146,6 +147,7 @@ function Router() {
       <Route path="/messaging" component={Messaging} />
       <Route path="/triggers" component={AutomatedTriggers} />
       <Route path="/sms-inbox" component={SmsInbox} />
+      <Route path="/sms-analytics" component={SmsAnalytics} />
       <Route path="/gig" component={GigFiStandalone} />
       <Route path="/gigfi-internal" component={GigFiInternal} />
       <Route path="/gigfi-submissions" component={GigFiSubmissions} />

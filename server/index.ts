@@ -282,6 +282,24 @@ app.use((req, res, next) => {
         created_at TIMESTAMP DEFAULT NOW()
       )`);
       console.log('[STARTUP] Migration: ghl_opportunity_snapshots table ensured');
+      // SMS Campaign Log — tracks every outbound SMS for campaign analytics
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS sms_campaign_log (
+        id SERIAL PRIMARY KEY,
+        phone TEXT NOT NULL,
+        email TEXT,
+        stage TEXT NOT NULL,
+        message_body TEXT,
+        twilio_sid TEXT,
+        status TEXT DEFAULT 'sent',
+        business_name TEXT,
+        deal_id TEXT,
+        rep_name TEXT,
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_sms_campaign_log_stage ON sms_campaign_log (stage)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_sms_campaign_log_phone ON sms_campaign_log (phone)`);
+      console.log('[STARTUP] Migration: sms_campaign_log table ensured');
       // Structured declines JSONB column
       await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS additional_declines JSONB`);
       console.log('[STARTUP] Migration: additional_declines column ensured');

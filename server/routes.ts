@@ -13943,6 +13943,181 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── SMS ANALYTICS ──────────────────────────────────────────────────────────
+
+  // GET /api/admin/sms/analytics — aggregate SMS stats from Twilio + campaign log
+  app.get("/api/admin/sms/analytics", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+    const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+      return res.status(503).json({ error: "Twilio credentials not configured" });
+    }
+
+    const days = Math.min(Number(req.query.days) || 30, 90);
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    const sinceStr = since.toISOString().split("T")[0];
+
+    try {
+      const authHeader = 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+      const baseUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+
+      // Fetch outbound and inbound counts in parallel
+      const [outboundRes, inboundRes, campaignStats] = await Promise.all([
+        // Outbound messages
+        fetch(`${baseUrl}?DateSent>=${sinceStr}&Direction=outbound-api&PageSize=1`, {
+          headers: { Authorization: authHeader },
+          signal: AbortSignal.timeout(15000),
+        }).then(r => r.json()).catch(() => ({ total: 0, messages: [] })),
+
+        // Inbound messages (replies)
+        fetch(`${baseUrl}?DateSent>=${sinceStr}&Direction=inbound&PageSize=1`, {
+          headers: { Authorization: authHeader },
+          signal: AbortSignal.timeout(15000),
+        }).then(r => r.json()).catch(() => ({ total: 0, messages: [] })),
+
+        // Campaign breakdown from our log table
+        db.execute(sql`
+          SELECT stage,
+                 COUNT(*) as send_count,
+                 COUNT(DISTINCT phone) as unique_recipients,
+                 MIN(created_at) as first_sent,
+                 MAX(created_at) as last_sent
+          FROM sms_campaign_log
+          WHERE created_at >= ${since}
+          GROUP BY stage
+          ORDER BY send_count DESC
+        `).catch(() => ({ rows: [] })),
+      ]);
+
+      // Get daily send volume from campaign log
+      const dailyVolume = await db.execute(sql`
+        SELECT DATE(created_at) as date, stage, COUNT(*) as count
+        FROM sms_campaign_log
+        WHERE created_at >= ${since}
+        GROUP BY DATE(created_at), stage
+        ORDER BY date DESC
+      `).catch(() => ({ rows: [] }));
+
+      // Get recent messages sample for context
+      const recentOutbound = await fetch(
+        `${baseUrl}?DateSent>=${sinceStr}&Direction=outbound-api&PageSize=20`,
+        { headers: { Authorization: authHeader }, signal: AbortSignal.timeout(15000) }
+      ).then(r => r.json()).catch(() => ({ messages: [] }));
+
+      // Compute delivery stats from the sample
+      const outboundMessages = recentOutbound.messages || [];
+      const deliveryStats = {
+        delivered: outboundMessages.filter((m: any) => m.status === 'delivered').length,
+        undelivered: outboundMessages.filter((m: any) => m.status === 'undelivered').length,
+        failed: outboundMessages.filter((m: any) => m.status === 'failed').length,
+        sent: outboundMessages.filter((m: any) => m.status === 'sent').length,
+        queued: outboundMessages.filter((m: any) => m.status === 'queued').length,
+        sampleSize: outboundMessages.length,
+      };
+
+      res.json({
+        period: { days, since: sinceStr },
+        totals: {
+          outbound: outboundRes.total || 0,
+          inbound: inboundRes.total || 0,
+          replyRate: (outboundRes.total || 0) > 0
+            ? ((inboundRes.total || 0) / (outboundRes.total || 1) * 100).toFixed(1) + "%"
+            : "N/A",
+        },
+        deliveryStats,
+        campaigns: (campaignStats as any).rows || [],
+        dailyVolume: (dailyVolume as any).rows || [],
+      });
+    } catch (err: any) {
+      console.error("[SMS Analytics] Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/sms/backfill — pull recent Twilio messages and backfill campaign log
+  app.post("/api/admin/sms/backfill", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+    const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+      return res.status(503).json({ error: "Twilio credentials not configured" });
+    }
+
+    const days = Math.min(Number(req.body.days) || 30, 90);
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    const sinceStr = since.toISOString().split("T")[0];
+
+    try {
+      const authHeader = 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+      const baseUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+
+      // Pull outbound messages in pages
+      let pageUrl: string | null = `${baseUrl}?DateSent>=${sinceStr}&Direction=outbound-api&PageSize=200`;
+      let totalInserted = 0;
+      let totalScanned = 0;
+      const stageMap: Record<string, number> = {};
+
+      while (pageUrl) {
+        const fullUrl = pageUrl.startsWith("http") ? pageUrl : `https://api.twilio.com${pageUrl}`;
+        const pageRes = await fetch(fullUrl, {
+          headers: { Authorization: authHeader },
+          signal: AbortSignal.timeout(30000),
+        });
+        const pageData = await pageRes.json();
+        const messages = pageData.messages || [];
+        totalScanned += messages.length;
+
+        for (const msg of messages) {
+          // Infer campaign/stage from message body
+          const body = (msg.body || "").toLowerCase();
+          let stage = "unknown";
+          if (body.includes("congratulations") && body.includes("approved")) stage = "approval_congratulations";
+          else if (body.includes("congratulations") && body.includes("funded")) stage = "funded_congratulations";
+          else if (body.includes("bank statement") || body.includes("upload")) stage = "bank_statements_reminder";
+          else if (body.includes("application") && body.includes("complete")) stage = "app_abandoned";
+          else if (body.includes("approval") && body.includes("stale")) stage = "approval_stale_reminder";
+          else if (body.includes("portal")) stage = "portal_notification";
+          else if (body.includes("-tcg") || body.includes("today capital")) stage = "outreach";
+
+          try {
+            const result = await pool.query(
+              `INSERT INTO sms_campaign_log (phone, stage, message_body, twilio_sid, status, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6)
+               ON CONFLICT DO NOTHING`,
+              [msg.to, stage, msg.body, msg.sid, msg.status, new Date(msg.date_sent)]
+            );
+            if (String(result.rowCount) === "1") {
+              totalInserted++;
+              stageMap[stage] = (stageMap[stage] || 0) + 1;
+            }
+          } catch { /* skip duplicates */ }
+        }
+
+        pageUrl = pageData.next_page_uri || null;
+        if (messages.length < 200) break;
+      }
+
+      res.json({
+        success: true,
+        scanned: totalScanned,
+        inserted: totalInserted,
+        byCampaign: stageMap,
+      });
+    } catch (err: any) {
+      console.error("[SMS Backfill] Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ─── SMS INBOX ROUTES ─────────────────────────────────────────────────────
 
   // GET /api/admin/sms/inbound — list all inbound messages from Twilio
