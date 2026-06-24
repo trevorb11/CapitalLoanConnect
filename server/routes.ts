@@ -14118,6 +14118,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── GHL EMAIL CAMPAIGN STATS (historical) ──────────────────────────────
+
+  // GET /api/admin/email/ghl-stats — returns stored GHL email campaign stats
+  app.get("/api/admin/email/ghl-stats", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    try {
+      const result = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'ghl_email_stats'`);
+      const row = (result as any).rows?.[0];
+      if (!row) return res.json(null);
+      res.json(typeof row.value === 'string' ? JSON.parse(row.value) : row.value);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ─── MAILGUN EMAIL ANALYTICS ─────────────────────────────────────────────
 
   // GET /api/admin/email/analytics — aggregate email stats from Mailgun

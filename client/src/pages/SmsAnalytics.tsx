@@ -63,6 +63,17 @@ export default function SmsAnalytics() {
     enabled: isAuthenticated,
   });
 
+  // GHL email campaign stats (historical)
+  const { data: ghlStats } = useQuery<any>({
+    queryKey: ["/api/admin/email/ghl-stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/email/ghl-stats", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
+
   // Email analytics from Mailgun
   const { data: emailStats, isLoading: emailLoading } = useQuery<any>({
     queryKey: ["/api/admin/email/analytics", days],
@@ -296,6 +307,137 @@ export default function SmsAnalytics() {
           <div className="text-center py-16 text-gray-500">
             <AlertTriangle className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p>Failed to load SMS analytics</p>
+          </div>
+        )}
+
+        {/* ═══ GHL EMAIL CAMPAIGN STATS ═══ */}
+        {ghlStats?.totals && (
+          <div className="border-t border-gray-800 pt-6 mt-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Mail className="w-5 h-5 text-orange-400" />
+              <h2 className="text-lg font-bold text-white">Email Campaigns (GHL)</h2>
+              <Badge variant="outline" className="border-orange-500/30 text-orange-400 text-xs ml-2">{ghlStats.totals.period}</Badge>
+            </div>
+            <p className="text-xs text-gray-500 mb-5">{ghlStats.totals.campaigns} campaigns across GoHighLevel — {ghlStats.totals.formFills} form submissions attributed to email</p>
+
+            {/* High-level stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+              {[
+                { label: "Sent", value: ghlStats.totals.sent, icon: Send, color: "text-blue-400" },
+                { label: "Delivered", value: ghlStats.totals.delivered, icon: CheckCircle2, color: "text-emerald-400" },
+                { label: "Delivery Rate", value: ghlStats.totals.deliveryRate + "%", icon: CheckCircle2, color: "text-emerald-400", isText: true },
+                { label: "Opened", value: ghlStats.totals.opened, icon: Eye, color: "text-purple-400" },
+                { label: "Open Rate", value: ghlStats.totals.openRate + "%", icon: TrendingUp, color: "text-purple-400", isText: true },
+                { label: "Click Rate", value: ghlStats.totals.clickRate + "%", icon: MousePointer, color: "text-teal-400", isText: true },
+                { label: "Form Fills", value: ghlStats.totals.formFills, icon: TrendingUp, color: "text-orange-400" },
+              ].map(s => (
+                <Card key={s.label} className="bg-gray-900 border-gray-800">
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wide">{s.label}</span>
+                    </div>
+                    <p className="text-lg font-bold text-white">
+                      {(s as any).isText ? s.value : fmt(s.value || 0)}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Key Takeaways */}
+            <Card className="bg-gray-900 border-gray-800 mb-6">
+              <CardContent className="p-5">
+                <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-400" /> Key Takeaways
+                </h3>
+                <div className="space-y-2 text-sm text-gray-300">
+                  <p>&#8226; <strong className="text-white">SBA refinance messaging is the top converter</strong> — the "Pay off your MCA with an SBA" series drove the most form fills across 6+ variants, consistently performing since May.</p>
+                  <p>&#8226; <strong className="text-white">Industry-specific emails convert 5-7x better per send</strong> — "Spring - Trucking" got 5 fills from 10K sends (1:2K) vs mass sends at 1:15K+. Targeted beats volume.</p>
+                  <p>&#8226; <strong className="text-white">"Curious what you qualify for?" is the best mass-send subject</strong> — 13 fills across 2 versions at 180K+ combined volume. Simple, curiosity-driven copy wins.</p>
+                  <p>&#8226; <strong className="text-white">Automated drips are quietly effective</strong> — Trucking Finance Lead Nurture generated 6 fills from a set-and-forget workflow. Healthcare and Restaurant drips show strong open rates (11-15%).</p>
+                  <p>&#8226; <strong className="text-white">6.1% overall open rate with 9.3% click-through</strong> — open rate is typical for cold/warm MCA lists; the CTR of openers is strong, meaning the content resonates with those who engage.</p>
+                  <p>&#8226; <strong className="text-white">December EOY push was the highest volume month</strong> — 82 campaign sends. "Last Chance EOY" had 83.8% open rate (small retarget list) and 35% CTR.</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Top Campaigns by Form Fills */}
+            {ghlStats.topByFills?.length > 0 && (
+              <Card className="bg-gray-900 border-gray-800 mb-6">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-orange-400" /> Top Campaigns by Conversions
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-800">
+                          <th className="text-left p-2 text-gray-500">Campaign</th>
+                          <th className="text-right p-2 text-gray-500">Fills</th>
+                          <th className="text-right p-2 text-gray-500">Sent</th>
+                          <th className="text-right p-2 text-gray-500">Opened</th>
+                          <th className="text-right p-2 text-gray-500">Open%</th>
+                          <th className="text-right p-2 text-gray-500">Clicked</th>
+                          <th className="text-right p-2 text-gray-500">CTR</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ghlStats.topByFills.map((c: any) => (
+                          <tr key={c.name} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                            <td className="p-2 text-white font-medium max-w-[250px] truncate">{c.name}</td>
+                            <td className="p-2 text-right text-orange-400 font-bold">{c.formFills}</td>
+                            <td className="p-2 text-right text-gray-300">{fmt(c.sent)}</td>
+                            <td className="p-2 text-right text-purple-400">{fmt(c.opened)}</td>
+                            <td className="p-2 text-right text-gray-400">{c.openRate}%</td>
+                            <td className="p-2 text-right text-teal-400">{fmt(c.clicked)}</td>
+                            <td className="p-2 text-right text-gray-400">{c.clickRate}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Top by Open Rate and Click Rate side by side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {ghlStats.topByOpenRate?.length > 0 && (
+                <Card className="bg-gray-900 border-gray-800">
+                  <CardContent className="p-5">
+                    <h3 className="font-semibold text-white mb-3 text-sm flex items-center gap-2">
+                      <Eye className="w-4 h-4 text-purple-400" /> Best Open Rates (5K+ sent)
+                    </h3>
+                    <div className="space-y-2">
+                      {ghlStats.topByOpenRate.slice(0, 7).map((c: any) => (
+                        <div key={c.name} className="flex items-center justify-between text-sm">
+                          <span className="text-gray-300 truncate max-w-[200px]">{c.name}</span>
+                          <span className="text-purple-400 font-bold ml-2 shrink-0">{c.openRate}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              {ghlStats.topByClickRate?.length > 0 && (
+                <Card className="bg-gray-900 border-gray-800">
+                  <CardContent className="p-5">
+                    <h3 className="font-semibold text-white mb-3 text-sm flex items-center gap-2">
+                      <MousePointer className="w-4 h-4 text-teal-400" /> Best Click Rates (500+ opens)
+                    </h3>
+                    <div className="space-y-2">
+                      {ghlStats.topByClickRate.slice(0, 7).map((c: any) => (
+                        <div key={c.name} className="flex items-center justify-between text-sm">
+                          <span className="text-gray-300 truncate max-w-[200px]">{c.name}</span>
+                          <span className="text-teal-400 font-bold ml-2 shrink-0">{c.clickRate}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
         )}
 
