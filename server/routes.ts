@@ -27,7 +27,7 @@ const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
-import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail } from "./services/email";
+import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail, sendPipelineReportEmail } from "./services/email";
 import { evaluateLeadQualification } from "./services/leadQualification";
 import { startLeadNurtureScheduler } from "./services/leadNurture";
 import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncDecisionToProductionSf, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce } from "./services/salesforce";
@@ -16130,6 +16130,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const id = (result as any).rows?.[0]?.id;
       console.log(`[PIPELINE-REPORTS] Saved report for ${repName} (id: ${id})`);
+
+      // Fire email to rep (async, non-blocking so the save response returns immediately)
+      if (repEmail) {
+        sendPipelineReportEmail({
+          to: repEmail,
+          repName,
+          reportDate: reportDate || new Date().toISOString().slice(0, 10),
+          reportType: reportType || 'daily',
+          htmlContent,
+        }).then(emailResult => {
+          if (emailResult.sent) {
+            console.log(`[PIPELINE-REPORTS] Email sent to ${repEmail} for report ${id}`);
+          } else {
+            console.warn(`[PIPELINE-REPORTS] Email failed for ${repEmail} (report ${id}): ${emailResult.error}`);
+          }
+        }).catch(err => {
+          console.error(`[PIPELINE-REPORTS] Email error for ${repEmail}:`, err.message);
+        });
+      }
+
       res.json({ success: true, id });
     } catch (err: any) {
       console.error("[PIPELINE-REPORTS] Save error:", err.message);
