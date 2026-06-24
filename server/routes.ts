@@ -14118,6 +14118,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── MAILGUN EMAIL ANALYTICS ─────────────────────────────────────────────
+
+  // GET /api/admin/email/analytics — aggregate email stats from Mailgun
+  app.get("/api/admin/email/analytics", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'admin') {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY;
+    if (!MAILGUN_API_KEY) return res.status(503).json({ error: "MAILGUN_API_KEY not configured" });
+    const days = Math.min(Number(req.query.days) || 30, 90);
+
+    const domains = [
+      "send.todaycapitalgroup.com",
+      "mail.todaycapitalgroup.com",
+      "updates.todaycapitalgroup.com",
+      "news.todaycapitalgroup.com",
+    ];
+
+    const authHeader = 'Basic ' + Buffer.from(`api:${MAILGUN_API_KEY}`).toString('base64');
+
+    try {
+      // Pull stats for each domain in parallel
+      const domainStats = await Promise.all(domains.map(async (domain) => {
+        try {
+          const statsRes = await fetch(
+            `https://api.mailgun.net/v3/${domain}/stats/total?event=accepted&event=delivered&event=opened&event=clicked&event=unsubscribed&event=failed&event=complained&duration=${days}d`,
+            { headers: { Authorization: authHeader }, signal: AbortSignal.timeout(15000) }
+          );
+          const data = await statsRes.json();
+          const buckets = data.stats || [];
+
+          // Aggregate across all daily buckets
+          const totals: Record<string, number> = {
+            accepted: 0, delivered: 0, opened: 0, clicked: 0,
+            unsubscribed: 0, complained: 0, failed: 0,
+          };
+          const daily: Array<{ date: string; delivered: number; opened: number; clicked: number }> = [];
+
+          for (const bucket of buckets) {
+            totals.accepted += bucket.accepted?.outgoing || 0;
+            totals.delivered += bucket.delivered?.total || 0;
+            totals.opened += bucket.opened?.total || 0;
+            totals.clicked += bucket.clicked?.total || 0;
+            totals.unsubscribed += bucket.unsubscribed?.total || 0;
+            totals.complained += bucket.complained?.total || 0;
+            totals.failed += (bucket.failed?.permanent?.total || 0) + (bucket.failed?.temporary?.total || 0);
+
+            const dateStr = bucket.time ? new Date(bucket.time).toISOString().split("T")[0] : "";
+            if (dateStr && (bucket.delivered?.total || bucket.opened?.total)) {
+              daily.push({
+                date: dateStr,
+                delivered: bucket.delivered?.total || 0,
+                opened: bucket.opened?.total || 0,
+                clicked: bucket.clicked?.total || 0,
+              });
+            }
+          }
+
+          return { domain, totals, daily, active: totals.accepted > 0 || totals.delivered > 0 };
+        } catch {
+          return { domain, totals: {}, daily: [], active: false };
+        }
+      }));
+
+      // Aggregate across all domains
+      const combined: Record<string, number> = {
+        accepted: 0, delivered: 0, opened: 0, clicked: 0,
+        unsubscribed: 0, complained: 0, failed: 0,
+      };
+      for (const ds of domainStats) {
+        for (const [key, val] of Object.entries(ds.totals)) {
+          combined[key] = (combined[key] || 0) + (val as number);
+        }
+      }
+
+      const openRate = combined.delivered > 0
+        ? ((combined.opened / combined.delivered) * 100).toFixed(1) + "%"
+        : "N/A";
+      const clickRate = combined.opened > 0
+        ? ((combined.clicked / combined.opened) * 100).toFixed(1) + "%"
+        : "N/A";
+
+      res.json({
+        period: { days },
+        totals: { ...combined, openRate, clickRate },
+        domains: domainStats.filter(d => d.active),
+      });
+    } catch (err: any) {
+      console.error("[EMAIL Analytics] Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ─── SMS INBOX ROUTES ─────────────────────────────────────────────────────
 
   // GET /api/admin/sms/inbound — list all inbound messages from Twilio

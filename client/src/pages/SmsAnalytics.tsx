@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { Link } from "wouter";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   MessageSquare, Send, ArrowDownLeft, BarChart3, Loader2, RefreshCw,
   TrendingUp, AlertTriangle, ChevronLeft, CheckCircle2, XCircle,
+  Mail, MousePointer, Eye, Globe,
 } from "lucide-react";
 
 interface SmsAnalytics {
@@ -61,6 +63,17 @@ export default function SmsAnalytics() {
     enabled: isAuthenticated,
   });
 
+  // Email analytics from Mailgun
+  const { data: emailStats, isLoading: emailLoading } = useQuery<any>({
+    queryKey: ["/api/admin/email/analytics", days],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/email/analytics?days=${days}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
+
   const backfillMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/admin/sms/backfill", {
@@ -99,10 +112,10 @@ export default function SmsAnalytics() {
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/dashboard"><Button variant="ghost" size="sm" className="text-white hover:bg-white/10"><ChevronLeft className="w-4 h-4 mr-1" />Dashboard</Button></Link>
-            <MessageSquare className="h-6 w-6" />
+            <BarChart3 className="h-6 w-6" />
             <div>
-              <h1 className="text-lg font-bold">SMS Analytics</h1>
-              <p className="text-xs text-blue-200">Campaign performance and delivery stats from Twilio</p>
+              <h1 className="text-lg font-bold">Messaging Analytics</h1>
+              <p className="text-xs text-blue-200">SMS campaigns (Twilio) and email performance (Mailgun)</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -285,6 +298,148 @@ export default function SmsAnalytics() {
             <p>Failed to load SMS analytics</p>
           </div>
         )}
+
+        {/* ═══ EMAIL ANALYTICS (MAILGUN) ═══ */}
+        <div className="border-t border-gray-800 pt-6 mt-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Mail className="w-5 h-5 text-purple-400" />
+            <h2 className="text-lg font-bold text-white">Email Analytics</h2>
+            <Badge variant="outline" className="border-purple-500/30 text-purple-400 text-xs ml-2">Mailgun</Badge>
+          </div>
+
+          {emailLoading ? (
+            <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+          ) : emailStats?.totals ? (
+            <>
+              {/* Email Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+                {[
+                  { label: "Sent", value: emailStats.totals.accepted, icon: Send, color: "text-blue-400" },
+                  { label: "Delivered", value: emailStats.totals.delivered, icon: CheckCircle2, color: "text-emerald-400" },
+                  { label: "Opened", value: emailStats.totals.opened, icon: Eye, color: "text-purple-400" },
+                  { label: "Clicked", value: emailStats.totals.clicked, icon: MousePointer, color: "text-teal-400" },
+                  { label: "Open Rate", value: emailStats.totals.openRate, icon: TrendingUp, color: "text-purple-400", isText: true },
+                  { label: "Click Rate", value: emailStats.totals.clickRate, icon: TrendingUp, color: "text-teal-400", isText: true },
+                  { label: "Failed", value: emailStats.totals.failed, icon: XCircle, color: "text-red-400" },
+                ].map(s => (
+                  <Card key={s.label} className="bg-gray-900 border-gray-800">
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
+                        <span className="text-[10px] text-gray-500 uppercase tracking-wide">{s.label}</span>
+                      </div>
+                      <p className={`text-lg font-bold text-white`}>
+                        {(s as any).isText ? s.value : fmt(s.value || 0)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Unsubscribes & Complaints */}
+              {(emailStats.totals.unsubscribed > 0 || emailStats.totals.complained > 0) && (
+                <div className="flex gap-4 mb-6">
+                  {emailStats.totals.unsubscribed > 0 && (
+                    <Badge variant="outline" className="border-yellow-500/30 text-yellow-400">
+                      {emailStats.totals.unsubscribed} unsubscribed
+                    </Badge>
+                  )}
+                  {emailStats.totals.complained > 0 && (
+                    <Badge variant="outline" className="border-red-500/30 text-red-400">
+                      {emailStats.totals.complained} spam complaints
+                    </Badge>
+                  )}
+                </div>
+              )}
+
+              {/* Per-Domain Breakdown */}
+              {emailStats.domains && emailStats.domains.length > 0 && (
+                <Card className="bg-gray-900 border-gray-800 mb-6">
+                  <CardContent className="p-6">
+                    <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-purple-400" /> Domain Breakdown
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-800">
+                            <th className="text-left p-3 text-gray-500">Domain</th>
+                            <th className="text-right p-3 text-gray-500">Sent</th>
+                            <th className="text-right p-3 text-gray-500">Delivered</th>
+                            <th className="text-right p-3 text-gray-500">Opened</th>
+                            <th className="text-right p-3 text-gray-500">Clicked</th>
+                            <th className="text-right p-3 text-gray-500">Failed</th>
+                            <th className="text-right p-3 text-gray-500">Open Rate</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {emailStats.domains.map((d: any) => {
+                            const dr = d.totals.delivered > 0 ? ((d.totals.opened / d.totals.delivered) * 100).toFixed(1) : "—";
+                            return (
+                              <tr key={d.domain} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                                <td className="p-3 font-medium text-white">{d.domain.replace('.todaycapitalgroup.com', '')}</td>
+                                <td className="p-3 text-right text-gray-300">{fmt(d.totals.accepted || 0)}</td>
+                                <td className="p-3 text-right text-emerald-400">{fmt(d.totals.delivered || 0)}</td>
+                                <td className="p-3 text-right text-purple-400">{fmt(d.totals.opened || 0)}</td>
+                                <td className="p-3 text-right text-teal-400">{fmt(d.totals.clicked || 0)}</td>
+                                <td className="p-3 text-right text-red-400">{d.totals.failed || 0}</td>
+                                <td className="p-3 text-right text-gray-300">{dr}%</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Daily Email Volume */}
+              {emailStats.domains?.some((d: any) => d.daily?.length > 0) && (
+                <Card className="bg-gray-900 border-gray-800">
+                  <CardContent className="p-6">
+                    <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-purple-400" /> Daily Email Volume
+                    </h3>
+                    <div className="space-y-1">
+                      {(() => {
+                        // Aggregate daily across all domains
+                        const dailyMap: Record<string, { delivered: number; opened: number; clicked: number }> = {};
+                        for (const d of emailStats.domains || []) {
+                          for (const row of d.daily || []) {
+                            if (!dailyMap[row.date]) dailyMap[row.date] = { delivered: 0, opened: 0, clicked: 0 };
+                            dailyMap[row.date].delivered += row.delivered;
+                            dailyMap[row.date].opened += row.opened;
+                            dailyMap[row.date].clicked += row.clicked;
+                          }
+                        }
+                        const entries = Object.entries(dailyMap).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14);
+                        const maxVal = Math.max(...entries.map(([, v]) => v.delivered), 1);
+                        return entries.map(([date, v]) => (
+                          <div key={date} className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500 w-20 shrink-0">
+                              {new Date(date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </span>
+                            <div className="flex-1 h-5 bg-gray-800 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full bg-gradient-to-r from-purple-600 to-pink-500 transition-all duration-500"
+                                style={{ width: `${Math.max((v.delivered / maxVal) * 100, 2)}%` }} />
+                            </div>
+                            <span className="text-xs text-gray-400 w-16 text-right">{v.delivered} / {v.opened}o</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <Mail className="w-8 h-8 mx-auto mb-3 opacity-30" />
+              <p>No email data available for this period</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
