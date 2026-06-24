@@ -58,7 +58,6 @@ SMS_WEBHOOK_SECRET = "tcg-clc-webhook-2026"
 CLAUDE_API_KEY = "claude_99efff1a004422bdb67acf3f345f8a20e4fe8c29a734a82c132b2500d9fbd4bf"
 GIGFI_API_KEY = "fcaa4dea-c9b4-47f5-997d-69f534f6c370"
 GIGFI_ENVIRONMENT = "live"
-SF_INSTANCE_URL = "https://customization-data-47--dev.sandbox.my.salesforce.com"
 CHIRP_CLIENT_ID = "95019adf-7fda-4819-843b-6d54dd477271"
 
 [userenv.production]
