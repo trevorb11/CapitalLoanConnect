@@ -416,7 +416,7 @@ export default function PipelineReports() {
             <CardContent className="p-4 flex items-center gap-3">
               <FileText className="w-5 h-5 text-blue-400" />
               <div>
-                <p className="text-2xl font-bold">{totalApps.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-white">{totalApps.toLocaleString()}</p>
                 <p className="text-xs text-gray-500">Total Applications</p>
               </div>
             </CardContent>
@@ -425,7 +425,7 @@ export default function PipelineReports() {
             <CardContent className="p-4 flex items-center gap-3">
               <DollarSign className="w-5 h-5 text-emerald-400" />
               <div>
-                <p className="text-2xl font-bold">{fmt$(totalFunded)}</p>
+                <p className="text-2xl font-bold text-white">{fmt$(totalFunded)}</p>
                 <p className="text-xs text-gray-500">Total Funded</p>
               </div>
             </CardContent>
@@ -434,7 +434,7 @@ export default function PipelineReports() {
             <CardContent className="p-4 flex items-center gap-3">
               <Trophy className="w-5 h-5 text-yellow-400" />
               <div>
-                <p className="text-2xl font-bold">{avgScore}</p>
+                <p className="text-2xl font-bold text-white">{avgScore}</p>
                 <p className="text-xs text-gray-500">Avg Team Score</p>
               </div>
             </CardContent>
