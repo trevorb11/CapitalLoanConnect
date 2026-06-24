@@ -27,7 +27,7 @@ const pdfParseModule = require("pdf-parse");
 const PDFParse = pdfParseModule.PDFParse;
 import { AGENTS, isRestrictedAgent } from "../shared/agents";
 import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services/gigfi";
-import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail } from "./services/email";
+import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail, sendPipelineReportEmail } from "./services/email";
 import { evaluateLeadQualification } from "./services/leadQualification";
 import { startLeadNurtureScheduler } from "./services/leadNurture";
 import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncDecisionToProductionSf, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce } from "./services/salesforce";
@@ -5978,15 +5978,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log(`[UNDERWRITING PATCH] Updating decision ${id}, keys: ${Object.keys(updates).join(', ')}, approvals count: ${updates.additionalApprovals?.length || 'N/A'}`);
 
     try {
-      // Convert date strings to Date objects if provided
-      if (updates.approvalDate && typeof updates.approvalDate === 'string') {
-        updates.approvalDate = new Date(updates.approvalDate);
+      // Convert date strings to Date objects if provided; treat empty strings as null
+      if (updates.approvalDate !== undefined && typeof updates.approvalDate === 'string') {
+        updates.approvalDate = updates.approvalDate ? new Date(updates.approvalDate) : null;
       }
-      if (updates.followUpDate && typeof updates.followUpDate === 'string') {
-        updates.followUpDate = new Date(updates.followUpDate);
+      if (updates.followUpDate !== undefined && typeof updates.followUpDate === 'string') {
+        updates.followUpDate = updates.followUpDate ? new Date(updates.followUpDate) : null;
       }
-      if (updates.fundedDate && typeof updates.fundedDate === 'string') {
-        updates.fundedDate = new Date(updates.fundedDate);
+      if (updates.fundedDate !== undefined && typeof updates.fundedDate === 'string') {
+        updates.fundedDate = updates.fundedDate ? new Date(updates.fundedDate) : null;
+      }
+      if (updates.approvalDeadline !== undefined && typeof updates.approvalDeadline === 'string') {
+        updates.approvalDeadline = updates.approvalDeadline ? new Date(updates.approvalDeadline) : null;
       }
 
       // Sync primary approval data from additionalApprovals JSONB to top-level columns
@@ -14606,6 +14609,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })),
         declines: declines.map(d => ({
           id: d.id,
+          lender: d.lender,
           declineReason: d.declineReason,
           followUpWorthy: d.followUpWorthy,
           followUpDate: d.followUpDate,
@@ -15637,6 +15641,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
       // Reps explicitly excluded from the stats page
       const EXCLUDED_REPS = new Set([
@@ -15737,6 +15742,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const callTime = c.startTime || c.createdAt;
           return callTime && new Date(callTime) >= thirtyDaysAgo;
         }).length;
+        const calls_today = repCalls.filter(c => {
+          const callTime = c.startTime || c.createdAt;
+          return callTime && new Date(callTime) >= todayStart;
+        }).length;
         // Zoom uses "connected", "answered", and "Call connected" depending on source
         const isConnected = (r: string) => /connected|answered/i.test(r || "");
         const connectedCalls = repCalls.filter(c => isConnected(c.result));
@@ -15777,6 +15786,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           decline_count,
           calls_total,
           calls_30d,
+          calls_today,
           calls_connected,
           calls_duration_total,
           calls_avg_duration: Math.round(calls_avg_duration),
@@ -16126,6 +16136,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const id = (result as any).rows?.[0]?.id;
       console.log(`[PIPELINE-REPORTS] Saved report for ${repName} (id: ${id})`);
+
+      // Fire email to rep (async, non-blocking so the save response returns immediately)
+      if (repEmail) {
+        sendPipelineReportEmail({
+          to: repEmail,
+          repName,
+          reportDate: reportDate || new Date().toISOString().slice(0, 10),
+          reportType: reportType || 'daily',
+          htmlContent,
+        }).then(emailResult => {
+          if (emailResult.sent) {
+            console.log(`[PIPELINE-REPORTS] Email sent to ${repEmail} for report ${id}`);
+          } else {
+            console.warn(`[PIPELINE-REPORTS] Email failed for ${repEmail} (report ${id}): ${emailResult.error}`);
+          }
+        }).catch(err => {
+          console.error(`[PIPELINE-REPORTS] Email error for ${repEmail}:`, err.message);
+        });
+      }
+
       res.json({ success: true, id });
     } catch (err: any) {
       console.error("[PIPELINE-REPORTS] Save error:", err.message);

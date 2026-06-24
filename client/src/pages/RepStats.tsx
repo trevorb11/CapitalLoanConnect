@@ -32,6 +32,7 @@ interface RepStat {
   decline_count: number;
   calls_total: number;
   calls_30d: number;
+  calls_today: number;
   calls_connected: number;
   calls_duration_total: number;
   calls_avg_duration: number;
@@ -368,7 +369,7 @@ export default function RepStats() {
                         <p className="text-gray-400 text-xs">Calls</p>
                         <p className="font-semibold text-white">
                           {rep.calls_total}
-                          <span className="text-xs text-gray-500 ml-1">({rep.calls_30d} 30d)</span>
+                          <span className="text-xs text-gray-500 ml-1">({rep.calls_30d} 30d · <span className="text-blue-400">{rep.calls_today} today</span>)</span>
                         </p>
                       </div>
                       <div>
