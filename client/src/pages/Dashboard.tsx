@@ -3422,7 +3422,10 @@ export default function Dashboard() {
   const [loadMoreOffset, setLoadMoreOffset] = useState(100);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<"all" | "intake" | "full" | "partial" | "low-revenue">("all");
+  const [filterStatus, setFilterStatus_raw] = useState<"all" | "intake" | "full" | "partial" | "low-revenue">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 25;
+  const setFilterStatus = (v: typeof filterStatus) => { setFilterStatus_raw(v); setCurrentPage(1); };
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>("all");
   const [selectedAppDetails, setSelectedAppDetails] = useState<LoanApplication | null>(null);
   const [selectedAppForStatements, setSelectedAppForStatements] = useState<string | null>(null);
@@ -4039,56 +4042,66 @@ export default function Dashboard() {
                 </TabsList>
                 {(authData?.role === 'admin' || authData?.role === 'underwriting' || authData?.role === 'agent') && (
                   <>
-                    <Link href="/approvals">
-                      <Button
-                        variant="outline"
-                        data-testid="button-approvals-folder"
-                        className="border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"
-                      >
-                        <ThumbsUp className="w-4 h-4 mr-2" />
-                        Approved
-                      </Button>
-                    </Link>
-                    <Link href="/declines">
-                      <Button
-                        variant="outline"
-                        data-testid="button-declined-folder"
-                        className="border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"
-                      >
-                        <ThumbsDown className="w-4 h-4 mr-2" />
-                        Declined
-                      </Button>
-                    </Link>
-                    <Link href="/unqualified">
-                      <Button
-                        variant="outline"
-                        data-testid="button-unqualified-folder"
-                        className="border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400"
-                      >
-                        <AlertCircle className="w-4 h-4 mr-2" />
-                        Unqualified
-                      </Button>
-                    </Link>
-                    <Link href="/funded">
-                      <Button
-                        variant="outline"
-                        data-testid="button-funded-folder"
-                        className="border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400"
-                      >
-                        <Banknote className="w-4 h-4 mr-2" />
-                        Funded
-                      </Button>
-                    </Link>
-                    <Link href="/messaging">
-                      <Button
-                        variant="outline"
-                        data-testid="button-messaging"
-                        className="border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-400"
-                      >
-                        <Mail className="w-4 h-4 mr-2" />
-                        Messaging
-                      </Button>
-                    </Link>
+                    {/* Pipeline status views */}
+                    <div className="hidden md:flex items-center gap-1 ml-1 pl-2 border-l border-gray-200 dark:border-gray-700">
+                      <Link href="/approvals">
+                        <Button variant="ghost" size="sm" data-testid="button-approvals-folder" className="text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
+                          <ThumbsUp className="w-4 h-4 mr-1.5" />Approved
+                        </Button>
+                      </Link>
+                      <Link href="/declines">
+                        <Button variant="ghost" size="sm" data-testid="button-declined-folder" className="text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30">
+                          <ThumbsDown className="w-4 h-4 mr-1.5" />Declined
+                        </Button>
+                      </Link>
+                      <Link href="/unqualified">
+                        <Button variant="ghost" size="sm" data-testid="button-unqualified-folder" className="text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30">
+                          <AlertCircle className="w-4 h-4 mr-1.5" />Unqualified
+                        </Button>
+                      </Link>
+                      <Link href="/funded">
+                        <Button variant="ghost" size="sm" data-testid="button-funded-folder" className="text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30">
+                          <Banknote className="w-4 h-4 mr-1.5" />Funded
+                        </Button>
+                      </Link>
+                    </div>
+                    {/* Tools */}
+                    <div className="hidden md:flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-700">
+                      <Link href="/messaging">
+                        <Button variant="ghost" size="sm" data-testid="button-messaging" className="text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30">
+                          <Mail className="w-4 h-4 mr-1.5" />Messaging
+                        </Button>
+                      </Link>
+                    </div>
+                    {/* Mobile: collapsed dropdown for pipeline views */}
+                    <div className="md:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <Menu className="w-4 h-4 mr-1.5" />Pipeline
+                            <ChevronDown className="w-3 h-3 ml-1" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem onClick={() => window.location.href = '/approvals'}>
+                            <ThumbsUp className="w-4 h-4 mr-2 text-emerald-600" />Approved
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => window.location.href = '/declines'}>
+                            <ThumbsDown className="w-4 h-4 mr-2 text-red-600" />Declined
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => window.location.href = '/unqualified'}>
+                            <AlertCircle className="w-4 h-4 mr-2 text-orange-600" />Unqualified
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => window.location.href = '/funded'}>
+                            <Banknote className="w-4 h-4 mr-2 text-purple-600" />Funded
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => window.location.href = '/messaging'}>
+                            <Mail className="w-4 h-4 mr-2 text-sky-600" />Messaging
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </>
                 )}
               </div>
@@ -4240,7 +4253,7 @@ export default function Dashboard() {
           </Card>
         ) : merchantGroups.length > 0 ? (
           <div className="space-y-2">
-            {merchantGroups.map(({ key, apps: groupApps }) => {
+            {merchantGroups.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map(({ key, apps: groupApps }) => {
               const app = groupApps[0];
               const otherRounds = groupApps.slice(1);
               const isMerchantExpanded = expandedMerchants.has(key);
@@ -4653,6 +4666,56 @@ export default function Dashboard() {
               <p className="text-center text-xs text-muted-foreground py-3" data-testid="text-all-loaded">
                 All {applications.length} applications loaded — use search to filter further.
               </p>
+            )}
+            {/* Pagination controls */}
+            {merchantGroups.length > ITEMS_PER_PAGE && (
+              <div className="flex items-center justify-between pt-4 border-t mt-2">
+                <p className="text-sm text-muted-foreground">
+                  Showing {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, merchantGroups.length)}-{Math.min(currentPage * ITEMS_PER_PAGE, merchantGroups.length)} of {merchantGroups.length}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: Math.min(5, Math.ceil(merchantGroups.length / ITEMS_PER_PAGE)) }, (_, i) => {
+                    const totalPages = Math.ceil(merchantGroups.length / ITEMS_PER_PAGE);
+                    let pageNum: number;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        className="w-9"
+                        onClick={() => { setCurrentPage(pageNum); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= Math.ceil(merchantGroups.length / ITEMS_PER_PAGE)}
+                    onClick={() => { setCurrentPage(p => p + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         ) : (

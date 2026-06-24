@@ -395,7 +395,7 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
         </Card>
         <Card className="p-4 rounded-2xl border-[#e2e8f0] bg-[#f8fafc]">
           <p className="text-xs text-[#64748b] mb-1">Approvals</p>
-          <p className="text-2xl font-bold text-[#0d9488]">{approvals.length}</p>
+          <p className="text-2xl font-bold text-[#0d9488]">{approvals.reduce((sum, a) => sum + 1 + (Array.isArray(a.additionalApprovals) ? a.additionalApprovals.length : 0), 0)}</p>
         </Card>
         <Card className="p-4 rounded-2xl border-[#e2e8f0] bg-[#f8fafc]">
           <p className="text-xs text-[#64748b] mb-1">Funded Deals</p>
