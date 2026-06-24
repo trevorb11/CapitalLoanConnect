@@ -1551,156 +1551,191 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
     );
   }
 
+  const sectionStyle = { marginBottom: 28 } as const;
+  const sectionHeaderStyle = { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 17, fontWeight: 700 as const, color: "#fff", marginBottom: 4 };
+  const sectionSubStyle = { fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 14, lineHeight: 1.5 };
+
   return (
     <div>
-      {/* Summary Stats */}
-      <div className="stat-grid stat-grid-4">
-        <div className="stat-card">
-          <div className="stat-label">Open Positions</div>
-          <div className="stat-val">{activePositions.length}</div>
-          <div className="stat-sub">active</div>
+      {/* ═══ SECTION 1: TRACK YOUR POSITIONS ═══ */}
+      <div style={sectionStyle}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <p style={sectionHeaderStyle}>Track Your Positions</p>
+          <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, padding: "8px 18px" }}>Upload Statements</button>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">Total Remaining</div>
-          <div className="stat-val red">{totalRemaining > 0 ? fmt$(totalRemaining) : "\u2014"}</div>
-          <div className="stat-sub">across all positions</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Monthly Load</div>
-          <div className="stat-val">{totalMonthlyLoad > 0 ? fmt$(totalMonthlyLoad) : "\u2014"}</div>
-          <div className="stat-sub">total payments</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Monthly Revenue</div>
-          <div className="stat-val teal">{revenue > 0 ? fmt$(revenue) : "\u2014"}</div>
-          <div className="stat-sub">{revenue > 0 && totalMonthlyLoad > 0 ? `${(totalMonthlyLoad / revenue * 100).toFixed(0)}% to payments` : banking?.connected ? "from bank data" : "upload statements"}</div>
-        </div>
+        <p style={sectionSubStyle}>Upload your bank statements and we'll auto-detect your funding positions, payment schedules, and estimated payoff dates.</p>
+
+        {activePositions.length > 0 ? (
+          <>
+            <div className="stat-grid stat-grid-4">
+              <div className="stat-card">
+                <div className="stat-label">Open Positions</div>
+                <div className="stat-val">{activePositions.length}</div>
+                <div className="stat-sub">active</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Total Remaining</div>
+                <div className="stat-val red">{totalRemaining > 0 ? fmt$(totalRemaining) : "\u2014"}</div>
+                <div className="stat-sub">across all positions</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Monthly Load</div>
+                <div className="stat-val">{totalMonthlyLoad > 0 ? fmt$(totalMonthlyLoad) : "\u2014"}</div>
+                <div className="stat-sub">total payments</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Monthly Revenue</div>
+                <div className="stat-val teal">{revenue > 0 ? fmt$(revenue) : "\u2014"}</div>
+                <div className="stat-sub">{revenue > 0 && totalMonthlyLoad > 0 ? `${(totalMonthlyLoad / revenue * 100).toFixed(0)}% to payments` : "upload statements"}</div>
+              </div>
+            </div>
+            {activePositions.slice(0, 2).map(pos => (
+              <PositionCard key={pos.id} pos={pos} onClick={() => onViewPosition(pos)} />
+            ))}
+            {activePositions.length > 2 && (
+              <button className="btn-ghost" onClick={() => onSwitchTab("positions")} style={{ width: "100%", marginTop: 4 }}>
+                View all {activePositions.length} positions
+              </button>
+            )}
+            {renewalReady.length > 0 && (
+              <div className="card" style={{ background: "rgba(250,204,21,0.06)", border: "1px solid rgba(250,204,21,0.2)", marginTop: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p style={{ fontWeight: 700, fontSize: 14, color: "#facc15", marginBottom: 2 }}>Renewal Opportunities</p>
+                    <p style={{ color: "#94a3b8", fontSize: 12 }}>{renewalReady.length} position{renewalReady.length !== 1 ? "s" : ""} past 50% paid</p>
+                  </div>
+                  <a href="/intake/quiz" className="btn-primary" style={{ fontSize: 12, padding: "8px 18px", textDecoration: "none" }}>Check Options</a>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="card" style={{ textAlign: "center" as const, padding: "24px 20px" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>&#128196;</div>
+            <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>No positions detected yet</p>
+            <p style={{ color: "#64748b", fontSize: 13, marginBottom: 14 }}>Upload your most recent 3 months of bank statements to get started.</p>
+            <button className="btn-primary" onClick={() => onSwitchTab("positions")}>Upload Bank Statements</button>
+          </div>
+        )}
       </div>
 
-      {/* Payment Coverage Insight */}
-      {revenue > 0 && totalMonthlyLoad > 0 && (
-        <div className="card">
-          <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 15, fontWeight: 700, marginBottom: 10 }}>Payment Coverage</p>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
-              <span style={{ color: "rgba(255,255,255,0.7)" }}>Payments as % of revenue</span>
-              <span style={{ color: (totalMonthlyLoad / revenue * 100) < 20 ? "#0d9488" : "#facc15", fontWeight: 600 }}>{(totalMonthlyLoad / revenue * 100).toFixed(1)}%</span>
-            </div>
-            <div className="progress-track">
-              <div className="progress-fill" style={{ width: `${Math.min(100, totalMonthlyLoad / revenue * 100)}%`, background: (totalMonthlyLoad / revenue * 100) < 20 ? "linear-gradient(90deg, #0d9488, #14b8a6)" : "linear-gradient(90deg, #facc15, #f59e0b)" }} />
-            </div>
-            <p style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
-              {(totalMonthlyLoad / revenue * 100) < 15 ? "Your payment load is very manageable. You may have room for additional capital." :
-               (totalMonthlyLoad / revenue * 100) < 25 ? "Your payment load is moderate. Refinancing could free up meaningful cash flow." :
-               "Your payment load is heavy. Consolidation or refinancing could significantly reduce your monthly burden."}
-            </p>
-          </div>
-        </div>
-      )}
+      {/* ═══ SECTION 2: TRACK YOUR FINANCIALS ═══ */}
+      <div style={sectionStyle}>
+        <p style={sectionHeaderStyle}>Track Your Financials</p>
+        <p style={sectionSubStyle}>See how your revenue, expenses, and cash flow are trending. Understand how your funding payments impact your bottom line.</p>
 
-      {/* Renewal Opportunities */}
-      {renewalReady.length > 0 && (
-        <div className="card" style={{ background: "rgba(250,204,21,0.06)", border: "1px solid rgba(250,204,21,0.2)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <p style={{ fontWeight: 700, fontSize: 15, color: "#facc15" }}>Renewal Opportunities</p>
-            <span className="badge badge-alert">{renewalReady.length} position{renewalReady.length !== 1 ? "s" : ""}</span>
+        {revenue > 0 ? (
+          <div className="card">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: revenue > 0 && totalMonthlyLoad > 0 ? 16 : 0 }}>
+              <div>
+                <p style={{ fontSize: 12, color: "#64748b", marginBottom: 2 }}>Monthly Revenue</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: "#0d9488" }}>{fmt$(revenue)}</p>
+              </div>
+              <div>
+                <p style={{ fontSize: 12, color: "#64748b", marginBottom: 2 }}>Monthly Payments</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: totalMonthlyLoad > 0 ? "#f59e0b" : "#64748b" }}>{totalMonthlyLoad > 0 ? fmt$(totalMonthlyLoad) : "\u2014"}</p>
+              </div>
+            </div>
+            {revenue > 0 && totalMonthlyLoad > 0 && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
+                  <span style={{ color: "rgba(255,255,255,0.7)" }}>Payment coverage</span>
+                  <span style={{ color: (totalMonthlyLoad / revenue * 100) < 20 ? "#0d9488" : "#facc15", fontWeight: 600 }}>{(totalMonthlyLoad / revenue * 100).toFixed(1)}%</span>
+                </div>
+                <div className="progress-track">
+                  <div className="progress-fill" style={{ width: `${Math.min(100, totalMonthlyLoad / revenue * 100)}%`, background: (totalMonthlyLoad / revenue * 100) < 20 ? "linear-gradient(90deg, #0d9488, #14b8a6)" : "linear-gradient(90deg, #facc15, #f59e0b)" }} />
+                </div>
+                <p style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+                  {(totalMonthlyLoad / revenue * 100) < 15 ? "Your payment load is very manageable. You may have room for additional capital." :
+                   (totalMonthlyLoad / revenue * 100) < 25 ? "Your payment load is moderate. Refinancing could free up meaningful cash flow." :
+                   "Your payment load is heavy. Consolidation or refinancing could significantly reduce your monthly burden."}
+                </p>
+              </div>
+            )}
           </div>
-          <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6, marginBottom: 14 }}>
-            {renewalReady.length === 1
-              ? `Your position with ${renewalReady[0].funder_name} is past 50% paid. You may qualify for a renewal at better terms.`
-              : `${renewalReady.length} positions are past 50% paid. You could be eligible for renewals or consolidation at better terms.`}
-          </p>
-          <a href="/intake/quiz" style={{ display: "inline-block", background: "#0d9488", color: "#fff", fontWeight: 700, padding: "10px 24px", borderRadius: 50, textDecoration: "none", fontFamily: "'Inter', sans-serif", fontSize: 14, transition: "all 0.3s ease" }}>
-            Check Your Options
-          </a>
-        </div>
-      )}
-
-      {/* Upload nudge — show when no positions yet */}
-      {positions.length === 0 && (
-        <div className="card" style={{ padding: "16px 20px" }}>
-          <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: "#94a3b8" }}>Get started</p>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        ) : (
+          <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px" }}>
             <div>
-              <p style={{ fontWeight: 600, fontSize: 13 }}>Upload bank statements</p>
-              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>We'll auto-detect your funding positions and payment schedules.</p>
+              <p style={{ fontWeight: 600, fontSize: 13 }}>Upload statements to see your financials</p>
+              <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Revenue, expenses, and cash flow analysis from your bank data.</p>
             </div>
-            <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, whiteSpace: "nowrap" as const }}>Upload</button>
+            <button className="btn-secondary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, whiteSpace: "nowrap" as const }}>Upload</button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Active Positions Preview */}
-      {activePositions.length > 0 && (
-        <>
-          <div className="section-label">Active Positions</div>
-          {activePositions.slice(0, 3).map(pos => (
-            <PositionCard key={pos.id} pos={pos} onClick={() => onViewPosition(pos)} />
-          ))}
-          {activePositions.length > 3 && (
-            <button className="btn-ghost" onClick={() => onSwitchTab("positions")} style={{ width: "100%", marginTop: 4 }}>
-              View all {activePositions.length} positions
+      {/* ═══ SECTION 3: GET FUNDED ═══ */}
+      <div style={sectionStyle}>
+        <div className="card" style={{ background: "linear-gradient(135deg, rgba(13,148,136,0.10), rgba(13,148,136,0.03))", border: "1px solid rgba(13,148,136,0.25)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+            <div>
+              <p style={sectionHeaderStyle}>Ready for Funding?</p>
+              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, lineHeight: 1.6, marginTop: 4 }}>
+                {activePositions.length > 0
+                  ? "Based on your current positions and financial profile, see if you qualify for a renewal, consolidation, or additional capital."
+                  : "Check what funding options are available for your business. SBA loans, MCAs, lines of credit, and more. Takes about 5 minutes."}
+              </p>
+            </div>
+            <button className="btn-primary" onClick={() => onSwitchTab("qualify")} style={{ whiteSpace: "nowrap" as const, flexShrink: 0, padding: "12px 24px" }}>
+              Check Options
             </button>
-          )}
-        </>
-      )}
-
-      {/* ── Get Funded CTA ── */}
-      <div className="card" style={{ background: "linear-gradient(135deg, rgba(13,148,136,0.08), rgba(13,148,136,0.02))", border: "1px solid rgba(13,148,136,0.2)", marginTop: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-          <div>
-            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Ready for funding?</p>
-            <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, lineHeight: 1.6 }}>
-              {activePositions.length > 0
-                ? "See if you qualify for a renewal, consolidation, or additional capital based on your current positions."
-                : "Check what funding options are available for your business. Takes about 5 minutes."}
-            </p>
           </div>
-          <button className="btn-primary" onClick={() => onSwitchTab("qualify")} style={{ whiteSpace: "nowrap" as const, flexShrink: 0 }}>
-            Check Options
-          </button>
         </div>
       </div>
 
-      {/* ── Services Preview ── */}
-      <div className="section-label" style={{ marginTop: 20 }}>Business Services</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 8 }}>
-        {[
-          { id: "payments", icon: "\uD83D\uDCB3", title: "Payment Processing", sub: "Lower rates, faster deposits" },
-          { id: "website", icon: "\uD83C\uDF10", title: "Website Build", sub: "Professional site that converts" },
-          { id: "crm", icon: "\uD83D\uDCCA", title: "CRM & Automation", sub: "Stop losing leads" },
-        ].map(svc => (
-          <div key={svc.id} className="card" onClick={() => onSwitchTab("services")} style={{ cursor: "pointer", padding: "16px 18px", transition: "all 0.2s ease" }}>
-            <div style={{ fontSize: 22, marginBottom: 6 }}>{svc.icon}</div>
-            <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{svc.title}</p>
-            <p style={{ color: "#64748b", fontSize: 12 }}>{svc.sub}</p>
-          </div>
-        ))}
-      </div>
-      <button className="btn-ghost" onClick={() => onSwitchTab("services")} style={{ width: "100%", fontSize: 12 }}>
-        View all services &rarr;
-      </button>
-
-      {/* ── Resources Preview ── */}
-      <div className="section-label" style={{ marginTop: 20 }}>Free Resources</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 8 }}>
-        {[
-          { title: "Business Credit Scores", sub: "Check your D&B and Experian scores for free", url: "https://www.nav.com/business-credit-scores/", tag: "Free" },
-          { title: "SBA Loan Programs", sub: "Government-backed loans with lower rates", url: "https://www.sba.gov/funding-programs/loans", tag: "Gov" },
-          { title: "Free Accounting", sub: "Wave app \u2014 invoicing and bookkeeping", url: "https://www.waveapps.com/", tag: "Free" },
-        ].map(res => (
-          <a key={res.title} href={res.url} target="_blank" rel="noopener noreferrer" className="card" style={{ textDecoration: "none", padding: "16px 18px", display: "block", transition: "all 0.2s ease" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-              <p style={{ fontWeight: 600, fontSize: 13, color: "#fff" }}>{res.title}</p>
-              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 50, background: "rgba(52,211,153,0.15)", color: "#34d399", fontWeight: 600, flexShrink: 0 }}>{res.tag}</span>
+      {/* ═══ SECTION 4: BUSINESS SERVICES ═══ */}
+      <div style={sectionStyle}>
+        <p style={sectionHeaderStyle}>Business Services</p>
+        <p style={sectionSubStyle}>Beyond funding, we help businesses grow with payment processing, professional websites, and CRM automation.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 8 }}>
+          {[
+            { id: "payments", icon: "\uD83D\uDCB3", title: "Payment Processing", sub: "Lower your processing fees and get faster deposits. We partner with processors built for small businesses.", bullets: ["Lower rates", "Next-day deposits", "No contracts"] },
+            { id: "website", icon: "\uD83C\uDF10", title: "Website Build", sub: "A professional site that brings in customers. Mobile-ready, SEO-optimized, and built to convert.", bullets: ["Custom design", "SEO + Google Business", "Lead capture forms"] },
+            { id: "crm", icon: "\uD83D\uDCCA", title: "CRM & Automation", sub: "Stop losing leads. Track your pipeline, automate follow-ups, and keep your team organized.", bullets: ["Pipeline tracking", "Auto follow-ups", "Lead scoring"] },
+          ].map(svc => (
+            <div key={svc.id} className="card" onClick={() => onSwitchTab("services")} style={{ cursor: "pointer", padding: "18px 20px", transition: "all 0.2s ease" }}>
+              <div style={{ fontSize: 24, marginBottom: 8 }}>{svc.icon}</div>
+              <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{svc.title}</p>
+              <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>{svc.sub}</p>
+              <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 4 }}>
+                {svc.bullets.map(b => (
+                  <span key={b} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 50, background: "rgba(13,148,136,0.1)", color: "#14b8a6", fontWeight: 500 }}>{b}</span>
+                ))}
+              </div>
             </div>
-            <p style={{ color: "#64748b", fontSize: 12 }}>{res.sub}</p>
-          </a>
-        ))}
+          ))}
+        </div>
+        <button className="btn-ghost" onClick={() => onSwitchTab("services")} style={{ width: "100%", fontSize: 12 }}>
+          Learn more about our services &rarr;
+        </button>
       </div>
-      <button className="btn-ghost" onClick={() => onSwitchTab("resources")} style={{ width: "100%", fontSize: 12 }}>
-        View all resources &rarr;
-      </button>
+
+      {/* ═══ SECTION 5: BUSINESS OWNER RESOURCES ═══ */}
+      <div style={sectionStyle}>
+        <p style={sectionHeaderStyle}>Business Owner Resources</p>
+        <p style={sectionSubStyle}>Free tools and resources to help you monitor credit, find funding programs, and grow your business.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 8 }}>
+          {[
+            { title: "Business Credit Scores", sub: "Check your D&B and Experian scores for free", url: "https://www.nav.com/business-credit-scores/", tag: "Free", tagColor: "#34d399" },
+            { title: "SBA Loan Programs", sub: "Government-backed loans with lower rates and longer terms", url: "https://www.sba.gov/funding-programs/loans", tag: "Gov", tagColor: "#a78bfa" },
+            { title: "Free Accounting", sub: "Wave app for invoicing, accounting, and receipt scanning", url: "https://www.waveapps.com/", tag: "Free", tagColor: "#34d399" },
+            { title: "Federal Business Grants", sub: "Search for grant opportunities that don't need to be repaid", url: "https://www.grants.gov/", tag: "Grants", tagColor: "#fbbf24" },
+            { title: "Google Business Profile", sub: "Claim your free listing to show up in local search", url: "https://business.google.com/", tag: "Free", tagColor: "#34d399" },
+            { title: "IRS Tax Calendar", sub: "Never miss a tax deadline for your business type", url: "https://www.irs.gov/businesses/small-businesses-self-employed/tax-calendars", tag: "IRS", tagColor: "#a78bfa" },
+          ].map(res => (
+            <a key={res.title} href={res.url} target="_blank" rel="noopener noreferrer" className="card" style={{ textDecoration: "none", padding: "16px 18px", display: "block", transition: "all 0.2s ease" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                <p style={{ fontWeight: 600, fontSize: 13, color: "#fff" }}>{res.title}</p>
+                <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 50, background: `${res.tagColor}20`, color: res.tagColor, fontWeight: 600, flexShrink: 0 }}>{res.tag}</span>
+              </div>
+              <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.4 }}>{res.sub}</p>
+            </a>
+          ))}
+        </div>
+        <button className="btn-ghost" onClick={() => onSwitchTab("resources")} style={{ width: "100%", fontSize: 12 }}>
+          View all resources &rarr;
+        </button>
+      </div>
     </div>
   );
 }
