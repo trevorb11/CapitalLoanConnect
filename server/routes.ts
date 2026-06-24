@@ -15641,6 +15641,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
       // Reps explicitly excluded from the stats page
       const EXCLUDED_REPS = new Set([
@@ -15741,6 +15742,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const callTime = c.startTime || c.createdAt;
           return callTime && new Date(callTime) >= thirtyDaysAgo;
         }).length;
+        const calls_today = repCalls.filter(c => {
+          const callTime = c.startTime || c.createdAt;
+          return callTime && new Date(callTime) >= todayStart;
+        }).length;
         // Zoom uses "connected", "answered", and "Call connected" depending on source
         const isConnected = (r: string) => /connected|answered/i.test(r || "");
         const connectedCalls = repCalls.filter(c => isConnected(c.result));
@@ -15781,6 +15786,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           decline_count,
           calls_total,
           calls_30d,
+          calls_today,
           calls_connected,
           calls_duration_total,
           calls_avg_duration: Math.round(calls_avg_duration),
