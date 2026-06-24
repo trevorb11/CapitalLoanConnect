@@ -1048,7 +1048,7 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
   const benefits = [
     { text: <><strong>See your exact payoff date</strong> — know how many payments remain and when you'll be clear</> },
     { text: <><strong>Track renewal eligibility in real time</strong> — get notified the moment you qualify for more funding</> },
-    { text: <><strong>Monitor daily cash flow</strong> — connect your bank to see how payments affect your balance</> },
+    { text: <><strong>Monitor daily cash flow</strong> — upload statements to see how payments affect your balance</> },
     { text: <><strong>Compare all your positions in one place</strong> — factor rates, remaining balances, payment schedules</> },
   ];
 
@@ -1531,7 +1531,7 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
             </div>
             <div className="value-prop">
               <div className="value-prop-dot" />
-              <div className="value-prop-text"><strong>Cash flow insights</strong>Connect your bank for live revenue and expense analysis.</div>
+              <div className="value-prop-text"><strong>Cash flow insights</strong>Upload statements for revenue and expense analysis.</div>
             </div>
             <div className="value-prop">
               <div className="value-prop-dot" />
@@ -1539,13 +1539,12 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
             </div>
             <div className="value-prop">
               <div className="value-prop-dot" />
-              <div className="value-prop-text"><strong>Auto-detect positions</strong>Link your bank and we'll find your MCA payments automatically.</div>
+              <div className="value-prop-text"><strong>Auto-detect positions</strong>Upload bank statements and we'll find your MCA payments automatically.</div>
             </div>
           </div>
-          <p style={{ color: "#64748b", fontSize: 13, marginBottom: 14 }}>Start by adding your current funding position or connecting your bank.</p>
+          <p style={{ color: "#64748b", fontSize: 13, marginBottom: 14 }}>Upload your bank statements and we'll automatically detect your funding positions.</p>
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" as const }}>
-            <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ flex: 1, maxWidth: 200 }}>Add a Position</button>
-            <button className="btn-secondary" onClick={() => onSwitchTab("financials")} style={{ flex: 1, maxWidth: 200 }}>Connect Bank</button>
+            <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ flex: 1, maxWidth: 260 }}>Upload Bank Statements</button>
           </div>
         </div>
       </div>
@@ -1574,7 +1573,7 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
         <div className="stat-card">
           <div className="stat-label">Monthly Revenue</div>
           <div className="stat-val teal">{revenue > 0 ? fmt$(revenue) : "\u2014"}</div>
-          <div className="stat-sub">{revenue > 0 && totalMonthlyLoad > 0 ? `${(totalMonthlyLoad / revenue * 100).toFixed(0)}% to payments` : banking?.connected ? "from bank data" : "connect bank"}</div>
+          <div className="stat-sub">{revenue > 0 && totalMonthlyLoad > 0 ? `${(totalMonthlyLoad / revenue * 100).toFixed(0)}% to payments` : banking?.connected ? "from bank data" : "upload statements"}</div>
         </div>
       </div>
 
@@ -1617,19 +1616,17 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
         </div>
       )}
 
-      {/* Setup nudge — only show individual items not yet done */}
-      {(!banking?.connected) && positions.length > 0 && (
+      {/* Upload nudge — show when no positions yet */}
+      {positions.length === 0 && (
         <div className="card" style={{ padding: "16px 20px" }}>
-          <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: "#94a3b8" }}>Complete your setup</p>
-          {!banking?.connected && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <p style={{ fontWeight: 600, fontSize: 13 }}>Connect your bank</p>
-                <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>Unlock live cash flow data and auto-detect MCA payments.</p>
-              </div>
-              <button className="btn-secondary" onClick={() => onSwitchTab("financials")} style={{ fontSize: 12, whiteSpace: "nowrap" as const }}>Connect</button>
+          <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: "#94a3b8" }}>Get started</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <p style={{ fontWeight: 600, fontSize: 13 }}>Upload bank statements</p>
+              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>We'll auto-detect your funding positions and payment schedules.</p>
             </div>
-          )}
+            <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, whiteSpace: "nowrap" as const }}>Upload</button>
+          </div>
         </div>
       )}
 
@@ -1647,6 +1644,63 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
           )}
         </>
       )}
+
+      {/* ── Get Funded CTA ── */}
+      <div className="card" style={{ background: "linear-gradient(135deg, rgba(13,148,136,0.08), rgba(13,148,136,0.02))", border: "1px solid rgba(13,148,136,0.2)", marginTop: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Ready for funding?</p>
+            <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, lineHeight: 1.6 }}>
+              {activePositions.length > 0
+                ? "See if you qualify for a renewal, consolidation, or additional capital based on your current positions."
+                : "Check what funding options are available for your business. Takes about 5 minutes."}
+            </p>
+          </div>
+          <button className="btn-primary" onClick={() => onSwitchTab("qualify")} style={{ whiteSpace: "nowrap" as const, flexShrink: 0 }}>
+            Check Options
+          </button>
+        </div>
+      </div>
+
+      {/* ── Services Preview ── */}
+      <div className="section-label" style={{ marginTop: 20 }}>Business Services</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 8 }}>
+        {[
+          { id: "payments", icon: "\uD83D\uDCB3", title: "Payment Processing", sub: "Lower rates, faster deposits" },
+          { id: "website", icon: "\uD83C\uDF10", title: "Website Build", sub: "Professional site that converts" },
+          { id: "crm", icon: "\uD83D\uDCCA", title: "CRM & Automation", sub: "Stop losing leads" },
+        ].map(svc => (
+          <div key={svc.id} className="card" onClick={() => onSwitchTab("services")} style={{ cursor: "pointer", padding: "16px 18px", transition: "all 0.2s ease" }}>
+            <div style={{ fontSize: 22, marginBottom: 6 }}>{svc.icon}</div>
+            <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{svc.title}</p>
+            <p style={{ color: "#64748b", fontSize: 12 }}>{svc.sub}</p>
+          </div>
+        ))}
+      </div>
+      <button className="btn-ghost" onClick={() => onSwitchTab("services")} style={{ width: "100%", fontSize: 12 }}>
+        View all services &rarr;
+      </button>
+
+      {/* ── Resources Preview ── */}
+      <div className="section-label" style={{ marginTop: 20 }}>Free Resources</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 8 }}>
+        {[
+          { title: "Business Credit Scores", sub: "Check your D&B and Experian scores for free", url: "https://www.nav.com/business-credit-scores/", tag: "Free" },
+          { title: "SBA Loan Programs", sub: "Government-backed loans with lower rates", url: "https://www.sba.gov/funding-programs/loans", tag: "Gov" },
+          { title: "Free Accounting", sub: "Wave app \u2014 invoicing and bookkeeping", url: "https://www.waveapps.com/", tag: "Free" },
+        ].map(res => (
+          <a key={res.title} href={res.url} target="_blank" rel="noopener noreferrer" className="card" style={{ textDecoration: "none", padding: "16px 18px", display: "block", transition: "all 0.2s ease" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+              <p style={{ fontWeight: 600, fontSize: 13, color: "#fff" }}>{res.title}</p>
+              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 50, background: "rgba(52,211,153,0.15)", color: "#34d399", fontWeight: 600, flexShrink: 0 }}>{res.tag}</span>
+            </div>
+            <p style={{ color: "#64748b", fontSize: 12 }}>{res.sub}</p>
+          </a>
+        ))}
+      </div>
+      <button className="btn-ghost" onClick={() => onSwitchTab("resources")} style={{ width: "100%", fontSize: 12 }}>
+        View all resources &rarr;
+      </button>
     </div>
   );
 }
@@ -1655,9 +1709,10 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
 function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) => void }) {
   const [positions, setPositions] = useState<LeadPosition[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [detecting, setDetecting] = useState(false);
-  const [detectMsg, setDetectMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetch_ = useCallback(async () => {
     try { const r = await fetch("/api/lead/positions", { credentials: "include" }); if (r.ok) setPositions(await r.json()); } catch (_) {}
@@ -1665,15 +1720,66 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
   }, []);
   useEffect(() => { fetch_(); }, [fetch_]);
 
-  const handleDetect = async () => {
-    setDetecting(true); setDetectMsg(null);
-    try {
-      const r = await fetch("/api/lead/detect-positions", { method: "POST", credentials: "include" });
-      const data = await r.json();
-      if (r.ok) { setDetectMsg({ text: data.message || `Found ${data.detected} position(s).`, ok: true }); if (data.added > 0) fetch_(); }
-      else { setDetectMsg({ text: data.error || "Detection failed.", ok: false }); }
-    } catch (_) { setDetectMsg({ text: "Failed to scan transactions.", ok: false }); }
-    setDetecting(false);
+  const processFiles = async (files: File[]) => {
+    const pdfs = files.filter(f => f.type === "application/pdf");
+    if (pdfs.length === 0) { setUploadMsg({ text: "Please upload PDF bank statements.", ok: false }); return; }
+
+    setUploading(true); setUploadMsg(null);
+    let totalFound = 0;
+
+    for (const file of pdfs) {
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const r = await fetch("/api/lead/positions/extract", { method: "POST", credentials: "include", body: formData });
+        const data = await r.json();
+        if (!r.ok) { setUploadMsg({ text: data.error || `Failed to analyze ${file.name}`, ok: false }); continue; }
+
+        // data is an array of extracted positions — save each one
+        const extracted = Array.isArray(data) ? data : data.positions ? data.positions : [data];
+        for (const pos of extracted) {
+          if (!pos.funderName && !pos.funder_name) continue;
+          try {
+            await fetch("/api/lead/positions", {
+              method: "POST", credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                funderName: pos.funderName || pos.funder_name || "Unknown",
+                productType: pos.productType || pos.product_type || "MCA",
+                fundedAmount: pos.fundedAmount || pos.funded_amount || pos.advanceAmount || pos.advance_amount || "",
+                paybackAmount: pos.paybackAmount || pos.payback_amount || pos.totalPayback || pos.total_payback || "",
+                factorRate: pos.factorRate || pos.factor_rate || "",
+                paymentAmount: pos.paymentAmount || pos.payment_amount || pos.estimatedPayment || "",
+                paymentFrequency: pos.paymentFrequency || pos.payment_frequency || pos.frequency || "daily",
+                status: "active",
+                notes: `Auto-extracted from ${file.name}`,
+              }),
+            });
+            totalFound++;
+          } catch (_) {}
+        }
+      } catch (err: any) {
+        setUploadMsg({ text: `Error analyzing ${file.name}: ${err.message}`, ok: false });
+      }
+    }
+
+    if (totalFound > 0) {
+      setUploadMsg({ text: `Found ${totalFound} position${totalFound !== 1 ? "s" : ""} from ${pdfs.length} statement${pdfs.length !== 1 ? "s" : ""}.`, ok: true });
+      fetch_();
+    } else if (!uploadMsg) {
+      setUploadMsg({ text: "No funding positions detected in the uploaded statements. Try uploading more recent months.", ok: false });
+    }
+    setUploading(false);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) processFiles(Array.from(e.target.files));
+    e.target.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    if (e.dataTransfer.files?.length) processFiles(Array.from(e.dataTransfer.files));
   };
 
   if (loading) return <div className="loading"><div className="spinner" /><p style={{ marginTop: 12 }}>Loading positions...</p></div>;
@@ -1683,29 +1789,52 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
 
   return (
     <div>
-      {showAdd ? (
-        <AddPositionForm onSave={() => { setShowAdd(false); fetch_(); }} onCancel={() => setShowAdd(false)} />
-      ) : (
-        <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-          <button className="btn-primary" onClick={() => setShowAdd(true)} style={{ flex: 1 }}>+ Add Manually</button>
-          <button className="btn-secondary" onClick={handleDetect} disabled={detecting} style={{ flex: 1 }}>
-            {detecting ? "Scanning..." : "Auto-Detect from Bank"}
-          </button>
-        </div>
-      )}
+      {/* Upload area */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => !uploading && fileInputRef.current?.click()}
+        style={{
+          border: `2px dashed ${dragOver ? "#0d9488" : "rgba(255,255,255,0.15)"}`,
+          borderRadius: 14,
+          padding: "28px 20px",
+          textAlign: "center" as const,
+          cursor: uploading ? "wait" : "pointer",
+          marginBottom: 20,
+          background: dragOver ? "rgba(13,148,136,0.06)" : "rgba(255,255,255,0.02)",
+          transition: "all 0.2s ease",
+        }}
+      >
+        <input ref={fileInputRef} type="file" accept=".pdf" multiple onChange={handleFileSelect} style={{ display: "none" }} />
+        {uploading ? (
+          <div>
+            <div className="spinner" style={{ margin: "0 auto 12px" }} />
+            <p style={{ fontSize: 14, color: "#0d9488", fontWeight: 500 }}>Analyzing your bank statements...</p>
+            <p style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>This may take a moment while we scan for funding positions</p>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>&#128196;</div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "#fff", marginBottom: 4 }}>Upload Bank Statements</p>
+            <p style={{ fontSize: 13, color: "#94a3b8" }}>Drop PDF files here or click to browse</p>
+            <p style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>We'll automatically detect your funding positions, payment amounts, and lender details</p>
+          </div>
+        )}
+      </div>
 
-      {detectMsg && (
+      {uploadMsg && (
         <div style={{ padding: "12px 16px", fontSize: 13, borderRadius: 10, marginBottom: 14,
-          color: detectMsg.ok ? "#0d9488" : "#f87171",
-          background: detectMsg.ok ? "rgba(13,148,136,0.08)" : "rgba(248,113,113,0.08)",
-          border: `1px solid ${detectMsg.ok ? "rgba(13,148,136,0.2)" : "rgba(248,113,113,0.2)"}` }}>
-          {detectMsg.text}
+          color: uploadMsg.ok ? "#0d9488" : "#f87171",
+          background: uploadMsg.ok ? "rgba(13,148,136,0.08)" : "rgba(248,113,113,0.08)",
+          border: `1px solid ${uploadMsg.ok ? "rgba(13,148,136,0.2)" : "rgba(248,113,113,0.2)"}` }}>
+          {uploadMsg.text}
         </div>
       )}
 
       {active.length > 0 && (
         <>
-          <div className="section-label">Active</div>
+          <div className="section-label">Active Positions</div>
           {active.map(pos => <PositionCard key={pos.id} pos={pos} onClick={() => onViewPosition(pos)} />)}
         </>
       )}
@@ -1717,8 +1846,8 @@ function PositionsTab({ onViewPosition }: { onViewPosition: (pos: LeadPosition) 
         </>
       )}
 
-      {positions.length === 0 && !showAdd && (
-        <div className="empty"><strong>No positions yet</strong>Add your current funding positions to start tracking payoffs, see next payment dates, and know when you're eligible for a renewal.</div>
+      {positions.length === 0 && !uploading && (
+        <div className="empty"><strong>No positions detected yet</strong>Upload your most recent 3 months of bank statements and we'll automatically find your current funding positions, payment schedules, and estimated payoff dates.</div>
       )}
     </div>
   );
@@ -2573,7 +2702,7 @@ export default function LeadPortal() {
   const tabs = [
     ["overview", "Overview"],
     ["positions", "Positions"],
-    ["financials", "Financials"],
+    // ["financials", "Financials"], // Hidden until Chirp bank connection is stable
     ["qualify", "Get Funded"],
     ["resources", "Resources"],
     ["services", "Services"],
