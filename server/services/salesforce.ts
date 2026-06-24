@@ -346,17 +346,8 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       };
     }
 
-    // --- Auto-create for Dillon's apps only ---
-    const agentName = (app.agentName || app.agent_name || "").toLowerCase();
-    const agentEmail = (app.agentEmail || app.agent_email || "").toLowerCase();
-    const isDillon = agentName.includes("dillon") || agentEmail.includes("dillon");
-
-    if (!isDillon) {
-      console.log(`[SF Sync] No existing Lead or Opportunity found for ${email || phone} — skipping (update-only, not Dillon's)`);
-      return { synced: false, reason: "no existing SF record to update" };
-    }
-
-    console.log(`[SF Sync] Dillon's app — auto-creating SF records for ${businessName || email}`);
+    // Auto-create for ALL reps (no longer Dillon-only)
+    console.log(`[SF Sync] No existing Lead or Opportunity found — auto-creating SF records for ${businessName || email}`);
 
     // If we found a Lead earlier, convert it first
     if (existingLead) {
@@ -538,66 +529,27 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
 
     console.log(`[SF Decision Sync] ${decision.business_name || email} → status=${status}, sfStage=${sfStage}`);
 
-    // Find the SF Opportunity — first from tracking column, then by search
-    let oppId = decision.sf_opportunity_id || decision.sfOpportunityId || app?.sf_opportunity_id || app?.sfOpportunityId;
+    // Use the 8-method cascade to find or create the SF Opportunity
+    const findResult = await findOrCreateSfOpportunity({
+      sfOppId: decision.sf_opportunity_id || decision.sfOpportunityId || app?.sf_opportunity_id || app?.sfOpportunityId,
+      ghlOppId: decision.ghl_opportunity_id || decision.ghlOpportunityId,
+      email,
+      secondaryEmail,
+      phone,
+      businessName: decision.business_name || decision.businessName || "",
+      fullName: app?.full_name || app?.fullName || "",
+      stage: sfStage,
+      app: app || undefined,
+    });
 
-    if (!oppId && email) {
-      const byEmail = await sfQuery(
-        `SELECT Id FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}'  LIMIT 1`
-      );
-      if (byEmail.length) oppId = byEmail[0].Id;
+    if (!findResult) {
+      console.log("[SF Decision Sync] Could not find or create SF Opportunity — skipping");
+      return { synced: false, error: "no matching Opportunity and auto-create failed" };
     }
 
-    if (!oppId && phone) {
-      const digits = phone.replace(/\D/g, "").slice(-10);
-      if (digits.length === 10) {
-        const byPhone = await sfQuery(
-          `SELECT Id FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' LIMIT 1`
-        );
-        if (byPhone.length) oppId = byPhone[0].Id;
-      }
-    }
-
-    // Fallback: search by secondary email on the Opportunity
-    if (!oppId && secondaryEmail) {
-      const bySecondary = await sfQuery(
-        `SELECT Id FROM Opportunity WHERE Email__c = '${secondaryEmail.replace(/'/g, "\\'")}' LIMIT 1`
-      );
-      if (bySecondary.length) oppId = bySecondary[0].Id;
-    }
-
-    // Fallback: search by Contact email → Account → Opportunity
-    // This catches Opps where Email__c is null but a Contact on the same Account has the email
-    if (!oppId) {
-      for (const e of [email, secondaryEmail].filter(Boolean)) {
-        // First try Primary_Contact__r.Email directly on the Opp
-        const byContactEmail = await sfQuery(
-          `SELECT Id FROM Opportunity WHERE Primary_Contact__r.Email = '${e.replace(/'/g, "\\'")}' LIMIT 1`
-        );
-        if (byContactEmail.length) { oppId = byContactEmail[0].Id; break; }
-
-        // Then try Contact → Account → Opportunity (catches converted Leads where Contact is on Account)
-        const byAcctContact = await sfQuery(
-          `SELECT Id FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${e.replace(/'/g, "\\'")}') LIMIT 1`
-        );
-        if (byAcctContact.length) { oppId = byAcctContact[0].Id; break; }
-      }
-    }
-
-    // Fallback: search by business name (normalized — catches Opps with no email/phone)
-    if (!oppId) {
-      const bizName = decision.business_name || decision.businessName || "";
-      if (bizName && bizName.length > 3) {
-        const byName = await sfQuery(
-          `SELECT Id FROM Opportunity WHERE Name LIKE '${bizName.replace(/'/g, "\\'").slice(0, 80)}%' AND IsClosed = false LIMIT 1`
-        );
-        if (byName.length) oppId = byName[0].Id;
-      }
-    }
-
-    if (!oppId) {
-      console.log("[SF Decision Sync] No matching SF Opportunity found — skipping");
-      return { synced: false, error: "no matching Opportunity" };
+    const oppId = findResult.oppId;
+    if (findResult.created) {
+      console.log(`[SF Decision Sync] Auto-created new Opp ${oppId} for ${decision.business_name || email}`);
     }
 
     // Build update payload based on decision status
@@ -651,19 +603,44 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
       updateFields.CloseDate = new Date().toISOString().split("T")[0];
     }
 
+    // Application-level fields (push whenever we have them)
+    if (app) {
+      if (app.monthly_revenue || app.monthlyRevenue) updateFields.Monthly_Revenue__c = parseNum(app.monthly_revenue || app.monthlyRevenue);
+      if (app.requested_amount || app.requestedAmount) updateFields.Amount_Requested__c = parseNum(app.requested_amount || app.requestedAmount);
+      if (app.credit_score || app.creditScore || app.personalCreditScoreRange) {
+        updateFields.Personal_Credit_Score_Range__c = mapCreditScore(app.credit_score || app.creditScore || app.personalCreditScoreRange);
+      }
+      if (app.industry) updateFields.Industry__c = mapIndustry(app.industry);
+      if (app.phone) updateFields.Phone_Number__c = app.phone;
+      if (app.email) updateFields.Email__c = app.email;
+      if (app.businessName || app.business_name) updateFields.Doing_Business_As_DBA__c = app.businessName || app.business_name;
+    }
+
+    // Lender name → Funder lookup
+    if (decision.lender) {
+      const funderAcctId = await getFunderAccountId(decision.lender).catch(() => null);
+      if (funderAcctId) updateFields.Funder_Name__c = funderAcctId;
+    }
+
+    // Assigned rep → GHL ID (for tracking on the Opp)
+    if (decision.ghl_opportunity_id || decision.ghlOpportunityId) {
+      updateFields.GHL_Id__c = decision.ghl_opportunity_id || decision.ghlOpportunityId;
+    }
+
     // Clean nulls
     const cleaned = clean(updateFields);
 
     const res = await sfApi("PATCH", `/sobjects/Opportunity/${oppId}`, cleaned);
     if (res.success) {
-      console.log(`[SF Decision Sync] Updated Opp ${oppId}: stage=${sfStage}, fields=${Object.keys(cleaned).join(",")}`);
+      const action = findResult.created ? "created+updated" : "updated";
+      console.log(`[SF Decision Sync] ${action} Opp ${oppId}: stage=${sfStage}, fields=${Object.keys(cleaned).join(",")}, method=${findResult.method}`);
 
       // Also sync lender submissions for this decision
       await syncLenderSubmissionsToSalesforce(oppId, decision).catch(err =>
         console.error(`[SF Lender Sync] Error (non-fatal): ${err.message}`)
       );
 
-      return { synced: true, action: "updated", oppId };
+      return { synced: true, action, oppId };
     } else {
       console.error(`[SF Decision Sync] Failed: ${res.error}`);
       return { synced: false, oppId, error: res.error };
@@ -1216,23 +1193,289 @@ async function syncLenderSubmissionsToProductionSf(oppId: string, decision: Reco
   }
 }
 
-// ─── Shared opportunity lookup ────────────────────────────────────────────────
+// ─── 8-Method Opportunity Finder + Auto-Create ──────────────────────────────
 
+interface FindOppResult {
+  oppId: string;
+  accountId?: string;
+  contactId?: string;
+  method: string;        // which search method found it
+  created: boolean;      // true if we created a new Opp
+}
+
+/**
+ * Exhaustive 8-method search for a matching SF Opportunity.
+ * If no match is found, auto-creates Account + Contact + Opportunity.
+ *
+ * Search cascade:
+ * 1. Pre-stored SF Opportunity ID
+ * 2. GHL Opportunity ID → SF GHL_Id__c
+ * 3. Lead email → ConvertedOpportunityId
+ * 4. Lead phone → ConvertedOpportunityId
+ * 5. Contact email → Account → Opportunity
+ * 6. Contact phone → Account → Opportunity
+ * 7. Opp.Email__c / Phone_Number__c custom fields
+ * 8. Business name wildcard match
+ * → Auto-create if all fail
+ */
+async function findOrCreateSfOpportunity(params: {
+  sfOppId?: string;
+  ghlOppId?: string;
+  email?: string;
+  secondaryEmail?: string;
+  phone?: string;
+  businessName?: string;
+  fullName?: string;
+  stage?: string;
+  app?: Record<string, any>;
+}): Promise<FindOppResult | null> {
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) return null;
+
+  const { sfOppId, ghlOppId, email, secondaryEmail, phone, businessName, fullName, stage, app } = params;
+  const safeEmail = (email || "").replace(/'/g, "\\'").toLowerCase().trim();
+  const safeEmail2 = (secondaryEmail || "").replace(/'/g, "\\'").toLowerCase().trim();
+  const digits = (phone || "").replace(/\D/g, "").slice(-10);
+  const safeBizName = (businessName || "").replace(/'/g, "\\'").slice(0, 80);
+
+  // ── Method 1: Pre-stored SF Opportunity ID ──
+  if (sfOppId) {
+    console.log(`[SF Find] Method 1: stored SF Opp ID ${sfOppId}`);
+    const verify = await sfQuery(`SELECT Id, AccountId FROM Opportunity WHERE Id = '${sfOppId}' LIMIT 1`);
+    if (verify.length) return { oppId: verify[0].Id, accountId: verify[0].AccountId, method: "stored-id", created: false };
+  }
+
+  // ── Method 2: GHL Opportunity ID → SF GHL_Id__c ──
+  if (ghlOppId) {
+    const byGhl = await sfQuery(`SELECT Id, AccountId FROM Opportunity WHERE GHL_Id__c = '${ghlOppId.replace(/'/g, "\\'")}' LIMIT 1`);
+    if (byGhl.length) {
+      console.log(`[SF Find] Method 2: GHL ID ${ghlOppId} → Opp ${byGhl[0].Id}`);
+      return { oppId: byGhl[0].Id, accountId: byGhl[0].AccountId, method: "ghl-id", created: false };
+    }
+  }
+
+  // ── Method 3: Lead email → ConvertedOpportunityId ──
+  if (safeEmail) {
+    const byLeadEmail = await sfQuery(
+      `SELECT ConvertedOpportunityId, ConvertedAccountId, ConvertedContactId FROM Lead WHERE Email = '${safeEmail}' AND IsConverted = true AND ConvertedOpportunityId != null LIMIT 1`
+    );
+    if (byLeadEmail.length && byLeadEmail[0].ConvertedOpportunityId) {
+      console.log(`[SF Find] Method 3: Lead email ${safeEmail} → converted Opp ${byLeadEmail[0].ConvertedOpportunityId}`);
+      return { oppId: byLeadEmail[0].ConvertedOpportunityId, accountId: byLeadEmail[0].ConvertedAccountId, contactId: byLeadEmail[0].ConvertedContactId, method: "lead-email-converted", created: false };
+    }
+  }
+
+  // ── Method 4: Lead phone → ConvertedOpportunityId ──
+  if (digits.length === 10) {
+    const byLeadPhone = await sfQuery(
+      `SELECT ConvertedOpportunityId, ConvertedAccountId, ConvertedContactId FROM Lead WHERE (Phone LIKE '%${digits}' OR MobilePhone LIKE '%${digits}') AND IsConverted = true AND ConvertedOpportunityId != null LIMIT 1`
+    );
+    if (byLeadPhone.length && byLeadPhone[0].ConvertedOpportunityId) {
+      console.log(`[SF Find] Method 4: Lead phone ${digits} → converted Opp ${byLeadPhone[0].ConvertedOpportunityId}`);
+      return { oppId: byLeadPhone[0].ConvertedOpportunityId, accountId: byLeadPhone[0].ConvertedAccountId, contactId: byLeadPhone[0].ConvertedContactId, method: "lead-phone-converted", created: false };
+    }
+  }
+
+  // ── Method 5: Contact email → Account → Opportunity ──
+  for (const e of [safeEmail, safeEmail2].filter(Boolean)) {
+    // Try Primary_Contact__r.Email first
+    const byPrimaryContact = await sfQuery(
+      `SELECT Id, AccountId FROM Opportunity WHERE Primary_Contact__r.Email = '${e}' ORDER BY LastModifiedDate DESC LIMIT 1`
+    );
+    if (byPrimaryContact.length) {
+      console.log(`[SF Find] Method 5a: Primary Contact email ${e} → Opp ${byPrimaryContact[0].Id}`);
+      return { oppId: byPrimaryContact[0].Id, accountId: byPrimaryContact[0].AccountId, method: "contact-email-primary", created: false };
+    }
+
+    // Then Contact → Account → Opportunity
+    const byAcctContact = await sfQuery(
+      `SELECT Id, AccountId FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${e}') ORDER BY LastModifiedDate DESC LIMIT 1`
+    );
+    if (byAcctContact.length) {
+      console.log(`[SF Find] Method 5b: Contact email ${e} → Account → Opp ${byAcctContact[0].Id}`);
+      return { oppId: byAcctContact[0].Id, accountId: byAcctContact[0].AccountId, method: "contact-email-account", created: false };
+    }
+  }
+
+  // ── Method 6: Contact phone → Account → Opportunity ──
+  if (digits.length === 10) {
+    const byContactPhone = await sfQuery(
+      `SELECT Id, AccountId FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Phone LIKE '%${digits}' OR MobilePhone LIKE '%${digits}') ORDER BY LastModifiedDate DESC LIMIT 1`
+    );
+    if (byContactPhone.length) {
+      console.log(`[SF Find] Method 6: Contact phone ${digits} → Account → Opp ${byContactPhone[0].Id}`);
+      return { oppId: byContactPhone[0].Id, accountId: byContactPhone[0].AccountId, method: "contact-phone-account", created: false };
+    }
+  }
+
+  // ── Method 7: Opp.Email__c / Phone_Number__c custom fields ──
+  if (safeEmail) {
+    const byOppEmail = await sfQuery(`SELECT Id, AccountId FROM Opportunity WHERE Email__c = '${safeEmail}' ORDER BY LastModifiedDate DESC LIMIT 1`);
+    if (byOppEmail.length) {
+      console.log(`[SF Find] Method 7a: Opp Email__c ${safeEmail} → ${byOppEmail[0].Id}`);
+      return { oppId: byOppEmail[0].Id, accountId: byOppEmail[0].AccountId, method: "opp-email-field", created: false };
+    }
+  }
+  if (digits.length === 10) {
+    const byOppPhone = await sfQuery(`SELECT Id, AccountId FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' ORDER BY LastModifiedDate DESC LIMIT 1`);
+    if (byOppPhone.length) {
+      console.log(`[SF Find] Method 7b: Opp Phone_Number__c ${digits} → ${byOppPhone[0].Id}`);
+      return { oppId: byOppPhone[0].Id, accountId: byOppPhone[0].AccountId, method: "opp-phone-field", created: false };
+    }
+  }
+
+  // ── Method 8: Business name wildcard match ──
+  if (safeBizName && safeBizName.length > 3) {
+    // Try Opportunity Name
+    const byOppName = await sfQuery(
+      `SELECT Id, AccountId FROM Opportunity WHERE Name LIKE '%${safeBizName}%' ORDER BY LastModifiedDate DESC LIMIT 1`
+    );
+    if (byOppName.length) {
+      console.log(`[SF Find] Method 8a: Opp Name matches '${safeBizName}' → ${byOppName[0].Id}`);
+      return { oppId: byOppName[0].Id, accountId: byOppName[0].AccountId, method: "biz-name-opp", created: false };
+    }
+    // Try Account Name
+    const byAcctName = await sfQuery(
+      `SELECT Id, AccountId FROM Opportunity WHERE AccountId IN (SELECT Id FROM Account WHERE Name LIKE '%${safeBizName}%') ORDER BY LastModifiedDate DESC LIMIT 1`
+    );
+    if (byAcctName.length) {
+      console.log(`[SF Find] Method 8b: Account Name matches '${safeBizName}' → ${byAcctName[0].Id}`);
+      return { oppId: byAcctName[0].Id, accountId: byAcctName[0].AccountId, method: "biz-name-account", created: false };
+    }
+  }
+
+  // ── All 8 methods exhausted → Auto-create ──
+  console.log(`[SF Find] All 8 methods exhausted for ${businessName || email || phone} — auto-creating`);
+  return autoCreateSfOpportunity(params);
+}
+
+/**
+ * Creates a new Account + Contact + Opportunity in Salesforce.
+ */
+async function autoCreateSfOpportunity(params: {
+  email?: string;
+  phone?: string;
+  businessName?: string;
+  fullName?: string;
+  stage?: string;
+  app?: Record<string, any>;
+}): Promise<FindOppResult | null> {
+  const { email, phone, businessName, fullName, stage, app } = params;
+  const state = ((app?.state || app?.ownerState || "").toUpperCase().trim()).slice(0, 2);
+
+  // Get Merchant record type
+  const rts = await sfQuery("SELECT Id FROM RecordType WHERE SObjectType='Account' AND Name='Merchant' AND IsActive=true");
+  const merchantRtId = rts[0]?.Id;
+
+  const accountName = (businessName || fullName || email || "Unknown").slice(0, 255);
+
+  // Resolve name — try to avoid using email as name
+  let resolvedName = fullName || "";
+  if (!resolvedName || resolvedName.includes("@")) {
+    try {
+      const { neonPool } = await import("../db");
+      if (neonPool) {
+        const nameResult = await neonPool.query(
+          "SELECT first_name, last_name FROM dialer_contacts WHERE LOWER(email) = $1 AND first_name IS NOT NULL AND first_name != '' LIMIT 1",
+          [(email || "").toLowerCase()]
+        );
+        if (nameResult.rows[0]) {
+          const fn = nameResult.rows[0].first_name || "";
+          const ln = nameResult.rows[0].last_name || "";
+          if (fn && !fn.includes("@")) resolvedName = `${fn} ${ln}`.trim();
+        }
+      }
+    } catch {}
+  }
+
+  const nameParts = (resolvedName || "").split(/\s+/).filter(p => p && !p.includes("@"));
+  const today = new Date();
+  const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
+  const closeDate = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+
+  // Create Account
+  const account = clean({
+    Name: accountName,
+    ...(merchantRtId ? { RecordTypeId: merchantRtId } : {}),
+    Company_Name__c: businessName || null,
+    Doing_Business_As__c: app?.doingBusinessAs || app?.doing_business_as || null,
+    EIN__c: app?.ein || null,
+    Industry: mapIndustry(app?.industry),
+    Monthly_Revenue__c: parseNum(app?.monthlyRevenue || app?.monthly_revenue),
+    Primary_Business_Bank__c: app?.bankName || app?.bank_name || null,
+    Phone: phone || null,
+    Website: app?.companyWebsite || app?.company_website || null,
+    BillingCity: app?.city || null,
+    ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
+    BillingPostalCode: app?.zipCode || app?.zip_code || null,
+    ...((state || app?.city) ? { BillingCountryCode: "US" } : {}),
+    Account_Status__c: "Pending",
+  });
+
+  const acctRes = await sfApi("POST", "/sobjects/Account", account);
+  if (!acctRes.success) {
+    console.error(`[SF Create] Account creation failed: ${acctRes.error}`);
+    return null;
+  }
+
+  // Create Contact
+  const contact = clean({
+    AccountId: acctRes.id,
+    FirstName: nameParts[0] || null,
+    LastName: nameParts.slice(1).join(" ") || (nameParts[0] ? "Unknown" : businessName || "Unknown"),
+    Email: email || null,
+    Phone: phone || null,
+    Personal_Credit_Score_Range__c: mapCreditScore(app?.creditScore || app?.credit_score),
+  });
+
+  const ctRes = await sfApi("POST", "/sobjects/Contact", contact);
+
+  // Create Opportunity
+  const sfStage = stage || "Application & Docs";
+  const hasApproval = sfStage === "Present Offer" || sfStage === "Closed Won";
+  const opportunity = clean({
+    AccountId: acctRes.id,
+    Primary_Contact__c: ctRes.success ? ctRes.id : null,
+    Name: `${accountName} - ${dateStr}`.slice(0, 120),
+    StageName: sfStage,
+    CloseDate: closeDate,
+    Email__c: email || null,
+    Phone_Number__c: phone || null,
+    Doing_Business_As_DBA__c: businessName || null,
+    Amount_Requested__c: parseNum(app?.requestedAmount || app?.requested_amount),
+    Monthly_Revenue__c: parseNum(app?.monthlyRevenue || app?.monthly_revenue),
+    Personal_Credit_Score_Range__c: mapCreditScore(app?.creditScore || app?.credit_score || app?.personalCreditScoreRange),
+    Industry__c: mapIndustry(app?.industry),
+    Primary_Business_Bank__c: app?.bankName || app?.bank_name || null,
+    Purpose_Of_Funds__c: app?.useOfFunds || app?.use_of_funds || null,
+    Funding_Time_Frame__c: app?.fundingUrgency || app?.funding_urgency || null,
+    LeadSource: app?.referralSource || app?.referral_source || "Website",
+    Engagement_Status__c: computePipelineBucket(sfStage, hasApproval),
+    Revenue_Verified__c: false,
+    Bank_Statement_Tampering_Flag__c: false,
+  });
+
+  const oppRes = await sfApi("POST", "/sobjects/Opportunity", opportunity);
+  if (!oppRes.success) {
+    console.error(`[SF Create] Opportunity creation failed: ${oppRes.error}`);
+    return null;
+  }
+
+  console.log(`[SF Create] Auto-created: Account=${acctRes.id}, Contact=${ctRes.id || "failed"}, Opp=${oppRes.id}`);
+  return {
+    oppId: oppRes.id!,
+    accountId: acctRes.id,
+    contactId: ctRes.id,
+    method: "auto-created",
+    created: true,
+  };
+}
+
+// Backwards-compatible wrapper used by UW submission and AI snapshot sync
 async function findSfOpportunityByEmail(email: string): Promise<{ Id: string; AccountId?: string } | null> {
   if (!email) return null;
-  const safeEmail = email.replace(/'/g, "\\'");
-
-  const byEmail = await sfQuery(
-    `SELECT Id, AccountId FROM Opportunity WHERE Email__c = '${safeEmail}' ORDER BY LastModifiedDate DESC LIMIT 1`
-  );
-  if (byEmail.length) return byEmail[0];
-
-  const byContact = await sfQuery(
-    `SELECT Id, AccountId FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${safeEmail}') ORDER BY LastModifiedDate DESC LIMIT 1`
-  );
-  if (byContact.length) return byContact[0];
-
-  return null;
+  const result = await findOrCreateSfOpportunity({ email, stage: "Application & Docs" });
+  if (!result) return null;
+  return { Id: result.oppId, AccountId: result.accountId };
 }
 
 // ─── Value mappers for picklist / numeric SF fields ──────────────────────────
