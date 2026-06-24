@@ -635,7 +635,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/ghl-pipeline-reports — retrieve saved reports (latest per rep, or by date)
-  app.get("/api/ghl-pipeline-reports", claudeAuth, async (req: Request, res: Response) => {
+  // Accepts either Claude API key OR authenticated session
+  app.get("/api/ghl-pipeline-reports", async (req: Request, res: Response) => {
+    const apiKey = req.headers['x-claude-api-key'] as string;
+    const hasApiKey = apiKey && apiKey === process.env.CLAUDE_API_KEY;
+    const hasSession = req.session?.user?.isAuthenticated;
+    if (!hasApiKey && !hasSession) return res.status(401).json({ error: "Authentication required" });
     try {
       const repName = req.query.rep as string;
       const reportDate = req.query.date as string;
@@ -680,8 +685,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/ghl-pipeline-reports/:id — retrieve a single report with HTML content
+  app.get("/api/ghl-pipeline-reports/:id", async (req: Request, res: Response) => {
+    const apiKey = req.headers['x-claude-api-key'] as string;
+    const hasApiKey = apiKey && apiKey === process.env.CLAUDE_API_KEY;
+    const hasSession = req.session?.user?.isAuthenticated;
+    if (!hasApiKey && !hasSession) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const result = await db.execute(sql`SELECT * FROM ghl_pipeline_reports WHERE id = ${parseInt(req.params.id)} LIMIT 1`);
+      const row = (result as any).rows?.[0];
+      if (!row) return res.status(404).json({ error: "Report not found" });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // GET /api/ghl-pipeline-snapshots — retrieve saved snapshots
-  app.get("/api/ghl-pipeline-snapshots", claudeAuth, async (req: Request, res: Response) => {
+  app.get("/api/ghl-pipeline-snapshots", async (req: Request, res: Response) => {
+    const apiKey = req.headers['x-claude-api-key'] as string;
+    const hasApiKey = apiKey && apiKey === process.env.CLAUDE_API_KEY;
+    const hasSession = req.session?.user?.isAuthenticated;
+    if (!hasApiKey && !hasSession) return res.status(401).json({ error: "Authentication required" });
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
       const pipelineName = (req.query.pipeline as string) || '1. App Sent';

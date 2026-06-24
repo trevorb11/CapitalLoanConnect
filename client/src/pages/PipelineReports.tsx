@@ -127,14 +127,24 @@ export default function PipelineReports() {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedRep) params.set("rep", selectedRep);
-      const res = await fetch(`/api/ghl-pipeline-reports?${params}`, {
-        credentials: "include",
-        headers: { "X-Claude-API-Key": "" }, // Session auth fallback
-      });
+      const res = await fetch(`/api/ghl-pipeline-reports?${params}`, { credentials: "include" });
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data : data ? [data] : [];
     },
     enabled: isAuthenticated && !!selectedRep,
+  });
+
+  // GHL full report view
+  const [selectedGhlReport, setSelectedGhlReport] = useState<number | null>(null);
+  const { data: fullGhlReport, isLoading: ghlReportLoading } = useQuery<any>({
+    queryKey: ["/api/ghl-pipeline-reports", selectedGhlReport],
+    queryFn: async () => {
+      const res = await fetch(`/api/ghl-pipeline-reports/${selectedGhlReport}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load report");
+      return res.json();
+    },
+    enabled: !!selectedGhlReport,
   });
 
   // Full report view
@@ -160,6 +170,40 @@ export default function PipelineReports() {
       if (data.isAuthenticated) { setIsAuthenticated(true); setAuthRole(data.role); }
     });
   }} />;
+
+  // ── GHL FULL REPORT VIEW ──
+  if (selectedGhlReport && fullGhlReport) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-[#1e3a5f] text-white px-6 py-4">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/10" onClick={() => setSelectedGhlReport(null)}>
+                <ChevronLeft className="h-4 w-4 mr-1" /> Back
+              </Button>
+              <div>
+                <h1 className="text-lg font-bold">{fullGhlReport.rep_name}</h1>
+                <p className="text-sm text-blue-200">
+                  {new Date(fullGhlReport.report_date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                  {" "}&middot;{" "}{fullGhlReport.pipeline_name} &middot; {fullGhlReport.report_type}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-blue-200">
+              <span>{fullGhlReport.deal_count} opps</span>
+              {fullGhlReport.health_rating && <Badge variant="outline" className="border-white/30 text-white">{fullGhlReport.health_rating}</Badge>}
+            </div>
+          </div>
+        </div>
+        <div className="max-w-4xl mx-auto p-6">
+          <div className="bg-white rounded-lg shadow-sm border overflow-hidden" dangerouslySetInnerHTML={{ __html: fullGhlReport.html_content }} />
+        </div>
+      </div>
+    );
+  }
+  if (selectedGhlReport && ghlReportLoading) {
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-400" /></div>;
+  }
 
   // ── FULL REPORT VIEW ──
   if (selectedReport && fullReport) {
@@ -301,7 +345,7 @@ export default function PipelineReports() {
               ) : (
                 <div className="space-y-2">
                   {repGhlReports.map((report: any) => (
-                    <Card key={report.id} className="bg-gray-900 border-gray-800">
+                    <Card key={report.id} className="bg-gray-900 border-gray-800 hover:border-gray-700 cursor-pointer transition-colors" onClick={() => setSelectedGhlReport(report.id)}>
                       <CardContent className="p-4 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <Calendar className="w-4 h-4 text-gray-500" />
