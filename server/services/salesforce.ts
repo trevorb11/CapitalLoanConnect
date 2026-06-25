@@ -522,7 +522,6 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       LeadSource: app.referralSource || app.referral_source || "Website",
       Revenue_Verified__c: false,
       Bank_Statement_Tampering_Flag__c: false,
-      Engagement_Status__c: "Working",
     });
 
     const oppRes = await sfApi("POST", "/sobjects/Opportunity", opportunity);
@@ -588,7 +587,6 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
     const hasApproval = !!(decision.advance_amount || decision.advanceAmount);
     const updateFields: Record<string, any> = {
       StageName: sfStage,
-      Engagement_Status__c: computePipelineBucket(sfStage, hasApproval),
     };
 
     // Approval fields
@@ -1148,7 +1146,6 @@ async function autoCreateSfOpportunity(params: {
     Purpose_Of_Funds__c: app?.useOfFunds || app?.use_of_funds || null,
     Funding_Time_Frame__c: app?.fundingUrgency || app?.funding_urgency || null,
     LeadSource: app?.referralSource || app?.referral_source || "Website",
-    Engagement_Status__c: computePipelineBucket(sfStage, hasApproval),
     Revenue_Verified__c: false,
     Bank_Statement_Tampering_Flag__c: false,
   });
