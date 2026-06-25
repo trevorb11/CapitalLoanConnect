@@ -13950,6 +13950,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── APPROVAL FOLLOW-UP REPORT ──────────────────────────────────────────
+
+  app.get("/api/admin/approval-followup", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Auth required" });
+    try {
+      const result = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'approval_followup_report'`);
+      const row = (result as any).rows?.[0];
+      if (!row) return res.json(null);
+      res.json(typeof row.value === 'string' ? JSON.parse(row.value) : row.value);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   // ─── SMS 90-DAY REPORT (stored historical stats) ────────────────────────
 
   app.get("/api/admin/sms/90day-stats", async (req: Request, res: Response) => {
