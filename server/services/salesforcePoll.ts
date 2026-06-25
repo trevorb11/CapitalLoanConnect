@@ -14,50 +14,21 @@ import { db } from "../db";
 import { businessUnderwritingDecisions } from "@shared/schema";
 import { eq, isNull, or, sql as drizzleSql } from "drizzle-orm";
 import { updateDialerFromSfOpp } from "./dialerSync";
-import { computePipelineBucket, syncDecisionToSalesforce } from "./salesforce";
+import { computePipelineBucket, syncDecisionToSalesforce, getAccessToken } from "./salesforce";
 
 const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
-const SF_REFRESH_TOKEN = process.env.SF_REFRESH_TOKEN;
-const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://test.salesforce.com";
-
-let cachedToken = "";
-let tokenExp = 0;
-
-async function getToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExp) return cachedToken;
-  if (!SF_REFRESH_TOKEN) return process.env.SF_ACCESS_TOKEN || "";
-
-  try {
-    const res = await fetch(`${SF_LOGIN_URL}/services/oauth2/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: SF_REFRESH_TOKEN,
-        client_id: "PlatformCLI",
-      }),
-    });
-    const data = await res.json() as any;
-    if (data.access_token) {
-      cachedToken = data.access_token;
-      tokenExp = Date.now() + 90 * 60 * 1000;
-      return cachedToken;
-    }
-  } catch {}
-  return cachedToken || process.env.SF_ACCESS_TOKEN || "";
-}
 
 async function sfQuery(soql: string): Promise<any[]> {
-  const token = await getToken();
+  const token = await getAccessToken();
   if (!token || !SF_INSTANCE_URL) return [];
   try {
     const res = await fetch(
       `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
-    if (res.status === 401 && SF_REFRESH_TOKEN) {
-      tokenExp = 0;
-      const fresh = await getToken();
+    if (res.status === 401) {
+      // Force token refresh and retry once
+      const fresh = await getAccessToken();
       const retry = await fetch(
         `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
         { headers: { Authorization: `Bearer ${fresh}` } }
