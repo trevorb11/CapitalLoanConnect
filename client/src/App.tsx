@@ -56,6 +56,7 @@ import AutomatedTriggers from "@/pages/AutomatedTriggers";
 import SmsInbox from "@/pages/SmsInbox";
 import SmsAnalytics from "@/pages/SmsAnalytics";
 import FundingCalculator from "@/pages/FundingCalculator";
+import ApprovalFollowUp from "@/pages/ApprovalFollowUp";
 import GigFiStandalone from "@/pages/GigFiStandalone";
 import GigFiInternal from "@/pages/GigFiInternal";
 import GigFiSubmissions from "@/pages/GigFiSubmissions";
@@ -135,6 +136,7 @@ function Router() {
       <Route path="/internal-upload" component={InternalStatementsUpload} />
       <Route path="/funding-check" component={FundingCheck} />
       <Route path="/calculator" component={FundingCalculator} />
+      <Route path="/approval-followup" component={ApprovalFollowUp} />
       <Route path="/sba" component={SBALanding} />
       <Route path="/consol-sba" component={ConsolSBA} />
       <Route path="/sig" component={SignatureApplication} />
