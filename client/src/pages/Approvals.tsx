@@ -728,55 +728,35 @@ export default function Approvals() {
         : "";
       
       if (approvals.length === 0) {
-        // Business with no approval details yet
         rows.push([
-          decision.businessName || "",
-          decision.businessEmail || "",
-          decision.businessPhone || "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          approvalLetterUrl,
+          decision.businessName ?? "", decision.businessEmail ?? "", decision.businessPhone ?? "",
+          "", "", "", "", "", "", "", "", "", "", "", approvalLetterUrl,
           decision.createdAt ? new Date(decision.createdAt).toLocaleDateString() : ""
         ]);
       } else {
         approvals.forEach((approval) => {
-          rows.push([
-            decision.businessName || "",
-            decision.businessEmail || "",
-            decision.businessPhone || "",
-            approval.lender || "",
-            approval.advanceAmount || "",
-            approval.term || "",
-            approval.paymentFrequency || "",
-            approval.factorRate || "",
-            approval.maxUpsell || "",
-            approval.totalPayback || "",
-            approval.netAfterFees || "",
-            approval.approvalDate || "",
-            approval.isPrimary ? "Yes" : "No",
-            approval.notes || "",
-            approvalLetterUrl,
-            approval.createdAt ? new Date(approval.createdAt).toLocaleDateString() : ""
-          ]);
+          try {
+            rows.push([
+              decision.businessName ?? "", decision.businessEmail ?? "", decision.businessPhone ?? "",
+              approval.lender ?? "", String(approval.advanceAmount ?? ""), approval.term ?? "",
+              approval.paymentFrequency ?? "", String(approval.factorRate ?? ""),
+              String(approval.maxUpsell ?? ""), String(approval.totalPayback ?? ""),
+              String(approval.netAfterFees ?? ""), approval.approvalDate ?? "",
+              approval.isPrimary ? "Yes" : "No", approval.notes ?? "", approvalLetterUrl,
+              approval.createdAt ? new Date(approval.createdAt).toLocaleDateString() : ""
+            ]);
+          } catch { /* skip malformed approval entry */ }
         });
       }
     });
 
-    // Escape CSV values
-    const escapeCsvValue = (value: string) => {
-      if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-        return `"${value.replace(/"/g, '""')}"`;
+    // Escape CSV values (handle null/undefined safely)
+    const escapeCsvValue = (value: any) => {
+      const str = String(value ?? "");
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
       }
-      return value;
+      return str;
     };
 
     // Build CSV content
