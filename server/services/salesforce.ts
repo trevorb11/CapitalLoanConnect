@@ -12,7 +12,11 @@ const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
 const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://login.salesforce.com";
 const SF_CLIENT_ID = process.env.SF_CLIENT_ID || "";
 const SF_USERNAME = process.env.SF_USERNAME || "";
-const SF_PRIVATE_KEY = (process.env.SF_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+// SF_PRIVATE_KEY is stored as base64-encoded PEM to avoid multiline truncation in secrets
+const _rawKey = process.env.SF_PRIVATE_KEY || "";
+const SF_PRIVATE_KEY = _rawKey.startsWith("-----")
+  ? _rawKey.replace(/\\n/g, "\n")
+  : Buffer.from(_rawKey, "base64").toString("utf8");
 
 let cachedAccessToken = process.env.SF_ACCESS_TOKEN || "";
 let tokenExpiresAt = 0;
