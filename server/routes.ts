@@ -3906,15 +3906,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[CHIRP] Summary unavailable for ${requestCode}, computing from transaction details`);
         const allTxns: any[] = (details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || [];
 
-        // Group transactions by month, using type/is_income to classify
+        // Group transactions by month, classifying as credit (deposit) or debit
+        // Chirp transaction formats vary — try multiple signals:
+        //   1. type field: "CREDIT"/"DEBIT" or "credit"/"debit"
+        //   2. is_income / is_direct_deposit booleans
+        //   3. category containing "deposit", "transfer-in", "payroll"
+        //   4. Positive amount = credit (deposit), negative = debit (Chirp convention)
+        //   5. description containing "deposit", "payment from", "transfer from"
         const byMonth = new Map<string, { credits: number; debits: number }>();
         for (const txn of allTxns) {
           const date = txn.date || txn.transacted_at || txn.posted_at || "";
           const monthKey = date.substring(0, 7); // YYYY-MM
           if (!monthKey) continue;
           const entry = byMonth.get(monthKey) || { credits: 0, debits: 0 };
-          const amt = Math.abs(parseMoney(txn.amount));
-          const isCredit = txn.type === "CREDIT" || txn.is_income === true || txn.is_direct_deposit === true;
+          const rawAmt = parseMoney(txn.amount);
+          const amt = Math.abs(rawAmt);
+          if (amt === 0) continue;
+
+          // Determine if this is a credit (income/deposit) or debit (expense/payment)
+          const typeStr = (txn.type || txn.transaction_type || "").toUpperCase();
+          const desc = (txn.description || txn.original_description || txn.name || "").toLowerCase();
+          const cats = Array.isArray(txn.category) ? txn.category.join(" ").toLowerCase() : (txn.category || "").toLowerCase();
+
+          const isCredit =
+            typeStr === "CREDIT" ||
+            txn.is_income === true ||
+            txn.is_direct_deposit === true ||
+            cats.includes("deposit") || cats.includes("payroll") || cats.includes("transfer-in") ||
+            desc.includes("deposit") || desc.includes("payment from") || desc.includes("transfer from") || desc.includes("direct dep") ||
+            (rawAmt > 0 && typeStr !== "DEBIT"); // Positive amount = credit (Chirp convention)
+
           if (isCredit) {
             entry.credits += amt;
           } else {
