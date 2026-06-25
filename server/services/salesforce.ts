@@ -1,41 +1,73 @@
 /**
  * Salesforce Sync — creates/updates SF records when a new application is saved.
  *
- * Auth: uses SF_REFRESH_TOKEN to auto-refresh the access token via OAuth2.
- * Falls back to SF_ACCESS_TOKEN if refresh token is not configured.
- * Tokens are cached in memory and refreshed on 401 or expiry.
+ * Auth: JWT Bearer Flow using a Connected App + RSA private key.
+ * Access tokens are cached for 55 minutes and auto-refreshed via JWT (no refresh token needed).
+ * Falls back to SF_ACCESS_TOKEN env var if JWT credentials are not fully configured.
  */
 
+import crypto from "crypto";
+
 const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
-const SF_REFRESH_TOKEN = process.env.SF_REFRESH_TOKEN;
-const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://test.salesforce.com";
+const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://login.salesforce.com";
+const SF_CLIENT_ID = process.env.SF_CLIENT_ID || "";
+const SF_USERNAME = process.env.SF_USERNAME || "";
+// SF_PRIVATE_KEY is stored as base64-encoded PEM to avoid multiline truncation in secrets
+const _rawKey = process.env.SF_PRIVATE_KEY || "";
+const SF_PRIVATE_KEY = _rawKey.startsWith("-----")
+  ? _rawKey.replace(/\\n/g, "\n")
+  : Buffer.from(_rawKey, "base64").toString("utf8");
 
 let cachedAccessToken = process.env.SF_ACCESS_TOKEN || "";
 let tokenExpiresAt = 0;
 
+function base64url(input: string | Buffer): string {
+  const buf = typeof input === "string" ? Buffer.from(input) : input;
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+function buildJwt(): string {
+  const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const now = Math.floor(Date.now() / 1000);
+  const claims = base64url(JSON.stringify({
+    iss: SF_CLIENT_ID,
+    sub: SF_USERNAME,
+    aud: SF_LOGIN_URL,
+    exp: now + 180,
+  }));
+  const signingInput = `${header}.${claims}`;
+  const sign = crypto.createSign("SHA256");
+  sign.update(signingInput);
+  const sig = base64url(sign.sign(SF_PRIVATE_KEY));
+  return `${signingInput}.${sig}`;
+}
+
 async function refreshAccessToken(): Promise<string> {
-  if (!SF_REFRESH_TOKEN) return cachedAccessToken;
+  if (!SF_CLIENT_ID || !SF_USERNAME || !SF_PRIVATE_KEY) {
+    console.warn("[SF Auth] JWT credentials not fully configured — using cached/env token");
+    return cachedAccessToken;
+  }
   try {
+    const jwt = buildJwt();
     const res = await fetch(`${SF_LOGIN_URL}/services/oauth2/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: SF_REFRESH_TOKEN,
-        client_id: "PlatformCLI",
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt,
       }),
     });
     const data = await res.json() as any;
     if (data.access_token) {
       cachedAccessToken = data.access_token;
-      tokenExpiresAt = Date.now() + 90 * 60 * 1000;
-      console.log("[SF Auth] Token refreshed successfully");
+      tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+      console.log("[SF Auth] JWT token obtained successfully");
       return cachedAccessToken;
     }
-    console.error("[SF Auth] Refresh failed:", data.error, data.error_description);
+    console.error("[SF Auth] JWT token request failed:", data.error, data.error_description);
     return cachedAccessToken;
   } catch (err: any) {
-    console.error("[SF Auth] Refresh error:", err.message);
+    console.error("[SF Auth] JWT error:", err.message);
     return cachedAccessToken;
   }
 }
@@ -859,341 +891,8 @@ export async function syncLenderSubmissionsToSalesforce(
   return results;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PRODUCTION ORG SYNC — mirrors decisions to the live SF org in parallel
-// Uses separate credentials (SF_PROD_*) so sandbox sync is unaffected.
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── 8-Method Opportunity Finder + Auto-Create ───────────────────────────────
 
-const SF_PROD_INSTANCE_URL = process.env.SF_PROD_INSTANCE_URL || "";
-const SF_PROD_ACCESS_TOKEN_ENV = process.env.SF_PROD_ACCESS_TOKEN || "";
-
-let prodCachedToken = SF_PROD_ACCESS_TOKEN_ENV;
-let prodTokenExpiry = SF_PROD_ACCESS_TOKEN_ENV ? Date.now() + 90 * 60 * 1000 : 0;
-let prodRefreshPromise: Promise<string> | null = null;
-
-async function getProdAccessToken(): Promise<string> {
-  if (prodCachedToken && Date.now() < prodTokenExpiry) return prodCachedToken;
-  if (prodRefreshPromise) return await prodRefreshPromise;
-
-  prodRefreshPromise = (async () => {
-    try {
-      // Strategy 1: Refresh token with Connected App
-      const refreshToken = process.env.SF_PROD_REFRESH_TOKEN;
-      const clientId = process.env.SF_PROD_CLIENT_ID;
-      if (refreshToken && clientId) {
-        const loginUrl = process.env.SF_PROD_LOGIN_URL || "https://login.salesforce.com";
-        const params: Record<string, string> = {
-          grant_type: "refresh_token",
-          client_id: clientId,
-          refresh_token: refreshToken,
-        };
-        if (process.env.SF_PROD_CLIENT_SECRET) params.client_secret = process.env.SF_PROD_CLIENT_SECRET;
-        const res = await fetch(`${loginUrl}/services/oauth2/token`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams(params),
-        });
-        if (res.ok) {
-          const data = await res.json() as any;
-          prodCachedToken = data.access_token;
-          prodTokenExpiry = Date.now() + 90 * 60 * 1000;
-          console.log("[SF Prod Auth] Token refreshed");
-          return prodCachedToken;
-        }
-      }
-
-      // Strategy 2: Username-password flow
-      const username = process.env.SF_PROD_USERNAME;
-      const password = process.env.SF_PROD_PASSWORD;
-      if (username && password) {
-        const loginUrl = process.env.SF_PROD_LOGIN_URL || "https://login.salesforce.com";
-        const res = await fetch(`${loginUrl}/services/oauth2/token`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "password",
-            client_id: process.env.SF_PROD_CLIENT_ID || "PlatformCLI",
-            username,
-            password: password + (process.env.SF_PROD_SECURITY_TOKEN || ""),
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json() as any;
-          prodCachedToken = data.access_token;
-          prodTokenExpiry = Date.now() + 90 * 60 * 1000;
-          console.log("[SF Prod Auth] Token obtained via password flow");
-          return prodCachedToken;
-        }
-      }
-
-      // Strategy 3: Direct access token (env var, short-lived)
-      if (SF_PROD_ACCESS_TOKEN_ENV) {
-        prodCachedToken = SF_PROD_ACCESS_TOKEN_ENV;
-        prodTokenExpiry = Date.now() + 60 * 60 * 1000;
-        return prodCachedToken;
-      }
-
-      return "";
-    } catch (err: any) {
-      console.error("[SF Prod Auth] Error:", err.message);
-      return prodCachedToken;
-    } finally {
-      prodRefreshPromise = null;
-    }
-  })();
-
-  return await prodRefreshPromise;
-}
-
-async function prodSfApi(method: string, path: string, body?: object): Promise<{ success: boolean; id?: string; data?: any; error?: string }> {
-  try {
-    const token = await getProdAccessToken();
-    if (!token) return { success: false, error: "no prod token" };
-    const res = await fetch(`${SF_PROD_INSTANCE_URL}/services/data/v66.0${path}`, {
-      method,
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (res.status === 204) return { success: true };
-    const data = await res.json();
-    if (res.ok) return { success: true, id: data.id, data };
-    const msg = Array.isArray(data) ? data.map((e: any) => e.message).join("; ") : data.message || JSON.stringify(data);
-    return { success: false, error: msg };
-  } catch (err: any) {
-    return { success: false, error: err.message };
-  }
-}
-
-async function prodSfQuery(soql: string): Promise<any[]> {
-  try {
-    const token = await getProdAccessToken();
-    if (!token) return [];
-    const res = await fetch(
-      `${SF_PROD_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
-      { headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } }
-    );
-    return ((await res.json()) as any).records || [];
-  } catch { return []; }
-}
-
-/**
- * Sync a decision to the PRODUCTION SF org.
- * Mirrors the same logic as syncDecisionToSalesforce but against SF_PROD_*.
- */
-export async function syncDecisionToProductionSf(decision: Record<string, any>): Promise<{ synced: boolean; action?: string; oppId?: string; error?: string }> {
-  if (!SF_PROD_INSTANCE_URL) {
-    return { synced: false, error: "SF_PROD_INSTANCE_URL not configured" };
-  }
-
-  try {
-    const email = decision.business_email || decision.businessEmail || "";
-    const secondaryEmail = decision.secondary_email || decision.secondaryEmail || "";
-    const phone = decision.business_phone || decision.businessPhone || "";
-    const status = decision.status || "";
-    const sfStage = dashboardStatusToSfStage(status);
-
-    console.log(`[SF Prod Sync] ${decision.business_name || email} → status=${status}, sfStage=${sfStage}`);
-
-    // Find Opportunity in production — same multi-fallback chain
-    let oppId = "";
-
-    if (email) {
-      const byEmail = await prodSfQuery(`SELECT Id FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}' LIMIT 1`);
-      if (byEmail.length) oppId = byEmail[0].Id;
-    }
-
-    if (!oppId && phone) {
-      const digits = phone.replace(/\D/g, "").slice(-10);
-      if (digits.length === 10) {
-        const byPhone = await prodSfQuery(`SELECT Id FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' LIMIT 1`);
-        if (byPhone.length) oppId = byPhone[0].Id;
-      }
-    }
-
-    // Contact email → Account → Opportunity
-    if (!oppId) {
-      for (const e of [email, secondaryEmail].filter(Boolean)) {
-        const byAcctContact = await prodSfQuery(
-          `SELECT Id FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${e.replace(/'/g, "\\'")}') LIMIT 1`
-        );
-        if (byAcctContact.length) { oppId = byAcctContact[0].Id; break; }
-      }
-    }
-
-    // Business name fallback
-    if (!oppId) {
-      const bizName = decision.business_name || decision.businessName || "";
-      if (bizName && bizName.length > 3) {
-        const byName = await prodSfQuery(
-          `SELECT Id FROM Opportunity WHERE Name LIKE '${bizName.replace(/'/g, "\\'").slice(0, 80)}%' AND IsClosed = false LIMIT 1`
-        );
-        if (byName.length) oppId = byName[0].Id;
-      }
-    }
-
-    if (!oppId) {
-      console.log("[SF Prod Sync] No matching Opportunity in production — skipping");
-      return { synced: false, error: "no matching Opportunity in production" };
-    }
-
-    // Build update payload
-    const hasApproval = !!(decision.advance_amount || decision.advanceAmount);
-    const updateFields: Record<string, any> = {
-      StageName: sfStage,
-      Engagement_Status__c: computePipelineBucket(sfStage, hasApproval),
-    };
-
-    if (status === "approved" || status === "funded") {
-      if (decision.advance_amount || decision.advanceAmount)
-        updateFields.Highest_Approval__c = parseNum(decision.advance_amount || decision.advanceAmount);
-      if (decision.factor_rate || decision.factorRate)
-        updateFields.Factor_Rate__c = parseNum(decision.factor_rate || decision.factorRate);
-      if (decision.lender)
-        updateFields.Description = `Lender: ${decision.lender}`;
-      if (decision.term)
-        updateFields.Term_Length__c = parseNum(decision.term?.replace?.(/[^\d]/g, ""));
-      if (decision.payment_frequency || decision.paymentFrequency)
-        updateFields.Payment_Frequency__c = decision.payment_frequency || decision.paymentFrequency;
-    }
-
-    if (status === "funded") {
-      if (decision.advance_amount || decision.advanceAmount)
-        updateFields.Amount_Funded__c = parseNum(decision.advance_amount || decision.advanceAmount);
-      if (decision.funded_date || decision.fundedDate) {
-        const fd = new Date(decision.funded_date || decision.fundedDate);
-        if (!isNaN(fd.getTime())) {
-          updateFields.Funded_Date__c = fd.toISOString().split("T")[0];
-          updateFields.CloseDate = fd.toISOString().split("T")[0];
-        }
-      }
-    }
-
-    if (status === "declined" || status === "unqualified") {
-      if (decision.decline_reason || decision.declineReason)
-        updateFields.Declined_Reason__c = decision.decline_reason || decision.declineReason;
-      updateFields.CloseDate = new Date().toISOString().split("T")[0];
-    }
-
-    const cleaned = clean(updateFields);
-    const res = await prodSfApi("PATCH", `/sobjects/Opportunity/${oppId}`, cleaned);
-
-    if (res.success) {
-      console.log(`[SF Prod Sync] Updated Opp ${oppId}: stage=${sfStage}`);
-
-      // Sync lender submissions to production
-      await syncLenderSubmissionsToProductionSf(oppId, decision).catch(err =>
-        console.error(`[SF Prod Lender Sync] Error (non-fatal): ${err.message}`)
-      );
-
-      return { synced: true, action: "updated", oppId };
-    } else {
-      console.error(`[SF Prod Sync] Failed: ${res.error}`);
-      return { synced: false, oppId, error: res.error };
-    }
-  } catch (err: any) {
-    console.error(`[SF Prod Sync] Error: ${err.message}`);
-    return { synced: false, error: err.message };
-  }
-}
-
-/**
- * Sync lender submissions to PRODUCTION SF org.
- */
-async function syncLenderSubmissionsToProductionSf(oppId: string, decision: Record<string, any>): Promise<void> {
-  // Gather submissions from additional_approvals
-  const additionalApprovals = decision.additional_approvals || decision.additionalApprovals;
-  const submissions: Array<{ lender: string; amount: any; factorRate: any; buyRate?: any; term: any; date?: any; notes?: string; status: string }> = [];
-  const seenLenders = new Set<string>();
-
-  if (Array.isArray(additionalApprovals) && additionalApprovals.length > 0) {
-    for (const aa of additionalApprovals) {
-      if (!aa.lender) continue;
-      const key = aa.lender.toLowerCase().trim();
-      if (seenLenders.has(key)) continue;
-      seenLenders.add(key);
-      submissions.push({
-        lender: aa.lender,
-        status: aa.isPrimary ? (decision.status || "approved") : "approved",
-        amount: aa.advanceAmount || aa.amount,
-        factorRate: aa.factorRate || aa.factor_rate,
-        buyRate: aa.buyRate || aa.buy_rate,
-        term: aa.term,
-        date: aa.approvalDate || aa.approval_date || aa.date,
-        notes: aa.notes,
-      });
-    }
-  }
-
-  if (submissions.length === 0 && decision.lender) {
-    submissions.push({
-      lender: decision.lender,
-      status: decision.status || "approved",
-      amount: decision.advance_amount || decision.advanceAmount,
-      factorRate: decision.factor_rate || decision.factorRate,
-      term: decision.term,
-      date: decision.approval_date || decision.approvalDate,
-      notes: decision.notes,
-    });
-  }
-
-  if (submissions.length === 0) return;
-
-  // Get existing submissions for this opp
-  const existing = await prodSfQuery(`SELECT Id, Name FROM Lender_Submission__c WHERE Opportunity__c = '${oppId}'`);
-  const existingByName = new Map<string, string>();
-  for (const e of existing) existingByName.set(e.Name?.toLowerCase()?.trim(), e.Id);
-
-  // Get funder accounts from production
-  const funders = await prodSfQuery("SELECT Id, Name FROM Account WHERE RecordType.Name = 'Funder'");
-  const funderMap = new Map<string, string>();
-  for (const f of funders) funderMap.set(f.Name.toLowerCase().trim(), f.Id);
-
-  function findFunder(name: string): string | null {
-    const key = name.toLowerCase().trim();
-    if (funderMap.has(key)) return funderMap.get(key)!;
-    for (const [k, id] of funderMap) {
-      if (k.includes(key) || key.includes(k)) return id;
-    }
-    return null;
-  }
-
-  const statusMap: Record<string, string> = { approved: "Approved", declined: "Declined", funded: "Approved", unqualified: "Declined" };
-
-  for (const sub of submissions) {
-    try {
-      const lenderId = findFunder(sub.lender);
-      const subStatus = statusMap[sub.status?.toLowerCase()] || "Submitted";
-      const subDate = sub.date ? new Date(sub.date) : new Date();
-      const dateStr = !isNaN(subDate.getTime()) ? subDate.toISOString().split("T")[0] : null;
-
-      const record = clean({
-        Opportunity__c: oppId,
-        Lender__c: lenderId,
-        Status__c: subStatus,
-        Offer_Amount__c: parseNum(sub.amount),
-        Factor_Rate__c: parseNum(sub.factorRate),
-        Buy_Rate__c: parseNum(sub.buyRate),
-        Term_Months__c: parseTermMonths(sub.term),
-        Submitted_Date__c: dateStr,
-        Response_Date__c: dateStr,
-        Submission_Notes__c: sub.notes || null,
-      });
-
-      const existingId = existingByName.get(sub.lender.toLowerCase().trim());
-      if (existingId) {
-        await prodSfApi("PATCH", `/sobjects/Lender_Submission__c/${existingId}`, record);
-        console.log(`[SF Prod Lender] Updated: ${sub.lender}`);
-      } else {
-        await prodSfApi("POST", "/sobjects/Lender_Submission__c", { ...record, Name: sub.lender });
-        console.log(`[SF Prod Lender] Created: ${sub.lender}`);
-      }
-    } catch (err: any) {
-      console.error(`[SF Prod Lender] Error for ${sub.lender}: ${err.message}`);
-    }
-  }
-}
-
-// ─── 8-Method Opportunity Finder + Auto-Create ──────────────────────────────
 
 interface FindOppResult {
   oppId: string;
