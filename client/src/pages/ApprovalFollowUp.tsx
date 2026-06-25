@@ -14,18 +14,20 @@ import {
 const fmt$ = (v: number) => "$" + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
 const urgencyConfig: Record<string, { label: string; color: string; bg: string; border: string; icon: any }> = {
-  critical: { label: "Never Called", color: "#ef4444", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.3)", icon: XCircle },
   stale: { label: "Stale (30d+)", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)", icon: AlertTriangle },
   aging: { label: "Aging (7-30d)", color: "#3b82f6", bg: "rgba(59,130,246,0.1)", border: "rgba(59,130,246,0.3)", icon: Clock },
+  recent: { label: "Recent", color: "#10b981", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.3)", icon: CheckCircle2 },
+  no_zoom_record: { label: "No Zoom Record", color: "#94a3b8", bg: "rgba(148,163,184,0.1)", border: "rgba(148,163,184,0.3)", icon: Phone },
   no_phone: { label: "No Phone", color: "#8b5cf6", bg: "rgba(139,92,246,0.1)", border: "rgba(139,92,246,0.3)", icon: PhoneOff },
   ok: { label: "Recent", color: "#10b981", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.3)", icon: CheckCircle2 },
   dead: { label: "Dead", color: "#64748b", bg: "rgba(100,116,139,0.1)", border: "rgba(100,116,139,0.3)", icon: XCircle },
+  critical: { label: "No Zoom Record", color: "#94a3b8", bg: "rgba(148,163,184,0.1)", border: "rgba(148,163,184,0.3)", icon: Phone },
 };
 
 export default function ApprovalFollowUp() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
-  const [filter, setFilter] = useState("actionable");
+  const [filter, setFilter] = useState("all");
   const [repFilter, setRepFilter] = useState("all");
   const [search, setSearch] = useState("");
 
@@ -53,8 +55,7 @@ export default function ApprovalFollowUp() {
   const reps = [...new Set(deals.map((d: any) => d.rep).filter(Boolean))].sort();
 
   const filtered = deals.filter((d: any) => {
-    if (filter === "actionable" && (d.isDead || d.urgency === "no_phone")) return false;
-    if (filter !== "all" && filter !== "actionable" && d.urgency !== filter) return false;
+    if (filter !== "all" && d.urgency !== filter) return false;
     if (repFilter !== "all" && d.rep !== repFilter) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -95,37 +96,40 @@ export default function ApprovalFollowUp() {
             {/* Summary Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <Card className="bg-gray-900 border-gray-800"><CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-1"><XCircle className="w-4 h-4 text-red-400" /><span className="text-[10px] text-gray-500 uppercase">Never Called</span></div>
-                <p className="text-2xl font-bold text-white">{report.neverCalled}</p>
-                <p className="text-xs text-red-400">{fmt$(report.neverCalledValue)}</p>
+                <div className="flex items-center gap-2 mb-1"><Phone className="w-4 h-4 text-emerald-400" /><span className="text-[10px] text-gray-500 uppercase">With Call Data</span></div>
+                <p className="text-2xl font-bold text-white">{report.withCallData || 0}</p>
+                <p className="text-xs text-gray-500">Zoom call history matched</p>
               </CardContent></Card>
               <Card className="bg-gray-900 border-gray-800"><CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1"><AlertTriangle className="w-4 h-4 text-amber-400" /><span className="text-[10px] text-gray-500 uppercase">Stale (30d+)</span></div>
-                <p className="text-2xl font-bold text-white">{counts["stale"] || 0}</p>
+                <p className="text-2xl font-bold text-white">{report.stale || 0}</p>
+                <p className="text-xs text-gray-500">last call 30+ days ago</p>
               </CardContent></Card>
               <Card className="bg-gray-900 border-gray-800"><CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-blue-400" /><span className="text-[10px] text-gray-500 uppercase">Aging (7-30d)</span></div>
-                <p className="text-2xl font-bold text-white">{counts["aging"] || 0}</p>
+                <div className="flex items-center gap-2 mb-1"><Phone className="w-4 h-4 text-gray-400" /><span className="text-[10px] text-gray-500 uppercase">No Zoom Record</span></div>
+                <p className="text-2xl font-bold text-white">{report.noZoomRecord || 0}</p>
+                <p className="text-xs text-gray-500">has phone, no Zoom match</p>
               </CardContent></Card>
               <Card className="bg-gray-900 border-gray-800"><CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-1"><TrendingUp className="w-4 h-4 text-teal-400" /><span className="text-[10px] text-gray-500 uppercase">Actionable</span></div>
-                <p className="text-2xl font-bold text-white">{actionableCount}</p>
+                <div className="flex items-center gap-2 mb-1"><PhoneOff className="w-4 h-4 text-purple-400" /><span className="text-[10px] text-gray-500 uppercase">No Phone</span></div>
+                <p className="text-2xl font-bold text-white">{report.noPhone || 0}</p>
+                <p className="text-xs text-gray-500">need contact info</p>
               </CardContent></Card>
               <Card className="bg-gray-900 border-gray-800"><CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1"><DollarSign className="w-4 h-4 text-emerald-400" /><span className="text-[10px] text-gray-500 uppercase">Total Pipeline</span></div>
                 <p className="text-2xl font-bold text-white">{fmt$(report.totalValue)}</p>
+                <p className="text-xs text-gray-500">{report.total} deals</p>
               </CardContent></Card>
             </div>
 
             {/* Filters */}
             <div className="flex flex-wrap gap-2 items-center">
               {[
-                { key: "actionable", label: "Actionable", count: actionableCount },
                 { key: "all", label: "All", count: deals.length },
-                { key: "critical", label: "Never Called", count: counts["critical"] || 0 },
                 { key: "stale", label: "Stale 30d+", count: counts["stale"] || 0 },
                 { key: "aging", label: "Aging 7-30d", count: counts["aging"] || 0 },
-                { key: "ok", label: "Recent", count: counts["ok"] || 0 },
+                { key: "recent", label: "Recent", count: counts["recent"] || 0 },
+                { key: "no_zoom_record", label: "No Zoom Record", count: counts["no_zoom_record"] || 0 },
                 { key: "no_phone", label: "No Phone", count: counts["no_phone"] || 0 },
                 { key: "dead", label: "Dead", count: counts["dead"] || 0 },
               ].map(f => (
@@ -176,8 +180,8 @@ export default function ApprovalFollowUp() {
                         <div><p className="text-xs text-gray-500">Approved</p><p className="text-gray-300">{deal.approvalDate} <span className="text-gray-600">({deal.daysAppr}d)</span></p></div>
                         <div>
                           <p className="text-xs text-gray-500">Last Called</p>
-                          <p className={deal.callDate === "NEVER" ? "text-red-400 font-bold" : deal.callDate === "NO PHONE" ? "text-purple-400" : "text-gray-300"}>
-                            {deal.callDate === "NEVER" ? "NEVER CALLED" : deal.callDate === "NO PHONE" ? "No phone" : `${deal.callDate} (${deal.daysSinceCall}d)`}
+                          <p className={!deal.callDate && deal.phone ? "text-gray-400" : !deal.phone ? "text-purple-400" : "text-gray-300"}>
+                            {deal.callDate ? `${deal.callDate} (${deal.daysSinceCall}d ago)` : deal.phone ? "No Zoom record" : "No phone on file"}
                           </p>
                         </div>
                         <div><p className="text-xs text-gray-500">Call Result</p><p className="text-gray-300">{deal.callResult || "—"} {deal.callDuration > 0 && `(${Math.floor(deal.callDuration/60)}:${String(deal.callDuration%60).padStart(2,"0")})`}</p></div>
