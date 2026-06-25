@@ -1,41 +1,69 @@
 /**
  * Salesforce Sync — creates/updates SF records when a new application is saved.
  *
- * Auth: uses SF_REFRESH_TOKEN to auto-refresh the access token via OAuth2.
- * Falls back to SF_ACCESS_TOKEN if refresh token is not configured.
- * Tokens are cached in memory and refreshed on 401 or expiry.
+ * Auth: JWT Bearer Flow using a Connected App + RSA private key.
+ * Access tokens are cached for 55 minutes and auto-refreshed via JWT (no refresh token needed).
+ * Falls back to SF_ACCESS_TOKEN env var if JWT credentials are not fully configured.
  */
 
+import crypto from "crypto";
+
 const SF_INSTANCE_URL = process.env.SF_INSTANCE_URL;
-const SF_REFRESH_TOKEN = process.env.SF_REFRESH_TOKEN;
-const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://test.salesforce.com";
+const SF_LOGIN_URL = process.env.SF_LOGIN_URL || "https://login.salesforce.com";
+const SF_CLIENT_ID = process.env.SF_CLIENT_ID || "";
+const SF_USERNAME = process.env.SF_USERNAME || "";
+const SF_PRIVATE_KEY = (process.env.SF_PRIVATE_KEY || "").replace(/\\n/g, "\n");
 
 let cachedAccessToken = process.env.SF_ACCESS_TOKEN || "";
 let tokenExpiresAt = 0;
 
+function base64url(input: string | Buffer): string {
+  const buf = typeof input === "string" ? Buffer.from(input) : input;
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+function buildJwt(): string {
+  const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const now = Math.floor(Date.now() / 1000);
+  const claims = base64url(JSON.stringify({
+    iss: SF_CLIENT_ID,
+    sub: SF_USERNAME,
+    aud: SF_LOGIN_URL,
+    exp: now + 180,
+  }));
+  const signingInput = `${header}.${claims}`;
+  const sign = crypto.createSign("SHA256");
+  sign.update(signingInput);
+  const sig = base64url(sign.sign(SF_PRIVATE_KEY));
+  return `${signingInput}.${sig}`;
+}
+
 async function refreshAccessToken(): Promise<string> {
-  if (!SF_REFRESH_TOKEN) return cachedAccessToken;
+  if (!SF_CLIENT_ID || !SF_USERNAME || !SF_PRIVATE_KEY) {
+    console.warn("[SF Auth] JWT credentials not fully configured — using cached/env token");
+    return cachedAccessToken;
+  }
   try {
+    const jwt = buildJwt();
     const res = await fetch(`${SF_LOGIN_URL}/services/oauth2/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: SF_REFRESH_TOKEN,
-        client_id: "PlatformCLI",
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt,
       }),
     });
     const data = await res.json() as any;
     if (data.access_token) {
       cachedAccessToken = data.access_token;
-      tokenExpiresAt = Date.now() + 90 * 60 * 1000;
-      console.log("[SF Auth] Token refreshed successfully");
+      tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+      console.log("[SF Auth] JWT token obtained successfully");
       return cachedAccessToken;
     }
-    console.error("[SF Auth] Refresh failed:", data.error, data.error_description);
+    console.error("[SF Auth] JWT token request failed:", data.error, data.error_description);
     return cachedAccessToken;
   } catch (err: any) {
-    console.error("[SF Auth] Refresh error:", err.message);
+    console.error("[SF Auth] JWT error:", err.message);
     return cachedAccessToken;
   }
 }
