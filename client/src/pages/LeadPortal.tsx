@@ -70,9 +70,9 @@ const LEAD_CSS = `
 
   /* ── PAGE WRAP ── */
   .lead-portal .lp-wrap {
-    max-width: 900px;
+    max-width: 960px;
     margin: 0 auto;
-    padding: 32px 24px 80px;
+    padding: 32px 32px 80px;
   }
 
   .lead-portal .lp-title {
@@ -1551,19 +1551,21 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
     );
   }
 
-  const sectionStyle = { marginBottom: 28 } as const;
-  const sectionHeaderStyle = { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 17, fontWeight: 700 as const, color: "#fff", marginBottom: 4 };
-  const sectionSubStyle = { fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 14, lineHeight: 1.5 };
+  const sectionWrap = { marginBottom: 36, padding: "24px 22px", borderRadius: 16, border: "1px solid rgba(255,255,255,0.06)" } as const;
+  const sectionHeaderStyle = { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700 as const, color: "#fff", marginBottom: 6 };
+  const sectionSubStyle = { fontSize: 13, color: "rgba(255,255,255,0.55)", marginBottom: 16, lineHeight: 1.6 };
 
   return (
     <div>
       {/* ═══ SECTION 1: TRACK YOUR POSITIONS ═══ */}
-      <div style={sectionStyle}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <p style={sectionHeaderStyle}>Track Your Positions</p>
-          <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, padding: "8px 18px" }}>Upload Statements</button>
+      <div style={{ ...sectionWrap, background: "linear-gradient(180deg, rgba(13,148,136,0.06) 0%, rgba(15,23,42,0.4) 100%)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 6 }}>
+          <div>
+            <p style={sectionHeaderStyle}>Track Your Positions</p>
+            <p style={sectionSubStyle}>Upload your bank statements and we'll auto-detect your funding positions, payment schedules, and estimated payoff dates.</p>
+          </div>
+          <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, padding: "8px 18px", whiteSpace: "nowrap" as const, flexShrink: 0 }}>Upload Statements</button>
         </div>
-        <p style={sectionSubStyle}>Upload your bank statements and we'll auto-detect your funding positions, payment schedules, and estimated payoff dates.</p>
 
         {activePositions.length > 0 ? (
           <>
@@ -1620,7 +1622,7 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
       </div>
 
       {/* ═══ SECTION 2: TRACK YOUR FINANCIALS ═══ */}
-      <div style={sectionStyle}>
+      <div style={{ ...sectionWrap, background: "linear-gradient(180deg, rgba(59,130,246,0.05) 0%, rgba(15,23,42,0.4) 100%)" }}>
         <p style={sectionHeaderStyle}>Track Your Financials</p>
         <p style={sectionSubStyle}>See how your revenue, expenses, and cash flow are trending. Understand how your funding payments impact your bottom line.</p>
 
@@ -1665,26 +1667,20 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
       </div>
 
       {/* ═══ SECTION 3: GET FUNDED ═══ */}
-      <div style={sectionStyle}>
-        <div className="card" style={{ background: "linear-gradient(135deg, rgba(13,148,136,0.10), rgba(13,148,136,0.03))", border: "1px solid rgba(13,148,136,0.25)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-            <div>
-              <p style={sectionHeaderStyle}>Ready for Funding?</p>
-              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, lineHeight: 1.6, marginTop: 4 }}>
-                {activePositions.length > 0
-                  ? "Based on your current positions and financial profile, see if you qualify for a renewal, consolidation, or additional capital."
-                  : "Check what funding options are available for your business. SBA loans, MCAs, lines of credit, and more. Takes about 5 minutes."}
-              </p>
-            </div>
-            <button className="btn-primary" onClick={() => onSwitchTab("qualify")} style={{ whiteSpace: "nowrap" as const, flexShrink: 0, padding: "12px 24px" }}>
-              Check Options
-            </button>
-          </div>
-        </div>
+      <div style={{ ...sectionWrap, background: "linear-gradient(135deg, rgba(250,204,21,0.06) 0%, rgba(13,148,136,0.08) 100%)", border: "1px solid rgba(250,204,21,0.15)" }}>
+        <p style={sectionHeaderStyle}>Ready for Funding?</p>
+        <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+          {activePositions.length > 0
+            ? "Based on your current positions and financial profile, see if you qualify for a renewal, consolidation, or additional capital."
+            : "Check what funding options are available for your business. SBA loans, MCAs, lines of credit, and more. Takes about 5 minutes."}
+        </p>
+        <button className="btn-primary" onClick={() => onSwitchTab("qualify")} style={{ padding: "12px 28px" }}>
+          Check Options
+        </button>
       </div>
 
       {/* ═══ SECTION 4: BUSINESS SERVICES ═══ */}
-      <div style={sectionStyle}>
+      <div style={{ ...sectionWrap, background: "linear-gradient(180deg, rgba(139,92,246,0.05) 0%, rgba(15,23,42,0.4) 100%)" }}>
         <p style={sectionHeaderStyle}>Business Services</p>
         <p style={sectionSubStyle}>Beyond funding, we help businesses grow with payment processing, professional websites, and CRM automation.</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 8 }}>
@@ -1711,7 +1707,7 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
       </div>
 
       {/* ═══ SECTION 5: BUSINESS OWNER RESOURCES ═══ */}
-      <div style={sectionStyle}>
+      <div style={{ ...sectionWrap, background: "linear-gradient(180deg, rgba(52,211,153,0.05) 0%, rgba(15,23,42,0.4) 100%)" }}>
         <p style={sectionHeaderStyle}>Business Owner Resources</p>
         <p style={sectionSubStyle}>Free tools and resources to help you monitor credit, find funding programs, and grow your business.</p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 8 }}>
