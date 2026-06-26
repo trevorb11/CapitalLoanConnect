@@ -522,7 +522,6 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       LeadSource: app.referralSource || app.referral_source || "Website",
       Revenue_Verified__c: false,
       Bank_Statement_Tampering_Flag__c: false,
-      Engagement_Status__c: "Working",
     });
 
     const oppRes = await sfApi("POST", "/sobjects/Opportunity", opportunity);
@@ -588,7 +587,6 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
     const hasApproval = !!(decision.advance_amount || decision.advanceAmount);
     const updateFields: Record<string, any> = {
       StageName: sfStage,
-      Engagement_Status__c: computePipelineBucket(sfStage, hasApproval),
     };
 
     // Approval fields
@@ -1148,7 +1146,6 @@ async function autoCreateSfOpportunity(params: {
     Purpose_Of_Funds__c: app?.useOfFunds || app?.use_of_funds || null,
     Funding_Time_Frame__c: app?.fundingUrgency || app?.funding_urgency || null,
     LeadSource: app?.referralSource || app?.referral_source || "Website",
-    Engagement_Status__c: computePipelineBucket(sfStage, hasApproval),
     Revenue_Verified__c: false,
     Bank_Statement_Tampering_Flag__c: false,
   });
@@ -1244,17 +1241,32 @@ export async function syncUwSubmissionToSalesforce(
 
   const { snapshot, dealOverview } = options || {};
   const safeEmail = email.toLowerCase().trim();
+  const app = application || {};
+  const ov = dealOverview || {};
+  const snap = snapshot || {};
 
   try {
-    const opp = await findSfOpportunityByEmail(safeEmail);
-    if (!opp) {
-      console.log(`[SF UW Sync] No opportunity found for ${safeEmail} — skipping`);
+    // Use the full 8-method finder + auto-create so a missing Opp is created
+    // rather than silently skipped.
+    const found = await findOrCreateSfOpportunity({
+      email:        safeEmail,
+      phone:        app.phone || app.businessPhone || app.business_phone,
+      businessName: app.businessName || app.business_name,
+      fullName:     app.ownerName   || app.owner_name || app.contactName || app.contact_name,
+      stage:        "Application & Docs",
+      app,
+    });
+
+    if (!found) {
+      console.log(`[SF UW Sync] Could not find or create Opportunity for ${safeEmail} — skipping`);
       return;
     }
 
-    const ov = dealOverview || {};
-    const app = application || {};
-    const snap = snapshot || {};
+    if (found.created) {
+      console.log(`[SF UW Sync] Auto-created Opp ${found.oppId} for ${safeEmail} (method: ${found.method})`);
+    } else {
+      console.log(`[SF UW Sync] Found Opp ${found.oppId} via method: ${found.method}`);
+    }
 
     // Average monthly deposit count from snapshot monthly breakdown
     let avgMonthlyDeposits: number | null = null;
@@ -1288,11 +1300,11 @@ export async function syncUwSubmissionToSalesforce(
 
     if (Object.keys(fields).length === 0) return;
 
-    const res = await sfApi("PATCH", `/sobjects/Opportunity/${opp.Id}`, fields);
+    const res = await sfApi("PATCH", `/sobjects/Opportunity/${found.oppId}`, fields);
     if (res.success) {
-      console.log(`[SF UW Sync] Deal Qualification updated on Opp ${opp.Id} — ${Object.keys(fields).length} fields`);
+      console.log(`[SF UW Sync] Deal Qualification updated on Opp ${found.oppId} — ${Object.keys(fields).length} fields`);
     } else {
-      console.warn(`[SF UW Sync] Opp ${opp.Id} update failed: ${res.error}`);
+      console.warn(`[SF UW Sync] Opp ${found.oppId} update failed: ${res.error}`);
     }
   } catch (err: any) {
     console.error("[SF UW Sync] Error:", err.message);

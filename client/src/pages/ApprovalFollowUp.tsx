@@ -59,7 +59,7 @@ export default function ApprovalFollowUp() {
     if (repFilter !== "all" && d.rep !== repFilter) return false;
     if (search) {
       const q = search.toLowerCase();
-      if (!d.name.toLowerCase().includes(q) && !d.lender.toLowerCase().includes(q) && !(d.email || "").toLowerCase().includes(q)) return false;
+      if (!(d.name || "").toLowerCase().includes(q) && !(d.lender || "").toLowerCase().includes(q) && !(d.email || "").toLowerCase().includes(q)) return false;
     }
     return true;
   });

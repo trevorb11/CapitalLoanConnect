@@ -554,6 +554,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ---------------------------------------------------------------------------
+  // Re-sync UW submissions to Salesforce (find-or-create Opp per submission)
+  // Body: { emails?: string[] }  — omit to sync all of today's submissions
+  // ---------------------------------------------------------------------------
+  app.post("/api/admin/sf-sync-uw", async (req, res) => {
+    const apiKey = req.headers["x-claude-api-key"] as string;
+    const isAuthed = apiKey === process.env.CLAUDE_API_KEY || req.session?.user;
+    if (!isAuthed) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+      let emails: string[] = req.body?.emails || [];
+
+      // Default: all applications submitted to UW today
+      if (!emails.length) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const rows = await db.execute(sql`
+          SELECT email FROM loan_applications
+          WHERE uw_submitted_at >= ${today.toISOString()}
+          ORDER BY uw_submitted_at DESC
+        `);
+        emails = (rows.rows as any[]).map((r: any) => r.email).filter(Boolean);
+      }
+
+      const results: Array<{ email: string; status: string; detail?: string }> = [];
+
+      for (const rawEmail of emails) {
+        const email = rawEmail.toLowerCase().trim();
+        try {
+          // Load application record
+          const appRows = await db.execute(sql`
+            SELECT * FROM loan_applications WHERE LOWER(email) = ${email} LIMIT 1
+          `);
+          const application = (appRows.rows?.[0] as any) ?? null;
+
+          // Load saved AI snapshot if present
+          const snapRows = await db.execute(sql`
+            SELECT snapshot FROM underwriting_snapshots WHERE LOWER(email) = ${email} LIMIT 1
+          `);
+          const snapshot = (snapRows.rows?.[0] as any)?.snapshot ?? null;
+
+          await syncUwSubmissionToSalesforce(email, application, { snapshot });
+          results.push({ email, status: "ok" });
+        } catch (err: any) {
+          results.push({ email, status: "error", detail: err.message });
+        }
+        // Small delay to avoid SF rate limits
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      console.log(`[SF UW Re-sync] Done: ${results.length} processed`);
+      return res.json({ ok: true, processed: results.length, results });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // Salesforce inbound poll — call periodically or via cron to sync SF → dashboard
   // ---------------------------------------------------------------------------
   app.post("/api/admin/sf-poll", async (req, res) => {
