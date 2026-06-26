@@ -14007,6 +14007,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ─── SMS/EMAIL ACTIVITY SYNC TO SALESFORCE ──────────────────────────────
+
+  async function findSfContactAndOpp(phone?: string, email?: string): Promise<{ whoId?: string; whatId?: string } | null> {
+    if (!process.env.SF_INSTANCE_URL) return null;
+    const { getAccessToken: getSfToken } = await import("./services/salesforce");
+    const token = await getSfToken();
+    if (!token) return null;
+    const sfQ = async (soql: string) => {
+      try {
+        const r = await fetch(`${process.env.SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } });
+        if (!r.ok) return [];
+        return ((await r.json()) as any).records || [];
+      } catch { return []; }
+    };
+    const digits = (phone || "").replace(/\D/g, "").slice(-10);
+    let whoId: string | undefined, whatId: string | undefined;
+    if (email) {
+      const c = await sfQ(`SELECT Id, AccountId FROM Contact WHERE Email = '${email.replace(/'/g, "\\'")}' LIMIT 1`);
+      if (c.length) { whoId = c[0].Id; const o = await sfQ(`SELECT Id FROM Opportunity WHERE AccountId = '${c[0].AccountId}' ORDER BY LastModifiedDate DESC LIMIT 1`); if (o.length) whatId = o[0].Id; }
+    }
+    if (!whoId && digits.length === 10) {
+      const c = await sfQ(`SELECT Id, AccountId FROM Contact WHERE Phone LIKE '%${digits}' OR MobilePhone LIKE '%${digits}' LIMIT 1`);
+      if (c.length) { whoId = c[0].Id; const o = await sfQ(`SELECT Id FROM Opportunity WHERE AccountId = '${c[0].AccountId}' ORDER BY LastModifiedDate DESC LIMIT 1`); if (o.length) whatId = o[0].Id; }
+    }
+    if (!whoId && email) { const l = await sfQ(`SELECT Id FROM Lead WHERE Email = '${email.replace(/'/g, "\\'")}' AND IsConverted = false LIMIT 1`); if (l.length) whoId = l[0].Id; }
+    if (!whoId && digits.length === 10) { const l = await sfQ(`SELECT Id FROM Lead WHERE Phone LIKE '%${digits}' AND IsConverted = false LIMIT 1`); if (l.length) whoId = l[0].Id; }
+    return whoId ? { whoId, whatId } : null;
+  }
+
+  async function createSfTask(fields: Record<string, any>): Promise<boolean> {
+    try {
+      const { getAccessToken: getSfToken } = await import("./services/salesforce");
+      const token = await getSfToken();
+      if (!token || !process.env.SF_INSTANCE_URL) return false;
+      const r = await fetch(`${process.env.SF_INSTANCE_URL}/services/data/v66.0/sobjects/Task`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(fields),
+      });
+      if (r.ok) { console.log(`[SF Activity] Task created: ${fields.Subject}`); return true; }
+      console.warn(`[SF Activity] Task failed: ${JSON.stringify(await r.json()).slice(0, 200)}`);
+      return false;
+    } catch (e: any) { console.error(`[SF Activity] Error: ${e.message}`); return false; }
+  }
+
+  // POST /api/webhooks/twilio-status — delivery status callbacks from Twilio
+  app.post("/api/webhooks/twilio-status", express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
+    res.sendStatus(204);
+    try {
+      const { To, MessageStatus, MessageSid, Body } = req.body;
+      const status = (MessageStatus || "").toLowerCase();
+      if (!["delivered", "undelivered", "failed"].includes(status)) return;
+      const digits = (To || "").replace(/\D/g, "").slice(-10);
+      const appResult = await db.execute(sql`SELECT email, full_name FROM loan_applications WHERE regexp_replace(phone, '[^0-9]', '', 'g') LIKE ${"%" + digits} ORDER BY created_at DESC LIMIT 1`);
+      const app = (appResult as any).rows?.[0];
+      const match = await findSfContactAndOpp(To, app?.email);
+      if (!match) return;
+      await createSfTask({
+        WhoId: match.whoId, WhatId: match.whatId || undefined,
+        Subject: (status === "delivered" ? `SMS Delivered to ${To}` : `SMS ${status} to ${To}`).slice(0, 255),
+        Description: Body ? `Message: ${Body}\n\nStatus: ${MessageStatus}\nSID: ${MessageSid}` : `Status: ${MessageStatus}`,
+        Status: "Completed", Priority: "Normal", ActivityDate: new Date().toISOString().split("T")[0], Type: "SMS",
+      });
+    } catch (e: any) { console.error("[Twilio Status] Error:", e.message); }
+  });
+
+  // POST /api/webhooks/twilio-inbound — inbound SMS replies
+  app.post("/api/webhooks/twilio-inbound", express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
+    res.type("text/xml").send("<Response></Response>");
+    try {
+      const { From, Body } = req.body;
+      const digits = (From || "").replace(/\D/g, "").slice(-10);
+      const appResult = await db.execute(sql`SELECT email, full_name FROM loan_applications WHERE regexp_replace(phone, '[^0-9]', '', 'g') LIKE ${"%" + digits} ORDER BY created_at DESC LIMIT 1`);
+      const app = (appResult as any).rows?.[0];
+      const match = await findSfContactAndOpp(From, app?.email);
+      if (!match) return;
+      await createSfTask({
+        WhoId: match.whoId, WhatId: match.whatId || undefined,
+        Subject: `SMS Reply from ${app?.full_name || From}: ${(Body || "").slice(0, 80)}`.slice(0, 255),
+        Description: `Inbound SMS from ${From}\n\nMessage: ${Body || "(empty)"}`,
+        Status: "Completed", Priority: "Normal", ActivityDate: new Date().toISOString().split("T")[0], Type: "SMS",
+      });
+    } catch (e: any) { console.error("[Twilio Inbound] Error:", e.message); }
+  });
+
+  // POST /api/webhooks/mailgun-events — email event webhooks from Mailgun
+  app.post("/api/webhooks/mailgun-events", async (req: Request, res: Response) => {
+    res.sendStatus(200);
+    try {
+      const ed = req.body?.["event-data"] || req.body;
+      const event = (ed?.event || "").toLowerCase();
+      const recipient = ed?.recipient || "";
+      const subject = ed?.message?.headers?.subject || "";
+      if (!["delivered", "opened", "clicked", "unsubscribed", "complained"].includes(event) || !recipient) return;
+      const match = await findSfContactAndOpp(undefined, recipient);
+      if (!match) return;
+      const subjectMap: Record<string, string> = {
+        delivered: `Email Delivered: ${subject}`, opened: `Email Opened: ${subject}`,
+        clicked: `Email Link Clicked: ${subject}`, unsubscribed: `Unsubscribed: ${recipient}`,
+        complained: `Spam Complaint: ${recipient}`,
+      };
+      const descMap: Record<string, string> = {
+        delivered: `Email "${subject}" delivered to ${recipient}`,
+        opened: `${recipient} opened "${subject}"`,
+        clicked: `${recipient} clicked link in "${subject}"${ed?.url ? "\nURL: " + ed.url : ""}`,
+        unsubscribed: `${recipient} unsubscribed from "${subject}"`,
+        complained: `${recipient} marked "${subject}" as spam`,
+      };
+      await createSfTask({
+        WhoId: match.whoId, WhatId: match.whatId || undefined,
+        Subject: (subjectMap[event] || `Email ${event}`).slice(0, 255),
+        Description: descMap[event] || `Event: ${event}`,
+        Status: "Completed", Priority: event === "complained" || event === "unsubscribed" ? "High" : "Normal",
+        ActivityDate: new Date().toISOString().split("T")[0], Type: "Email",
+      });
+    } catch (e: any) { console.error("[Mailgun Event] Error:", e.message); }
+  });
+
   // ─── APPROVAL FOLLOW-UP REPORT ──────────────────────────────────────────
 
   app.get("/api/admin/approval-followup", async (req: Request, res: Response) => {

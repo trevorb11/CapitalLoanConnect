@@ -27,6 +27,11 @@ export async function sendSms(to: string, body: string): Promise<SendSmsResult> 
     params.append('To', to);
     params.append('From', TWILIO_PHONE_NUMBER);
     params.append('Body', body);
+    // Status callback — Twilio will POST delivery status updates to this URL
+    const callbackUrl = process.env.APP_URL || process.env.REPLIT_DOMAINS
+      ? `https://${(process.env.REPLIT_DOMAINS || '').split(',')[0] || 'app.todaycapitalgroup.com'}/api/webhooks/twilio-status`
+      : '';
+    if (callbackUrl) params.append('StatusCallback', callbackUrl);
 
     const res = await fetch(TWILIO_API_BASE, {
       method: 'POST',
