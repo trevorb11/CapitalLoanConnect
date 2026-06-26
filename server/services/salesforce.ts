@@ -1245,14 +1245,26 @@ export async function syncUwSubmissionToSalesforce(
   const ov = dealOverview || {};
   const snap = snapshot || {};
 
+  // legalBusinessName is the canonical field in loan_applications; fall back
+  // to businessName and finally doingBusinessAs so we never use email as name.
+  const businessName =
+    app.legalBusinessName || app.legal_business_name ||
+    app.businessName      || app.business_name       ||
+    app.doingBusinessAs   || app.doing_business_as   || null;
+
+  const ownerName =
+    app.ownerName  || app.owner_name  ||
+    app.fullName   || app.full_name   ||
+    app.contactName|| app.contact_name|| null;
+
   try {
     // Use the full 8-method finder + auto-create so a missing Opp is created
     // rather than silently skipped.
     const found = await findOrCreateSfOpportunity({
       email:        safeEmail,
       phone:        app.phone || app.businessPhone || app.business_phone,
-      businessName: app.businessName || app.business_name,
-      fullName:     app.ownerName   || app.owner_name || app.contactName || app.contact_name,
+      businessName: businessName || undefined,
+      fullName:     ownerName || undefined,
       stage:        "Application & Docs",
       app,
     });
@@ -1268,6 +1280,14 @@ export async function syncUwSubmissionToSalesforce(
       console.log(`[SF UW Sync] Found Opp ${found.oppId} via method: ${found.method}`);
     }
 
+    // Build a clean Opp Name from the business name (also corrects any existing
+    // opps that were previously named with an email address).
+    const today = new Date();
+    const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
+    const oppName = businessName
+      ? `${businessName} - ${dateStr}`.slice(0, 120)
+      : null;
+
     // Average monthly deposit count from snapshot monthly breakdown
     let avgMonthlyDeposits: number | null = null;
     if (snap.monthlyData?.length) {
@@ -1280,29 +1300,50 @@ export async function syncUwSubmissionToSalesforce(
     }
 
     const fields = clean({
-      // Application-level deal qualification
+      // Opp name — uses business name so it's never the raw email
+      ...(oppName ? { Name: oppName } : {}),
+
+      // Contact / business identifiers
+      Email__c:                 safeEmail,
+      Phone_Number__c:          app.phone || app.businessPhone || app.business_phone || null,
+      Doing_Business_As_DBA__c: app.doingBusinessAs || app.doing_business_as || app.businessName || app.business_name || null,
+      Industry__c:              mapIndustry(app.industry),
+      Primary_Business_Bank__c: app.bankName || app.bank_name || null,
+      Purpose_Of_Funds__c:      app.useOfFunds || app.use_of_funds || null,
+      Funding_Time_Frame__c:    app.fundingUrgency || app.funding_urgency || null,
+      LeadSource:               app.referralSource || app.referral_source || null,
+
+      // Deal qualification
       Amount_Requested__c:            parseNum(ov.amountSeeking || app.requestedAmount || app.requested_amount),
-      Monthly_Revenue__c:             parseNum(snap.avgMonthlyRevenue || app.monthlyRevenue || app.monthly_revenue),
-      Personal_Credit_Score_Range__c: mapCreditScore(ov.creditScore || app.creditScore || app.credit_score || app.personalCreditScoreRange),
+      Monthly_Revenue__c:             parseNum(
+        snap.avgMonthlyRevenue        ||
+        app.averageMonthlyRevenue     || app.average_monthly_revenue ||
+        app.monthlyRevenue            || app.monthly_revenue
+      ),
+      Personal_Credit_Score_Range__c: mapCreditScore(
+        ov.creditScore        ||
+        app.creditScore       || app.credit_score ||
+        app.personalCreditScoreRange  || app.personal_credit_score_range
+      ),
       Time_in_Business_Months__c:     parseMonths(ov.timeInBusiness || app.timeInBusiness || app.time_in_business),
 
       // Position — picklist field, requires exact value
-      Position__c:                    mapPosition(ov.positionSeeking),
+      Position__c: mapPosition(ov.positionSeeking),
 
       // Bank-analysis fields (from saved AI snapshot, if available)
-      Average_Daily_Balance__c:       parseNum(snap.avgDailyBalance),
-      Monthly_Deposit_Count__c:       avgMonthlyDeposits,
-      Number_of_NSFs_Overdrafts__c:   snap.nsfCount != null ? Number(snap.nsfCount) : null,
-      Revenue_Trend__c:               mapRevenueTrend(snap.revenueTrend),
-      Total_Monthly_Debt__c:          parseNum(snap.totalMonthlyDebtPayments),
-      Factor_Rate__c:                 parseNum(snap.estimatedFactor),
+      Average_Daily_Balance__c:     parseNum(snap.avgDailyBalance),
+      Monthly_Deposit_Count__c:     avgMonthlyDeposits,
+      Number_of_NSFs_Overdrafts__c: snap.nsfCount != null ? Number(snap.nsfCount) : null,
+      Revenue_Trend__c:             mapRevenueTrend(snap.revenueTrend),
+      Total_Monthly_Debt__c:        parseNum(snap.totalMonthlyDebtPayments),
+      Factor_Rate__c:               parseNum(snap.estimatedFactor),
     });
 
     if (Object.keys(fields).length === 0) return;
 
     const res = await sfApi("PATCH", `/sobjects/Opportunity/${found.oppId}`, fields);
     if (res.success) {
-      console.log(`[SF UW Sync] Deal Qualification updated on Opp ${found.oppId} — ${Object.keys(fields).length} fields`);
+      console.log(`[SF UW Sync] Opp ${found.oppId} updated — ${Object.keys(fields).length} fields (name: "${oppName || "unchanged"}")`);
     } else {
       console.warn(`[SF UW Sync] Opp ${found.oppId} update failed: ${res.error}`);
     }
