@@ -1435,10 +1435,11 @@ export async function syncAiSnapshotToSalesforce(
         Statement_Month__c:    m.month ? String(m.month) : null,
         Period_Start__c:       parsePeriodStart(m.month),
         Statement_Key__c:      m.month ? `${opp.Id}-${m.month}` : null,
-        Deposits__c:           parseNum(m.totalDeposits),
-        Average_Balance__c:    parseNum(m.avgDailyBalance),
+        Deposits__c:           parseNum(m.deposits ?? m.totalDeposits),
+        Average_Balance__c:    parseNum(m.avgBalance ?? m.avgDailyBalance),
+        Ending_Balance__c:     parseNum(m.endBalance ?? m.endingBalance),
         Number_of_Deposits__c: m.numDeposits != null ? Number(m.numDeposits) : null,
-        NSF_Count__c:          m.nsfCount != null ? Number(m.nsfCount) : null,
+        NSF_Count__c:          (m.nsfs ?? m.nsfCount) != null ? Number(m.nsfs ?? m.nsfCount) : null,
         Negative_Days__c:      m.negativeDays != null ? Number(m.negativeDays) : null,
       }));
       await replaceChildRecords(opp.Id, "Bank_Statement_Period__c", bankPeriods);
