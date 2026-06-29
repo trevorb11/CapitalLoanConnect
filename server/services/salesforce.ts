@@ -822,21 +822,61 @@ export async function syncLenderSubmissionsToSalesforce(
 
   if (submissions.length === 0) return results;
 
-  // Fetch existing submissions for this Opportunity to avoid duplicates
+  // Fetch existing submissions for this Opportunity — include amount and date for content-based dedup
   const existing = await sfQuery(
-    `SELECT Id, Name FROM Lender_Submission__c WHERE Opportunity__c = '${oppId}'`
+    `SELECT Id, Name, Offer_Amount__c, Submitted_Date__c, Factor_Rate__c FROM Lender_Submission__c WHERE Opportunity__c = '${oppId}'`
   );
-  const existingByName = new Map<string, string>();
+
+  // Normalize a number for comparison: round to nearest dollar
+  const normalizeAmt = (v: any): string => {
+    const n = parseNum(v);
+    return n !== null ? String(Math.round(n)) : "";
+  };
+
+  // Normalize a date string to YYYY-MM-DD for comparison
+  const normalizeDate = (v: any): string => {
+    if (!v) return "";
+    const d = new Date(String(v).includes("T") ? v : v + "T00:00:00");
+    return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+  };
+
+  // Map 1: exact content key (lender|amount|date) → SF record Id — used to skip identical re-syncs
+  const existingByExactKey = new Map<string, string>();
+  // Map 2: lender name → SF record Id — used to update when content changed
+  const existingByLender = new Map<string, string>();
+
   for (const e of existing) {
-    existingByName.set(e.Name?.toLowerCase()?.trim(), e.Id);
+    const lenderKey = e.Name?.toLowerCase()?.trim() ?? "";
+    const amtKey = normalizeAmt(e.Offer_Amount__c);
+    const dateKey = normalizeDate(e.Submitted_Date__c);
+    const exactKey = `${lenderKey}|${amtKey}|${dateKey}`;
+    existingByExactKey.set(exactKey, e.Id);
+    // Only store the first lender match (to handle cases where multiple rounds exist for same lender)
+    if (!existingByLender.has(lenderKey)) {
+      existingByLender.set(lenderKey, e.Id);
+    }
   }
+
+  let skipped = 0;
 
   for (const sub of submissions) {
     try {
       const lenderAccountId = await getFunderAccountId(sub.lender);
       const submissionStatus = mapDecisionStatusToSubmissionStatus(sub.status);
-      const subDate = sub.date ? new Date(sub.date) : new Date();
+      const subDate = sub.date ? new Date(String(sub.date).includes("T") ? sub.date : sub.date + "T00:00:00") : new Date();
       const dateStr = !isNaN(subDate.getTime()) ? subDate.toISOString().split("T")[0] : null;
+
+      const lenderKey = sub.lender.toLowerCase().trim();
+      const amtKey = normalizeAmt(sub.amount);
+      const dateKey = dateStr ?? "";
+      const exactKey = `${lenderKey}|${amtKey}|${dateKey}`;
+
+      // ── Skip if an SF record already has the exact same lender + amount + date ──
+      if (existingByExactKey.has(exactKey)) {
+        skipped++;
+        console.log(`[SF Lender Sync] Skipping ${sub.lender} on Opp ${oppId} — identical record already exists (amt=${amtKey}, date=${dateKey})`);
+        continue;
+      }
 
       const record = clean({
         Opportunity__c: oppId,
@@ -854,21 +894,20 @@ export async function syncLenderSubmissionsToSalesforce(
           : {}),
       });
 
-      // Check if this lender already has a submission for this Opp
-      const existingId = existingByName.get(sub.lender.toLowerCase().trim());
+      // ── Update if lender already exists but content changed (e.g. amount was revised) ──
+      const existingId = existingByLender.get(lenderKey);
 
       if (existingId) {
-        // Update existing
         const res = await sfApi("PATCH", `/sobjects/Lender_Submission__c/${existingId}`, record);
         if (res.success) {
           results.updated++;
-          console.log(`[SF Lender Sync] Updated: ${sub.lender} on Opp ${oppId}`);
+          console.log(`[SF Lender Sync] Updated: ${sub.lender} on Opp ${oppId} (amt changed to ${amtKey})`);
         } else {
           results.errors++;
           console.error(`[SF Lender Sync] Update failed for ${sub.lender}: ${res.error}`);
         }
       } else {
-        // Create new — Name field is auto-set or we use lender name
+        // ── Create new entry for this lender ──
         const createRecord = { ...record, Name: sub.lender };
         const res = await sfApi("POST", "/sobjects/Lender_Submission__c", createRecord);
         if (res.success) {
@@ -885,7 +924,7 @@ export async function syncLenderSubmissionsToSalesforce(
     }
   }
 
-  console.log(`[SF Lender Sync] Done: ${results.created} created, ${results.updated} updated, ${results.errors} errors`);
+  console.log(`[SF Lender Sync] Done: ${results.created} created, ${results.updated} updated, ${skipped} skipped (identical), ${results.errors} errors`);
   return results;
 }
 
