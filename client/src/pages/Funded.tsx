@@ -40,6 +40,7 @@ import {
   Upload,
   ExternalLink,
   Users,
+  TrendingUp,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -823,6 +824,7 @@ export default function Funded() {
   // Compute stats
   const stats = {
     totalFunded: fundedDecisions.length,
+    totalFundings: fundedDecisions.reduce((sum, d) => sum + getFundingsForDecision(d).length, 0),
     totalAmount: fundedDecisions.reduce((sum, d) => {
       const approvals = getApprovalsForDecision(d);
       const primary = approvals.find(a => a.isPrimary) || approvals[0];
@@ -1030,7 +1032,7 @@ export default function Funded() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -1042,6 +1044,21 @@ export default function Funded() {
                     {stats.totalFunded}
                   </div>
                   <div className="text-sm text-muted-foreground">Funded Businesses</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 rounded-lg dark:bg-indigo-900">
+                  <TrendingUp className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold" data-testid="text-total-fundings">
+                    {stats.totalFundings}
+                  </div>
+                  <div className="text-sm text-muted-foreground">Total Fundings</div>
                 </div>
               </div>
             </CardContent>
