@@ -83,6 +83,7 @@ export default function Declines() {
   const [authRole, setAuthRole] = useState<string>("");
   const [authAgentName, setAuthAgentName] = useState<string>("");
   const [repFilter, setRepFilter] = useState<string>("all");
+  const [declineType, setDeclineType] = useState<"straight" | "mixed" | "all">("straight");
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
 
@@ -254,8 +255,22 @@ export default function Declines() {
       return getDecisionDate(b) - getDecisionDate(a);
     });
 
+  // Helper: check if a declined business also has approvals
+  const hasApprovals = (d: BusinessUnderwritingDecision): boolean => {
+    const approvals = d.additionalApprovals as any[] | null;
+    if (!Array.isArray(approvals) || approvals.length === 0) return false;
+    return approvals.some((a: any) => a.lender && a.advanceAmount && parseFloat(a.advanceAmount) > 0);
+  };
+
+  const straightDeclines = declinedDecisions.filter(d => !hasApprovals(d));
+  const mixedDeclines = declinedDecisions.filter(d => hasApprovals(d));
+
+  const typeFilteredDecisions = declineType === "straight" ? straightDeclines
+    : declineType === "mixed" ? mixedDeclines
+    : declinedDecisions;
+
   // Filter by rep
-  const repFilteredDecisions = repFilter === "all" ? declinedDecisions : declinedDecisions.filter(d => {
+  const repFilteredDecisions = repFilter === "all" ? typeFilteredDecisions : typeFilteredDecisions.filter(d => {
     const filterName = repFilter === "mine" ? authAgentName : repFilter;
     if (!filterName) return true;
     const nameLC = filterName.toLowerCase();
@@ -556,6 +571,32 @@ export default function Declines() {
                 </SelectContent>
               </Select>
             )}
+          </div>
+          <div className="flex gap-1 bg-muted rounded-lg p-0.5">
+            <Button
+              variant={declineType === "straight" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setDeclineType("straight")}
+              className="text-xs h-7"
+            >
+              Straight Declines ({straightDeclines.length})
+            </Button>
+            <Button
+              variant={declineType === "mixed" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setDeclineType("mixed")}
+              className="text-xs h-7"
+            >
+              Has Approvals ({mixedDeclines.length})
+            </Button>
+            <Button
+              variant={declineType === "all" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setDeclineType("all")}
+              className="text-xs h-7"
+            >
+              All ({declinedDecisions.length})
+            </Button>
           </div>
           <div className="relative w-full sm:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
