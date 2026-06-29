@@ -1023,6 +1023,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/admin/claude/ghl-add-tags — add tags to a GHL contact
+  app.post("/api/admin/claude/ghl-add-tags", claudeAuth, async (req, res) => {
+    const { contactId, tags } = req.body;
+    if (!contactId || !Array.isArray(tags) || tags.length === 0) {
+      return res.status(400).json({ error: "body.contactId and body.tags[] required" });
+    }
+    try {
+      const result = await ghlService.addTagsToContact(contactId, tags);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
   // POST /api/admin/claude/upsert/:table — convenience: update rows matching a where clause
   // SAFETY: `where` with at least one key is REQUIRED — a missing or empty where would
   // otherwise run an unguarded UPDATE with no WHERE clause and overwrite every row.

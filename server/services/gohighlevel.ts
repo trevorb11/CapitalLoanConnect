@@ -1172,6 +1172,26 @@ export class GoHighLevelService {
   }
 
   /**
+   * Add tags to a GHL contact (appends, does not replace existing tags)
+   */
+  async addTagsToContact(contactId: string, newTags: string[]): Promise<{ success: boolean; tags?: string[]; error?: string }> {
+    if (!this.isEnabled || !contactId) return { success: false, error: "GHL not enabled" };
+    try {
+      // First get existing tags
+      const contact = await this.makeRequest(`/contacts/${contactId}`, "GET");
+      const existingTags: string[] = contact?.contact?.tags || contact?.tags || [];
+      const merged = [...new Set([...existingTags, ...newTags])];
+      // Update with merged tags
+      await this.makeRequest(`/contacts/${contactId}`, "PUT", { tags: merged });
+      console.log(`[GHL] Added tags [${newTags.join(", ")}] to contact ${contactId} (now ${merged.length} tags)`);
+      return { success: true, tags: merged };
+    } catch (error) {
+      console.error(`[GHL] Error adding tags to contact ${contactId}:`, error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
    * Search for opportunities by contact ID
    */
   async searchOpportunitiesByContact(contactId: string): Promise<any[]> {
