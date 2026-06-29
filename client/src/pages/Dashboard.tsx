@@ -1206,6 +1206,8 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
     term: string;
     paymentFrequency: string;
     factorRate: string;
+    buyRate: string;
+    sellRate: string;
     maxUpsell: string;
     totalPayback: string;
     netAfterFees: string;
@@ -1224,6 +1226,8 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
     term: '',
     paymentFrequency: 'weekly',
     factorRate: '',
+    buyRate: '',
+    sellRate: '',
     maxUpsell: '',
     totalPayback: '',
     netAfterFees: '',
@@ -1340,6 +1344,8 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
             term: decision.term || '',
             paymentFrequency: decision.paymentFrequency || 'weekly',
             factorRate: decision.factorRate?.toString() || '',
+            buyRate: (decision as any).buyRate?.toString() || '',
+            sellRate: (decision as any).sellRate?.toString() || '',
             maxUpsell: decision.maxUpsell?.toString() || '',
             totalPayback: decision.totalPayback?.toString() || '',
             netAfterFees: decision.netAfterFees?.toString() || '',
@@ -1477,6 +1483,8 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
         term: approvalForm.term,
         paymentFrequency: approvalForm.paymentFrequency,
         factorRate: approvalForm.factorRate,
+        buyRate: approvalForm.buyRate,
+        sellRate: approvalForm.sellRate,
         maxUpsell: approvalForm.maxUpsell,
         totalPayback: approvalForm.totalPayback,
         netAfterFees: approvalForm.netAfterFees,
@@ -3095,7 +3103,7 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="factorRate">Factor Rate</Label>
                 <Input
@@ -3108,6 +3116,32 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                   data-testid="input-factor-rate"
                 />
               </div>
+              <div>
+                <Label htmlFor="buyRate">Buy Rate</Label>
+                <Input
+                  id="buyRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.18"
+                  value={approvalForm.buyRate}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, buyRate: e.target.value }))}
+                  data-testid="input-buy-rate"
+                />
+              </div>
+              <div>
+                <Label htmlFor="sellRate">Sell Rate</Label>
+                <Input
+                  id="sellRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={approvalForm.sellRate}
+                  onChange={(e) => setApprovalForm(prev => ({ ...prev, sellRate: e.target.value }))}
+                  data-testid="input-sell-rate"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="maxUpsell">Max Upsell (%)</Label>
                 <div className="relative">

@@ -303,6 +303,9 @@ app.use((req, res, next) => {
       // Structured declines JSONB column
       await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS additional_declines JSONB`);
       console.log('[STARTUP] Migration: additional_declines column ensured');
+      await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS buy_rate DECIMAL(5,4)`);
+      await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS sell_rate DECIMAL(5,4)`);
+      console.log('[STARTUP] Migration: buy_rate/sell_rate columns ensured');
       // One-time backfill: parse legacy decline_reason text into additional_declines JSONB
       const backfillDeclines = await db.execute(sql`
         UPDATE business_underwriting_decisions

@@ -88,6 +88,8 @@ interface FullApprovalEntry {
   term: string;
   paymentFrequency: string;
   factorRate: string;
+  buyRate: string;
+  sellRate: string;
   maxUpsell: string;
   totalPayback: string;
   netAfterFees: string;
@@ -104,6 +106,8 @@ interface FundedEntry {
   term: string | null;
   paymentFrequency: string | null;
   factorRate: string | null;
+  buyRate: string | null;
+  sellRate: string | null;
   maxUpsell: string | null;
   totalPayback: string | null;
   netAfterFees: string | null;
@@ -160,6 +164,8 @@ export default function Funded() {
     term: '',
     paymentFrequency: 'weekly',
     factorRate: '',
+    buyRate: '',
+    sellRate: '',
     maxUpsell: '',
     totalPayback: '',
     netAfterFees: '',
@@ -180,6 +186,8 @@ export default function Funded() {
     term: '',
     paymentFrequency: 'weekly',
     factorRate: '',
+    buyRate: '',
+    sellRate: '',
     maxUpsell: '',
     totalPayback: '',
     netAfterFees: '',
@@ -410,6 +418,8 @@ export default function Funded() {
         term: entry.term || '',
         paymentFrequency: entry.paymentFrequency || 'weekly',
         factorRate: entry.factorRate || '',
+        buyRate: (entry as any).buyRate || '',
+        sellRate: (entry as any).sellRate || '',
         maxUpsell: entry.maxUpsell || '',
         totalPayback: entry.totalPayback || '',
         netAfterFees: entry.netAfterFees || '',
@@ -427,6 +437,8 @@ export default function Funded() {
         term: '',
         paymentFrequency: 'weekly',
         factorRate: '',
+        buyRate: '',
+        sellRate: '',
         maxUpsell: '',
         totalPayback: '',
         netAfterFees: '',
@@ -455,6 +467,8 @@ export default function Funded() {
         term: editForm.term || null,
         paymentFrequency: editForm.paymentFrequency || null,
         factorRate: editForm.factorRate || null,
+        buyRate: editForm.buyRate || null,
+        sellRate: editForm.sellRate || null,
         maxUpsell: editForm.maxUpsell || null,
         totalPayback: editForm.totalPayback || null,
         netAfterFees: editForm.netAfterFees || null,
@@ -531,6 +545,8 @@ export default function Funded() {
         term: addForm.term || null,
         paymentFrequency: addForm.paymentFrequency || null,
         factorRate: addForm.factorRate || null,
+        buyRate: addForm.buyRate || null,
+        sellRate: addForm.sellRate || null,
         maxUpsell: addForm.maxUpsell || null,
         totalPayback: addForm.totalPayback || null,
         netAfterFees: addForm.netAfterFees || null,
@@ -556,6 +572,8 @@ export default function Funded() {
         term: '',
         paymentFrequency: 'weekly',
         factorRate: '',
+        buyRate: '',
+        sellRate: '',
         maxUpsell: '',
         totalPayback: '',
         netAfterFees: '',
@@ -1633,7 +1651,7 @@ export default function Funded() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="edit-factorRate">Factor Rate</Label>
                 <Input
@@ -1646,6 +1664,32 @@ export default function Funded() {
                   data-testid="input-edit-factor-rate"
                 />
               </div>
+              <div>
+                <Label htmlFor="edit-buyRate">Buy Rate</Label>
+                <Input
+                  id="edit-buyRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.18"
+                  value={editForm.buyRate}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, buyRate: e.target.value }))}
+                  data-testid="input-edit-buy-rate"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-sellRate">Sell Rate</Label>
+                <Input
+                  id="edit-sellRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={editForm.sellRate}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, sellRate: e.target.value }))}
+                  data-testid="input-edit-sell-rate"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-maxUpsell">Max Upsell</Label>
                 <Input
@@ -1925,7 +1969,7 @@ export default function Funded() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="add-factorRate">Factor Rate</Label>
                 <Input
@@ -1938,6 +1982,32 @@ export default function Funded() {
                   data-testid="input-add-factor-rate"
                 />
               </div>
+              <div>
+                <Label htmlFor="add-buyRate">Buy Rate</Label>
+                <Input
+                  id="add-buyRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.18"
+                  value={addForm.buyRate}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, buyRate: e.target.value }))}
+                  data-testid="input-add-buy-rate"
+                />
+              </div>
+              <div>
+                <Label htmlFor="add-sellRate">Sell Rate</Label>
+                <Input
+                  id="add-sellRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={addForm.sellRate}
+                  onChange={(e) => setAddForm(prev => ({ ...prev, sellRate: e.target.value }))}
+                  data-testid="input-add-sell-rate"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="add-maxUpsell">Max Upsell</Label>
                 <Input

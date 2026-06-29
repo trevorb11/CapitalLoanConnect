@@ -74,6 +74,8 @@ interface FullApprovalEntry {
   term: string;
   paymentFrequency: string;
   factorRate: string;
+  buyRate: string;
+  sellRate: string;
   maxUpsell: string;
   totalPayback: string;
   netAfterFees: string;
@@ -134,6 +136,8 @@ export default function Approvals() {
     term: '',
     paymentFrequency: 'weekly',
     factorRate: '',
+    buyRate: '',
+    sellRate: '',
     maxUpsell: '',
     totalPayback: '',
     netAfterFees: '',
@@ -158,6 +162,8 @@ export default function Approvals() {
     term: '',
     paymentFrequency: 'weekly',
     factorRate: '',
+    buyRate: '',
+    sellRate: '',
     maxUpsell: '',
     totalPayback: '',
     netAfterFees: '',
@@ -364,6 +370,8 @@ export default function Approvals() {
         term: decision.term || '',
         paymentFrequency: decision.paymentFrequency || 'weekly',
         factorRate: decision.factorRate?.toString() || '',
+        buyRate: (decision as any).buyRate?.toString() || '',
+        sellRate: (decision as any).sellRate?.toString() || '',
         maxUpsell: decision.maxUpsell?.toString() || '',
         totalPayback: decision.totalPayback?.toString() || '',
         netAfterFees: decision.netAfterFees?.toString() || '',
@@ -384,6 +392,8 @@ export default function Approvals() {
           term: old.term || '',
           paymentFrequency: old.paymentFrequency || 'weekly',
           factorRate: old.factorRate || '',
+          buyRate: old.buyRate || '',
+          sellRate: old.sellRate || '',
           maxUpsell: old.maxUpsell || '',
           totalPayback: old.totalPayback || '',
           netAfterFees: old.netAfterFees || '',
@@ -494,6 +504,8 @@ export default function Approvals() {
           term: existing.term,
           paymentFrequency: existing.paymentFrequency || 'weekly',
           factorRate: existing.factorRate,
+          buyRate: existing.buyRate || '',
+          sellRate: existing.sellRate || '',
           maxUpsell: existing.maxUpsell || '',
           totalPayback: existing.totalPayback,
           netAfterFees: existing.netAfterFees,
@@ -511,6 +523,8 @@ export default function Approvals() {
         term: '',
         paymentFrequency: 'weekly',
         factorRate: '',
+        buyRate: '',
+        sellRate: '',
         maxUpsell: '',
         totalPayback: '',
         netAfterFees: '',
@@ -537,6 +551,8 @@ export default function Approvals() {
         term: editForm.term,
         paymentFrequency: editForm.paymentFrequency,
         factorRate: editForm.factorRate,
+        buyRate: editForm.buyRate,
+        sellRate: editForm.sellRate,
         maxUpsell: editForm.maxUpsell,
         totalPayback: editForm.totalPayback,
         netAfterFees: editForm.netAfterFees,
@@ -627,6 +643,8 @@ export default function Approvals() {
       term: primary?.term || decision.term || '',
       paymentFrequency: primary?.paymentFrequency || decision.paymentFrequency || 'weekly',
       factorRate: primary?.factorRate || decision.factorRate?.toString() || '',
+      buyRate: primary?.buyRate || (decision as any).buyRate?.toString() || '',
+      sellRate: primary?.sellRate || (decision as any).sellRate?.toString() || '',
       maxUpsell: primary?.maxUpsell || decision.maxUpsell?.toString() || '',
       totalPayback: primary?.totalPayback || decision.totalPayback?.toString() || '',
       netAfterFees: primary?.netAfterFees || decision.netAfterFees?.toString() || '',
@@ -651,6 +669,8 @@ export default function Approvals() {
         term: fundForm.term || null,
         paymentFrequency: fundForm.paymentFrequency || null,
         factorRate: fundForm.factorRate || null,
+        buyRate: fundForm.buyRate || null,
+        sellRate: fundForm.sellRate || null,
         maxUpsell: fundForm.maxUpsell || null,
         totalPayback: fundForm.totalPayback || null,
         netAfterFees: fundForm.netAfterFees || null,
@@ -1390,7 +1410,7 @@ export default function Approvals() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="edit-factorRate">Factor Rate</Label>
                 <Input
@@ -1403,6 +1423,32 @@ export default function Approvals() {
                   data-testid="input-edit-factor-rate"
                 />
               </div>
+              <div>
+                <Label htmlFor="edit-buyRate">Buy Rate</Label>
+                <Input
+                  id="edit-buyRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.18"
+                  value={editForm.buyRate}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, buyRate: e.target.value }))}
+                  data-testid="input-edit-buy-rate"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-sellRate">Sell Rate</Label>
+                <Input
+                  id="edit-sellRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={editForm.sellRate}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, sellRate: e.target.value }))}
+                  data-testid="input-edit-sell-rate"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-maxUpsell">Max Upsell (%)</Label>
                 <div className="relative">
@@ -1669,7 +1715,7 @@ export default function Approvals() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="fund-factorRate">Factor Rate</Label>
                 <Input
@@ -1682,6 +1728,32 @@ export default function Approvals() {
                   data-testid="input-fund-factor-rate"
                 />
               </div>
+              <div>
+                <Label htmlFor="fund-buyRate">Buy Rate</Label>
+                <Input
+                  id="fund-buyRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.18"
+                  value={fundForm.buyRate}
+                  onChange={(e) => setFundForm(prev => ({ ...prev, buyRate: e.target.value }))}
+                  data-testid="input-fund-buy-rate"
+                />
+              </div>
+              <div>
+                <Label htmlFor="fund-sellRate">Sell Rate</Label>
+                <Input
+                  id="fund-sellRate"
+                  type="number"
+                  step="0.01"
+                  placeholder="1.25"
+                  value={fundForm.sellRate}
+                  onChange={(e) => setFundForm(prev => ({ ...prev, sellRate: e.target.value }))}
+                  data-testid="input-fund-sell-rate"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="fund-maxUpsell">Max Upsell</Label>
                 <Input

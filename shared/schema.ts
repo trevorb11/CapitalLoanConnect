@@ -488,6 +488,8 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   term: text("term"), // e.g., "6 months", "12 months"
   paymentFrequency: text("payment_frequency"), // "daily", "weekly", "biweekly", or "monthly"
   factorRate: decimal("factor_rate", { precision: 5, scale: 4 }), // e.g., 1.25
+  buyRate: decimal("buy_rate", { precision: 5, scale: 4 }),       // Internal cost rate
+  sellRate: decimal("sell_rate", { precision: 5, scale: 4 }),     // Rate sold to merchant
   maxUpsell: decimal("max_upsell", { precision: 12, scale: 2 }),
   totalPayback: decimal("total_payback", { precision: 12, scale: 2 }),
   netAfterFees: decimal("net_after_fees", { precision: 12, scale: 2 }),
@@ -502,7 +504,7 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   showOnLetter: boolean("show_on_letter").default(true), // Whether to show primary approval on public letter
 
   // Additional approvals (secondary lender offers)
-  additionalApprovals: jsonb("additional_approvals"), // Array of { lender, amount, term?, factorRate?, showOnLetter? }
+  additionalApprovals: jsonb("additional_approvals"), // Array of { lender, amount, term?, factorRate?, buyRate?, sellRate?, maxUpsell?, showOnLetter? }
 
   // Additional funded deals — accumulates each time this business is funded
   additionalFundings: jsonb("additional_fundings"), // Array of { id, lender, advanceAmount, term, paymentFrequency, factorRate, maxUpsell, notes, fundedDate, assignedRep, createdAt }

@@ -4585,7 +4585,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         applicationId, receivedAt, approvalStatus, approvalNotes, 
         lenderId, lenderName,
         // Approval form fields
-        advanceAmount, term, paymentFrequency, factorRate, totalPayback, netAfterFees, approvalDate,
+        advanceAmount, term, paymentFrequency, factorRate, buyRate, sellRate, totalPayback, netAfterFees, approvalDate,
         // Internal upload flag (skips GHL webhook)
         isInternal
       } = req.body;
@@ -5821,6 +5821,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       term,
       paymentFrequency,
       factorRate,
+      buyRate,
+      sellRate,
       totalPayback,
       netAfterFees,
       lender,
@@ -5854,6 +5856,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let syncedTerm = term || null;
       let syncedPaymentFrequency = paymentFrequency || null;
       let syncedFactorRate = factorRate || null;
+      let syncedBuyRate = buyRate || null;
+      let syncedSellRate = sellRate || null;
       let syncedTotalPayback = totalPayback || null;
       let syncedNetAfterFees = netAfterFees || null;
       let syncedLender = lender || null;
@@ -5867,6 +5871,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           syncedTerm = primary.term || null;
           syncedPaymentFrequency = primary.paymentFrequency || null;
           syncedFactorRate = primary.factorRate ? parseFloat(primary.factorRate) : null;
+          syncedBuyRate = primary.buyRate ? parseFloat(primary.buyRate) : null;
+          syncedSellRate = primary.sellRate ? parseFloat(primary.sellRate) : null;
           syncedTotalPayback = primary.totalPayback ? parseFloat(primary.totalPayback) : null;
           syncedNetAfterFees = primary.netAfterFees ? parseFloat(primary.netAfterFees) : null;
           syncedLender = primary.lender || null;
@@ -5885,6 +5891,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           term: syncedTerm || null,
           paymentFrequency: syncedPaymentFrequency || null,
           factorRate: syncedFactorRate?.toString() || null,
+          buyRate: syncedBuyRate?.toString() || null,
+          sellRate: syncedSellRate?.toString() || null,
           maxUpsell: req.body.maxUpsell?.toString() || null,
           totalPayback: syncedTotalPayback?.toString() || null,
           netAfterFees: syncedNetAfterFees?.toString() || null,
@@ -5920,6 +5928,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         term: syncedTerm,
         paymentFrequency: syncedPaymentFrequency,
         factorRate: syncedFactorRate,
+        buyRate: syncedBuyRate,
+        sellRate: syncedSellRate,
         totalPayback: syncedTotalPayback,
         netAfterFees: syncedNetAfterFees,
         lender: syncedLender,
@@ -6110,6 +6120,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           updates.term = primary.term || null;
           updates.paymentFrequency = primary.paymentFrequency || null;
           updates.factorRate = primary.factorRate ? parseFloat(primary.factorRate) : null;
+          updates.buyRate = primary.buyRate ? parseFloat(primary.buyRate) : null;
+          updates.sellRate = primary.sellRate ? parseFloat(primary.sellRate) : null;
           updates.totalPayback = primary.totalPayback ? parseFloat(primary.totalPayback) : null;
           updates.netAfterFees = primary.netAfterFees ? parseFloat(primary.netAfterFees) : null;
           updates.lender = primary.lender || null;
