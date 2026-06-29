@@ -5797,6 +5797,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // ─── GigFi auto-submit helper (fires async after unqualified decision saved) ──
+  async function autoSubmitGigFiForUnqualified(decisionId: string, businessEmail: string): Promise<void> {
+    if (!isGigFiConfigured()) {
+      console.log(`[GIGFI AUTO] Skipping — GigFi not configured`);
+      return;
+    }
+
+    try {
+      // Fetch the loan application for this email
+      const app = await storage.getLoanApplicationByEmail(businessEmail.toLowerCase().trim());
+      if (!app) {
+        console.log(`[GIGFI AUTO] No loan application found for ${businessEmail} — skipping`);
+        return;
+      }
+
+      // Parse name
+      const fullName = (app.fullName || `${(app as any).firstName || ''} ${(app as any).lastName || ''}`).trim();
+      const nameParts = fullName.split(/\s+/).filter(Boolean);
+      const firstName = nameParts[0] || 'Unknown';
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : nameParts[0] || 'Unknown';
+
+      // Required fields check — skip if missing critical data
+      const ssn = ((app as any).socialSecurityNumber || '').replace(/\D/g, '');
+      const dob = (app as any).dateOfBirth || '';
+      const homeAddress = (app as any).ownerAddress1 || (app as any).businessStreetAddress || (app as any).businessAddress || '';
+      const homeCity    = (app as any).ownerCity || (app as any).city || '';
+      const homeState   = ((app as any).ownerState || (app as any).state || '').toUpperCase().slice(0, 2);
+      const homeZip     = ((app as any).ownerZip || (app as any).zipCode || '').replace(/\D/g, '').slice(0, 5);
+
+      const missing: string[] = [];
+      if (ssn.length !== 9) missing.push('SSN');
+      if (!dob)             missing.push('DOB');
+      if (!homeAddress)     missing.push('homeAddress');
+      if (!homeCity)        missing.push('homeCity');
+      if (!homeState)       missing.push('homeState');
+      if (!homeZip)         missing.push('homeZip');
+
+      if (missing.length > 0) {
+        console.log(`[GIGFI AUTO] Skipping ${businessEmail} — missing: ${missing.join(', ')}`);
+        await storage.updateBusinessUnderwritingDecision(decisionId, {
+          gigfiStatus: 'SKIPPED' as any,
+          gigfiSubmittedAt: new Date(),
+        } as any);
+        return;
+      }
+
+      // Parse monthly revenue (handles "$5,000 - $10,000" or "5000")
+      const rawRev = String(app.monthlyRevenue || (app as any).averageMonthlyRevenue || '3000');
+      const revMatch = rawRev.replace(/[$,]/g, '').match(/[\d.]+/);
+      const monthlyRevenue = revMatch ? Math.round(parseFloat(revMatch[0])) : 3000;
+
+      // Cap financing amount at $10,000
+      const rawAmount = parseFloat(String(app.requestedAmount || '2500')) || 2500;
+      const financingAmount = Math.min(rawAmount, 10000);
+
+      // Next pay date = 14 days from today, skip to Monday if weekend
+      const nextPay = new Date();
+      nextPay.setDate(nextPay.getDate() + 14);
+      const dow = nextPay.getDay();
+      if (dow === 0) nextPay.setDate(nextPay.getDate() + 1); // Sunday → Monday
+      if (dow === 6) nextPay.setDate(nextPay.getDate() + 2); // Saturday → Monday
+      const mm = String(nextPay.getMonth() + 1).padStart(2, '0');
+      const dd = String(nextPay.getDate()).padStart(2, '0');
+      const yyyy = nextPay.getFullYear();
+      const nextPayDay = `${mm}/${dd}/${yyyy}`;
+
+      const leadData: GigFiLeadData = {
+        firstName,
+        lastName,
+        email: app.email || businessEmail,
+        phone: app.phone || '',
+        businessName: (app as any).legalBusinessName || app.businessName || fullName,
+        monthlyRevenue,
+        financingAmount,
+        businessAge: (app as any).timeInBusiness || undefined,
+        ssn,
+        dob,
+        homeAddress,
+        homeCity,
+        homeState,
+        homeZip,
+        payFrequency: '2',   // bi-weekly — satisfies "at least every 2 weeks"
+        nextPayDay,
+      };
+
+      console.log(`[GIGFI AUTO] Submitting ${businessEmail} — amount=$${financingAmount}, payFreq=bi-weekly, nextPay=${nextPayDay}`);
+      const result = await submitToGigFi(leadData, app.id || decisionId);
+
+      await storage.updateBusinessUnderwritingDecision(decisionId, {
+        gigfiStatus: result.status,
+        gigfiDecisionId: result.decisionId || null,
+        gigfiRedirectUrl: result.redirectUrl || null,
+        gigfiSubmittedAt: new Date(),
+      } as any);
+
+      console.log(`[GIGFI AUTO] Result for ${businessEmail}: ${result.status}${result.redirectUrl ? ` → ${result.redirectUrl}` : ''}`);
+    } catch (err: any) {
+      console.error(`[GIGFI AUTO] Error submitting ${businessEmail}:`, err.message || err);
+    }
+  }
+
   // Create or update business underwriting decision
   app.post("/api/underwriting-decisions", async (req, res) => {
     console.log(`[UNDERWRITING POST] Received request from ${req.session.user?.agentEmail || 'unknown'} (role: ${req.session.user?.role || 'none'})`);
@@ -6060,6 +6161,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           amount: _fundedAmount,
           lender: decision.lender || undefined,
         });
+      }
+
+      // Auto-submit to GigFi when marked unqualified (async, non-blocking)
+      if (status === 'unqualified' && businessEmail) {
+        autoSubmitGigFiForUnqualified(decision.id, businessEmail).catch(err =>
+          console.error('[GIGFI AUTO] Unhandled error:', err)
+        );
       }
 
       res.json(decision);
@@ -16016,6 +16124,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`[UNDERWRITING] ${reviewerEmail} marked ${businessName} as unqualified: ${note}`);
+
+      // Auto-submit to GigFi (async, non-blocking)
+      autoSubmitGigFiForUnqualified(decision.id, normalizedEmail).catch(err =>
+        console.error('[GIGFI AUTO] Unhandled error:', err)
+      );
+
       res.json({ success: true, decision });
     } catch (err: any) {
       console.error("[UNDERWRITING] mark-unqualified error:", err);

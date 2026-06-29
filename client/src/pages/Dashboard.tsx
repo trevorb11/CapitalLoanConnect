@@ -2299,6 +2299,43 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                                     <AlertCircle className="w-3 h-3" />
                                     Unqualified
                                   </Badge>
+                                  {/* GigFi auto-submission result */}
+                                  {decision.gigfiStatus === 'ACCEPTED' && (
+                                    decision.gigfiRedirectUrl ? (
+                                      <a href={decision.gigfiRedirectUrl} target="_blank" rel="noopener noreferrer">
+                                        <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1 cursor-pointer">
+                                          <ExternalLink className="w-3 h-3" />
+                                          GigFi: Accepted
+                                        </Badge>
+                                      </a>
+                                    ) : (
+                                      <Badge className="bg-green-600 flex items-center gap-1">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        GigFi: Accepted
+                                      </Badge>
+                                    )
+                                  )}
+                                  {decision.gigfiStatus === 'REJECTED' && (
+                                    <Badge className="bg-red-700 flex items-center gap-1">
+                                      <X className="w-3 h-3" />
+                                      GigFi: Rejected
+                                    </Badge>
+                                  )}
+                                  {decision.gigfiStatus === 'SKIPPED' && (
+                                    <Badge variant="outline" className="flex items-center gap-1 text-muted-foreground">
+                                      GigFi: Skipped
+                                    </Badge>
+                                  )}
+                                  {decision.gigfiStatus === 'ERROR' && (
+                                    <Badge variant="outline" className="flex items-center gap-1 text-red-500 border-red-300">
+                                      GigFi: Error
+                                    </Badge>
+                                  )}
+                                  {!decision.gigfiStatus && (
+                                    <Badge variant="outline" className="flex items-center gap-1 text-muted-foreground animate-pulse">
+                                      GigFi: Submitting…
+                                    </Badge>
+                                  )}
                                   {decision.followUpWorthy && (
                                     <Badge variant="outline" className="flex items-center gap-1 text-blue-600 border-blue-200 dark:text-blue-400 dark:border-blue-800">
                                       <CalendarIcon className="w-3 h-3" />
