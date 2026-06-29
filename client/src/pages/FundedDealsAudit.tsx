@@ -14,6 +14,9 @@ import {
 const fmt$ = (v: number) => "$" + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
 const fmtK = (v: number) => v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` : v >= 1000 ? `$${(v/1000).toFixed(0)}K` : `$${v}`;
 
+// Reps listed individually in the overview breakdown — everyone else rolls into "Other"
+const NAMED_REPS = new Set(["Dillon", "Kenny", "Ryan", "Greg", "Julius", "Jonathan", "Dominic", "Trevor", "Cade", "Bryce"]);
+
 type SortField = "name" | "amount" | "lender" | "funded_date" | "rep";
 type SortDir = "asc" | "desc";
 
@@ -150,6 +153,23 @@ export default function FundedDealsAudit() {
 
 function OverviewTab({ report }: { report: any }) {
   const s = report.summary;
+
+  // Group by_rep: named reps get their own row, everyone else folds into "Other"
+  const groupedByRep = (() => {
+    const named: any[] = [];
+    let otherCount = 0, otherTotal = 0;
+    for (const r of (report.by_rep || [])) {
+      if (NAMED_REPS.has(r.rep)) {
+        named.push(r);
+      } else {
+        otherCount += r.count;
+        otherTotal += r.total;
+      }
+    }
+    if (otherCount > 0) named.push({ rep: "Other", count: otherCount, total: otherTotal, avg: Math.round(otherTotal / otherCount) });
+    return named;
+  })();
+
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
@@ -169,16 +189,16 @@ function OverviewTab({ report }: { report: any }) {
               <Users className="w-4 h-4 text-blue-400" /> By Rep
             </h3>
             <div className="space-y-3">
-              {report.by_rep.map((r: any) => {
+              {groupedByRep.map((r: any) => {
                 const pct = (r.total / s.total_amount) * 100;
                 return (
                   <div key={r.rep}>
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-white font-medium">{r.rep}</span>
+                      <span className={r.rep === "Other" ? "text-gray-400 font-medium" : "text-white font-medium"}>{r.rep}</span>
                       <span className="text-gray-400">{r.count} deals | {fmt$(r.total)}</span>
                     </div>
                     <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      <div className={`h-full rounded-full transition-all ${r.rep === "Other" ? "bg-gray-600" : "bg-gradient-to-r from-blue-500 to-blue-400"}`} style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
