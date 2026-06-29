@@ -14338,6 +14338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         by_rep,
         by_lender,
         by_month,
+        by_source: baseData.by_source || [],
         size_distribution,
         not_in_clc: newNotInClc,
         deals: allDeals,
