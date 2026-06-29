@@ -1099,38 +1099,62 @@ export default function Approvals() {
                       {decision.businessEmail}
                     </div>
 
-                    {/* Best Approval (Primary) at Top */}
+                    {/* Approvals — split into recent vs past (>90 days older than newest) */}
                     {(() => {
-                      const sortedApprovals = [...approvals].sort((a, b) => (a.isPrimary ? -1 : b.isPrimary ? 1 : 0));
-                      const bestApproval = sortedApprovals[0];
-                      const additionalApprovals = sortedApprovals.slice(1);
-                      const isAdditionalExpanded = expandedAdditionalApprovals.has(decision.id);
+                      // Find the most recent approval date across all approvals
+                      const apprDates = approvals.map(a => a.approvalDate ? new Date(a.approvalDate.includes('T') ? a.approvalDate : a.approvalDate + 'T00:00:00').getTime() : 0);
+                      const newestDate = Math.max(...apprDates, 0);
+                      const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
 
-                      const renderApproval = (appr: FullApprovalEntry) => (
+                      // An approval is "past" if it's more than 90 days older than the newest one
+                      const isPastApproval = (appr: FullApprovalEntry) => {
+                        if (!newestDate || !appr.approvalDate) return false;
+                        const apprTime = new Date(appr.approvalDate.includes('T') ? appr.approvalDate : appr.approvalDate + 'T00:00:00').getTime();
+                        return (newestDate - apprTime) > ninetyDaysMs;
+                      };
+
+                      const recentApprovals = approvals
+                        .filter(a => !isPastApproval(a))
+                        .sort((a, b) => (a.isPrimary ? -1 : b.isPrimary ? 1 : 0));
+                      const pastApprovals = approvals
+                        .filter(a => isPastApproval(a))
+                        .sort((a, b) => {
+                          const tA = a.approvalDate ? new Date(a.approvalDate.includes('T') ? a.approvalDate : a.approvalDate + 'T00:00:00').getTime() : 0;
+                          const tB = b.approvalDate ? new Date(b.approvalDate.includes('T') ? b.approvalDate : b.approvalDate + 'T00:00:00').getTime() : 0;
+                          return tB - tA; // newest past first
+                        });
+
+                      const isPastExpanded = expandedAdditionalApprovals.has(decision.id + '-past');
+
+                      const renderApproval = (appr: FullApprovalEntry, dimmed = false) => (
                         <div
                           key={appr.id}
                           className={`p-4 rounded-lg border ${
-                            appr.isPrimary
-                              ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800'
-                              : 'bg-muted/30 border-transparent'
+                            dimmed
+                              ? 'bg-muted/20 border-transparent opacity-70'
+                              : appr.isPrimary
+                                ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                                : 'bg-muted/30 border-transparent'
                           }`}
                         >
                           <div className="flex items-center justify-between gap-3 mb-3">
                             <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleSetPrimary(decision, appr.id)}
-                                className={`flex-shrink-0 ${appr.isPrimary ? 'text-yellow-500' : 'text-muted-foreground hover:text-yellow-500'}`}
-                                title={appr.isPrimary ? 'Best approval' : 'Set as best approval'}
-                                data-testid={`button-set-primary-${appr.id}`}
-                              >
-                                <Star className={`w-4 h-4 ${appr.isPrimary ? 'fill-yellow-500' : ''}`} />
-                              </button>
-                              {appr.isPrimary && (
+                              {!dimmed && (
+                                <button
+                                  onClick={() => handleSetPrimary(decision, appr.id)}
+                                  className={`flex-shrink-0 ${appr.isPrimary ? 'text-yellow-500' : 'text-muted-foreground hover:text-yellow-500'}`}
+                                  title={appr.isPrimary ? 'Best approval' : 'Set as best approval'}
+                                  data-testid={`button-set-primary-${appr.id}`}
+                                >
+                                  <Star className={`w-4 h-4 ${appr.isPrimary ? 'fill-yellow-500' : ''}`} />
+                                </button>
+                              )}
+                              {appr.isPrimary && !dimmed && (
                                 <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 text-xs">
                                   Best Approval
                                 </Badge>
                               )}
-                              <span className="font-semibold flex items-center gap-1">
+                              <span className={`font-semibold flex items-center gap-1 ${dimmed ? 'text-muted-foreground' : ''}`}>
                                 <Landmark className="w-3 h-3 text-muted-foreground" />
                                 {appr.lender || 'No lender'}
                               </span>
@@ -1158,7 +1182,7 @@ export default function Approvals() {
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
                             <div>
                               <div className="text-muted-foreground">Advance Amount</div>
-                              <div className="font-semibold text-green-600 dark:text-green-400">
+                              <div className={`font-semibold ${dimmed ? 'text-muted-foreground' : 'text-green-600 dark:text-green-400'}`}>
                                 {formatCurrency(appr.advanceAmount)}
                               </div>
                             </div>
@@ -1207,25 +1231,31 @@ export default function Approvals() {
 
                       return (
                         <div className="space-y-3">
-                          {bestApproval && renderApproval(bestApproval)}
-                          {additionalApprovals.length > 0 && (
-                            <div>
+                          {/* Recent approvals — shown normally */}
+                          {recentApprovals.map(a => renderApproval(a, false))}
+
+                          {/* Past approvals — collapsible, dimmed */}
+                          {pastApprovals.length > 0 && (
+                            <div className="border-t pt-2">
                               <button
                                 onClick={() => setExpandedAdditionalApprovals(prev => {
                                   const next = new Set(prev);
-                                  if (next.has(decision.id)) next.delete(decision.id);
-                                  else next.add(decision.id);
+                                  const key = decision.id + '-past';
+                                  if (next.has(key)) next.delete(key);
+                                  else next.add(key);
                                   return next;
                                 })}
-                                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
-                                data-testid={`button-toggle-additional-${decision.id}`}
+                                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-1 w-full"
+                                data-testid={`button-toggle-past-${decision.id}`}
                               >
-                                {isAdditionalExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                {isAdditionalExpanded ? 'Hide' : 'View'} {additionalApprovals.length} Additional {additionalApprovals.length === 1 ? 'Approval' : 'Approvals'}
+                                {isPastExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                <span className="font-medium">Past Approvals</span>
+                                <Badge variant="outline" className="text-xs ml-1">{pastApprovals.length}</Badge>
+                                <span className="text-xs">(older than 3 months)</span>
                               </button>
-                              {isAdditionalExpanded && (
-                                <div className="space-y-3">
-                                  {additionalApprovals.map(renderApproval)}
+                              {isPastExpanded && (
+                                <div className="space-y-3 mt-2">
+                                  {pastApprovals.map(a => renderApproval(a, true))}
                                 </div>
                               )}
                             </div>
