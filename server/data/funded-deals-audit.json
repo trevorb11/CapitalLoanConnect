@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-29T12:27:07.645866",
+  "generated_at": "2026-06-29T12:44:52.633472",
   "summary": {
     "total_deals": 214,
     "total_amount": 19887387.88,
@@ -8,11 +8,11 @@
       "2024-09-13",
       "2026-05-21"
     ],
-    "clc_match_count": 177,
+    "clc_match_count": 178,
     "clc_match_rate": 83,
-    "not_in_clc_count": 37,
-    "not_in_clc_amount": 5259017.55,
-    "in_db_other_status": 27,
+    "not_in_clc_count": 36,
+    "not_in_clc_amount": 5239017.55,
+    "in_db_other_status": 26,
     "ghl_match_count": 134,
     "ghl_match_rate": 63
   },
@@ -490,9 +490,9 @@
     },
     {
       "source": "L4C (Leads4Cash)",
-      "count": 40,
-      "total": 1322601.81,
-      "avg": 33065,
+      "count": 39,
+      "total": 1302601.81,
+      "avg": 33400,
       "deals": [
         {
           "name": "Puro",
@@ -576,17 +576,10 @@
     },
     {
       "source": "Full Application Form",
-      "count": 13,
-      "total": 621000.0,
-      "avg": 47769,
+      "count": 18,
+      "total": 639000.0,
+      "avg": 35500,
       "deals": [
-        {
-          "name": "FIT SCRUBS INC",
-          "amount": 180000.0,
-          "lender": "River",
-          "funded_date": "2026-02-04",
-          "rep": "Dillon"
-        },
         {
           "name": "SB ENTERPRISES LTD",
           "amount": 91000.0,
@@ -614,14 +607,21 @@
           "lender": "Fuji",
           "funded_date": "2025-05-08",
           "rep": "Dillon"
+        },
+        {
+          "name": "DALE PHILLIPS LOGGING INC",
+          "amount": 42000.0,
+          "lender": "Specialty",
+          "funded_date": "2025-04-10",
+          "rep": "Dillon"
         }
       ]
     },
     {
       "source": "Unknown",
-      "count": 13,
-      "total": 392307.49,
-      "avg": 30177,
+      "count": 12,
+      "total": 367307.49,
+      "avg": 30609,
       "deals": [
         {
           "name": "ELITE AUTO SALON LLC",
@@ -662,10 +662,17 @@
     },
     {
       "source": "UCC (Filed Leads)",
-      "count": 9,
-      "total": 264500.0,
-      "avg": 29389,
+      "count": 5,
+      "total": 288000.0,
+      "avg": 57600,
       "deals": [
+        {
+          "name": "FIT SCRUBS INC",
+          "amount": 180000.0,
+          "lender": "River",
+          "funded_date": "2026-02-04",
+          "rep": "Dillon"
+        },
         {
           "name": "Menol Transportation Inc",
           "amount": 53000.0,
@@ -674,32 +681,25 @@
           "rep": "Dillon"
         },
         {
-          "name": "DALE PHILLIPS LOGGING INC",
-          "amount": 42000.0,
-          "lender": "Specialty",
-          "funded_date": "2025-04-10",
+          "name": "LUXURY FURNITURE INC",
+          "amount": 25000.0,
+          "lender": "River",
+          "funded_date": "2026-03-05",
           "rep": "Dillon"
         },
         {
-          "name": "Dale Phillips",
-          "amount": 42000.0,
-          "lender": "Specialty",
-          "funded_date": "2024-10-21",
-          "rep": "Ryan"
+          "name": "Lions Auto Body",
+          "amount": 20000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-04-10",
+          "rep": "Kenny"
         },
         {
-          "name": "Dale Phillips",
-          "amount": 39000.0,
+          "name": "JM Pressure Washers",
+          "amount": 10000.0,
           "lender": "Fuji",
-          "funded_date": "2025-11-19",
-          "rep": "Ryan"
-        },
-        {
-          "name": "Dale Phillips",
-          "amount": 30000.0,
-          "lender": "Fuji",
-          "funded_date": "2025-08-14",
-          "rep": "Ryan"
+          "funded_date": "2026-04-21",
+          "rep": "Dominic"
         }
       ]
     },
@@ -776,6 +776,28 @@
       ]
     },
     {
+      "source": "Manual Dial",
+      "count": 2,
+      "total": 53500.0,
+      "avg": 26750,
+      "deals": [
+        {
+          "name": "ECM Performance Materials",
+          "amount": 50000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-10-31",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Chosen Commercial Contract Inc",
+          "amount": 3500.0,
+          "lender": "Gigfi",
+          "funded_date": "2026-04-21",
+          "rep": "Trevor"
+        }
+      ]
+    },
+    {
       "source": "OD (Outbound Dial)",
       "count": 1,
       "total": 50000.0,
@@ -786,21 +808,6 @@
           "amount": 50000.0,
           "lender": "Kapitus",
           "funded_date": "2026-04-27",
-          "rep": "Dillon"
-        }
-      ]
-    },
-    {
-      "source": "Manual Dial",
-      "count": 1,
-      "total": 50000.0,
-      "avg": 50000,
-      "deals": [
-        {
-          "name": "ECM Performance Materials",
-          "amount": 50000.0,
-          "lender": "Fuji",
-          "funded_date": "2025-10-31",
           "rep": "Dillon"
         }
       ]
@@ -911,14 +918,6 @@
       "lender": "Revenued",
       "funded_date": "2026-02-02",
       "rep": "Dillon",
-      "db_status": "approved"
-    },
-    {
-      "name": "Total Fire Protection & Plumbing Services",
-      "amount": 20000.0,
-      "lender": "Specialty",
-      "funded_date": "2026-01-30",
-      "rep": "Kenny",
       "db_status": "approved"
     },
     {
@@ -1237,7 +1236,7 @@
       "funded_date": "2026-04-21",
       "rep": "Trevor",
       "points": 0.1,
-      "source": "UCC (Filed Leads)"
+      "source": "Manual Dial"
     },
     {
       "name": "JM Pressure Washers",
@@ -1309,7 +1308,7 @@
       "funded_date": "2026-04-10",
       "rep": "Kenny",
       "points": 0.13,
-      "source": "L4C (Leads4Cash)"
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "RHA Jewelery LLC",
@@ -1390,7 +1389,7 @@
       "funded_date": "2026-03-05",
       "rep": "Dillon",
       "points": 0,
-      "source": "Unknown"
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "A+ Professional Painting",
@@ -1552,7 +1551,7 @@
       "funded_date": "2026-02-04",
       "rep": "Dillon",
       "points": 0.1,
-      "source": "Full Application Form"
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "Brencon Companies Inc",
@@ -1588,7 +1587,7 @@
       "funded_date": "2026-01-30",
       "rep": "Kenny",
       "points": 0.08,
-      "source": "UCC (Filed Leads)"
+      "source": "Full Application Form"
     },
     {
       "name": "A+ Professional Painting",
@@ -1768,7 +1767,7 @@
       "funded_date": "2025-11-19",
       "rep": "Ryan",
       "points": 0.12,
-      "source": "UCC (Filed Leads)"
+      "source": "Full Application Form"
     },
     {
       "name": "BigOhair LLC",
@@ -1867,7 +1866,7 @@
       "funded_date": "2025-10-28",
       "rep": "Ryan",
       "points": 0.12,
-      "source": "UCC (Filed Leads)"
+      "source": "Full Application Form"
     },
     {
       "name": "Boulder Pho LLC",
@@ -2155,7 +2154,7 @@
       "funded_date": "2025-08-14",
       "rep": "Ryan",
       "points": 0.08,
-      "source": "UCC (Filed Leads)"
+      "source": "Full Application Form"
     },
     {
       "name": "Garmentory INC",
@@ -2614,7 +2613,7 @@
       "funded_date": "2025-04-10",
       "rep": "Dillon",
       "points": 0.1,
-      "source": "UCC (Filed Leads)"
+      "source": "Full Application Form"
     },
     {
       "name": "Saintly Skin",
@@ -3010,7 +3009,7 @@
       "funded_date": "2024-10-21",
       "rep": "Ryan",
       "points": 0.07,
-      "source": "UCC (Filed Leads)"
+      "source": "Full Application Form"
     },
     {
       "name": "BOOZDNA LLC",
