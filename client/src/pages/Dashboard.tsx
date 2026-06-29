@@ -2490,11 +2490,15 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                               {appr.term && <span className="text-muted-foreground">{appr.term}</span>}
                               {appr.factorRate && <span className="text-muted-foreground">{appr.factorRate}x</span>}
                               {appr.paymentFrequency && <span className="text-muted-foreground capitalize">{appr.paymentFrequency}</span>}
-                              {appr.approvalDate && (
-                                <span className="text-muted-foreground text-xs">
-                                  {format(new Date(appr.approvalDate + 'T00:00:00'), 'MMM d, yyyy')}
-                                </span>
-                              )}
+                              {appr.approvalDate && (() => {
+                                const raw = appr.approvalDate;
+                                const d = new Date(raw.includes('T') ? raw : raw + 'T00:00:00');
+                                return !isNaN(d.getTime()) ? (
+                                  <span className="text-muted-foreground text-xs">
+                                    {format(d, 'MMM d, yyyy')}
+                                  </span>
+                                ) : null;
+                              })()}
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
                               <Button
@@ -2589,7 +2593,7 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                             </div>
                             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                               <span>{formatFileSize(upload.fileSize)}</span>
-                              <span>{upload.createdAt ? format(new Date(upload.createdAt), 'MMM d, yyyy') : 'N/A'}</span>
+                              <span>{(() => { const d = upload.createdAt ? new Date(upload.createdAt) : null; return d && !isNaN(d.getTime()) ? format(d, 'MMM d, yyyy') : 'N/A'; })()}</span>
                               <span className="flex items-center gap-1">
                                 <User className="w-3 h-3" />
                                 {upload.email}
