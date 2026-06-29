@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-28T23:32:37.141765",
+  "generated_at": "2026-06-29T12:27:07.645866",
   "summary": {
     "total_deals": 214,
     "total_amount": 19887387.88,
@@ -8,11 +8,13 @@
       "2024-09-13",
       "2026-05-21"
     ],
-    "clc_match_count": 176,
-    "clc_match_rate": 82,
-    "not_in_clc_count": 38,
-    "not_in_clc_amount": 5455017.55,
-    "in_db_other_status": 27
+    "clc_match_count": 177,
+    "clc_match_rate": 83,
+    "not_in_clc_count": 37,
+    "not_in_clc_amount": 5259017.55,
+    "in_db_other_status": 27,
+    "ghl_match_count": 134,
+    "ghl_match_rate": 63
   },
   "by_rep": [
     {
@@ -356,6 +358,454 @@
       "total": 152500.0
     }
   ],
+  "by_source": [
+    {
+      "source": "Not in GHL",
+      "count": 80,
+      "total": 9246813.58,
+      "avg": 115585,
+      "deals": [
+        {
+          "name": "Double L Contractors",
+          "amount": 2300000.0,
+          "lender": "Newtek",
+          "funded_date": "2026-03-12",
+          "rep": "Dillon"
+        },
+        {
+          "name": "PG TIRE INC",
+          "amount": 850000.0,
+          "lender": "Newtek",
+          "funded_date": "2025-02-27",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Level One Protection",
+          "amount": 654176.65,
+          "lender": "QFS",
+          "funded_date": "2025-07-31",
+          "rep": "Kenny"
+        },
+        {
+          "name": "Harvest Hospitality Group, LLC",
+          "amount": 575000.0,
+          "lender": "Newtek",
+          "funded_date": "2026-02-19",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Level One Protection",
+          "amount": 335000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-06-05",
+          "rep": "Kenny"
+        }
+      ]
+    },
+    {
+      "source": "KDLT",
+      "count": 13,
+      "total": 5110000.0,
+      "avg": 393077,
+      "deals": [
+        {
+          "name": "LAFAYETTE SERVICES LLC",
+          "amount": 4650000.0,
+          "lender": "Newtek",
+          "funded_date": "2025-06-29",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Star Valley Construction",
+          "amount": 100000.0,
+          "lender": "Revenued",
+          "funded_date": "2025-10-15",
+          "rep": "Kenny"
+        },
+        {
+          "name": "Victorio's Pizza & Italian Food To Go",
+          "amount": 65000.0,
+          "lender": "Wellen",
+          "funded_date": "2025-06-09",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Victorio's Pizza & Italian Food To Go",
+          "amount": 50000.0,
+          "lender": "Smart Biz Funder",
+          "funded_date": "2026-04-23",
+          "rep": "Dillon"
+        },
+        {
+          "name": "KBL Distributor LLC",
+          "amount": 40000.0,
+          "lender": "Vital Cap",
+          "funded_date": "2026-03-12",
+          "rep": "Kenny"
+        }
+      ]
+    },
+    {
+      "source": "EGTML",
+      "count": 8,
+      "total": 1442000.0,
+      "avg": 180250,
+      "deals": [
+        {
+          "name": "Garmentory INC",
+          "amount": 326000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-09-10",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Garmentory INC",
+          "amount": 265000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-10-16",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Garmentory INC",
+          "amount": 200000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-07-16",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Garmentory INC",
+          "amount": 200000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-01-10",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Garmentory INC",
+          "amount": 150000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-08-12",
+          "rep": "Dillon"
+        }
+      ]
+    },
+    {
+      "source": "L4C (Leads4Cash)",
+      "count": 40,
+      "total": 1322601.81,
+      "avg": 33065,
+      "deals": [
+        {
+          "name": "Puro",
+          "amount": 193241.0,
+          "lender": "River",
+          "funded_date": "2025-11-21",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Boulder Pho LLC",
+          "amount": 183402.06,
+          "lender": "Highland Hill",
+          "funded_date": "2026-02-25",
+          "rep": "Kenny"
+        },
+        {
+          "name": "HER MAJESTY'S RIDE",
+          "amount": 180000.0,
+          "lender": "River",
+          "funded_date": "2026-03-13",
+          "rep": "Kenny"
+        },
+        {
+          "name": "Puro",
+          "amount": 120000.0,
+          "lender": "River",
+          "funded_date": "2025-10-23",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Boulder Pho LLC",
+          "amount": 78500.0,
+          "lender": "Fuji",
+          "funded_date": "2026-02-24",
+          "rep": "Kenny"
+        }
+      ]
+    },
+    {
+      "source": "BL (Business Leads)",
+      "count": 28,
+      "total": 1030665.0,
+      "avg": 36809,
+      "deals": [
+        {
+          "name": "Snow Cap Electric Inc",
+          "amount": 200000.0,
+          "lender": "Vox",
+          "funded_date": "2024-12-23",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Lappe Sand and Gravel LLC",
+          "amount": 186000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-01-05",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Lappe Sand and Gravel LLC",
+          "amount": 110000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-07-14",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Friesen Business Ventures LLC",
+          "amount": 75000.0,
+          "lender": "Fintegra",
+          "funded_date": "2026-02-25",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Snow Cap Electric Inc",
+          "amount": 55000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-02-24",
+          "rep": "Dillon"
+        }
+      ]
+    },
+    {
+      "source": "Full Application Form",
+      "count": 13,
+      "total": 621000.0,
+      "avg": 47769,
+      "deals": [
+        {
+          "name": "FIT SCRUBS INC",
+          "amount": 180000.0,
+          "lender": "River",
+          "funded_date": "2026-02-04",
+          "rep": "Dillon"
+        },
+        {
+          "name": "SB ENTERPRISES LTD",
+          "amount": 91000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-05-22",
+          "rep": "Dillon"
+        },
+        {
+          "name": "House of Smokez LLC",
+          "amount": 55000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-02-02",
+          "rep": "Dillon"
+        },
+        {
+          "name": "SB ENTERPRISES LTD",
+          "amount": 50000.0,
+          "lender": "River",
+          "funded_date": "2025-07-02",
+          "rep": "Dillon"
+        },
+        {
+          "name": "SB ENTERPRISES LTD",
+          "amount": 50000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-05-08",
+          "rep": "Dillon"
+        }
+      ]
+    },
+    {
+      "source": "Unknown",
+      "count": 13,
+      "total": 392307.49,
+      "avg": 30177,
+      "deals": [
+        {
+          "name": "ELITE AUTO SALON LLC",
+          "amount": 90072.49,
+          "lender": "QFS",
+          "funded_date": "2025-07-14",
+          "rep": "Dillon"
+        },
+        {
+          "name": "ELITE AUTO SALON LLC",
+          "amount": 45000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-05-19",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Trinity Limited",
+          "amount": 40000.0,
+          "lender": "Fenix",
+          "funded_date": "2025-09-12",
+          "rep": "Ryan"
+        },
+        {
+          "name": "ARM Consulting Corporation",
+          "amount": 33000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-01-14",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Crown Drive Inc",
+          "amount": 30235.0,
+          "lender": "Pearl",
+          "funded_date": "2026-01-07",
+          "rep": "Ryan"
+        }
+      ]
+    },
+    {
+      "source": "UCC (Filed Leads)",
+      "count": 9,
+      "total": 264500.0,
+      "avg": 29389,
+      "deals": [
+        {
+          "name": "Menol Transportation Inc",
+          "amount": 53000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-08-18",
+          "rep": "Dillon"
+        },
+        {
+          "name": "DALE PHILLIPS LOGGING INC",
+          "amount": 42000.0,
+          "lender": "Specialty",
+          "funded_date": "2025-04-10",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Dale Phillips",
+          "amount": 42000.0,
+          "lender": "Specialty",
+          "funded_date": "2024-10-21",
+          "rep": "Ryan"
+        },
+        {
+          "name": "Dale Phillips",
+          "amount": 39000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-11-19",
+          "rep": "Ryan"
+        },
+        {
+          "name": "Dale Phillips",
+          "amount": 30000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-08-14",
+          "rep": "Ryan"
+        }
+      ]
+    },
+    {
+      "source": "Partial Application Form",
+      "count": 4,
+      "total": 225000.0,
+      "avg": 56250,
+      "deals": [
+        {
+          "name": "Concord Early Learning Center LLC",
+          "amount": 95000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-04-22",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Concord Early Learning Center LLC",
+          "amount": 60000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-12-19",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Concord Early Learning Center LLC",
+          "amount": 40000.0,
+          "lender": "Lendini",
+          "funded_date": "2025-06-04",
+          "rep": "Dillon"
+        },
+        {
+          "name": "Concord Early Learning Center LLC",
+          "amount": 30000.0,
+          "lender": "Superfast Cap",
+          "funded_date": "2025-06-04",
+          "rep": "Dillon"
+        }
+      ]
+    },
+    {
+      "source": "Website Lead",
+      "count": 4,
+      "total": 132500.0,
+      "avg": 33125,
+      "deals": [
+        {
+          "name": "Burgett's Custom Drywall",
+          "amount": 60000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-03-25",
+          "rep": "Dillon"
+        },
+        {
+          "name": "AC Mann of the Treasure Coast INC",
+          "amount": 32500.0,
+          "lender": "Fuji",
+          "funded_date": "2026-05-04",
+          "rep": "Greg"
+        },
+        {
+          "name": "AC Mann of the Treasure Coast INC",
+          "amount": 25000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-03-19",
+          "rep": "Greg"
+        },
+        {
+          "name": "AC Mann of the Treasure Coast INC",
+          "amount": 15000.0,
+          "lender": "Fuji",
+          "funded_date": "2026-02-19",
+          "rep": "Greg"
+        }
+      ]
+    },
+    {
+      "source": "OD (Outbound Dial)",
+      "count": 1,
+      "total": 50000.0,
+      "avg": 50000,
+      "deals": [
+        {
+          "name": "Hudson Taylor Enterprise LLC",
+          "amount": 50000.0,
+          "lender": "Kapitus",
+          "funded_date": "2026-04-27",
+          "rep": "Dillon"
+        }
+      ]
+    },
+    {
+      "source": "Manual Dial",
+      "count": 1,
+      "total": 50000.0,
+      "avg": 50000,
+      "deals": [
+        {
+          "name": "ECM Performance Materials",
+          "amount": 50000.0,
+          "lender": "Fuji",
+          "funded_date": "2025-10-31",
+          "rep": "Dillon"
+        }
+      ]
+    }
+  ],
   "size_distribution": [
     {
       "bracket": "Under $10K",
@@ -421,14 +871,6 @@
       "lender": "Silverline",
       "funded_date": "2026-04-17",
       "rep": "Dillon",
-      "db_status": null
-    },
-    {
-      "name": "ETV Software Inc",
-      "amount": 196000.0,
-      "lender": "Kapitus",
-      "funded_date": "2026-04-13",
-      "rep": "Kenny",
       "db_status": null
     },
     {
@@ -695,7 +1137,8 @@
       "lender": "Fuji",
       "funded_date": "2026-05-21",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "ELITE AUTO SALON LLC",
@@ -703,7 +1146,8 @@
       "lender": "Fuji",
       "funded_date": "2026-05-19",
       "rep": "Dillon",
-      "points": 0.11
+      "points": 0.11,
+      "source": "Unknown"
     },
     {
       "name": "KP & T AUTO SERVICE",
@@ -711,7 +1155,8 @@
       "lender": "Fuji",
       "funded_date": "2026-05-15",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Not in GHL"
     },
     {
       "name": "AC Mann of the Treasure Coast INC",
@@ -719,7 +1164,8 @@
       "lender": "Fuji",
       "funded_date": "2026-05-04",
       "rep": "Greg",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Website Lead"
     },
     {
       "name": "Boulder Pho LLC",
@@ -727,7 +1173,8 @@
       "lender": "River",
       "funded_date": "2026-05-01",
       "rep": "Kenny",
-      "points": 0.1
+      "points": 0.1,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Friesen Business Ventures LLC",
@@ -735,7 +1182,8 @@
       "lender": "Revenued",
       "funded_date": "2026-04-29",
       "rep": "Dillon",
-      "points": 0.04
+      "points": 0.04,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Brencon Companies Inc",
@@ -743,7 +1191,8 @@
       "lender": "Revenued",
       "funded_date": "2026-04-28",
       "rep": "Kenny",
-      "points": 0.03
+      "points": 0.03,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Hudson Taylor Enterprise LLC",
@@ -751,7 +1200,8 @@
       "lender": "Kapitus",
       "funded_date": "2026-04-27",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "OD (Outbound Dial)"
     },
     {
       "name": "Julio's Grill",
@@ -759,7 +1209,8 @@
       "lender": "Fintegra",
       "funded_date": "2026-04-27",
       "rep": "Jonathan",
-      "points": 0.1
+      "points": 0.1,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Victorio's Pizza & Italian Food To Go",
@@ -767,7 +1218,8 @@
       "lender": "Smart Biz Funder",
       "funded_date": "2026-04-23",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "KDLT"
     },
     {
       "name": "Concord Early Learning Center LLC",
@@ -775,7 +1227,8 @@
       "lender": "Fuji",
       "funded_date": "2026-04-22",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Partial Application Form"
     },
     {
       "name": "Chosen Commercial Contract Inc",
@@ -783,7 +1236,8 @@
       "lender": "Gigfi",
       "funded_date": "2026-04-21",
       "rep": "Trevor",
-      "points": 0.1
+      "points": 0.1,
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "JM Pressure Washers",
@@ -791,7 +1245,8 @@
       "lender": "Fuji",
       "funded_date": "2026-04-21",
       "rep": "Dominic",
-      "points": 0.1
+      "points": 0.1,
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "A TO Z PROPERTY MANAGEMENT",
@@ -799,7 +1254,8 @@
       "lender": "Silverline",
       "funded_date": "2026-04-17",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "Fowler Pools LLC",
@@ -807,7 +1263,8 @@
       "lender": "Fuji",
       "funded_date": "2026-04-16",
       "rep": "Dillon",
-      "points": 0.11
+      "points": 0.11,
+      "source": "Not in GHL"
     },
     {
       "name": "Julio's Grill",
@@ -815,7 +1272,8 @@
       "lender": "Fintegra",
       "funded_date": "2026-04-16",
       "rep": "Jonathan",
-      "points": 0.1
+      "points": 0.1,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Brencon Companies Inc",
@@ -823,7 +1281,8 @@
       "lender": "Revenued",
       "funded_date": "2026-04-15",
       "rep": "Kenny",
-      "points": 0.03
+      "points": 0.03,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Embrace Child Care",
@@ -831,7 +1290,8 @@
       "lender": "Fuji",
       "funded_date": "2026-04-13",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Full Application Form"
     },
     {
       "name": "ETV Software Inc",
@@ -839,7 +1299,8 @@
       "lender": "Kapitus",
       "funded_date": "2026-04-13",
       "rep": "Kenny",
-      "points": 0.06
+      "points": 0.06,
+      "source": "Not in GHL"
     },
     {
       "name": "Lions Auto Body",
@@ -847,7 +1308,8 @@
       "lender": "Fuji",
       "funded_date": "2026-04-10",
       "rep": "Kenny",
-      "points": 0.13
+      "points": 0.13,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "RHA Jewelery LLC",
@@ -855,7 +1317,8 @@
       "lender": "Revenued",
       "funded_date": "2026-04-07",
       "rep": "Greg",
-      "points": 0.04
+      "points": 0.04,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Immediate Guard Inc",
@@ -863,7 +1326,8 @@
       "lender": "Vital Cap",
       "funded_date": "2026-04-02",
       "rep": "Dillon",
-      "points": 0.08
+      "points": 0.08,
+      "source": "Full Application Form"
     },
     {
       "name": "Burgett's Custom Drywall",
@@ -871,7 +1335,8 @@
       "lender": "Fuji",
       "funded_date": "2026-03-25",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Website Lead"
     },
     {
       "name": "AC Mann of the Treasure Coast INC",
@@ -879,7 +1344,8 @@
       "lender": "Fuji",
       "funded_date": "2026-03-19",
       "rep": "Greg",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Website Lead"
     },
     {
       "name": "HER MAJESTY'S RIDE",
@@ -887,7 +1353,8 @@
       "lender": "River",
       "funded_date": "2026-03-13",
       "rep": "Kenny",
-      "points": 0.1
+      "points": 0.1,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Double L Contractors",
@@ -895,7 +1362,8 @@
       "lender": "Newtek",
       "funded_date": "2026-03-12",
       "rep": "Dillon",
-      "points": 0.00075
+      "points": 0.00075,
+      "source": "Not in GHL"
     },
     {
       "name": "KBL Distributor LLC",
@@ -903,7 +1371,8 @@
       "lender": "Vital Cap",
       "funded_date": "2026-03-12",
       "rep": "Kenny",
-      "points": 0.1
+      "points": 0.1,
+      "source": "KDLT"
     },
     {
       "name": "Brencon Companies Inc",
@@ -911,7 +1380,8 @@
       "lender": "Revenued",
       "funded_date": "2026-03-11",
       "rep": "Kenny",
-      "points": 0.03
+      "points": 0.03,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "LUXURY FURNITURE INC",
@@ -919,7 +1389,8 @@
       "lender": "River",
       "funded_date": "2026-03-05",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Unknown"
     },
     {
       "name": "A+ Professional Painting",
@@ -927,7 +1398,8 @@
       "lender": "Revenued",
       "funded_date": "2026-03-03",
       "rep": "Kenny",
-      "points": 0.04
+      "points": 0.04,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "ELITE AUTO SALON LLC",
@@ -935,7 +1407,8 @@
       "lender": "Fuji",
       "funded_date": "2026-02-27",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Unknown"
     },
     {
       "name": "Brencon Companies Inc",
@@ -943,7 +1416,8 @@
       "lender": "Specialty",
       "funded_date": "2026-02-26",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Embrace Child Care",
@@ -951,7 +1425,8 @@
       "lender": "Fuji",
       "funded_date": "2026-02-26",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Full Application Form"
     },
     {
       "name": "Boulder Pho LLC",
@@ -959,7 +1434,8 @@
       "lender": "Highland Hill",
       "funded_date": "2026-02-25",
       "rep": "Kenny",
-      "points": 0.04
+      "points": 0.04,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Creos Foods Inc",
@@ -967,7 +1443,8 @@
       "lender": "Fuji",
       "funded_date": "2026-02-25",
       "rep": "Kenny",
-      "points": 0.13
+      "points": 0.13,
+      "source": "KDLT"
     },
     {
       "name": "Friesen Business Ventures LLC",
@@ -975,7 +1452,8 @@
       "lender": "Fintegra",
       "funded_date": "2026-02-25",
       "rep": "Dillon",
-      "points": 0.07
+      "points": 0.07,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Boulder Pho LLC",
@@ -983,7 +1461,8 @@
       "lender": "Fuji",
       "funded_date": "2026-02-24",
       "rep": "Kenny",
-      "points": 0.11
+      "points": 0.11,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Snow Cap Electric Inc",
@@ -991,7 +1470,8 @@
       "lender": "Fuji",
       "funded_date": "2026-02-24",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "AC Mann of the Treasure Coast INC",
@@ -999,7 +1479,8 @@
       "lender": "Fuji",
       "funded_date": "2026-02-19",
       "rep": "Greg",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Website Lead"
     },
     {
       "name": "Harvest Hospitality Group, LLC",
@@ -1007,7 +1488,8 @@
       "lender": "Newtek",
       "funded_date": "2026-02-19",
       "rep": "Dillon",
-      "points": 0.01
+      "points": 0.01,
+      "source": "Not in GHL"
     },
     {
       "name": "TAKE FLIGHT NPR LLC",
@@ -1015,7 +1497,8 @@
       "lender": "Fintegra",
       "funded_date": "2026-02-11",
       "rep": "Dillon",
-      "points": 0.16
+      "points": 0.16,
+      "source": "Full Application Form"
     },
     {
       "name": "Brencon Companies Inc",
@@ -1023,7 +1506,8 @@
       "lender": "Revenued",
       "funded_date": "2026-02-11",
       "rep": "Kenny",
-      "points": 0.03
+      "points": 0.03,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "DonLin Enterprises LLC",
@@ -1031,7 +1515,8 @@
       "lender": "Revenued",
       "funded_date": "2026-02-06",
       "rep": "Ryan",
-      "points": 0.04
+      "points": 0.04,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "ELITE AUTO SALON LLC",
@@ -1039,7 +1524,8 @@
       "lender": "Fuji",
       "funded_date": "2026-02-05",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Unknown"
     },
     {
       "name": "Levant Trans, Inc.",
@@ -1047,7 +1533,8 @@
       "lender": "Fuji",
       "funded_date": "2026-02-05",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "KDLT"
     },
     {
       "name": "Mold Experts Plus",
@@ -1055,7 +1542,8 @@
       "lender": "River",
       "funded_date": "2026-02-05",
       "rep": "Julius",
-      "points": 0.1
+      "points": 0.1,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "FIT SCRUBS INC",
@@ -1063,7 +1551,8 @@
       "lender": "River",
       "funded_date": "2026-02-04",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Full Application Form"
     },
     {
       "name": "Brencon Companies Inc",
@@ -1071,7 +1560,8 @@
       "lender": "Revenued",
       "funded_date": "2026-02-02",
       "rep": "Kenny",
-      "points": 0.03
+      "points": 0.03,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Friesen Business Ventures LLC",
@@ -1079,7 +1569,8 @@
       "lender": "Revenued",
       "funded_date": "2026-02-02",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "House of Smokez LLC",
@@ -1087,7 +1578,8 @@
       "lender": "Fuji",
       "funded_date": "2026-02-02",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Full Application Form"
     },
     {
       "name": "Total Fire Protection & Plumbing Services",
@@ -1095,7 +1587,8 @@
       "lender": "Specialty",
       "funded_date": "2026-01-30",
       "rep": "Kenny",
-      "points": 0.08
+      "points": 0.08,
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "A+ Professional Painting",
@@ -1103,7 +1596,8 @@
       "lender": "Revenued",
       "funded_date": "2026-01-16",
       "rep": "Kenny",
-      "points": 0
+      "points": 0,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "ARM Consulting Corporation",
@@ -1111,7 +1605,8 @@
       "lender": "Fuji",
       "funded_date": "2026-01-14",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Unknown"
     },
     {
       "name": "The Plug T-Shirt Store LLC",
@@ -1119,7 +1614,8 @@
       "lender": "Vital Cap",
       "funded_date": "2026-01-09",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "KDLT"
     },
     {
       "name": "American Green Building Services",
@@ -1127,7 +1623,8 @@
       "lender": "Fuji",
       "funded_date": "2026-01-07",
       "rep": "Kenny",
-      "points": 0.11
+      "points": 0.11,
+      "source": "Not in GHL"
     },
     {
       "name": "Crown Drive Inc",
@@ -1135,7 +1632,8 @@
       "lender": "Pearl",
       "funded_date": "2026-01-07",
       "rep": "Ryan",
-      "points": 0.15
+      "points": 0.15,
+      "source": "Unknown"
     },
     {
       "name": "RHA Jewelery LLC",
@@ -1143,7 +1641,8 @@
       "lender": "Revenued",
       "funded_date": "2026-01-07",
       "rep": "Ryan",
-      "points": 0
+      "points": 0,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Lappe Sand and Gravel LLC",
@@ -1151,7 +1650,8 @@
       "lender": "Fuji",
       "funded_date": "2026-01-05",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Boulder Pho LLC",
@@ -1159,7 +1659,8 @@
       "lender": "Fuji",
       "funded_date": "2025-12-31",
       "rep": "Kenny",
-      "points": 0.07
+      "points": 0.07,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Embrace Child Care",
@@ -1167,7 +1668,8 @@
       "lender": "Fuji",
       "funded_date": "2025-12-31",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Full Application Form"
     },
     {
       "name": "Concord Early Learning Center LLC",
@@ -1175,7 +1677,8 @@
       "lender": "Fuji",
       "funded_date": "2025-12-19",
       "rep": "Dillon",
-      "points": 0.13
+      "points": 0.13,
+      "source": "Partial Application Form"
     },
     {
       "name": "Brencon Companies Inc",
@@ -1183,7 +1686,8 @@
       "lender": "Revenued",
       "funded_date": "2025-12-18",
       "rep": "Kenny",
-      "points": 0.03
+      "points": 0.03,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "FancyFree LLC",
@@ -1191,7 +1695,8 @@
       "lender": "Fenix",
       "funded_date": "2025-12-11",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Fowler Pools LLC",
@@ -1199,7 +1704,8 @@
       "lender": "Fuji",
       "funded_date": "2025-12-09",
       "rep": "Dillon",
-      "points": 0.08
+      "points": 0.08,
+      "source": "Not in GHL"
     },
     {
       "name": "Levant Trans, Inc.",
@@ -1207,7 +1713,8 @@
       "lender": "Fuji",
       "funded_date": "2025-11-25",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "KDLT"
     },
     {
       "name": "Boulder Pho LLC",
@@ -1215,7 +1722,8 @@
       "lender": "Fuji",
       "funded_date": "2025-11-24",
       "rep": "Kenny",
-      "points": 0.07
+      "points": 0.07,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Brencon Companies Inc",
@@ -1223,7 +1731,8 @@
       "lender": "Vital Cap",
       "funded_date": "2025-11-24",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Creos Foods Inc",
@@ -1231,7 +1740,8 @@
       "lender": "Fuji",
       "funded_date": "2025-11-21",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "KDLT"
     },
     {
       "name": "Puro",
@@ -1239,7 +1749,8 @@
       "lender": "River",
       "funded_date": "2025-11-21",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Bosphorus Trade",
@@ -1247,7 +1758,8 @@
       "lender": "Vital Cap",
       "funded_date": "2025-11-19",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Dale Phillips",
@@ -1255,7 +1767,8 @@
       "lender": "Fuji",
       "funded_date": "2025-11-19",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "BigOhair LLC",
@@ -1263,7 +1776,8 @@
       "lender": "Westwood",
       "funded_date": "2025-11-14",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "KAVYA WINE AND SPIRITS, LLC",
@@ -1271,7 +1785,8 @@
       "lender": "Newtek",
       "funded_date": "2025-11-12",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "Crown Drive Inc",
@@ -1279,7 +1794,8 @@
       "lender": "Pearl",
       "funded_date": "2025-11-07",
       "rep": "Ryan",
-      "points": 0.15
+      "points": 0.15,
+      "source": "Unknown"
     },
     {
       "name": "JTS Metal Design",
@@ -1287,7 +1803,8 @@
       "lender": "Fuji",
       "funded_date": "2025-11-04",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "KP & T AUTO SERVICE",
@@ -1295,7 +1812,8 @@
       "lender": "Fenix",
       "funded_date": "2025-11-03",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "American Green Building Services",
@@ -1303,7 +1821,8 @@
       "lender": "Fuji",
       "funded_date": "2025-10-31",
       "rep": "Kenny",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "ECM Performance Materials",
@@ -1311,7 +1830,8 @@
       "lender": "Fuji",
       "funded_date": "2025-10-31",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Manual Dial"
     },
     {
       "name": "Project Blue Construction Group",
@@ -1319,7 +1839,8 @@
       "lender": "Fuji",
       "funded_date": "2025-10-30",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "KDLT"
     },
     {
       "name": "DonLin Enterprises LLC",
@@ -1327,7 +1848,8 @@
       "lender": "Revenued",
       "funded_date": "2025-10-29",
       "rep": "Ryan",
-      "points": 0
+      "points": 0,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Levant Trans, Inc.",
@@ -1335,7 +1857,8 @@
       "lender": "BHB",
       "funded_date": "2025-10-29",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "KDLT"
     },
     {
       "name": "Dale Phillips",
@@ -1343,7 +1866,8 @@
       "lender": "River",
       "funded_date": "2025-10-28",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "Boulder Pho LLC",
@@ -1351,7 +1875,8 @@
       "lender": "Fuji",
       "funded_date": "2025-10-27",
       "rep": "Kenny",
-      "points": 0.07
+      "points": 0.07,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Puro",
@@ -1359,7 +1884,8 @@
       "lender": "River",
       "funded_date": "2025-10-23",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Abrahams United-SBA",
@@ -1367,7 +1893,8 @@
       "lender": "Newtek",
       "funded_date": "2025-10-22",
       "rep": "Dillon",
-      "points": 0.0075
+      "points": 0.0075,
+      "source": "Not in GHL"
     },
     {
       "name": "Trinity Limited",
@@ -1375,7 +1902,8 @@
       "lender": "Smarter Merchant",
       "funded_date": "2025-10-21",
       "rep": "Ryan",
-      "points": 0.07
+      "points": 0.07,
+      "source": "Unknown"
     },
     {
       "name": "Boulder Pho LLC",
@@ -1383,7 +1911,8 @@
       "lender": "Fuji",
       "funded_date": "2025-10-17",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Garmentory INC",
@@ -1391,7 +1920,8 @@
       "lender": "Fuji",
       "funded_date": "2025-10-16",
       "rep": "Dillon",
-      "points": 0.08
+      "points": 0.08,
+      "source": "EGTML"
     },
     {
       "name": "Star Valley Construction",
@@ -1399,7 +1929,8 @@
       "lender": "Revenued",
       "funded_date": "2025-10-15",
       "rep": "Kenny",
-      "points": 0
+      "points": 0,
+      "source": "KDLT"
     },
     {
       "name": "Take Flight Supply LLC",
@@ -1407,7 +1938,8 @@
       "lender": "Fenix",
       "funded_date": "2025-10-03",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Unknown"
     },
     {
       "name": "Victorio's Pizza & Italian Food To Go",
@@ -1415,7 +1947,8 @@
       "lender": "River",
       "funded_date": "2025-09-26",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "KDLT"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -1423,7 +1956,8 @@
       "lender": "Top Choice",
       "funded_date": "2025-09-25",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "Cal Quake",
@@ -1431,7 +1965,8 @@
       "lender": "Pearl",
       "funded_date": "2025-09-22",
       "rep": "Dillon",
-      "points": 0.09
+      "points": 0.09,
+      "source": "Not in GHL"
     },
     {
       "name": "Cal Quake",
@@ -1439,7 +1974,8 @@
       "lender": "Kapitus",
       "funded_date": "2025-09-22",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "SB ENTERPRISES LTD",
@@ -1447,7 +1983,8 @@
       "lender": "River",
       "funded_date": "2025-09-22",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Full Application Form"
     },
     {
       "name": "Brencon Companies Inc",
@@ -1455,7 +1992,8 @@
       "lender": "Revenued",
       "funded_date": "2025-09-17",
       "rep": "Kenny",
-      "points": 0.07
+      "points": 0.07,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Fulkrum Operating Co LLC",
@@ -1463,7 +2001,8 @@
       "lender": "Specialty",
       "funded_date": "2025-09-17",
       "rep": "Dillon",
-      "points": 0.09
+      "points": 0.09,
+      "source": "Not in GHL"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -1471,7 +2010,8 @@
       "lender": "Top Choice",
       "funded_date": "2025-09-16",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "Garmentory INC",
@@ -1479,7 +2019,8 @@
       "lender": "Fuji",
       "funded_date": "2025-09-15",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "EGTML"
     },
     {
       "name": "Trinity Limited",
@@ -1487,7 +2028,8 @@
       "lender": "Fenix",
       "funded_date": "2025-09-12",
       "rep": "Ryan",
-      "points": 7.2
+      "points": 7.2,
+      "source": "Unknown"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -1495,7 +2037,8 @@
       "lender": "Top Choice",
       "funded_date": "2025-09-11",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "Garmentory INC",
@@ -1503,7 +2046,8 @@
       "lender": "Fuji",
       "funded_date": "2025-09-10",
       "rep": "Dillon",
-      "points": 0.08
+      "points": 0.08,
+      "source": "EGTML"
     },
     {
       "name": "Peritia Senior Advisors LLC",
@@ -1511,7 +2055,8 @@
       "lender": "Fenix",
       "funded_date": "2025-09-08",
       "rep": "Alex",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Border Security",
@@ -1519,7 +2064,8 @@
       "lender": "Fenix",
       "funded_date": "2025-08-28",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Matarello Cooking Lab",
@@ -1527,7 +2073,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-08-26",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -1535,7 +2082,8 @@
       "lender": "Top Choice",
       "funded_date": "2025-08-25",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "Joseph Youngz Trucking",
@@ -1543,7 +2091,8 @@
       "lender": "AFCI",
       "funded_date": "2025-08-22",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Joseph Youngz Trucking (Factoring)",
@@ -1551,7 +2100,8 @@
       "lender": "AFCI",
       "funded_date": "2025-08-22",
       "rep": "Kenny",
-      "points": 0
+      "points": 0,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "JTS Metal Design",
@@ -1559,7 +2109,8 @@
       "lender": "Westwood",
       "funded_date": "2025-08-22",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "SKNRGY AESTHETICS, LLC",
@@ -1567,7 +2118,8 @@
       "lender": "Top Choice",
       "funded_date": "2025-08-22",
       "rep": "Alex",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "Matarello Cooking Lab",
@@ -1575,7 +2127,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-08-19",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Menol Transportation Inc",
@@ -1583,7 +2136,8 @@
       "lender": "Fuji",
       "funded_date": "2025-08-18",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -1591,7 +2145,8 @@
       "lender": "Top Choice",
       "funded_date": "2025-08-18",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "Dale Phillips",
@@ -1599,7 +2154,8 @@
       "lender": "Fuji",
       "funded_date": "2025-08-14",
       "rep": "Ryan",
-      "points": 0.08
+      "points": 0.08,
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "Garmentory INC",
@@ -1607,7 +2163,8 @@
       "lender": "Fuji",
       "funded_date": "2025-08-12",
       "rep": "Dillon",
-      "points": 0.08
+      "points": 0.08,
+      "source": "EGTML"
     },
     {
       "name": "Matarello Cooking Lab",
@@ -1615,7 +2172,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-08-12",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Brencon Companies Inc",
@@ -1623,7 +2181,8 @@
       "lender": "Specialty",
       "funded_date": "2025-08-08",
       "rep": "Kenny",
-      "points": 0.05
+      "points": 0.05,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "TK Gray LLC",
@@ -1631,7 +2190,8 @@
       "lender": "Lendini",
       "funded_date": "2025-08-07",
       "rep": "Sage",
-      "points": 0.14
+      "points": 0.14,
+      "source": "Not in GHL"
     },
     {
       "name": "Matarello Cooking Lab",
@@ -1639,7 +2199,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-08-05",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Matarello Cooking Lab",
@@ -1647,7 +2208,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-08-05",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Level One Protection",
@@ -1655,7 +2217,8 @@
       "lender": "QFS",
       "funded_date": "2025-07-31",
       "rep": "Kenny",
-      "points": 0.065
+      "points": 0.065,
+      "source": "Not in GHL"
     },
     {
       "name": "Hungry House In",
@@ -1663,7 +2226,8 @@
       "lender": "River",
       "funded_date": "2025-07-24",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -1671,7 +2235,8 @@
       "lender": "Top Choice",
       "funded_date": "2025-07-22",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "SKNRGY AESTHETICS, LLC",
@@ -1679,7 +2244,8 @@
       "lender": "Kapitus",
       "funded_date": "2025-07-17",
       "rep": "Dillon",
-      "points": 0.04
+      "points": 0.04,
+      "source": "Not in GHL"
     },
     {
       "name": "Garmentory INC",
@@ -1687,7 +2253,8 @@
       "lender": "Fuji",
       "funded_date": "2025-07-16",
       "rep": "Dillon",
-      "points": 0.08
+      "points": 0.08,
+      "source": "EGTML"
     },
     {
       "name": "ELITE AUTO SALON LLC",
@@ -1695,7 +2262,8 @@
       "lender": "Fenix",
       "funded_date": "2025-07-14",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Unknown"
     },
     {
       "name": "ELITE AUTO SALON LLC",
@@ -1703,7 +2271,8 @@
       "lender": "QFS",
       "funded_date": "2025-07-14",
       "rep": "Dillon",
-      "points": 0.06
+      "points": 0.06,
+      "source": "Unknown"
     },
     {
       "name": "Lappe Sand and Gravel LLC",
@@ -1711,7 +2280,8 @@
       "lender": "Fuji",
       "funded_date": "2025-07-14",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -1719,7 +2289,8 @@
       "lender": "Top Choice",
       "funded_date": "2025-07-08",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "PG TIRE INC",
@@ -1727,7 +2298,8 @@
       "lender": "Radiance",
       "funded_date": "2025-07-07",
       "rep": "Dillon",
-      "points": 0.055
+      "points": 0.055,
+      "source": "Not in GHL"
     },
     {
       "name": "SB ENTERPRISES LTD",
@@ -1735,7 +2307,8 @@
       "lender": "River",
       "funded_date": "2025-07-02",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Full Application Form"
     },
     {
       "name": "LAFAYETTE SERVICES LLC",
@@ -1743,7 +2316,8 @@
       "lender": "Newtek",
       "funded_date": "2025-06-29",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "KDLT"
     },
     {
       "name": "KAVYA WINE AND SPIRITS, LLC",
@@ -1751,7 +2325,8 @@
       "lender": "Kapitus",
       "funded_date": "2025-06-27",
       "rep": "Dillon",
-      "points": 0.08
+      "points": 0.08,
+      "source": "Not in GHL"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -1759,7 +2334,8 @@
       "lender": "Top Choice",
       "funded_date": "2025-06-27",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "Saintly Skin",
@@ -1767,7 +2343,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-06-26",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Hungry House In",
@@ -1775,7 +2352,8 @@
       "lender": "Fuji",
       "funded_date": "2025-06-25",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "A TO Z PROPERTY MANAGEMENT",
@@ -1783,7 +2361,8 @@
       "lender": "Silverline",
       "funded_date": "2025-06-20",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "Saintly Skin",
@@ -1791,7 +2370,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-06-20",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Saintly Skin",
@@ -1799,7 +2379,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-06-13",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Trinity Limited",
@@ -1807,7 +2388,8 @@
       "lender": "Fenix",
       "funded_date": "2025-06-13",
       "rep": "Ryan",
-      "points": 0.07
+      "points": 0.07,
+      "source": "Unknown"
     },
     {
       "name": "Hungry House In",
@@ -1815,7 +2397,8 @@
       "lender": "Fuji",
       "funded_date": "2025-06-10",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Victorio's Pizza & Italian Food To Go",
@@ -1823,7 +2406,8 @@
       "lender": "Wellen",
       "funded_date": "2025-06-09",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "KDLT"
     },
     {
       "name": "Joseph Youngz Trucking",
@@ -1831,7 +2415,8 @@
       "lender": "AFCI",
       "funded_date": "2025-06-06",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Level One Protection",
@@ -1839,7 +2424,8 @@
       "lender": "Fuji",
       "funded_date": "2025-06-05",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -1847,7 +2433,8 @@
       "lender": "Rapid",
       "funded_date": "2025-06-05",
       "rep": "Dillon",
-      "points": 0.0368240909
+      "points": 0.0368240909,
+      "source": "Not in GHL"
     },
     {
       "name": "Saintly Skin",
@@ -1855,7 +2442,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-06-05",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Concord Early Learning Center LLC",
@@ -1863,7 +2451,8 @@
       "lender": "Lendini",
       "funded_date": "2025-06-04",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Partial Application Form"
     },
     {
       "name": "Concord Early Learning Center LLC",
@@ -1871,7 +2460,8 @@
       "lender": "Superfast Cap",
       "funded_date": "2025-06-04",
       "rep": "Dillon",
-      "points": 0.08
+      "points": 0.08,
+      "source": "Partial Application Form"
     },
     {
       "name": "Saintly Skin",
@@ -1879,7 +2469,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-05-29",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "EK LINE INC",
@@ -1887,7 +2478,8 @@
       "lender": "Fuji",
       "funded_date": "2025-05-27",
       "rep": "Dillon",
-      "points": 0.08
+      "points": 0.08,
+      "source": "Not in GHL"
     },
     {
       "name": "Border Security",
@@ -1895,7 +2487,8 @@
       "lender": "Legend",
       "funded_date": "2025-05-23",
       "rep": "Ryan",
-      "points": 0.15
+      "points": 0.15,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Lappe Sand and Gravel LLC",
@@ -1903,7 +2496,8 @@
       "lender": "Fuji",
       "funded_date": "2025-05-22",
       "rep": "Alex",
-      "points": 0.12
+      "points": 0.12,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Saintly Skin",
@@ -1911,7 +2505,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-05-22",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "SB ENTERPRISES LTD",
@@ -1919,7 +2514,8 @@
       "lender": "Fuji",
       "funded_date": "2025-05-22",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Full Application Form"
     },
     {
       "name": "Kraka Jak",
@@ -1927,7 +2523,8 @@
       "lender": "LiteFund",
       "funded_date": "2025-05-16",
       "rep": "Ryan",
-      "points": 0.07
+      "points": 0.07,
+      "source": "Not in GHL"
     },
     {
       "name": "Saintly Skin",
@@ -1935,7 +2532,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-05-15",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "KIDS OF HOPE CHILD DEVELOPEMENT",
@@ -1943,7 +2541,8 @@
       "lender": "Litefund",
       "funded_date": "2025-05-09",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Saintly Skin",
@@ -1951,7 +2550,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-05-08",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "SB ENTERPRISES LTD",
@@ -1959,7 +2559,8 @@
       "lender": "Fuji",
       "funded_date": "2025-05-08",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Full Application Form"
     },
     {
       "name": "Big Body Transport",
@@ -1967,7 +2568,8 @@
       "lender": "LiteFund",
       "funded_date": "2025-05-05",
       "rep": "Ryan",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Greg's Espresso Lab",
@@ -1975,7 +2577,8 @@
       "lender": "Smart Biz Funder",
       "funded_date": "2025-05-01",
       "rep": "Ryan",
-      "points": 0.08
+      "points": 0.08,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "Saintly Skin",
@@ -1983,7 +2586,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-05-01",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Saintly Skin",
@@ -1991,7 +2595,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-04-24",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Saintly Skin",
@@ -1999,7 +2604,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-04-17",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "DALE PHILLIPS LOGGING INC",
@@ -2007,7 +2613,8 @@
       "lender": "Specialty",
       "funded_date": "2025-04-10",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "Saintly Skin",
@@ -2015,7 +2622,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-04-10",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Level One Protection",
@@ -2023,7 +2631,8 @@
       "lender": "Fuji",
       "funded_date": "2025-04-07",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Saintly Skin",
@@ -2031,7 +2640,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-04-03",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Saintly Skin",
@@ -2039,7 +2649,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-03-27",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "Saintly Skin",
@@ -2047,7 +2658,8 @@
       "lender": "BizPoint",
       "funded_date": "2025-03-20",
       "rep": "Kenny",
-      "points": 0.09
+      "points": 0.09,
+      "source": "L4C (Leads4Cash)"
     },
     {
       "name": "NO FRILL FRANCHISING, INC",
@@ -2055,7 +2667,8 @@
       "lender": "Kapitus",
       "funded_date": "2025-03-03",
       "rep": "Dillon",
-      "points": 0.03
+      "points": 0.03,
+      "source": "Not in GHL"
     },
     {
       "name": "BSE Security",
@@ -2063,7 +2676,8 @@
       "lender": "Fuji",
       "funded_date": "2025-02-27",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "PG TIRE INC",
@@ -2071,7 +2685,8 @@
       "lender": "Newtek",
       "funded_date": "2025-02-27",
       "rep": "Dillon",
-      "points": 0.0275
+      "points": 0.0275,
+      "source": "Not in GHL"
     },
     {
       "name": "Big Body Transport",
@@ -2079,7 +2694,8 @@
       "lender": "LiteFund",
       "funded_date": "2025-02-24",
       "rep": "Ryan",
-      "points": 0.11
+      "points": 0.11,
+      "source": "Not in GHL"
     },
     {
       "name": "Martins Quality Truck & Body",
@@ -2087,7 +2703,8 @@
       "lender": "Fuji",
       "funded_date": "2025-02-10",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "American Green Building Services",
@@ -2095,7 +2712,8 @@
       "lender": "Legend",
       "funded_date": "2025-01-23",
       "rep": "Kenny",
-      "points": 0.149
+      "points": 0.149,
+      "source": "Not in GHL"
     },
     {
       "name": "J&J Granite & Marble",
@@ -2103,7 +2721,8 @@
       "lender": "Lendini",
       "funded_date": "2025-01-20",
       "rep": "Julius",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Garmentory INC",
@@ -2111,7 +2730,8 @@
       "lender": "Fuji",
       "funded_date": "2025-01-14",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "EGTML"
     },
     {
       "name": "Garmentory INC",
@@ -2119,7 +2739,8 @@
       "lender": "Fuji",
       "funded_date": "2025-01-10",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "EGTML"
     },
     {
       "name": "Auburn Blooms",
@@ -2127,7 +2748,8 @@
       "lender": "DLP",
       "funded_date": "2025-01-06",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "E R Chavez LLC",
@@ -2135,7 +2757,8 @@
       "lender": "Silverline",
       "funded_date": "2025-01-06",
       "rep": "Kenny",
-      "points": 0.14
+      "points": 0.14,
+      "source": "Not in GHL"
     },
     {
       "name": "Auburn Blooms",
@@ -2143,7 +2766,8 @@
       "lender": "DLP",
       "funded_date": "2024-12-30",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "E R Chavez LLC",
@@ -2151,7 +2775,8 @@
       "lender": "Silverline",
       "funded_date": "2024-12-26",
       "rep": "Kenny",
-      "points": 0.14
+      "points": 0.14,
+      "source": "Not in GHL"
     },
     {
       "name": "Auburn Blooms",
@@ -2159,7 +2784,8 @@
       "lender": "DLP",
       "funded_date": "2024-12-23",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Snow Cap Electric Inc",
@@ -2167,7 +2793,8 @@
       "lender": "Vox",
       "funded_date": "2024-12-23",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "BL (Business Leads)"
     },
     {
       "name": "E R Chavez LLC",
@@ -2175,7 +2802,8 @@
       "lender": "Silverline",
       "funded_date": "2024-12-19",
       "rep": "Kenny",
-      "points": 0.14
+      "points": 0.14,
+      "source": "Not in GHL"
     },
     {
       "name": "American Green Building Services",
@@ -2183,7 +2811,8 @@
       "lender": "Vox",
       "funded_date": "2024-12-18",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "PG TIRE INC",
@@ -2191,7 +2820,8 @@
       "lender": "Legend",
       "funded_date": "2024-12-17",
       "rep": "Dillon",
-      "points": 0.0759
+      "points": 0.0759,
+      "source": "Not in GHL"
     },
     {
       "name": "Auburn Blooms",
@@ -2199,7 +2829,8 @@
       "lender": "DLP",
       "funded_date": "2024-12-16",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Garmentory INC",
@@ -2207,7 +2838,8 @@
       "lender": "Fuji",
       "funded_date": "2024-12-16",
       "rep": "Dillon",
-      "points": 0.02
+      "points": 0.02,
+      "source": "EGTML"
     },
     {
       "name": "ALL VALLEY AUTO REPAIR, LLC",
@@ -2215,7 +2847,8 @@
       "lender": "Westwood",
       "funded_date": "2024-12-12",
       "rep": "Sebastian",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "E R Chavez LLC",
@@ -2223,7 +2856,8 @@
       "lender": "Silverline",
       "funded_date": "2024-12-12",
       "rep": "Kenny",
-      "points": 0.14
+      "points": 0.14,
+      "source": "Not in GHL"
     },
     {
       "name": "LBVDS HOLDINGS LLC",
@@ -2231,7 +2865,8 @@
       "lender": "Capitalize Group",
       "funded_date": "2024-12-11",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Full Application Form"
     },
     {
       "name": "A&H UPSCALE LLC",
@@ -2239,7 +2874,8 @@
       "lender": "Newtek",
       "funded_date": "2024-12-10",
       "rep": "Dillon",
-      "points": 0.0075
+      "points": 0.0075,
+      "source": "Not in GHL"
     },
     {
       "name": "Built By KJ",
@@ -2247,7 +2883,8 @@
       "lender": "Superfast Cap",
       "funded_date": "2024-12-07",
       "rep": "Dillon",
-      "points": 0
+      "points": 0,
+      "source": "Not in GHL"
     },
     {
       "name": "E R Chavez LLC",
@@ -2255,7 +2892,8 @@
       "lender": "Silverline",
       "funded_date": "2024-12-05",
       "rep": "Kenny",
-      "points": 0.14
+      "points": 0.14,
+      "source": "Not in GHL"
     },
     {
       "name": "E R Chavez LLC",
@@ -2263,7 +2901,8 @@
       "lender": "Silverline",
       "funded_date": "2024-12-02",
       "rep": "Kenny",
-      "points": 0.14
+      "points": 0.14,
+      "source": "Not in GHL"
     },
     {
       "name": "Express Screen Enclosures and Shutters",
@@ -2271,7 +2910,8 @@
       "lender": "Smarter Merchant",
       "funded_date": "2024-11-22",
       "rep": "Kenny",
-      "points": 0.105
+      "points": 0.105,
+      "source": "Not in GHL"
     },
     {
       "name": "E R Chavez LLC",
@@ -2279,7 +2919,8 @@
       "lender": "Silverline",
       "funded_date": "2024-11-21",
       "rep": "Kenny",
-      "points": 0.14
+      "points": 0.14,
+      "source": "Not in GHL"
     },
     {
       "name": "BOOZDNA LLC",
@@ -2287,7 +2928,8 @@
       "lender": "DLP",
       "funded_date": "2024-11-20",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "PAULIE V & ANGELA L, LLC",
@@ -2295,7 +2937,8 @@
       "lender": "Rapid",
       "funded_date": "2024-11-18",
       "rep": "Dillon",
-      "points": 0.05
+      "points": 0.05,
+      "source": "Not in GHL"
     },
     {
       "name": "Watch This Freight LLC",
@@ -2303,7 +2946,8 @@
       "lender": "Newfunds",
       "funded_date": "2024-11-15",
       "rep": "Dillon",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "BOOZDNA LLC",
@@ -2311,7 +2955,8 @@
       "lender": "DLP",
       "funded_date": "2024-11-13",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "PG TIRE INC",
@@ -2319,7 +2964,8 @@
       "lender": "Legend",
       "funded_date": "2024-11-13",
       "rep": "Dillon",
-      "points": 0.102
+      "points": 0.102,
+      "source": "Not in GHL"
     },
     {
       "name": "BOOZDNA LLC",
@@ -2327,7 +2973,8 @@
       "lender": "DLP",
       "funded_date": "2024-11-06",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "BSE Security Services INC",
@@ -2335,7 +2982,8 @@
       "lender": "Fuji",
       "funded_date": "2024-11-05",
       "rep": "Kenny",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "LBVDS HOLDINGS LLC",
@@ -2343,7 +2991,8 @@
       "lender": "Capitalize Group",
       "funded_date": "2024-11-05",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Full Application Form"
     },
     {
       "name": "BOOZDNA LLC",
@@ -2351,7 +3000,8 @@
       "lender": "DLP",
       "funded_date": "2024-10-23",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "Dale Phillips",
@@ -2359,7 +3009,8 @@
       "lender": "Specialty",
       "funded_date": "2024-10-21",
       "rep": "Ryan",
-      "points": 0.07
+      "points": 0.07,
+      "source": "UCC (Filed Leads)"
     },
     {
       "name": "BOOZDNA LLC",
@@ -2367,7 +3018,8 @@
       "lender": "DLP",
       "funded_date": "2024-10-16",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "BOOZDNA LLC",
@@ -2375,7 +3027,8 @@
       "lender": "DLP",
       "funded_date": "2024-10-09",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "BOOZDNA LLC",
@@ -2383,7 +3036,8 @@
       "lender": "DLP",
       "funded_date": "2024-09-25",
       "rep": "Dillon",
-      "points": 0.12
+      "points": 0.12,
+      "source": "Not in GHL"
     },
     {
       "name": "BSE Security Services INC",
@@ -2391,7 +3045,8 @@
       "lender": "Fuji",
       "funded_date": "2024-09-19",
       "rep": "Kenny",
-      "points": 0.1
+      "points": 0.1,
+      "source": "Not in GHL"
     },
     {
       "name": "Express Screen Enclosures and Shutters",
@@ -2399,7 +3054,8 @@
       "lender": "Smarter Merchant",
       "funded_date": "2024-09-13",
       "rep": "Kenny",
-      "points": 0.08
+      "points": 0.08,
+      "source": "Not in GHL"
     }
   ]
 }
