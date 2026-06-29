@@ -8,7 +8,7 @@ import { Link } from "wouter";
 import {
   ChevronLeft, Loader2, Search, DollarSign, TrendingUp, Users,
   Building2, Calendar, BarChart3, PieChart, AlertTriangle,
-  CheckCircle2, ArrowUpDown, ChevronDown, ChevronUp, Database,
+  CheckCircle2, ArrowUpDown, ChevronDown, ChevronUp, Database, Globe,
 } from "lucide-react";
 
 const fmt$ = (v: number) => "$" + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -27,6 +27,7 @@ export default function FundedDealsAudit() {
   const [search, setSearch] = useState("");
   const [repFilter, setRepFilter] = useState("all");
   const [lenderFilter, setLenderFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [sortField, setSortField] = useState<SortField>("funded_date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -60,15 +61,16 @@ export default function FundedDealsAudit() {
     }
     if (repFilter !== "all") list = list.filter((d: any) => d.rep === repFilter);
     if (lenderFilter !== "all") list = list.filter((d: any) => d.lender === lenderFilter);
+    if (sourceFilter !== "all") list = list.filter((d: any) => d.source === sourceFilter);
     list.sort((a: any, b: any) => {
       let va = a[sortField] ?? "", vb = b[sortField] ?? "";
-      if (sortField === "amount" || sortField === "points") { va = Number(va); vb = Number(vb); }
+      if (sortField === "amount") { va = Number(va); vb = Number(vb); }
       if (va < vb) return sortDir === "asc" ? -1 : 1;
       if (va > vb) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
     return list;
-  }, [report, search, repFilter, lenderFilter, sortField, sortDir]);
+  }, [report, search, repFilter, lenderFilter, sourceFilter, sortField, sortDir]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -83,6 +85,7 @@ export default function FundedDealsAudit() {
   const s = report.summary;
   const reps = [...new Set((report.deals || []).map((d: any) => d.rep).filter(Boolean))].sort() as string[];
   const lenders = [...new Set((report.deals || []).map((d: any) => d.lender).filter(Boolean))].sort() as string[];
+  const sources = [...new Set((report.deals || []).map((d: any) => d.source).filter(Boolean))].sort() as string[];
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -136,8 +139,11 @@ export default function FundedDealsAudit() {
             setRepFilter={setRepFilter}
             lenderFilter={lenderFilter}
             setLenderFilter={setLenderFilter}
+            sourceFilter={sourceFilter}
+            setSourceFilter={setSourceFilter}
             reps={reps}
             lenders={lenders}
+            sources={sources}
             sortField={sortField}
             sortDir={sortDir}
             toggleSort={toggleSort}
@@ -239,6 +245,70 @@ function OverviewTab({ report }: { report: any }) {
         </Card>
       </div>
 
+      {/* Source Breakdown - full width */}
+      {report.by_source && report.by_source.length > 0 && (
+        <Card className="bg-gray-900 border-gray-800">
+          <CardContent className="p-5">
+            <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-cyan-400" /> Lead Source Breakdown
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Source derived from GHL tags, lead batch, then contact source. {s.ghl_match_count ? `${s.ghl_match_count}/${s.total_deals} deals matched in GHL (${s.ghl_match_rate}%).` : ""}
+            </p>
+            <div className="space-y-3">
+              {report.by_source.map((src: any) => {
+                const pct = (src.total / s.total_amount) * 100;
+                const sourceColors: Record<string, string> = {
+                  "KDLT": "from-orange-500 to-orange-400",
+                  "EGTML": "from-rose-500 to-rose-400",
+                  "L4C (Leads4Cash)": "from-blue-500 to-blue-400",
+                  "BL (Business Leads)": "from-indigo-500 to-indigo-400",
+                  "Full Application Form": "from-emerald-500 to-emerald-400",
+                  "Partial Application Form": "from-teal-500 to-teal-400",
+                  "Website Lead": "from-green-500 to-green-400",
+                  "UCC (Filed Leads)": "from-yellow-500 to-yellow-400",
+                  "Manual Dial": "from-violet-500 to-violet-400",
+                  "OD (Outbound Dial)": "from-pink-500 to-pink-400",
+                  "Fresh Data": "from-lime-500 to-lime-400",
+                  "Fox": "from-red-500 to-red-400",
+                  "Not in GHL": "from-gray-600 to-gray-500",
+                  "Unknown": "from-gray-500 to-gray-400",
+                };
+                const gradient = sourceColors[src.source] || "from-sky-500 to-sky-400";
+                return (
+                  <div key={src.source}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-white font-medium">{src.source}</span>
+                      <span className="text-gray-400">
+                        {src.count} deals | {fmt$(src.total)} | avg {fmtK(src.avg)} | {pct.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full bg-gradient-to-r ${gradient} rounded-full transition-all`}
+                        style={{ width: `${Math.max(pct, 0.5)}%` }}
+                      />
+                    </div>
+                    {src.deals && src.deals.length > 0 && (
+                      <div className="mt-1 ml-2 space-y-0.5">
+                        {src.deals.slice(0, 3).map((d: any, i: number) => (
+                          <div key={i} className="text-xs text-gray-500">
+                            {d.name.slice(0, 30)} — {fmt$(d.amount)} ({d.lender})
+                          </div>
+                        ))}
+                        {src.count > 3 && (
+                          <div className="text-xs text-gray-600">+ {src.count - 3} more</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Lender + Deal Size side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* By Lender - Top 15 */}
@@ -315,13 +385,15 @@ function OverviewTab({ report }: { report: any }) {
 
 function DealsTab({
   deals, totalDeals, search, setSearch, repFilter, setRepFilter,
-  lenderFilter, setLenderFilter, reps, lenders, sortField, sortDir, toggleSort,
+  lenderFilter, setLenderFilter, sourceFilter, setSourceFilter,
+  reps, lenders, sources, sortField, sortDir, toggleSort,
 }: {
   deals: any[]; totalDeals: number;
   search: string; setSearch: (s: string) => void;
   repFilter: string; setRepFilter: (s: string) => void;
   lenderFilter: string; setLenderFilter: (s: string) => void;
-  reps: string[]; lenders: string[];
+  sourceFilter: string; setSourceFilter: (s: string) => void;
+  reps: string[]; lenders: string[]; sources: string[];
   sortField: SortField; sortDir: SortDir; toggleSort: (f: SortField) => void;
 }) {
   const [page, setPage] = useState(0);
@@ -330,7 +402,7 @@ function DealsTab({
   const visible = deals.slice(page * perPage, (page + 1) * perPage);
 
   // Reset page on filter change
-  useEffect(() => { setPage(0); }, [search, repFilter, lenderFilter]);
+  useEffect(() => { setPage(0); }, [search, repFilter, lenderFilter, sourceFilter]);
 
   const SortHeader = ({ field, label, className = "" }: { field: SortField; label: string; className?: string }) => (
     <th
@@ -377,6 +449,14 @@ function DealsTab({
         >
           <option value="all">All Lenders</option>
           {lenders.map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <select
+          value={sourceFilter}
+          onChange={e => setSourceFilter(e.target.value)}
+          className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+        >
+          <option value="all">All Sources</option>
+          {sources.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <span className="text-xs text-gray-400">{deals.length} of {totalDeals} deals</span>
       </div>
