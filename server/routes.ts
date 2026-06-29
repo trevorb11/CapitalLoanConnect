@@ -14135,6 +14135,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ─── FUNDED DEALS AUDIT REPORT ─────────────────────────────────────────
+
+  app.get("/api/admin/funded-deals-audit", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated) return res.status(401).json({ error: "Auth required" });
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const filePath = path.join(process.cwd(), "server", "data", "funded-deals-audit.json");
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        return res.json(data);
+      }
+      // Fallback to system_settings
+      const result = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'funded_deals_audit'`);
+      const row = (result as any).rows?.[0];
+      if (!row) return res.json(null);
+      res.json(typeof row.value === 'string' ? JSON.parse(row.value) : row.value);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   // ─── SMS 90-DAY REPORT (stored historical stats) ────────────────────────
 
   app.get("/api/admin/sms/90day-stats", async (req: Request, res: Response) => {
