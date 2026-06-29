@@ -8,7 +8,7 @@ import { Link } from "wouter";
 import {
   ChevronLeft, Loader2, Search, DollarSign, TrendingUp, Users,
   Building2, Calendar, BarChart3, PieChart, AlertTriangle,
-  CheckCircle2, ArrowUpDown, ChevronDown, ChevronUp,
+  CheckCircle2, ArrowUpDown, ChevronDown, ChevronUp, Database,
 } from "lucide-react";
 
 const fmt$ = (v: number) => "$" + v.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -173,11 +173,14 @@ function OverviewTab({ report }: { report: any }) {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <StatCard icon={DollarSign} label="Total Volume" value={fmtK(s.total_amount)} color="emerald" />
         <StatCard icon={TrendingUp} label="Total Deals" value={s.total_deals} color="blue" />
         <StatCard icon={Building2} label="Avg Deal Size" value={fmtK(s.avg_deal_size)} color="purple" />
         <StatCard icon={CheckCircle2} label="CLC Match Rate" value={`${s.clc_match_rate}%`} color="amber" sub={`${s.clc_match_count}/${s.total_deals}`} />
+        {(s.db_only_count ?? 0) > 0 && (
+          <StatCard icon={Database} label="DB-Only Deals" value={s.db_only_count} color="blue" sub="Not in CLC export" />
+        )}
       </div>
 
       {/* Rep Breakdown + Month Trend side by side */}
@@ -395,7 +398,16 @@ function DealsTab({
             <tbody>
               {visible.map((d: any, i: number) => (
                 <tr key={`${d.name}-${d.funded_date}-${i}`} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                  <td className="py-2.5 px-3 text-white font-medium">{d.name}</td>
+                  <td className="py-2.5 px-3 text-white font-medium">
+                    <span className="flex items-center gap-1.5">
+                      {d.name}
+                      {d.source === "db" && (
+                        <span title="From database (not in CLC export)">
+                          <Database className="w-3 h-3 text-blue-400 shrink-0" />
+                        </span>
+                      )}
+                    </span>
+                  </td>
                   <td className="py-2.5 px-3 text-emerald-400 font-mono">{fmt$(d.amount)}</td>
                   <td className="py-2.5 px-3 text-gray-300">{d.lender}</td>
                   <td className="py-2.5 px-3 text-gray-400">{d.funded_date}</td>

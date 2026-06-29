@@ -14168,16 +14168,180 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const fs = await import("fs");
       const path = await import("path");
+
+      // ── Load CLC static data ────────────────────────────────────────────────
+      let baseData: any = null;
       const filePath = path.join(process.cwd(), "server", "data", "funded-deals-audit.json");
       if (fs.existsSync(filePath)) {
-        const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-        return res.json(data);
+        baseData = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      } else {
+        const result = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'funded_deals_audit'`);
+        const row = (result as any).rows?.[0];
+        if (row) baseData = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
       }
-      // Fallback to system_settings
-      const result = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'funded_deals_audit'`);
-      const row = (result as any).rows?.[0];
-      if (!row) return res.json(null);
-      res.json(typeof row.value === 'string' ? JSON.parse(row.value) : row.value);
+      if (!baseData) return res.json(null);
+
+      // ── Dedup key: normalise business name + date ───────────────────────────
+      const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const clcDeals: any[] = Array.isArray(baseData.deals) ? baseData.deals : [];
+      const seen = new Set<string>(
+        clcDeals.map((d: any) => `${norm(d.name)}_${(d.funded_date || "").substring(0, 10)}`)
+      );
+
+      // ── Query DB for funded decisions ────────────────────────────────────────
+      const dbResult = await db.execute(sql`
+        SELECT
+          business_name,
+          advance_amount,
+          lender,
+          funded_date,
+          assigned_rep,
+          additional_fundings
+        FROM business_underwriting_decisions
+        WHERE status = 'approved'
+          AND funded_date IS NOT NULL
+          AND advance_amount IS NOT NULL
+        ORDER BY funded_date DESC
+      `);
+
+      const dbOnlyDeals: any[] = [];
+
+      for (const row of (dbResult as any).rows) {
+        const dateStr = row.funded_date
+          ? (typeof row.funded_date === "string"
+              ? row.funded_date.substring(0, 10)
+              : new Date(row.funded_date).toISOString().substring(0, 10))
+          : null;
+        if (!dateStr) continue;
+
+        // Primary funded deal
+        const key = `${norm(row.business_name)}_${dateStr}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          dbOnlyDeals.push({
+            name: row.business_name || "Unknown",
+            amount: parseFloat(row.advance_amount) || 0,
+            lender: row.lender || "Unknown",
+            funded_date: dateStr,
+            rep: row.assigned_rep || "Unknown",
+            source: "db",
+          });
+        }
+
+        // Additional fundings from JSONB array
+        const addFundings: any[] = Array.isArray(row.additional_fundings) ? row.additional_fundings : [];
+        for (const af of addFundings) {
+          const afAmt = parseFloat(af.advanceAmount || af.amount || 0);
+          if (!afAmt) continue;
+          const afDate = af.fundedDate
+            ? (typeof af.fundedDate === "string"
+                ? af.fundedDate.substring(0, 10)
+                : new Date(af.fundedDate).toISOString().substring(0, 10))
+            : null;
+          if (!afDate) continue;
+          const afKey = `${norm(row.business_name)}_${afDate}`;
+          if (!seen.has(afKey)) {
+            seen.add(afKey);
+            dbOnlyDeals.push({
+              name: row.business_name || "Unknown",
+              amount: afAmt,
+              lender: af.lender || row.lender || "Unknown",
+              funded_date: afDate,
+              rep: af.assignedRep || row.assigned_rep || "Unknown",
+              source: "db",
+            });
+          }
+        }
+      }
+
+      // ── Merge and recompute aggregates ──────────────────────────────────────
+      const allDeals: any[] = [...clcDeals, ...dbOnlyDeals];
+      const totalDeals = allDeals.length;
+      const totalAmount = allDeals.reduce((s: number, d: any) => s + (d.amount || 0), 0);
+      const dates = allDeals.map((d: any) => d.funded_date).filter(Boolean).sort();
+
+      // by_rep
+      const repMap = new Map<string, { count: number; total: number }>();
+      for (const d of allDeals) {
+        const rep = d.rep || "Unknown";
+        const existing = repMap.get(rep) || { count: 0, total: 0 };
+        repMap.set(rep, { count: existing.count + 1, total: existing.total + (d.amount || 0) });
+      }
+      const by_rep = Array.from(repMap.entries())
+        .map(([rep, v]) => ({ rep, count: v.count, total: Math.round(v.total), avg: Math.round(v.total / v.count) }))
+        .sort((a, b) => b.total - a.total);
+
+      // by_lender
+      const lenderMap = new Map<string, { count: number; total: number }>();
+      for (const d of allDeals) {
+        const lender = d.lender || "Unknown";
+        const existing = lenderMap.get(lender) || { count: 0, total: 0 };
+        lenderMap.set(lender, { count: existing.count + 1, total: existing.total + (d.amount || 0) });
+      }
+      const by_lender = Array.from(lenderMap.entries())
+        .map(([lender, v]) => ({ lender, count: v.count, total: Math.round(v.total) }))
+        .sort((a, b) => b.total - a.total);
+
+      // by_month
+      const monthMap = new Map<string, { count: number; total: number }>();
+      for (const d of allDeals) {
+        const month = (d.funded_date || "").substring(0, 7);
+        if (!month) continue;
+        const existing = monthMap.get(month) || { count: 0, total: 0 };
+        monthMap.set(month, { count: existing.count + 1, total: existing.total + (d.amount || 0) });
+      }
+      const by_month = Array.from(monthMap.entries())
+        .map(([month, v]) => ({ month, count: v.count, total: Math.round(v.total) }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      // size_distribution
+      const brackets = [
+        { label: "Under $10K", min: 0, max: 10000 },
+        { label: "$10K-$25K", min: 10000, max: 25000 },
+        { label: "$25K-$50K", min: 25000, max: 50000 },
+        { label: "$50K-$100K", min: 50000, max: 100000 },
+        { label: "$100K-$250K", min: 100000, max: 250000 },
+        { label: "$250K+", min: 250000, max: Infinity },
+      ];
+      const size_distribution = brackets.map(b => ({
+        bracket: b.label,
+        count: allDeals.filter((d: any) => (d.amount || 0) >= b.min && (d.amount || 0) < b.max).length,
+      }));
+
+      // Update not_in_clc: original not_in_clc entries + new DB-only deals
+      const existingNotInClc: any[] = Array.isArray(baseData.not_in_clc) ? baseData.not_in_clc : [];
+      const existingNotInClcKeys = new Set(
+        existingNotInClc.map((d: any) => `${norm(d.name)}_${(d.funded_date || "").substring(0, 10)}`)
+      );
+      const newNotInClc = [
+        ...existingNotInClc,
+        ...dbOnlyDeals.filter((d: any) => !existingNotInClcKeys.has(`${norm(d.name)}_${d.funded_date}`)),
+      ];
+
+      // clc_match_count = deals that appear in the CLC static list (original count)
+      const clcMatchCount = baseData.summary?.clc_match_count ?? clcDeals.length;
+
+      return res.json({
+        generated_at: baseData.generated_at,
+        summary: {
+          total_deals: totalDeals,
+          total_amount: Math.round(totalAmount * 100) / 100,
+          avg_deal_size: totalDeals ? Math.round(totalAmount / totalDeals) : 0,
+          date_range: dates.length ? [dates[0], dates[dates.length - 1]] : [],
+          clc_match_count: clcMatchCount,
+          clc_match_rate: totalDeals ? Math.round((clcMatchCount / totalDeals) * 100) : 0,
+          not_in_clc_count: newNotInClc.length,
+          not_in_clc_amount: Math.round(newNotInClc.reduce((s: number, d: any) => s + (d.amount || 0), 0) * 100) / 100,
+          in_db_other_status: baseData.summary?.in_db_other_status ?? 0,
+          db_only_count: dbOnlyDeals.length,
+        },
+        by_rep,
+        by_lender,
+        by_month,
+        size_distribution,
+        not_in_clc: newNotInClc,
+        deals: allDeals,
+      });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
