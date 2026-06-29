@@ -1313,10 +1313,19 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
     enabled: authData?.role === 'admin' || authData?.role === 'underwriting',
   });
 
-  // Helper to get decision for a business by email
-  const getBusinessDecision = (email: string): BusinessUnderwritingDecision | undefined => {
+  // Helper to get decision for a business by email, with business name fallback
+  const getBusinessDecision = (email: string, businessName?: string): BusinessUnderwritingDecision | undefined => {
     const normalized = email.toLowerCase();
-    return underwritingDecisions?.find(d => (d.businessEmail || '').toLowerCase() === normalized);
+    const byEmail = underwritingDecisions?.find(d => (d.businessEmail || '').toLowerCase() === normalized);
+    if (byEmail) return byEmail;
+    if (businessName && businessName.length > 3) {
+      const nameUpper = businessName.toUpperCase().trim();
+      return underwritingDecisions?.find(d => {
+        const dn = (d.businessName || '').toUpperCase().trim();
+        return dn === nameUpper || (nameUpper.length > 5 && dn.includes(nameUpper.slice(0, 15))) || (dn.length > 5 && nameUpper.includes(dn.slice(0, 15)));
+      });
+    }
+    return undefined;
   };
 
   // Helper: get all approvals for a business from the decision's JSONB (migration-aware)
@@ -2035,10 +2044,10 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
     return acc;
   }, {} as Record<string, BankStatementUpload[]>) || {};
 
-  // Helper: check if an email has been decided (approved/declined/unqualified)
-  const emailHasDecision = (email: string): boolean => {
+  // Helper: check if a business has been decided (approved/declined/unqualified/funded)
+  const emailHasDecision = (email: string, businessName?: string): boolean => {
     if (!email) return false;
-    const decision = getBusinessDecision(email);
+    const decision = getBusinessDecision(email, businessName);
     return !!decision && ['approved', 'declined', 'unqualified', 'funded'].includes(decision.status);
   };
 
@@ -2047,7 +2056,7 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
   const filteredUploadsByBusiness = Object.entries(uploadsByBusiness).filter(
     ([businessName, uploads]) => {
       const matchesSearch = !lowerQuery || businessName.toLowerCase().includes(lowerQuery);
-      const notDecided = showAllStatements || !emailHasDecision(uploads[0]?.email || '');
+      const notDecided = showAllStatements || !emailHasDecision(uploads[0]?.email || '', businessName);
       return matchesSearch && notDecided;
     }
   ).sort(([, uploadsA], [, uploadsB]) => {
@@ -2186,7 +2195,7 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                       {canManageApprovals && (() => {
                         const businessEmail = uploads[0]?.email;
                         if (!businessEmail) return null;
-                        const decision = getBusinessDecision(businessEmail);
+                        const decision = getBusinessDecision(businessEmail, businessName);
 
                         if (decision) {
                           const approvalUrl = decision.approvalSlug
@@ -2434,7 +2443,7 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                   {canManageApprovals && (() => {
                     const businessEmail = uploads[0]?.email;
                     if (!businessEmail) return null;
-                    const decision = getBusinessDecision(businessEmail);
+                    const decision = getBusinessDecision(businessEmail, businessName);
                     if (!decision || (decision.status !== 'approved' && decision.status !== 'funded')) return null;
                     const approvals = getApprovalsForBusiness(businessEmail);
                     if (approvals.length === 0) return null;
@@ -2542,7 +2551,7 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                   {uploads[0]?.email && (() => {
                     const profileEmail = uploads[0].email;
                     const profileApp = applications.find(a => a.email?.toLowerCase() === profileEmail.toLowerCase());
-                    const profileDecision = getBusinessDecision(profileEmail);
+                    const profileDecision = getBusinessDecision(profileEmail, businessName);
                     const profilePhone = profileApp?.phone || profileDecision?.businessPhone || '';
                     return (
                       <div className="space-y-0">
