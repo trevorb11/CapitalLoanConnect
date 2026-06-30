@@ -1905,6 +1905,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("[GFG] Intake webhook error (non-blocking):", err)
           );
 
+          // Also create/update via GHL API to get and store the contact ID
+          // (webhook is fire-and-forget; API gives us back the ID for future syncs)
+          if (!updatedApp.ghlContactId) {
+            ghlService.createOrUpdateContact(updatedApp as any).then(contactId => {
+              if (contactId && updatedApp.id) {
+                storage.updateLoanApplication(updatedApp.id, { ghlContactId: contactId } as any);
+                console.log(`[GFG] Stored GHL contact ID ${contactId} for ${updatedApp.email}`);
+              }
+            }).catch(err => console.error("[GFG] GHL API contact creation error (non-blocking):", err));
+          }
+
           const hasFullAppData = !!(updatedApp as any).socialSecurityNumber && !!(updatedApp as any).dateOfBirth;
           if (hasFullAppData) {
             console.log(`[GFG] Full application data detected on update — firing full application webhook for ${updatedApp.email}`);
@@ -2023,6 +2034,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ghlService.sendIntakeWebhook(finalApp).catch(err =>
           console.error("[GFG] Intake webhook error (non-blocking):", err)
         );
+
+        // Also create/update via GHL API to get and store the contact ID
+        // (webhook is fire-and-forget; API gives us back the ID for future syncs)
+        if (!finalApp.ghlContactId) {
+          ghlService.createOrUpdateContact(finalApp as any).then(contactId => {
+            if (contactId && finalApp.id) {
+              storage.updateLoanApplication(finalApp.id, { ghlContactId: contactId } as any);
+              console.log(`[GFG] Stored GHL contact ID ${contactId} for ${finalApp.email}`);
+            }
+          }).catch(err => console.error("[GFG] GHL API contact creation error (non-blocking):", err));
+        }
 
         // If GFG submission has full application data (SSN, DOB, address present), also fire the full application webhook
         const hasFullAppData = !!(finalApp as any).socialSecurityNumber && !!(finalApp as any).dateOfBirth;
