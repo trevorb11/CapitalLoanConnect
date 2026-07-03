@@ -665,7 +665,7 @@ export const merchantPortalAccounts = pgTable("merchant_portal_accounts", {
   name: text("name"),
   phone: text("phone"),
   businessName: text("business_name"),
-  applicationId: integer("application_id"), // links to loan application if applicable
+  applicationId: varchar("application_id"), // links to loan application (UUID) if applicable
   decisionId: text("decision_id"), // links to businessUnderwritingDecision if funded
   portalLinkSentAt: timestamp("portal_link_sent_at"), // when the activation link was last sent
   createdAt: timestamp("created_at").defaultNow(),

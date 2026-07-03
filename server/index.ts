@@ -466,6 +466,22 @@ app.use((req, res, next) => {
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_visit_logs_email ON visit_logs (LOWER(email))`);
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_visit_logs_created_at ON visit_logs (created_at)`);
       console.log('[STARTUP] Migration: performance indexes ensured');
+      // merchant_portal_accounts.application_id: integer → varchar so it can hold
+      // loan application UUID strings (was impossible to link before)
+      await db.execute(sql`
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'merchant_portal_accounts'
+              AND column_name = 'application_id'
+              AND data_type = 'integer'
+          ) THEN
+            ALTER TABLE merchant_portal_accounts
+              ALTER COLUMN application_id TYPE varchar USING application_id::varchar;
+          END IF;
+        END $$
+      `);
+      console.log('[STARTUP] Migration: merchant_portal_accounts.application_id varchar ensured');
     } catch (migErr) {
       console.warn('[STARTUP] Migration warning (non-fatal):', migErr);
     }

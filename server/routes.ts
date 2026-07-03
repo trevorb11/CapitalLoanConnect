@@ -12369,7 +12369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     name?: string;
     phone?: string;
     businessName?: string;
-    applicationId?: number | string; // loan app IDs are UUID strings; the integer column can't hold them
+    applicationId?: string; // loan application UUID
     triggerKey: string; // which setting key to check
     sendLink: boolean; // whether to actually send the email
   }): Promise<void> {
@@ -12388,8 +12388,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: opts.name || null,
         phone: opts.phone || null,
         businessName: opts.businessName || null,
-        // Only numeric IDs fit the integer column — UUID strings would make the insert throw
-        applicationId: typeof opts.applicationId === 'number' ? opts.applicationId : null,
+        applicationId: opts.applicationId || null,
         portalLinkSentAt: enabled && opts.sendLink ? new Date() : null,
       });
 
@@ -13541,7 +13540,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let targetEmail = email?.toLowerCase();
       let name = '';
       let businessName = '';
-      let appId: number | null = null;
+      let appId: string | null = null;
 
       if (applicationId) {
         const app = await storage.getLoanApplication(applicationId);
@@ -13549,9 +13548,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         targetEmail = app.email?.toLowerCase();
         name = app.fullName || '';
         businessName = app.businessName || app.legalBusinessName || '';
-        // Note: loan app IDs are UUID strings; the portal account column is integer,
-        // so the link can't be stored — inserting the string would fail the insert.
-        appId = null;
+        appId = app.id;
       }
 
       if (!targetEmail) {
