@@ -21,6 +21,9 @@ const SF_PRIVATE_KEY = _rawKey.startsWith("-----")
 let cachedAccessToken = process.env.SF_ACCESS_TOKEN || "";
 let tokenExpiresAt = 0;
 
+// True when JWT Bearer Flow credentials are configured (replaces the old refresh-token check)
+const SF_CAN_REFRESH = !!(SF_PRIVATE_KEY && SF_CLIENT_ID && SF_USERNAME);
+
 function base64url(input: string | Buffer): string {
   const buf = typeof input === "string" ? Buffer.from(input) : input;
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
@@ -89,7 +92,7 @@ async function sfApi(method: string, path: string, body?: object): Promise<{ suc
     let res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
       method, headers: sfHeaders(token), body: body ? JSON.stringify(body) : undefined,
     });
-    if (res.status === 401 && SF_REFRESH_TOKEN) {
+    if (res.status === 401 && SF_CAN_REFRESH) {
       tokenExpiresAt = 0;
       token = await refreshAccessToken();
       res = await fetch(`${SF_INSTANCE_URL}/services/data/v66.0${path}`, {
@@ -113,7 +116,7 @@ async function sfQuery(soql: string): Promise<any[]> {
       `${SF_INSTANCE_URL}/services/data/v66.0/query?q=${encodeURIComponent(soql)}`,
       { headers: sfHeaders(token) }
     );
-    if (res.status === 401 && SF_REFRESH_TOKEN) {
+    if (res.status === 401 && SF_CAN_REFRESH) {
       tokenExpiresAt = 0;
       const fresh = await refreshAccessToken();
       const retry = await fetch(
@@ -221,7 +224,7 @@ export function computePipelineBucket(stage: string, hasApproval?: boolean): str
  * updates them with application data. Does NOT create new records.
  */
 export async function syncApplicationToSalesforce(app: Record<string, any>): Promise<{ synced: boolean; action?: string; accountId?: string; contactId?: string; oppId?: string; leadId?: string; reason?: string; error?: string }> {
-  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) {
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) {
     console.log("[SF Sync] Skipped — no SF credentials configured");
     return { synced: false, reason: "no credentials" };
   }
@@ -464,7 +467,7 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       } catch {}
     }
 
-    const nameParts = (resolvedName || "").split(/\s+/).filter(p => p && !p.includes("@"));
+    const nameParts = (resolvedName || "").split(/\s+/).filter((p: string) => p && !p.includes("@"));
     const today = new Date();
     const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
 
@@ -546,8 +549,8 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
  * Updates the linked Opportunity's stage, amounts, and funded details.
  * If no SF Opportunity exists yet, attempts to find one via email/phone.
  */
-export async function syncDecisionToSalesforce(decision: Record<string, any>, app?: Record<string, any>): Promise<{ synced: boolean; action?: string; oppId?: string; error?: string }> {
-  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) {
+export async function syncDecisionToSalesforce(decision: Record<string, any>, app?: Record<string, any>): Promise<{ synced: boolean; action?: string; oppId?: string; error?: string; reason?: string }> {
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) {
     return { synced: false, error: "no credentials" };
   }
 
@@ -965,7 +968,7 @@ async function findOrCreateSfOpportunity(params: {
   stage?: string;
   app?: Record<string, any>;
 }): Promise<FindOppResult | null> {
-  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) return null;
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) return null;
 
   const { sfOppId, ghlOppId, email, secondaryEmail, phone, businessName, fullName, stage, app } = params;
   const safeEmail = (email || "").replace(/'/g, "\\'").toLowerCase().trim();
@@ -1276,7 +1279,7 @@ export async function syncUwSubmissionToSalesforce(
     dealOverview?: Record<string, any> | null;
   }
 ): Promise<void> {
-  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) return;
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) return;
 
   const { snapshot, dealOverview } = options || {};
   const safeEmail = email.toLowerCase().trim();
@@ -1470,7 +1473,7 @@ export async function syncAiSnapshotToSalesforce(
   email: string,
   snapshot: Record<string, any>
 ): Promise<void> {
-  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_REFRESH_TOKEN)) return;
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) return;
 
   const safeEmail = email.toLowerCase().trim();
 

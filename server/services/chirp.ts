@@ -609,9 +609,10 @@ export class ChirpService {
     amount?: number;
     webhookUrl?: string[];
     emails?: string[];
-    notifyViaEmail: boolean;
-    notifyViaWebhook: boolean;
-    active: boolean;
+    notifyIf?: string[];
+    notifyViaEmail?: boolean;
+    notifyViaWebhook?: boolean;
+    active?: boolean;
     keywords?: string[];
     enableRetryTimeout?: boolean;
     retryTimeout?: number;

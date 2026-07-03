@@ -2900,7 +2900,7 @@ function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand =
   const [loading, setLoading] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
+  const previewHeaders: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
   const fetchMessages = () => {
     setLoading(true);
@@ -3668,7 +3668,7 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
   const [dataSource, setDataSource] = useState<DataSource>("chirp");
   const [renewalReqState, setRenewalReqState] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
-  const previewHeaders = previewToken ? { "x-admin-preview-token": previewToken } : {};
+  const previewHeaders: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -4204,12 +4204,12 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
             <div className="insight-card">
               <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Month by Month</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {pdf.monthlyBreakdown.slice(0, 6).map((m: any, i: number) => {
+                {(pdf.monthlyBreakdown ?? []).slice(0, 6).map((m: any, i: number) => {
                   const net = (m.revenue || 0) - (m.expenses || 0);
-                  const prev = pdf.monthlyBreakdown[i + 1];
+                  const prev = pdf.monthlyBreakdown?.[i + 1];
                   const delta = prev ? ((m.revenue - prev.revenue) / (prev.revenue || 1)) * 100 : null;
                   return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: i < pdf.monthlyBreakdown.length - 1 ? "1px solid #e2e8f0" : "none" }}>
+                    <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: i < (pdf.monthlyBreakdown?.length ?? 0) - 1 ? "1px solid #e2e8f0" : "none" }}>
                       <span style={{ color: "#94a3b8", fontSize: 13, minWidth: 80 }}>{m.month}</span>
                       <div style={{ display: "flex", gap: 16, alignItems: "center", fontSize: 13 }}>
                         <span style={{ color: "#0d9488" }}>+${(m.revenue || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
@@ -4402,7 +4402,7 @@ function ActivityFeed({ merchantEmail, previewToken }: { merchantEmail: string; 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const headers = previewToken ? { "x-admin-preview-token": previewToken } : {};
+    const headers: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
     fetch("/api/merchant/activity", { headers })
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setActivities(data); })
@@ -5303,7 +5303,7 @@ export default function MerchantPortal() {
   // Poll unread message count for tab badge
   useEffect(() => {
     if (!loggedIn) return;
-    const headers = adminPreviewToken ? { "x-admin-preview-token": adminPreviewToken } : {};
+    const headers: Record<string, string> = adminPreviewToken ? { "x-admin-preview-token": adminPreviewToken } : {};
     const checkUnread = () => {
       fetch("/api/merchant/messages/unread", { credentials: "include", headers })
         .then(r => r.ok ? r.json() : { count: 0 })

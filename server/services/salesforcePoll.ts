@@ -94,12 +94,13 @@ export async function pollSalesforceChanges(): Promise<{
   dialerUpdated: number;
   errors: number;
   since: string;
+  autoLinked: number;
 }> {
   const results = { polled: 0, dashboardUpdated: 0, dialerUpdated: 0, errors: 0, since: "" };
 
   if (!SF_INSTANCE_URL) {
     console.log("[SF Poll] Skipped — SF_INSTANCE_URL not configured");
-    return results;
+    return { ...results, autoLinked: 0 };
   }
 
   const since = await getLastPollTime();
@@ -134,7 +135,7 @@ export async function pollSalesforceChanges(): Promise<{
       // Auto-set Pipeline Bucket if it doesn't match the computed value
       if (currentBucket !== expectedBucket) {
         try {
-          const token = await getToken();
+          const token = await getAccessToken();
           await fetch(`${SF_INSTANCE_URL}/services/data/v66.0/sobjects/Opportunity/${opp.Id}`, {
             method: "PATCH",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

@@ -46,28 +46,32 @@ function buildServer(): McpServer {
       const apps = await storage.getAllLoanApplications();
       let filtered = apps;
 
+      // Derive a coarse status from completion flags (schema has no status column)
+      const appStatus = (a: (typeof apps)[number]) =>
+        a.isFullApplicationCompleted ? "full_application" : a.isCompleted ? "intake" : "partial";
+
       if (search) {
         const q = search.toLowerCase();
         filtered = filtered.filter((a) =>
-          [a.firstName, a.lastName, a.email, a.phone, a.businessName, a.companyEmail]
+          [a.fullName, a.email, a.phone, a.businessName, a.companyEmail]
             .some((f) => f && f.toLowerCase().includes(q))
         );
       }
       if (status) {
-        filtered = filtered.filter((a) => a.status === status);
+        filtered = filtered.filter((a) => appStatus(a) === status);
       }
 
       const results = filtered.slice(0, limit ?? 50).map((a) => ({
         id: a.id,
-        name: `${a.firstName ?? ""} ${a.lastName ?? ""}`.trim(),
+        name: (a.fullName ?? "").trim(),
         email: a.email,
         phone: a.phone,
         businessName: a.businessName,
-        status: a.status,
+        status: appStatus(a),
         requestedAmount: a.requestedAmount,
         ghlContactId: a.ghlContactId,
         createdAt: a.createdAt,
-        step: a.step,
+        step: a.currentStep,
       }));
 
       return {
@@ -147,23 +151,22 @@ function buildServer(): McpServer {
       }
       if (lender) {
         const q = lender.toLowerCase();
-        approvals = approvals.filter((a) => a.lender?.toLowerCase().includes(q));
+        approvals = approvals.filter((a) => a.lenderName?.toLowerCase().includes(q));
       }
       if (status) {
-        approvals = approvals.filter((a) => a.overallStatus === status);
+        approvals = approvals.filter((a) => a.status === status);
       }
 
       const results = approvals.slice(0, limit ?? 50).map((a) => ({
         id: a.id,
         businessName: a.businessName,
         businessEmail: a.businessEmail,
-        lender: a.lender,
-        advanceAmount: a.advanceAmount,
+        lender: a.lenderName,
+        advanceAmount: a.approvedAmount,
         factorRate: a.factorRate,
-        term: a.term,
-        overallStatus: a.overallStatus,
-        approvalDate: a.approvalDate,
-        publicUrlToken: a.publicUrlToken,
+        term: a.termLength,
+        overallStatus: a.status,
+        approvalDate: a.emailReceivedAt,
       }));
 
       return {
@@ -250,13 +253,13 @@ function buildServer(): McpServer {
 
       const statusCounts: Record<string, number> = {};
       for (const a of apps) {
-        const s = a.status ?? "unknown";
+        const s = a.isFullApplicationCompleted ? "full_application" : a.isCompleted ? "intake" : "partial";
         statusCounts[s] = (statusCounts[s] ?? 0) + 1;
       }
 
       const approvalStatusCounts: Record<string, number> = {};
       for (const a of approvals) {
-        const s = a.overallStatus ?? "unknown";
+        const s = a.status ?? "unknown";
         approvalStatusCounts[s] = (approvalStatusCounts[s] ?? 0) + 1;
       }
 
@@ -384,17 +387,15 @@ function buildServer(): McpServer {
 
         await ghlService.syncApprovalToOpportunity({
           businessName: approval.businessName,
-          businessEmail: approval.businessEmail ?? undefined,
-          lender: approval.lender ?? undefined,
-          advanceAmount: approval.advanceAmount ?? undefined,
-          factorRate: approval.factorRate ?? undefined,
-          term: approval.term ?? undefined,
-          paymentFrequency: approval.paymentFrequency ?? undefined,
-          commission: approval.commission ?? undefined,
-          approvalDate: approval.approvalDate ?? undefined,
-          overallStatus: approval.overallStatus ?? undefined,
-          publicUrlToken: approval.publicUrlToken ?? undefined,
-          additionalApprovals: approval.additionalApprovals ?? undefined,
+          lenderName: approval.lenderName,
+          status: approval.status ?? "",
+          approvedAmount: approval.approvedAmount,
+          termLength: approval.termLength,
+          factorRate: approval.factorRate,
+          paybackAmount: approval.paybackAmount,
+          paymentAmount: approval.paymentAmount,
+          paymentFrequency: approval.paymentFrequency,
+          productType: approval.productType,
         });
 
         return {

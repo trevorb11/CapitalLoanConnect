@@ -516,7 +516,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       // Get all decisions that failed or were never attempted
-      const failed = await storage.getBusinessUnderwritingDecisions();
+      const failed = await storage.getAllBusinessUnderwritingDecisions();
       const toRetry = failed.filter(d =>
         d.sfSynced === false || d.sfSyncedAt === null
       );
@@ -3957,7 +3957,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!anySucceeded) {
       console.warn(`[CHIRP] All read endpoints blocked for ${requestCode}. Registering webhook for push delivery.`);
       registerChirpWebhookForCode(requestCode).catch(() => {});
-      return await storage.getMerchantBankSnapshotByRequestCode(requestCode);
+      return (await storage.getMerchantBankSnapshotByRequestCode(requestCode)) ?? null;
     }
 
     try {
@@ -4380,7 +4380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         connectedAt: isConnected && !snapshot.connectedAt ? new Date() : snapshot.connectedAt,
         accountsData: accounts.length > 0 ? accounts : (snapshot.accountsData as any[]),
         // Preserve existing metrics if the webhook doesn't include them
-        metrics: snapshot.metrics,
+        metrics: snapshot.metrics as any,
         lastSyncedAt: new Date(),
       });
       console.log(`[CHIRP] webhook updated snapshot for ${snapshot.merchantEmail}: connected=${isConnected}, status="${statusStr}"`);
@@ -4571,7 +4571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         SELECT snapshot FROM underwriting_snapshots WHERE LOWER(email) = ${normalizedEmail} LIMIT 1
       `);
       const savedSnapshot = (snapResult.rows?.[0] as any)?.snapshot ?? null;
-      syncUwSubmissionToSalesforce(normalizedEmail, application, { snapshot: savedSnapshot }).catch(err =>
+      syncUwSubmissionToSalesforce(normalizedEmail, application ?? null, { snapshot: savedSnapshot }).catch(err =>
         console.warn('[SUBMIT-UW] SF Deal Qual sync error (non-fatal):', err.message)
       );
     } catch (sfErr: any) {
@@ -4878,7 +4878,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (_uwTimers.has(email)) clearTimeout(_uwTimers.get(email)!);
       _uwTimers.set(email, setTimeout(() => {
         _uwTimers.delete(email);
-        doSendUnderwritingEmail({ email, businessName: _uwBizName, baseUrl: _uwBaseUrl })
+        doSendUnderwritingEmail({ email, businessName: _uwBizName ?? undefined, baseUrl: _uwBaseUrl })
           .catch(err => console.error('[BANK UPLOAD] Auto underwriting email failed:', err));
       }, _UW_DEBOUNCE_MS));
       console.log(`[BANK UPLOAD] Underwriting email debounce reset for ${email} (fires in 60s)`);
@@ -5144,7 +5144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (_uwTimers.has(email)) clearTimeout(_uwTimers.get(email)!);
         _uwTimers.set(email, setTimeout(() => {
           _uwTimers.delete(email);
-          doSendUnderwritingEmail({ email, businessName: _uwBizName2, baseUrl: _uwBaseUrl2 })
+          doSendUnderwritingEmail({ email, businessName: _uwBizName2 ?? undefined, baseUrl: _uwBaseUrl2 })
             .catch(err => console.error('[BANK UPLOAD] Auto underwriting email failed:', err));
         }, _UW_DEBOUNCE_MS));
         console.log(`[BANK UPLOAD] Underwriting email debounce reset for ${email} (fires in 60s)`);
@@ -9616,7 +9616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const key = normalize(rawDesc);
         const amt = parseMoney(t.amount);
         const date = t.date || t.transacted_at || t.posted_at || "";
-        const g = groups.get(key) || { desc: rawDesc, amounts: [], dates: [] };
+        const g = groups.get(key) || { desc: rawDesc, amounts: [] as number[], dates: [] as string[] };
         g.amounts.push(amt);
         g.dates.push(date);
         groups.set(key, g);
@@ -12369,7 +12369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     name?: string;
     phone?: string;
     businessName?: string;
-    applicationId?: number;
+    applicationId?: number | string; // loan app IDs are UUID strings; the integer column can't hold them
     triggerKey: string; // which setting key to check
     sendLink: boolean; // whether to actually send the email
   }): Promise<void> {
@@ -12388,7 +12388,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: opts.name || null,
         phone: opts.phone || null,
         businessName: opts.businessName || null,
-        applicationId: opts.applicationId || null,
+        // Only numeric IDs fit the integer column — UUID strings would make the insert throw
+        applicationId: typeof opts.applicationId === 'number' ? opts.applicationId : null,
         portalLinkSentAt: enabled && opts.sendLink ? new Date() : null,
       });
 
@@ -13174,7 +13175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             icon: 'star',
             title: 'Renewal Offer Available',
             description: d.maxUpsell ? `Pre-qualified for up to $${parseFloat(d.maxUpsell).toLocaleString()}` : 'You may qualify for additional funding',
-            timestamp: new Date(d.updatedAt || d.createdAt || d.fundedDate).toISOString(),
+            timestamp: new Date((d.updatedAt || d.createdAt || d.fundedDate) as any).toISOString(),
           });
         }
         // Payment milestone estimates from additionalFundings
@@ -13202,7 +13203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           icon: 'message',
           title: m.senderRole === 'merchant' ? 'You sent a message' : `Message from ${m.senderName || 'your rep'}`,
           description: m.message.length > 80 ? m.message.substring(0, 80) + '...' : m.message,
-          timestamp: new Date(m.createdAt).toISOString(),
+          timestamp: new Date(m.createdAt ?? Date.now()).toISOString(),
         });
       }
 
@@ -13548,7 +13549,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         targetEmail = app.email?.toLowerCase();
         name = app.fullName || '';
         businessName = app.businessName || app.legalBusinessName || '';
-        appId = app.id;
+        // Note: loan app IDs are UUID strings; the portal account column is integer,
+        // so the link can't be stored — inserting the string would fail the insert.
+        appId = null;
       }
 
       if (!targetEmail) {
@@ -13691,11 +13694,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const legacyTokens = await storage.getPlaidAccessTokensForMerchant(email);
 
       const result = connections.map(c => ({
-        id: c.id,
+        id: c.id as string,
         institutionName: c.institutionName,
         connectedAt: c.connectedAt,
         isActive: c.isActive,
-        source: 'portal' as const,
+        source: 'portal' as 'portal' | 'intake',
       }));
 
       // Add legacy connections not already in the list
@@ -13759,7 +13762,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storedFileName,
         fileSize: file.size,
         mimeType: file.mimetype,
-        storageType,
+        // storageType has no column on bank_statement_uploads — object-storage files
+        // are identified by their "bank-statements/" storedFileName prefix instead
         viewToken,
       });
       if (shouldSendMerchantAlert(`merchant_upload:${merchantEmail}`, 30 * 60 * 1000)) {
@@ -14638,12 +14642,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const stageMap: Record<string, number> = {};
 
       while (pageUrl) {
-        const fullUrl = pageUrl.startsWith("http") ? pageUrl : `https://api.twilio.com${pageUrl}`;
-        const pageRes = await fetch(fullUrl, {
+        const fullUrl: string = pageUrl.startsWith("http") ? pageUrl : `https://api.twilio.com${pageUrl}`;
+        const pageRes: any = await fetch(fullUrl, {
           headers: { Authorization: authHeader },
           signal: AbortSignal.timeout(30000),
         });
-        const pageData = await pageRes.json();
+        const pageData: any = await pageRes.json();
         const messages = pageData.messages || [];
         totalScanned += messages.length;
 
@@ -16059,7 +16063,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Push Deal Qualification fields to Salesforce using shop deal overview (non-fatal)
-        syncUwSubmissionToSalesforce(normalizedEmail, application, { dealOverview: ov }).catch(err =>
+        syncUwSubmissionToSalesforce(normalizedEmail, application ?? null, { dealOverview: ov }).catch(err =>
           console.warn('[SHOP] SF Deal Qual sync error (non-fatal):', err.message)
         );
       }

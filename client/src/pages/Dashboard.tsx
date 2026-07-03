@@ -1381,6 +1381,8 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
         term: decision.term || '',
         paymentFrequency: decision.paymentFrequency || 'weekly',
         factorRate: decision.factorRate?.toString() || '',
+        buyRate: (decision as any).buyRate?.toString() || '',
+        sellRate: (decision as any).sellRate?.toString() || '',
         maxUpsell: decision.maxUpsell?.toString() || '',
         totalPayback: decision.totalPayback?.toString() || '',
         netAfterFees: decision.netAfterFees?.toString() || '',
@@ -1401,6 +1403,8 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
           term: old.term || '',
           paymentFrequency: old.paymentFrequency || 'weekly',
           factorRate: old.factorRate || '',
+          buyRate: old.buyRate || '',
+          sellRate: old.sellRate || '',
           maxUpsell: old.maxUpsell || '',
           totalPayback: old.totalPayback || '',
           netAfterFees: old.netAfterFees || '',
@@ -1429,6 +1433,8 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
           term: existing.term,
           paymentFrequency: existing.paymentFrequency || 'weekly',
           factorRate: existing.factorRate,
+          buyRate: existing.buyRate || '',
+          sellRate: existing.sellRate || '',
           maxUpsell: existing.maxUpsell || '',
           totalPayback: existing.totalPayback,
           netAfterFees: existing.netAfterFees,
@@ -1444,6 +1450,8 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
         term: '',
         paymentFrequency: 'weekly',
         factorRate: '',
+        buyRate: '',
+        sellRate: '',
         maxUpsell: '',
         totalPayback: '',
         netAfterFees: '',
@@ -2300,9 +2308,9 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                                     Unqualified
                                   </Badge>
                                   {/* GigFi auto-submission result */}
-                                  {decision.gigfiStatus === 'ACCEPTED' && (
-                                    decision.gigfiRedirectUrl ? (
-                                      <a href={decision.gigfiRedirectUrl} target="_blank" rel="noopener noreferrer">
+                                  {(decision as any).gigfiStatus === 'ACCEPTED' && (
+                                    (decision as any).gigfiRedirectUrl ? (
+                                      <a href={(decision as any).gigfiRedirectUrl} target="_blank" rel="noopener noreferrer">
                                         <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1 cursor-pointer">
                                           <ExternalLink className="w-3 h-3" />
                                           GigFi: Accepted
@@ -2315,23 +2323,23 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
                                       </Badge>
                                     )
                                   )}
-                                  {decision.gigfiStatus === 'REJECTED' && (
+                                  {(decision as any).gigfiStatus === 'REJECTED' && (
                                     <Badge className="bg-red-700 flex items-center gap-1">
                                       <X className="w-3 h-3" />
                                       GigFi: Rejected
                                     </Badge>
                                   )}
-                                  {decision.gigfiStatus === 'SKIPPED' && (
+                                  {(decision as any).gigfiStatus === 'SKIPPED' && (
                                     <Badge variant="outline" className="flex items-center gap-1 text-muted-foreground">
                                       GigFi: Skipped
                                     </Badge>
                                   )}
-                                  {decision.gigfiStatus === 'ERROR' && (
+                                  {(decision as any).gigfiStatus === 'ERROR' && (
                                     <Badge variant="outline" className="flex items-center gap-1 text-red-500 border-red-300">
                                       GigFi: Error
                                     </Badge>
                                   )}
-                                  {!decision.gigfiStatus && (
+                                  {!(decision as any).gigfiStatus && (
                                     <Badge variant="outline" className="flex items-center gap-1 text-muted-foreground animate-pulse">
                                       GigFi: Submitting…
                                     </Badge>
@@ -3533,6 +3541,7 @@ export default function Dashboard() {
   const [loadMoreOffset, setLoadMoreOffset] = useState(100);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  const [dashboardTab, setDashboardTab] = useState("applications");
   const [filterStatus, setFilterStatus_raw] = useState<"all" | "intake" | "full" | "partial" | "low-revenue">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 25;
@@ -3579,7 +3588,7 @@ export default function Dashboard() {
         ? `/api/applications?search=${encodeURIComponent(debouncedSearch)}`
         : `/api/applications`;
       const res = await fetch(url, { credentials: "include" });
-      if (res.status === 401) return null;
+      if (res.status === 401) return [];
       if (!res.ok) throw new Error("Failed to fetch applications");
       const data: LoanApplication[] = await res.json();
       // Show "load more" only for admin/underwriting, no search active, exactly 100 records back
@@ -4137,7 +4146,7 @@ export default function Dashboard() {
 
         </div>
 
-        <Tabs defaultValue="applications" className="w-full">
+        <Tabs value={dashboardTab} onValueChange={setDashboardTab} className="w-full">
           <div className="flex flex-col gap-4 mb-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div className="flex flex-wrap items-center gap-2">
@@ -4599,13 +4608,8 @@ export default function Dashboard() {
                             variant="ghost"
                             size="sm"
                             onClick={() => {
-                              if (existingDecision.status === "approved" || existingDecision.status === "funded") {
-                                openApprovalForm(bizEmail, bizName);
-                              } else if (existingDecision.status === "declined") {
-                                openDeclineDialog(bizEmail, bizName);
-                              } else {
-                                openUnqualifiedDialog(bizEmail, bizName);
-                              }
+                              // Decision dialogs live on the Bank Statements tab — jump there
+                              setDashboardTab("bank-statements");
                             }}
                             className="text-muted-foreground w-full"
                             data-testid={`button-edit-decision-app-${app.id}`}
@@ -4630,7 +4634,7 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => openApprovalForm(bizEmail, bizName)}
+                        onClick={() => setDashboardTab("bank-statements")}
                         className="flex-1 text-green-600 border-green-200 hover:bg-green-50 dark:border-green-800 dark:hover:bg-green-900/20"
                         data-testid={`button-approve-app-${app.id}`}
                       >
@@ -4640,7 +4644,7 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => openDeclineDialog(bizEmail, bizName)}
+                        onClick={() => setDashboardTab("bank-statements")}
                         className="flex-1 text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
                         data-testid={`button-decline-app-${app.id}`}
                       >
@@ -4650,7 +4654,7 @@ export default function Dashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => openUnqualifiedDialog(bizEmail, bizName)}
+                        onClick={() => setDashboardTab("bank-statements")}
                         className="flex-1 text-orange-600 border-orange-200 hover:bg-orange-50 dark:border-orange-800 dark:hover:bg-orange-900/20"
                         data-testid={`button-unqualified-app-${app.id}`}
                       >
@@ -4723,7 +4727,7 @@ export default function Dashboard() {
                     </button>
                     {isMerchantExpanded && (
                       <div className="mt-2 space-y-1 pl-1" data-testid={`div-other-rounds-${app.id}`}>
-                        {otherRounds.map(r => (
+                        {otherRounds.map((r: any) => (
                           <div key={r.id} className="flex items-center justify-between gap-2 py-1 text-sm border-b last:border-0">
                             <div className="flex flex-col min-w-0">
                               <span className="text-muted-foreground text-xs">

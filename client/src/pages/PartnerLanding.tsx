@@ -18,7 +18,9 @@ import {
 
 const NAV_HEIGHT = 72;
 
-const styles: Record<string, React.CSSProperties> = {
+// `satisfies` keeps per-key inference: plain entries stay CSSProperties while
+// the section/h2/subtext helpers remain callable functions
+const styles = {
   page: {
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     backgroundColor: "#f5f5f7",
@@ -134,7 +136,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 20,
     flexShrink: 0,
   },
-};
+} satisfies Record<string, React.CSSProperties | ((...args: any[]) => React.CSSProperties)>;
 
 const BENEFITS = [
   {
