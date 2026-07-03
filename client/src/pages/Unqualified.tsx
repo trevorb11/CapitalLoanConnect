@@ -203,6 +203,18 @@ export default function Unqualified() {
     enabled: isAuthenticated,
   });
 
+  // GigFi submission outcomes (keyed by email) — stored on loan_applications
+  const { data: gigfiStatuses } = useQuery<Record<string, { status: string; redirectUrl: string | null; submittedAt: string | null }>>({
+    queryKey: ["/api/admin/gigfi-statuses"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/gigfi-statuses", { credentials: "include" });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    retry: false,
+    enabled: isAuthenticated,
+  });
+
   // Sort by decision date first, then createdAt fallback
   const unqualifiedDecisions = (allDecisions || [])
     .filter(d => d.status === "unqualified")
@@ -473,6 +485,25 @@ export default function Unqualified() {
                         <AlertCircle className="w-3 h-3" />
                         Unqualified
                       </Badge>
+                      {(() => {
+                        const gf = gigfiStatuses?.[(decision.businessEmail || '').toLowerCase()];
+                        if (!gf) return null;
+                        if (gf.status === 'ACCEPTED') {
+                          return gf.redirectUrl ? (
+                            <a href={gf.redirectUrl} target="_blank" rel="noopener noreferrer">
+                              <Badge className="bg-green-600 hover:bg-green-700 cursor-pointer" data-testid={`badge-gigfi-${decision.id}`}>
+                                GigFi: Accepted ↗
+                              </Badge>
+                            </a>
+                          ) : (
+                            <Badge className="bg-green-600" data-testid={`badge-gigfi-${decision.id}`}>GigFi: Accepted</Badge>
+                          );
+                        }
+                        if (gf.status === 'REJECTED') {
+                          return <Badge variant="outline" className="text-red-600 border-red-300" data-testid={`badge-gigfi-${decision.id}`}>GigFi: Rejected</Badge>;
+                        }
+                        return <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-gigfi-${decision.id}`}>GigFi: {gf.status}</Badge>;
+                      })()}
                       {decision.followUpWorthy && (
                         <Badge variant="outline" className="flex items-center gap-1 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400">
                           <CalendarIcon className="w-3 h-3" />

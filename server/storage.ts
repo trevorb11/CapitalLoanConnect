@@ -160,6 +160,7 @@ export interface IStorage {
   getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined>;
   getAllBusinessUnderwritingDecisions(status?: string): Promise<BusinessUnderwritingDecision[]>;
   getDecisionStatusCounts(): Promise<Record<string, number>>;
+  getDecisionsForView(view: 'approvals' | 'funded'): Promise<BusinessUnderwritingDecision[]>;
   updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision> & { ghlSynced?: boolean; ghlSyncedAt?: Date | null; ghlSyncMessage?: string | null; ghlOpportunityId?: string | null; sfSynced?: boolean; sfSyncedAt?: Date | null; sfSyncMessage?: string | null; sfOpportunityId?: string | null }): Promise<BusinessUnderwritingDecision | undefined>;
   deleteBusinessUnderwritingDecision(id: string): Promise<boolean>;
 
@@ -1210,6 +1211,22 @@ export class DatabaseStorage implements IStorage {
       if (row.status) counts[row.status] = Number(row.count);
     }
     return counts;
+  }
+
+  // Dual-visibility views: a business can be funded AND still have approvals worth showing.
+  // "approvals" = status approved OR any entries in additional_approvals
+  // "funded"    = status funded OR any entries in additional_fundings
+  async getDecisionsForView(view: 'approvals' | 'funded'): Promise<BusinessUnderwritingDecision[]> {
+    const jsonbCol = view === 'approvals' ? sql.raw('additional_approvals') : sql.raw('additional_fundings');
+    const statusVal = view === 'approvals' ? 'approved' : 'funded';
+    return await db
+      .select()
+      .from(businessUnderwritingDecisions)
+      .where(sql`(
+        ${businessUnderwritingDecisions.status} = ${statusVal}
+        OR (jsonb_typeof(${jsonbCol}) = 'array' AND jsonb_array_length(${jsonbCol}) > 0)
+      )`)
+      .orderBy(desc(businessUnderwritingDecisions.updatedAt));
   }
 
   async updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision> & { ghlSynced?: boolean; ghlSyncedAt?: Date | null; ghlSyncMessage?: string | null; ghlOpportunityId?: string | null; sfSynced?: boolean; sfSyncedAt?: Date | null; sfSyncMessage?: string | null; sfOpportunityId?: string | null }): Promise<BusinessUnderwritingDecision | undefined> {

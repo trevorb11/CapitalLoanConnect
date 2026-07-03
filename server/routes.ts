@@ -5763,6 +5763,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GigFi submission statuses by email — GigFi data lives on loan_applications,
+  // not on decisions. Used by the Unqualified page to show submission outcomes.
+  app.get("/api/admin/gigfi-statuses", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin' && req.session.user.role !== 'agent') {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    try {
+      const rows = await db.execute(sql`
+        SELECT LOWER(email) AS email, gigfi_status AS status, gigfi_redirect_url AS redirect_url, gigfi_submitted_at AS submitted_at
+        FROM loan_applications
+        WHERE gigfi_status IS NOT NULL AND email IS NOT NULL
+      `);
+      const byEmail: Record<string, { status: string; redirectUrl: string | null; submittedAt: string | null }> = {};
+      for (const row of (rows as any).rows || []) {
+        byEmail[row.email] = {
+          status: row.status,
+          redirectUrl: row.redirect_url || null,
+          submittedAt: row.submitted_at || null,
+        };
+      }
+      res.json(byEmail);
+    } catch (error) {
+      console.error("Error fetching gigfi statuses:", error);
+      res.status(500).json({ error: "Failed to fetch gigfi statuses" });
+    }
+  });
+
   app.get("/api/underwriting-decisions", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
@@ -5779,7 +5809,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const statusFilter = typeof req.query.status === 'string' && VALID_STATUSES.includes(req.query.status)
         ? req.query.status
         : undefined;
-      const decisions = await storage.getAllBusinessUnderwritingDecisions(statusFilter);
+      // ?view=approvals|funded — dual visibility: includes any record that HAS
+      // approvals/fundings even if its status moved on (e.g. funded biz with approvals)
+      const viewFilter = req.query.view === 'approvals' || req.query.view === 'funded'
+        ? (req.query.view as 'approvals' | 'funded')
+        : undefined;
+      const decisions = viewFilter
+        ? await storage.getDecisionsForView(viewFilter)
+        : await storage.getAllBusinessUnderwritingDecisions(statusFilter);
 
       // For agents, filter to only their files:
       // - assignedRep matches agent name

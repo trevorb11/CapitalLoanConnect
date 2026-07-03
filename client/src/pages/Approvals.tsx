@@ -204,7 +204,9 @@ export default function Approvals() {
   const { data: allDecisions, isLoading, error: decisionsError } = useQuery<BusinessUnderwritingDecision[]>({
     queryKey: ["/api/underwriting-decisions", "approved"],
     queryFn: async () => {
-      const res = await fetch("/api/underwriting-decisions?status=approved", { credentials: "include" });
+      // view=approvals includes funded businesses that still carry approval
+      // entries (dual visibility — approvals always live on this page)
+      const res = await fetch("/api/underwriting-decisions?view=approvals", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch decisions");
       return res.json();
     },
@@ -244,10 +246,62 @@ export default function Approvals() {
     return dates.length > 0 ? Math.max(...dates) : new Date(d.createdAt || 0).getTime();
   };
 
-  // Filter to only approved decisions, sorted by most recent approval date first
+  // ── Past/active approval rule ──────────────────────────────────────────
+  // Any approval that was already in the system when a funding came in is a
+  // PAST approval. Approvals dated after the latest funding are ACTIVE.
+
+  // Latest funding date on a decision (0 = never funded)
+  const getLatestFundingDate = (d: BusinessUnderwritingDecision): number => {
+    const dates: number[] = [];
+    if (d.fundedDate) dates.push(new Date(d.fundedDate).getTime());
+    const fundings = (d as any).additionalFundings as any[] | null;
+    if (Array.isArray(fundings)) {
+      fundings.forEach((f: any) => {
+        const raw = f.fundedDate || f.date;
+        if (raw) dates.push(new Date(String(raw).includes('T') ? raw : raw + 'T00:00:00').getTime());
+      });
+    }
+    return dates.length > 0 ? Math.max(...dates) : 0;
+  };
+
+  const isApprovalPast = (appr: { approvalDate?: string | null; createdAt?: string | null }, latestFunding: number): boolean => {
+    if (!latestFunding) return false; // never funded — everything active
+    const raw = appr.approvalDate || appr.createdAt;
+    const t = raw ? new Date(String(raw).includes('T') ? String(raw) : raw + 'T00:00:00').getTime() : 0;
+    return t <= latestFunding;
+  };
+
+  // Any approval data at all (JSONB entries or legacy top-level columns)?
+  const hasApprovalData = (d: BusinessUnderwritingDecision): boolean => {
+    const raw = d.additionalApprovals as any[] | null;
+    if (Array.isArray(raw) && raw.length > 0) return true;
+    return Boolean(d.advanceAmount || d.lender);
+  };
+
+  // At least one approval newer than the latest funding?
+  const hasActiveApproval = (d: BusinessUnderwritingDecision): boolean => {
+    const latestFunding = getLatestFundingDate(d);
+    if (!latestFunding) return true;
+    const raw = d.additionalApprovals as any[] | null;
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw.some((a: any) => !isApprovalPast(a, latestFunding));
+    }
+    return !isApprovalPast(
+      { approvalDate: d.approvalDate ? String(d.approvalDate) : null, createdAt: d.createdAt ? String(d.createdAt) : null },
+      latestFunding
+    );
+  };
+
+  // Dual visibility: approved businesses + funded businesses that still carry
+  // approvals. Merchants with active approvals sort to the top; past-only sink.
   const approvedDecisions = (allDecisions || [])
-    .filter(d => d.status === "approved")
-    .sort((a, b) => getMostRecentApprovalDate(b) - getMostRecentApprovalDate(a));
+    .filter(d => (d.status === "approved" || d.status === "funded") && hasApprovalData(d))
+    .sort((a, b) => {
+      const aActive = hasActiveApproval(a) ? 1 : 0;
+      const bActive = hasActiveApproval(b) ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      return getMostRecentApprovalDate(b) - getMostRecentApprovalDate(a);
+    });
 
   // Filter by rep
   const repFilteredDecisions = repFilter === "all" ? approvedDecisions : approvedDecisions.filter(d => {
@@ -355,9 +409,28 @@ export default function Approvals() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  // Approval-entry totals: all-time vs still-active
+  const approvalEntryStats = approvedDecisions.reduce(
+    (acc, d) => {
+      const entries = d.additionalApprovals as any[] | null;
+      const list = Array.isArray(entries) && entries.length > 0
+        ? entries
+        : (d.advanceAmount || d.lender ? [{ approvalDate: d.approvalDate ? String(d.approvalDate) : null, createdAt: d.createdAt ? String(d.createdAt) : null }] : []);
+      const latestFunding = getLatestFundingDate(d);
+      for (const a of list) {
+        acc.allTime++;
+        if (!isApprovalPast(a, latestFunding)) acc.active++;
+      }
+      return acc;
+    },
+    { allTime: 0, active: 0 }
+  );
+
   // Compute stats from approved decisions
   const stats = {
-    totalApproved: approvedDecisions.length,
+    totalApproved: approvedDecisions.filter(d => hasActiveApproval(d)).length,
+    activeApprovals: approvalEntryStats.active,
+    allTimeApprovals: approvalEntryStats.allTime,
     totalAmount: approvedDecisions.reduce((sum, d) => sum + (parseFloat(d.advanceAmount?.toString() || "0") || 0), 0),
     totalDeclined: statusCounts?.declined ?? 0,
   };
@@ -923,7 +996,7 @@ export default function Approvals() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -931,10 +1004,25 @@ export default function Approvals() {
                   <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold" data-testid="text-total-approvals">
-                    {stats.totalApproved}
+                  <div className="text-2xl font-bold" data-testid="text-active-approvals">
+                    {stats.activeApprovals}
                   </div>
-                  <div className="text-sm text-muted-foreground">Approved Businesses</div>
+                  <div className="text-sm text-muted-foreground">Active Approvals</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-slate-100 rounded-lg dark:bg-slate-800">
+                  <FileText className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold" data-testid="text-alltime-approvals">
+                    {stats.allTimeApprovals}
+                  </div>
+                  <div className="text-sm text-muted-foreground">All-Time Approvals</div>
                 </div>
               </div>
             </CardContent>
@@ -1033,10 +1121,21 @@ export default function Approvals() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {filteredDecisions.map((decision) => {
+            {filteredDecisions.map((decision, decisionIdx) => {
               const approvals = getApprovalsForDecision(decision);
+              // Divider before the first merchant whose approvals are ALL past
+              const isFirstPastOnly = !hasActiveApproval(decision) &&
+                (decisionIdx === 0 || hasActiveApproval(filteredDecisions[decisionIdx - 1]));
               return (
-                <Card key={decision.id} className="p-6 hover-elevate" data-testid={`card-approval-${decision.id}`}>
+                <div key={decision.id}>
+                {isFirstPastOnly && (
+                  <div className="flex items-center gap-3 pt-4 pb-2" data-testid="divider-past-approvals">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="text-sm font-medium text-muted-foreground">Past Approvals Only — already funded</span>
+                    <div className="h-px flex-1 bg-border" />
+                  </div>
+                )}
+                <Card className="p-6 hover-elevate" data-testid={`card-approval-${decision.id}`}>
                   <div className="flex flex-col gap-4">
                     {/* Business header */}
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -1045,10 +1144,17 @@ export default function Approvals() {
                           <Building2 className="w-5 h-5 text-primary" />
                           {decision.businessName || decision.businessEmail}
                         </h3>
-                        <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Approved
-                        </Badge>
+                        {decision.status === 'funded' ? (
+                          <Badge className="bg-purple-600 hover:bg-purple-700 flex items-center gap-1">
+                            <Banknote className="w-3 h-3" />
+                            Funded
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-green-600 hover:bg-green-700 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Approved
+                          </Badge>
+                        )}
                         <Badge variant="secondary" className="text-xs">
                           {approvals.length} {approvals.length === 1 ? 'Approval' : 'Approvals'}
                         </Badge>
@@ -1103,7 +1209,7 @@ export default function Approvals() {
                           <Banknote className="w-4 h-4 mr-1" />
                           Fund
                         </Button>
-                        <StatusToggle decision={decision} currentStatus="approved" />
+                        <StatusToggle decision={decision} currentStatus={(decision.status === 'funded' ? 'funded' : 'approved') as any} />
                       </div>
                     </div>
 
@@ -1111,19 +1217,11 @@ export default function Approvals() {
                       {decision.businessEmail}
                     </div>
 
-                    {/* Approvals — split into recent vs past (>90 days older than newest) */}
+                    {/* Approvals — active vs past. Rule: any approval that was
+                        already in the system when a funding came in is PAST. */}
                     {(() => {
-                      // Find the most recent approval date across all approvals
-                      const apprDates = approvals.map(a => a.approvalDate ? new Date(a.approvalDate.includes('T') ? a.approvalDate : a.approvalDate + 'T00:00:00').getTime() : 0);
-                      const newestDate = Math.max(...apprDates, 0);
-                      const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-
-                      // An approval is "past" if it's more than 90 days older than the newest one
-                      const isPastApproval = (appr: FullApprovalEntry) => {
-                        if (!newestDate || !appr.approvalDate) return false;
-                        const apprTime = new Date(appr.approvalDate.includes('T') ? appr.approvalDate : appr.approvalDate + 'T00:00:00').getTime();
-                        return (newestDate - apprTime) > ninetyDaysMs;
-                      };
+                      const latestFunding = getLatestFundingDate(decision);
+                      const isPastApproval = (appr: FullApprovalEntry) => isApprovalPast(appr, latestFunding);
 
                       const recentApprovals = approvals
                         .filter(a => !isPastApproval(a))
@@ -1263,7 +1361,7 @@ export default function Approvals() {
                                 {isPastExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                 <span className="font-medium">Past Approvals</span>
                                 <Badge variant="outline" className="text-xs ml-1">{pastApprovals.length}</Badge>
-                                <span className="text-xs">(older than 3 months)</span>
+                                <span className="text-xs">(before last funding)</span>
                               </button>
                               {isPastExpanded && (
                                 <div className="space-y-3 mt-2">
@@ -1349,6 +1447,7 @@ export default function Approvals() {
                     )}
                   </div>
                 </Card>
+                </div>
               );
             })}
           </div>

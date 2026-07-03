@@ -234,7 +234,9 @@ export default function Funded() {
   const { data: allDecisions, isLoading, error: decisionsError } = useQuery<BusinessUnderwritingDecision[]>({
     queryKey: ["/api/underwriting-decisions", "funded"],
     queryFn: async () => {
-      const res = await fetch("/api/underwriting-decisions?status=funded", { credentials: "include" });
+      // view=funded includes any record with funding entries, even if its status
+      // is still "approved" (dual visibility — fundings always show here)
+      const res = await fetch("/api/underwriting-decisions?view=funded", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch decisions");
       return res.json();
     },
@@ -808,9 +810,14 @@ export default function Funded() {
     return dates.length > 0 ? Math.max(...dates) : new Date(d.createdAt || 0).getTime();
   };
 
-  // Filter to only funded decisions
+  // Dual visibility: include anything with funding entries, even if status
+  // stayed "approved" (e.g. business funded one offer but has active approvals)
+  const hasFundings = (d: BusinessUnderwritingDecision): boolean => {
+    const f = (d as any).additionalFundings as any[] | null;
+    return Array.isArray(f) && f.length > 0;
+  };
   const fundedDecisions = (allDecisions || [])
-    .filter(d => d.status === "funded")
+    .filter(d => d.status === "funded" || hasFundings(d))
     .sort((a, b) => {
       const aDate = a.fundedDate ? new Date(a.fundedDate).getTime() : getMostRecentApprovalDate(a);
       const bDate = b.fundedDate ? new Date(b.fundedDate).getTime() : getMostRecentApprovalDate(b);
