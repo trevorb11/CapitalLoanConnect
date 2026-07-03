@@ -4,3 +4,9 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Local working files — never commit
+/*.png
+.playwright-mcp/
+CapitalLoanConnect Database Access.txt
+*.local.md
