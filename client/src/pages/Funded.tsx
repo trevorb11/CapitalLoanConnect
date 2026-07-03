@@ -232,10 +232,22 @@ export default function Funded() {
 
   // Fetch all underwriting decisions
   const { data: allDecisions, isLoading, error: decisionsError } = useQuery<BusinessUnderwritingDecision[]>({
-    queryKey: ["/api/underwriting-decisions"],
+    queryKey: ["/api/underwriting-decisions", "funded"],
     queryFn: async () => {
-      const res = await fetch("/api/underwriting-decisions", { credentials: "include" });
+      const res = await fetch("/api/underwriting-decisions?status=funded", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch decisions");
+      return res.json();
+    },
+    retry: false,
+    enabled: isAuthenticated,
+  });
+
+  // Lightweight cross-status counts for nav badges (avoids fetching all rows)
+  const { data: statusCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/underwriting-decisions", "counts"],
+    queryFn: async () => {
+      const res = await fetch("/api/underwriting-decisions/counts", { credentials: "include" });
+      if (!res.ok) return {};
       return res.json();
     },
     retry: false,
@@ -830,7 +842,7 @@ export default function Funded() {
       const primary = approvals.find(a => a.isPrimary) || approvals[0];
       return sum + (parseFloat(primary?.advanceAmount || "0") || 0);
     }, 0),
-    totalApproved: (allDecisions || []).filter(d => d.status === "approved").length,
+    totalApproved: statusCounts?.approved ?? 0,
   };
 
   const getUploadsForEmail = (email: string): BankStatementUpload[] => {

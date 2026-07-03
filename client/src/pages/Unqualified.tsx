@@ -193,9 +193,9 @@ export default function Unqualified() {
   }, [setLocation]);
 
   const { data: allDecisions, isLoading, error: decisionsError } = useQuery<BusinessUnderwritingDecision[]>({
-    queryKey: ["/api/underwriting-decisions"],
+    queryKey: ["/api/underwriting-decisions", "unqualified"],
     queryFn: async () => {
-      const res = await fetch("/api/underwriting-decisions", { credentials: "include" });
+      const res = await fetch("/api/underwriting-decisions?status=unqualified", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch decisions");
       return res.json();
     },

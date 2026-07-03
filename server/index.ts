@@ -452,6 +452,20 @@ app.use((req, res, next) => {
       `);
       const count = (backfill as any).rowCount ?? 0;
       if (count > 0) console.log(`[STARTUP] Migration: backfilled gigfi_submitted_at for ${count} rows`);
+      // Performance indexes for hot lookup paths (idempotent)
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_bud_business_email ON business_underwriting_decisions (LOWER(business_email))`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_bud_status ON business_underwriting_decisions (status)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_bud_created_at ON business_underwriting_decisions (created_at)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_bsu_email ON bank_statement_uploads (LOWER(email))`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_bsu_created_at ON bank_statement_uploads (created_at)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_la_email ON loan_applications (LOWER(email))`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_la_created_at ON loan_applications (created_at)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_la_gigfi_status ON loan_applications (gigfi_status) WHERE gigfi_status IS NOT NULL`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_lender_approvals_email ON lender_approvals (LOWER(business_email))`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_app_subs_email ON application_submissions (LOWER(email))`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_visit_logs_email ON visit_logs (LOWER(email))`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_visit_logs_created_at ON visit_logs (created_at)`);
+      console.log('[STARTUP] Migration: performance indexes ensured');
     } catch (migErr) {
       console.warn('[STARTUP] Migration warning (non-fatal):', migErr);
     }

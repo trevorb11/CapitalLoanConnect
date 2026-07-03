@@ -233,10 +233,22 @@ export default function Declines() {
 
   // Fetch all underwriting decisions
   const { data: allDecisions, isLoading, error: decisionsError } = useQuery<BusinessUnderwritingDecision[]>({
-    queryKey: ["/api/underwriting-decisions"],
+    queryKey: ["/api/underwriting-decisions", "declined"],
     queryFn: async () => {
-      const res = await fetch("/api/underwriting-decisions", { credentials: "include" });
+      const res = await fetch("/api/underwriting-decisions?status=declined", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch decisions");
+      return res.json();
+    },
+    retry: false,
+    enabled: isAuthenticated,
+  });
+
+  // Lightweight cross-status counts for nav badges (avoids fetching all rows)
+  const { data: statusCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/underwriting-decisions", "counts"],
+    queryFn: async () => {
+      const res = await fetch("/api/underwriting-decisions/counts", { credentials: "include" });
+      if (!res.ok) return {};
       return res.json();
     },
     retry: false,
@@ -296,7 +308,7 @@ export default function Declines() {
     );
   });
 
-  const totalApproved = (allDecisions || []).filter(d => d.status === "approved").length;
+  const totalApproved = statusCounts?.approved ?? 0;
 
   const { data: bankUploads } = useQuery<BankStatementUpload[]>({
     queryKey: ['/api/bank-statements/uploads'],

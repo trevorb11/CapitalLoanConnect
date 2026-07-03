@@ -5746,6 +5746,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============= Business Underwriting Decisions =============
   
   // Get all business underwriting decisions
+  // Lightweight status counts for page badges — avoids fetching full decision rows
+  app.get("/api/underwriting-decisions/counts", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'underwriting' && req.session.user.role !== 'admin' && req.session.user.role !== 'agent') {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    try {
+      const counts = await storage.getDecisionStatusCounts();
+      res.json(counts);
+    } catch (error) {
+      console.error("Error fetching decision counts:", error);
+      res.status(500).json({ error: "Failed to fetch counts" });
+    }
+  });
+
   app.get("/api/underwriting-decisions", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
@@ -5757,7 +5774,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
-      const decisions = await storage.getAllBusinessUnderwritingDecisions();
+      // Optional server-side status filter (?status=approved|declined|funded|unqualified)
+      const VALID_STATUSES = ['approved', 'declined', 'funded', 'unqualified'];
+      const statusFilter = typeof req.query.status === 'string' && VALID_STATUSES.includes(req.query.status)
+        ? req.query.status
+        : undefined;
+      const decisions = await storage.getAllBusinessUnderwritingDecisions(statusFilter);
 
       // For agents, filter to only their files:
       // - assignedRep matches agent name

@@ -202,10 +202,22 @@ export default function Approvals() {
 
   // Fetch all underwriting decisions
   const { data: allDecisions, isLoading, error: decisionsError } = useQuery<BusinessUnderwritingDecision[]>({
-    queryKey: ["/api/underwriting-decisions"],
+    queryKey: ["/api/underwriting-decisions", "approved"],
     queryFn: async () => {
-      const res = await fetch("/api/underwriting-decisions", { credentials: "include" });
+      const res = await fetch("/api/underwriting-decisions?status=approved", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch decisions");
+      return res.json();
+    },
+    retry: false,
+    enabled: isAuthenticated,
+  });
+
+  // Lightweight cross-status counts for nav badges (avoids fetching all rows)
+  const { data: statusCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/underwriting-decisions", "counts"],
+    queryFn: async () => {
+      const res = await fetch("/api/underwriting-decisions/counts", { credentials: "include" });
+      if (!res.ok) return {};
       return res.json();
     },
     retry: false,
@@ -347,7 +359,7 @@ export default function Approvals() {
   const stats = {
     totalApproved: approvedDecisions.length,
     totalAmount: approvedDecisions.reduce((sum, d) => sum + (parseFloat(d.advanceAmount?.toString() || "0") || 0), 0),
-    totalDeclined: (allDecisions || []).filter(d => d.status === "declined").length,
+    totalDeclined: statusCounts?.declined ?? 0,
   };
 
   // Helper: get all approvals for a decision (migration-aware)
@@ -904,7 +916,7 @@ export default function Approvals() {
                 data-testid="button-view-funded"
               >
                 <Banknote className="w-4 h-4" />
-                View Funded ({(allDecisions || []).filter(d => d.status === "funded").length})
+                View Funded ({statusCounts?.funded ?? 0})
               </Button>
             </div>
           </div>

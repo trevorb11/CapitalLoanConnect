@@ -4,90 +4,102 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { GoogleReCaptchaProvider } from "react-google-recaptcha-v3";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
+import { Loader2 } from "lucide-react";
 import { initUTMTracking } from "@/lib/utm";
-import QuizIntake from "@/pages/QuizIntake";
-import IntakeLanding from "@/pages/IntakeLanding";
-import IntakeGoogleAds from "@/pages/IntakeGoogleAds";
-import IntakeEmail from "@/pages/IntakeEmail";
-import IntakeSocialMedia from "@/pages/IntakeSocialMedia";
-import IntakeWebsite from "@/pages/IntakeWebsite";
-import IntakeBlog from "@/pages/IntakeBlog";
-import IntakeReferral from "@/pages/IntakeReferral";
-import IntakeDirect from "@/pages/IntakeDirect";
-import IntakeReddit from "@/pages/IntakeReddit";
-import FundingQuiz from "@/pages/FundingQuiz";
+// Eager: root route (lead conversion) + 404
 import FullApplication from "@/pages/FullApplication";
-import AgentApplication from "@/pages/AgentApplication";
-import Success from "@/pages/Success";
-import Dashboard from "@/pages/Dashboard";
-import AgentSelector from "@/pages/AgentSelector";
-import FundingAnalysis from "@/pages/FundingAnalysis";
-import FundingReport from "@/pages/FundingReport";
-import UpdateInfo from "@/pages/UpdateInfo";
-import SeeReport from "@/pages/SeeReport";
-import ConnectBank from "@/pages/ConnectBank";
-import BankStatementsUpload from "@/pages/BankStatementsUpload";
-import Statements from "@/pages/Statements";
-import FundingCheck from "@/pages/FundingCheck";
-import RetargetingLanding from "@/pages/RetargetingLanding";
-import ProgressTracker from "@/pages/ProgressTracker";
-import PartnerDashboard from "@/pages/PartnerDashboard";
-import PartnerApplication from "@/pages/PartnerApplication";
-import PartnerLanding from "@/pages/PartnerLanding";
-import ReferralLanding from "@/pages/ReferralLanding";
-import Approvals from "@/pages/Approvals";
-import Declines from "@/pages/Declines";
-import Unqualified from "@/pages/Unqualified";
-import Funded from "@/pages/Funded";
-import RepConsole from "@/pages/RepConsole";
-import LeadSourceAnalytics from "@/pages/LeadSourceAnalytics";
-import Analytics from "@/pages/Analytics";
-import Services from "@/pages/Services";
-import AchForm from "@/pages/AchForm";
-import ApprovalLetter from "@/pages/ApprovalLetter";
-import InternalStatementsUpload from "@/pages/InternalStatementsUpload";
-import SBALanding from "@/pages/SBALanding";
-import SignatureApplication from "@/pages/SignatureApplication";
-import Congratulations from "@/pages/Congratulations";
-import Leaderboard from "@/pages/Leaderboard";
-import Messaging from "@/pages/Messaging";
-import AutomatedTriggers from "@/pages/AutomatedTriggers";
-import SmsInbox from "@/pages/SmsInbox";
-import SmsAnalytics from "@/pages/SmsAnalytics";
-import FundingCalculator from "@/pages/FundingCalculator";
-import ApprovalFollowUp from "@/pages/ApprovalFollowUp";
-import FundedDealsAudit from "@/pages/FundedDealsAudit";
-import GigFiStandalone from "@/pages/GigFiStandalone";
-import GigFiInternal from "@/pages/GigFiInternal";
-import GigFiSubmissions from "@/pages/GigFiSubmissions";
-import MerchantPortal from "@/pages/MerchantPortal";
-import MerchantActivate from "@/pages/MerchantActivate";
-import MerchantResetPassword from "@/pages/MerchantResetPassword";
-import MerchantProfile from "@/pages/MerchantProfile";
-import LeadPortal from "@/pages/LeadPortal";
-import TrackAdmin from "@/pages/TrackAdmin";
-import AdsConsultation from "@/pages/AdsConsultation";
-import AdsLeads from "@/pages/AdsLeads";
-import ServiceLeads from "@/pages/ServiceLeads";
-import ConsolSBA from "@/pages/ConsolSBA";
-import LeadsDashboard from "@/pages/LeadsDashboard";
-import ServicePayments from "@/pages/ServicePayments";
-import ServiceWebsite from "@/pages/ServiceWebsite";
-import ServiceCRM from "@/pages/ServiceCRM";
-import MemorialDayWebsite from "@/pages/MemorialDayWebsite";
-import RepWebsiteReferral from "@/pages/RepWebsiteReferral";
-import RepWebsiteReferralDashboard from "@/pages/RepWebsiteReferralDashboard";
-import WebsiteContract from "@/pages/WebsiteContract";
-import Agreements from "@/pages/Agreements";
-import WhatWeNeed from "@/pages/WhatWeNeed";
-import UnderwritingPortal from "@/pages/UnderwritingPortal";
-import PipelineReports from "@/pages/PipelineReports";
-import RepStats from "@/pages/RepStats";
-import RepScorecard from "@/pages/RepScorecard";
-import ProcessingReview from "@/pages/ProcessingReview";
 import NotFound from "@/pages/not-found";
+// Lazy: everything else is code-split so visitors only download the page they hit
+const QuizIntake = lazy(() => import("@/pages/QuizIntake"));
+const IntakeLanding = lazy(() => import("@/pages/IntakeLanding"));
+const IntakeGoogleAds = lazy(() => import("@/pages/IntakeGoogleAds"));
+const IntakeEmail = lazy(() => import("@/pages/IntakeEmail"));
+const IntakeSocialMedia = lazy(() => import("@/pages/IntakeSocialMedia"));
+const IntakeWebsite = lazy(() => import("@/pages/IntakeWebsite"));
+const IntakeBlog = lazy(() => import("@/pages/IntakeBlog"));
+const IntakeReferral = lazy(() => import("@/pages/IntakeReferral"));
+const IntakeDirect = lazy(() => import("@/pages/IntakeDirect"));
+const IntakeReddit = lazy(() => import("@/pages/IntakeReddit"));
+const FundingQuiz = lazy(() => import("@/pages/FundingQuiz"));
+const AgentApplication = lazy(() => import("@/pages/AgentApplication"));
+const Success = lazy(() => import("@/pages/Success"));
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const AgentSelector = lazy(() => import("@/pages/AgentSelector"));
+const FundingAnalysis = lazy(() => import("@/pages/FundingAnalysis"));
+const FundingReport = lazy(() => import("@/pages/FundingReport"));
+const UpdateInfo = lazy(() => import("@/pages/UpdateInfo"));
+const SeeReport = lazy(() => import("@/pages/SeeReport"));
+const ConnectBank = lazy(() => import("@/pages/ConnectBank"));
+const BankStatementsUpload = lazy(() => import("@/pages/BankStatementsUpload"));
+const Statements = lazy(() => import("@/pages/Statements"));
+const FundingCheck = lazy(() => import("@/pages/FundingCheck"));
+const RetargetingLanding = lazy(() => import("@/pages/RetargetingLanding"));
+const ProgressTracker = lazy(() => import("@/pages/ProgressTracker"));
+const PartnerDashboard = lazy(() => import("@/pages/PartnerDashboard"));
+const PartnerApplication = lazy(() => import("@/pages/PartnerApplication"));
+const PartnerLanding = lazy(() => import("@/pages/PartnerLanding"));
+const ReferralLanding = lazy(() => import("@/pages/ReferralLanding"));
+const Approvals = lazy(() => import("@/pages/Approvals"));
+const Declines = lazy(() => import("@/pages/Declines"));
+const Unqualified = lazy(() => import("@/pages/Unqualified"));
+const Funded = lazy(() => import("@/pages/Funded"));
+const RepConsole = lazy(() => import("@/pages/RepConsole"));
+const LeadSourceAnalytics = lazy(() => import("@/pages/LeadSourceAnalytics"));
+const Analytics = lazy(() => import("@/pages/Analytics"));
+const Services = lazy(() => import("@/pages/Services"));
+const AchForm = lazy(() => import("@/pages/AchForm"));
+const ApprovalLetter = lazy(() => import("@/pages/ApprovalLetter"));
+const InternalStatementsUpload = lazy(() => import("@/pages/InternalStatementsUpload"));
+const SBALanding = lazy(() => import("@/pages/SBALanding"));
+const SignatureApplication = lazy(() => import("@/pages/SignatureApplication"));
+const Congratulations = lazy(() => import("@/pages/Congratulations"));
+const Leaderboard = lazy(() => import("@/pages/Leaderboard"));
+const Messaging = lazy(() => import("@/pages/Messaging"));
+const AutomatedTriggers = lazy(() => import("@/pages/AutomatedTriggers"));
+const SmsInbox = lazy(() => import("@/pages/SmsInbox"));
+const SmsAnalytics = lazy(() => import("@/pages/SmsAnalytics"));
+const FundingCalculator = lazy(() => import("@/pages/FundingCalculator"));
+const ApprovalFollowUp = lazy(() => import("@/pages/ApprovalFollowUp"));
+const FundedDealsAudit = lazy(() => import("@/pages/FundedDealsAudit"));
+const GigFiStandalone = lazy(() => import("@/pages/GigFiStandalone"));
+const GigFiInternal = lazy(() => import("@/pages/GigFiInternal"));
+const GigFiSubmissions = lazy(() => import("@/pages/GigFiSubmissions"));
+const MerchantPortal = lazy(() => import("@/pages/MerchantPortal"));
+const MerchantActivate = lazy(() => import("@/pages/MerchantActivate"));
+const MerchantResetPassword = lazy(() => import("@/pages/MerchantResetPassword"));
+const MerchantProfile = lazy(() => import("@/pages/MerchantProfile"));
+const LeadPortal = lazy(() => import("@/pages/LeadPortal"));
+const TrackAdmin = lazy(() => import("@/pages/TrackAdmin"));
+const AdsConsultation = lazy(() => import("@/pages/AdsConsultation"));
+const AdsLeads = lazy(() => import("@/pages/AdsLeads"));
+const ServiceLeads = lazy(() => import("@/pages/ServiceLeads"));
+const ConsolSBA = lazy(() => import("@/pages/ConsolSBA"));
+const LeadsDashboard = lazy(() => import("@/pages/LeadsDashboard"));
+const ServicePayments = lazy(() => import("@/pages/ServicePayments"));
+const ServiceWebsite = lazy(() => import("@/pages/ServiceWebsite"));
+const ServiceCRM = lazy(() => import("@/pages/ServiceCRM"));
+const MemorialDayWebsite = lazy(() => import("@/pages/MemorialDayWebsite"));
+const RepWebsiteReferral = lazy(() => import("@/pages/RepWebsiteReferral"));
+const RepWebsiteReferralDashboard = lazy(() => import("@/pages/RepWebsiteReferralDashboard"));
+const WebsiteContract = lazy(() => import("@/pages/WebsiteContract"));
+const Agreements = lazy(() => import("@/pages/Agreements"));
+const WhatWeNeed = lazy(() => import("@/pages/WhatWeNeed"));
+const UnderwritingPortal = lazy(() => import("@/pages/UnderwritingPortal"));
+const PipelineReports = lazy(() => import("@/pages/PipelineReports"));
+const RepStats = lazy(() => import("@/pages/RepStats"));
+const RepScorecard = lazy(() => import("@/pages/RepScorecard"));
+const ProcessingReview = lazy(() => import("@/pages/ProcessingReview"));
 import { AGENTS, getAgentByInitials } from "@shared/agents";
+
+// Shown briefly while a lazy-loaded page chunk downloads
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
 
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "";
 
@@ -98,7 +110,7 @@ function Router() {
         {() => <FullApplication />}
       </Route>
       <Route path="/intake" component={IntakeLanding} />
-      <Route path="/intake/quiz" component={QuizIntake} />
+      <Route path="/intake/quiz">{() => <QuizIntake />}</Route>
       <Route path="/funding-quiz" component={FundingQuiz} />
 
       {/* Source-specific intake forms for tracking */}
@@ -141,7 +153,7 @@ function Router() {
       <Route path="/funded-audit" component={FundedDealsAudit} />
       <Route path="/sba" component={SBALanding} />
       <Route path="/consol-sba" component={ConsolSBA} />
-      <Route path="/sig" component={SignatureApplication} />
+      <Route path="/sig">{() => <SignatureApplication />}</Route>
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/congratulations" component={Congratulations} />
       <Route path="/success" component={Success} />
@@ -285,7 +297,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        <Suspense fallback={<PageLoader />}>
+          <Router />
+        </Suspense>
       </TooltipProvider>
     </QueryClientProvider>
   );

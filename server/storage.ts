@@ -158,7 +158,8 @@ export interface IStorage {
   getBusinessUnderwritingDecisionsByMerchantEmail(email: string): Promise<BusinessUnderwritingDecision[]>;
   getBusinessUnderwritingDecisionByMerchantToken(token: string): Promise<BusinessUnderwritingDecision | undefined>;
   getBusinessUnderwritingDecisionBySlug(slug: string): Promise<BusinessUnderwritingDecision | undefined>;
-  getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]>;
+  getAllBusinessUnderwritingDecisions(status?: string): Promise<BusinessUnderwritingDecision[]>;
+  getDecisionStatusCounts(): Promise<Record<string, number>>;
   updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision> & { ghlSynced?: boolean; ghlSyncedAt?: Date | null; ghlSyncMessage?: string | null; ghlOpportunityId?: string | null; sfSynced?: boolean; sfSyncedAt?: Date | null; sfSyncMessage?: string | null; sfOpportunityId?: string | null }): Promise<BusinessUnderwritingDecision | undefined>;
   deleteBusinessUnderwritingDecision(id: string): Promise<boolean>;
 
@@ -1188,11 +1189,27 @@ export class DatabaseStorage implements IStorage {
     return decision || undefined;
   }
 
-  async getAllBusinessUnderwritingDecisions(): Promise<BusinessUnderwritingDecision[]> {
+  async getAllBusinessUnderwritingDecisions(status?: string): Promise<BusinessUnderwritingDecision[]> {
+    if (status) {
+      return await db
+        .select()
+        .from(businessUnderwritingDecisions)
+        .where(eq(businessUnderwritingDecisions.status, status))
+        .orderBy(desc(businessUnderwritingDecisions.updatedAt));
+    }
     return await db
       .select()
       .from(businessUnderwritingDecisions)
       .orderBy(desc(businessUnderwritingDecisions.updatedAt));
+  }
+
+  async getDecisionStatusCounts(): Promise<Record<string, number>> {
+    const rows = await db.execute(sql`SELECT status, COUNT(*)::int AS count FROM business_underwriting_decisions GROUP BY status`);
+    const counts: Record<string, number> = {};
+    for (const row of (rows as any).rows || []) {
+      if (row.status) counts[row.status] = Number(row.count);
+    }
+    return counts;
   }
 
   async updateBusinessUnderwritingDecision(id: string, updates: Partial<InsertBusinessUnderwritingDecision> & { ghlSynced?: boolean; ghlSyncedAt?: Date | null; ghlSyncMessage?: string | null; ghlOpportunityId?: string | null; sfSynced?: boolean; sfSyncedAt?: Date | null; sfSyncMessage?: string | null; sfOpportunityId?: string | null }): Promise<BusinessUnderwritingDecision | undefined> {
