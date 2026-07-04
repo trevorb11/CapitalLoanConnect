@@ -108,6 +108,73 @@ was last contacted, whether the last touch was inbound or outbound, and if a rep
 
 ---
 
+## STEP 1.5: Enrichment Pass — Backfill Empty Fields from Contact Notes
+
+Every scan, before analyzing, try to fill in structured opportunity fields that are **currently empty**
+by mining the contact's notes. Many opps (especially older/imported ones) carry all their real
+detail in free-text notes and have blank fields — this pass turns that text into structured data the
+report and routing can use. **Verified working against the live account** (opportunities + contacts
+write scope required — the original read-mostly PIT returns `401 "not authorized for this scope"` on
+writes; use a token with `opportunities.write` and `contacts.write`).
+
+### Which opps to process
+Only opps where **at least one target field is empty**. Skip any opp that already has all target
+fields set — never overwrite existing values. For each candidate, fetch its notes:
+```
+GET /contacts/{contactId}/notes
+```
+
+### Target fields + their valid values (these are picklists — only write allowed options)
+
+| Field | Custom-field ID | Type | Allowed values |
+|---|---|---|---|
+| **Community/Lot** | `6HJKexiP2rJTcCXBW32Q` | MULTIPLE_OPTIONS | Southern Hills · Royal Highlands · Rose Haven · Hidden Ridge · Lot Build |
+| **Floor Plan Interest** | `4hSUzUJ4sSSCB6rDbLlu` | MULTIPLE_OPTIONS | Augusta, Cypress, Donatello, Genova, Leonardo, Michelangelo, Modena, Murano, Napoli, Oakmont, Portofino, Positano, Raffaello, Roma, Salerno, Sawgrass, Siena, The Villa Toscana, Venezia, Verona |
+| **Budget Range** | `VmNpnlBCa6lXF9yYVv3l` | MULTIPLE_OPTIONS | Under $500K · $500-750K · $750K-1M · $1M+ |
+
+Plus tags on the contact: `realtor-represented` (if the buyer is realtor-represented) and
+`review-close` (if the note shows dead/negative intent — do NOT auto-mark Lost, just flag for a human).
+
+### Extraction rules (LLM reading, not blind keyword match)
+- Read the note text with judgment. **Respect negation** — "No Realtor" is NOT realtor-represented;
+  "doesn't like our community / went with a competitor" is a `review-close` signal, not a community
+  interest. Strip HTML from note bodies first.
+- **Community:** map explicit mentions and common abbreviations (RH → Royal Highlands, SHP → Southern
+  Hills). Only assign a community the buyer is positively interested in.
+- **Floor Plan:** match the model names above (whole-word). A note can imply several — write all.
+- **Budget:** map any stated price/budget to the nearest band (e.g. "wants to stay in 300k" → Under $500K;
+  "650k" → $500-750K).
+- **Confidence:** only write a field when the note clearly supports it. When unsure, leave it blank —
+  a wrong value in the CRM is worse than an empty one.
+
+### How to write (verified formats)
+Only include the fields you actually resolved; send `field_value` as an **array** even for single values:
+```
+PUT /opportunities/{opportunityId}
+{"customFields":[
+  {"id":"6HJKexiP2rJTcCXBW32Q","field_value":["Royal Highlands"]},
+  {"id":"4hSUzUJ4sSSCB6rDbLlu","field_value":["Modena","Raffaello"]},
+  {"id":"VmNpnlBCa6lXF9yYVv3l","field_value":["$500-750K"]}
+]}
+```
+```
+POST /contacts/{contactId}/tags
+{"tags":["note-enriched-YYYY-MM"]}          # plus realtor-represented / review-close where applicable
+```
+Tag every opp you enrich with `note-enriched-YYYY-MM` (current month) so there's an audit trail of
+what the routine touched, and so a given note isn't re-processed needlessly.
+
+### Guardrails
+- **Fill blanks only** — never overwrite a field that already has a value.
+- **No stage/status changes** in this pass — enrichment writes fields and tags only.
+- **Log and continue** on any single write failure; report a per-run count of opps enriched and which
+  fields were filled (feed this into the STEP 6 summary).
+
+> On the last full run this enriched 49 opps: Community/Lot ×29, Floor Plan ×31, Budget ×9,
+> realtor tag ×10 — all previously blank.
+
+---
+
 ## STEP 2: Assign Opportunities to Reps
 
 ### Sales Rep Roster (internal Vitale)
@@ -320,6 +387,7 @@ Vitale Pipeline Monitor Complete
 Report Type: daily (or weekly)
 Date: [Eastern date]
 Opportunities Analyzed: [distinct open]
+Fields Enriched from Notes: [n opps]  (Community ×[a], Floor Plan ×[b], Budget ×[c], realtor ×[d])
 Reports Published: [n]  (mode: notes|email)
 
 Per Rep:
