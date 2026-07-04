@@ -1975,7 +1975,9 @@ function LeadFinancialsTab() {
           window.addEventListener("message", onMsg);
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      alert("Could not start the bank connection. Please check your internet connection and try again.");
+    }
     setConnecting(false);
   };
 

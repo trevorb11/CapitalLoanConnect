@@ -9,4 +9,4 @@ vite.config.ts.*
 /*.png
 .playwright-mcp/
 CapitalLoanConnect Database Access.txt
-*.local.md
+*.local.md.firecrawl/

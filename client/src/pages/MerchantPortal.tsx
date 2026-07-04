@@ -2898,21 +2898,30 @@ function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand =
   const [expanded, setExpanded] = useState(autoExpand);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const previewHeaders: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
 
   const fetchMessages = () => {
     setLoading(true);
+    setLoadError(false);
     fetch("/api/merchant/messages", { headers: previewHeaders })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => {
         if (Array.isArray(data)) {
           setMessages(data);
           setUnreadCount(0); // Messages are marked read on fetch
         }
       })
-      .catch(err => console.error("Failed to fetch messages:", err))
+      .catch(err => {
+        console.error("Failed to fetch messages:", err);
+        setLoadError(true);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -2944,19 +2953,24 @@ function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand =
   const handleSend = async () => {
     if (!newMsg.trim() || sending) return;
     setSending(true);
+    setSendError(null);
     try {
       const res = await fetch("/api/merchant/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: newMsg.trim() }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.id) {
         setMessages(prev => [...prev, data]);
         setNewMsg("");
+      } else {
+        throw new Error("No message id returned");
       }
-    } catch {
-      console.error("Failed to send message");
+    } catch (err) {
+      console.error("Failed to send message", err);
+      setSendError("Your message didn't send. Please try again.");
     } finally {
       setSending(false);
     }
@@ -2983,6 +2997,16 @@ function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand =
             <div className="messaging-body" ref={bodyRef}>
               {loading ? (
                 <div className="messaging-empty">Loading messages...</div>
+              ) : loadError ? (
+                <div className="messaging-empty">
+                  Couldn't load messages.{" "}
+                  <button
+                    onClick={fetchMessages}
+                    style={{ background: "none", border: "none", color: "#0d9488", fontWeight: 600, cursor: "pointer", textDecoration: "underline", padding: 0 }}
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : messages.length === 0 ? (
                 <div className="messaging-empty">
                   No messages yet. Send a message to your rep and they'll respond here.
@@ -3001,12 +3025,17 @@ function MessagingPanel({ merchantEmail, merchantName, assignedRep, autoExpand =
                 ))
               )}
             </div>
+            {sendError && (
+              <div style={{ padding: "6px 14px", color: "#dc2626", fontSize: 13 }} role="alert">
+                {sendError}
+              </div>
+            )}
             <div className="messaging-input-wrap">
               <textarea
                 className="messaging-input"
                 placeholder="Type a message..."
                 value={newMsg}
-                onChange={e => setNewMsg(e.target.value)}
+                onChange={e => { setNewMsg(e.target.value); if (sendError) setSendError(null); }}
                 onKeyDown={e => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -3048,7 +3077,22 @@ function DocumentVault({ documents, loading }: { documents: VaultDocument[]; loa
   const closingDocs = documents.filter(d => d.category === 'closing');
   const statementDocs = documents.filter(d => d.category === 'statements');
 
-  if (documents.length === 0) return null;
+  if (documents.length === 0) {
+    return (
+      <div className="vault-section">
+        <div className="vault-card">
+          <div className="vault-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            Document Vault
+          </div>
+          <div style={{ padding: "20px 4px", color: "#64748b", fontSize: 14 }}>
+            No documents on file yet. Your closing documents and uploaded bank
+            statements will appear here once they're added to your account.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const iconForType = (type: string) => {
     if (type === 'voided_check') return { cls: 'check', label: '&#10003;' };

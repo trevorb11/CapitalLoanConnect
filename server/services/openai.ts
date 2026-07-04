@@ -759,7 +759,10 @@ export interface ExtractedPositionTerms {
 }
 
 const POSITION_SYSTEM_PROMPT = `You are a financial document parser that extracts MCA/business loan position details.
-Return ONLY valid JSON, no markdown fences:
+A document (especially a bank statement) may contain MULTIPLE distinct funding positions —
+e.g. recurring ACH debits to several different funders. Return ONE entry per distinct funder/position.
+
+Return ONLY a valid JSON ARRAY, no markdown fences. Each element:
 {
   "funderName": string or null,
   "productType": one of "MCA"|"LOC"|"Term Loan"|"SBA"|"Revenue Based"|"Other" or null,
@@ -773,41 +776,38 @@ Return ONLY valid JSON, no markdown fences:
   "confidence": "high"|"medium"|"low",
   "notes": string or null
 }
-Rules: strip $ and commas from numbers; "advance amount"/"funded amount" = fundedAmount; "payback"/"total remittance" = paybackAmount; "RTR"/"daily ACH" = daily frequency; for bank statements look for recurring ACH debits; confidence "high" if 5+ fields extracted, "medium" if 3-4, "low" otherwise.`;
+Rules: strip $ and commas from numbers; "advance amount"/"funded amount" = fundedAmount; "payback"/"total remittance" = paybackAmount; "RTR"/"daily ACH" = daily frequency; for bank statements look for recurring ACH debits to funding companies (require 2+ recurring debits to the same entity to count as a position); do NOT include rent, utilities, payroll, insurance, credit card, or mortgage payments; confidence "high" if 5+ fields extracted, "medium" if 3-4, "low" otherwise. If a single funding contract/agreement is provided, return an array with one element. If no positions are found, return [].`;
 
-function parsePositionJson(raw: string): ExtractedPositionTerms {
+function parsePositionsJson(raw: string): ExtractedPositionTerms[] {
   let clean = raw.trim();
   if (clean.startsWith("```json")) clean = clean.slice(7);
   else if (clean.startsWith("```")) clean = clean.slice(3);
   if (clean.endsWith("```")) clean = clean.slice(0, -3);
-  return JSON.parse(clean.trim()) as ExtractedPositionTerms;
+  const parsed = JSON.parse(clean.trim());
+  // Tolerate a bare object (older prompt shape) by wrapping it
+  const list = Array.isArray(parsed) ? parsed : [parsed];
+  return list.filter((p: any) => p && typeof p === "object") as ExtractedPositionTerms[];
 }
 
-const POSITION_EMPTY: ExtractedPositionTerms = {
-  funderName: null, productType: null, fundedAmount: null, paybackAmount: null,
-  factorRate: null, paymentAmount: null, paymentFrequency: null, remainingBalance: null,
-  fundedDate: null, confidence: "low", notes: "Could not parse document."
-};
-
-export async function extractPositionTerms(text: string): Promise<ExtractedPositionTerms> {
+export async function extractPositionTerms(text: string): Promise<ExtractedPositionTerms[]> {
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         { role: "system", content: POSITION_SYSTEM_PROMPT },
-        { role: "user", content: `Extract funding position terms from this document:\n\n${text.slice(0, 12000)}` }
+        { role: "user", content: `Extract ALL funding positions from this document:\n\n${text.slice(0, 12000)}` }
       ],
       temperature: 0.1,
-      max_tokens: 600
+      max_tokens: 1500
     });
-    return parsePositionJson(response.choices[0]?.message?.content || "{}");
+    return parsePositionsJson(response.choices[0]?.message?.content || "[]");
   } catch (err) {
     console.error("[OPENAI] extractPositionTerms error:", err);
-    return POSITION_EMPTY;
+    return [];
   }
 }
 
-export async function extractPositionTermsFromPdfBuffer(pdfBuffer: Buffer): Promise<ExtractedPositionTerms> {
+export async function extractPositionTermsFromPdfBuffer(pdfBuffer: Buffer): Promise<ExtractedPositionTerms[]> {
   try {
     const base64Pdf = pdfBuffer.toString("base64");
     const response = await (openai as any).responses.create({
@@ -823,19 +823,19 @@ export async function extractPositionTermsFromPdfBuffer(pdfBuffer: Buffer): Prom
             },
             {
               type: "input_text",
-              text: `${POSITION_SYSTEM_PROMPT}\n\nExtract all funding/loan position terms from this document and return ONLY the JSON:`
+              text: `${POSITION_SYSTEM_PROMPT}\n\nExtract ALL funding/loan positions from this document and return ONLY the JSON array:`
             }
           ]
         }
       ],
       temperature: 0.1,
-      max_output_tokens: 600,
+      max_output_tokens: 1500,
     });
-    const content = response.output_text || response.output?.[0]?.content?.[0]?.text || "{}";
-    return parsePositionJson(content);
+    const content = response.output_text || response.output?.[0]?.content?.[0]?.text || "[]";
+    return parsePositionsJson(content);
   } catch (err) {
     console.error("[OPENAI] extractPositionTermsFromPdfBuffer error:", err);
-    return { ...POSITION_EMPTY, notes: "Could not read this PDF. Try pasting the text instead." };
+    return [];
   }
 }
 
