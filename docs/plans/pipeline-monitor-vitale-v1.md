@@ -118,11 +118,17 @@ write scope required — the original read-mostly PIT returns `401 "not authoriz
 writes; use a token with `opportunities.write` and `contacts.write`).
 
 ### Which opps to process
-Only opps where **at least one target field is empty**. Skip any opp that already has all target
-fields set — never overwrite existing values. For each candidate, fetch its notes:
+**Important:** the `/opportunities/search` (list) endpoint returns `customFields: []` — it does **not**
+include custom-field values, so you cannot tell from the scan alone whether a field is already filled.
+Use the **`note-enriched-YYYY-MM` contact tag** (visible on the embedded `contact.tags`) as the
+idempotency key: **skip any opp whose contact already carries a `note-enriched-*` tag.** For the
+remaining candidates, fetch notes:
 ```
 GET /contacts/{contactId}/notes
 ```
+When a candidate's notes yield a value, `GET /opportunities/{id}` once to read the *actual* current
+custom-field values, and write only the fields that come back empty — this is the real
+"never overwrite" guard (the tag just avoids re-fetching notes for already-processed contacts).
 
 ### Target fields + their valid values (these are picklists — only write allowed options)
 
