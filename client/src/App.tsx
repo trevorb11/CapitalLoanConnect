@@ -91,6 +91,7 @@ const PipelineReports = lazy(() => import("@/pages/PipelineReports"));
 const RepStats = lazy(() => import("@/pages/RepStats"));
 const RepScorecard = lazy(() => import("@/pages/RepScorecard"));
 const ProcessingReview = lazy(() => import("@/pages/ProcessingReview"));
+const RenewalPipeline = lazy(() => import("@/pages/RenewalPipeline"));
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
 // Shown briefly while a lazy-loaded page chunk downloads
@@ -224,6 +225,9 @@ function Router() {
 
       {/* Credit Card Processing Review — public landing page */}
       <Route path="/processing-review" component={ProcessingReview} />
+
+      {/* Renewal Pipeline — MCA position tracking for outreach */}
+      <Route path="/renewal-pipeline" component={RenewalPipeline} />
 
       {/* Lead Portal Routes */}
       <Route path="/what-we-need" component={WhatWeNeed} />

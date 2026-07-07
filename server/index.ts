@@ -527,6 +527,53 @@ app.use((req, res, next) => {
       )`);
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mbr_email_deal ON merchant_balance_reports (LOWER(merchant_email), deal_id, reported_at DESC)`);
       console.log('[STARTUP] Migration: portal engagement + auth tables ensured');
+      // Chirp: stored transactions + pending-link reuse + statement auto-filing
+      await db.execute(sql`ALTER TABLE merchant_bank_snapshots ADD COLUMN IF NOT EXISTS transactions_data JSONB`);
+      await db.execute(sql`ALTER TABLE merchant_bank_snapshots ADD COLUMN IF NOT EXISTS widget_url TEXT`);
+      await db.execute(sql`ALTER TABLE merchant_bank_snapshots ADD COLUMN IF NOT EXISTS verification_url TEXT`);
+      await db.execute(sql`ALTER TABLE merchant_bank_snapshots ADD COLUMN IF NOT EXISTS statement_filed_at TIMESTAMP`);
+      console.log('[STARTUP] Migration: chirp snapshot columns ensured');
+
+      // Merchant Positions — funding positions detected from bank statement analysis
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS merchant_positions (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        business_email TEXT NOT NULL,
+        business_name TEXT,
+        funder_name TEXT NOT NULL,
+        product_type TEXT,
+        payment_amount DECIMAL(12,2),
+        payment_amount_display TEXT,
+        payment_frequency TEXT,
+        estimated_funding_amount DECIMAL(12,2),
+        estimated_total_payback DECIMAL(12,2),
+        estimated_remaining_balance DECIMAL(12,2),
+        percent_complete INTEGER,
+        first_payment_seen TEXT,
+        last_payment_seen TEXT,
+        estimated_start_date TEXT,
+        estimated_payoff_date TEXT,
+        renewal_eligible_date TEXT,
+        funding_deposit_amount DECIMAL(12,2),
+        funding_deposit_date TEXT,
+        tier TEXT,
+        outreach_status TEXT DEFAULT 'not_contacted',
+        outreach_notes TEXT,
+        anomalies TEXT,
+        source TEXT DEFAULT 'ai_extraction',
+        status TEXT DEFAULT 'active',
+        uw_status TEXT,
+        uw_lender TEXT,
+        uw_amount DECIMAL(12,2),
+        uw_approval_count INTEGER DEFAULT 0,
+        uw_decline_count INTEGER DEFAULT 0,
+        uw_funded_date TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mp_business_email ON merchant_positions (LOWER(business_email))`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mp_tier ON merchant_positions (tier)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mp_status ON merchant_positions (status)`);
+      console.log('[STARTUP] Migration: merchant_positions table ensured');
     } catch (migErr) {
       console.warn('[STARTUP] Migration warning (non-fatal):', migErr);
     }

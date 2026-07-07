@@ -4173,6 +4173,11 @@ export default function Dashboard() {
                     </div>
                     {/* Tools */}
                     <div className="hidden md:flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-700">
+                      <Link href="/renewal-pipeline">
+                        <Button variant="ghost" size="sm" className="text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30">
+                          <TrendingUp className="w-4 h-4 mr-1.5" />Renewals
+                        </Button>
+                      </Link>
                       <Link href="/messaging">
                         <Button variant="ghost" size="sm" data-testid="button-messaging" className="text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30">
                           <Mail className="w-4 h-4 mr-1.5" />Messaging
@@ -4202,6 +4207,9 @@ export default function Dashboard() {
                             <Banknote className="w-4 h-4 mr-2 text-purple-600" />Funded
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => window.location.href = '/renewal-pipeline'}>
+                            <TrendingUp className="w-4 h-4 mr-2 text-orange-600" />Renewals
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => window.location.href = '/messaging'}>
                             <Mail className="w-4 h-4 mr-2 text-sky-600" />Messaging
                           </DropdownMenuItem>

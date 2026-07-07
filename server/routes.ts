@@ -10,6 +10,7 @@ import { storage } from "./storage";
 import { ghlService } from "./services/gohighlevel";
 import { plaidService } from "./services/plaid";
 import { chirpService, ChirpApiError } from "./services/chirp";
+import { normalizeChirpTransactions, computeUnderwritingMetrics, detectMcaPatterns, type NormalizedTxn } from "./services/chirpInsights";
 import { repConsoleService } from "./services/repConsole";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { analyzeBankStatements, isOpenAIConfigured, parseApprovalEmail, parseContactSearchQuery, parseRepConsoleCommand, extractPositionTerms, extractPositionTermsFromPdfBuffer, generateUnderwritingSnapshot } from "./services/openai";
@@ -3992,6 +3993,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // Download the Chirp bank report PDF for a connected snapshot and file it
+  // into bank_statement_uploads (source='chirp') so the entire existing
+  // underwriting pipeline — statements list, AI analysis, UW review — works
+  // without the merchant ever uploading a statement. Deduped to one auto-filed
+  // report per 25 days per merchant.
+  async function fileChirpStatementForSnapshot(snapshot: MerchantBankSnapshot): Promise<boolean> {
+    const email = snapshot.merchantEmail;
+    if (!snapshot.chirpRequestCode) return false;
+    if (snapshot.statementFiledAt && Date.now() - new Date(snapshot.statementFiledAt).getTime() < 25 * 24 * 60 * 60 * 1000) {
+      return false;
+    }
+
+    const accounts: any[] = Array.isArray(snapshot.accountsData) ? (snapshot.accountsData as any[]) : [];
+    const withIds = accounts.filter(a => a.chirpAccountId || a.accountNumber);
+    const pick = withIds.find(a => /check/i.test(`${a.type || ""} ${a.subtype || ""} ${a.accountName || ""}`)) || withIds[0];
+
+    let pdf: Buffer;
+    try {
+      pdf = await chirpService.downloadReportPdfBytes(snapshot.chirpRequestCode, {
+        chirpAccountId: pick?.chirpAccountId || undefined,
+        accountNumber: pick?.accountNumber || undefined,
+      });
+    } catch (e: any) {
+      console.warn(`[CHIRP] report PDF fetch failed for ${email}:`, e?.message || e);
+      return false;
+    }
+    if (!pdf || pdf.length < 1000) {
+      console.warn(`[CHIRP] report PDF for ${email} too small (${pdf?.length || 0} bytes) — not filing`);
+      return false;
+    }
+
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const fileName = `Chirp Bank Report - ${(snapshot.institutionName || "Connected Bank").replace(/[^\w \-\.]/g, "")} - ${dateStamp}.pdf`;
+
+    let storedFileName: string;
+    if (objectStorage.isConfigured()) {
+      storedFileName = await objectStorage.uploadFile(pdf, `bank-statements/${email}/${Date.now()}_${fileName}`, "application/pdf");
+    } else {
+      storedFileName = `${Date.now()}_${fileName}`;
+      fs.writeFileSync(path.join(UPLOAD_DIR, storedFileName), pdf);
+    }
+
+    const decision = await storage.getBusinessUnderwritingDecisionByEmail(email).catch(() => null);
+    await storage.createBankStatementUpload({
+      email,
+      businessName: decision?.businessName || null,
+      originalFileName: fileName,
+      storedFileName,
+      fileSize: pdf.length,
+      mimeType: "application/pdf",
+      source: "chirp",
+      viewToken: randomUUID(),
+    });
+    await storage.upsertMerchantBankSnapshot({
+      merchantEmail: email,
+      chirpRequestCode: snapshot.chirpRequestCode,
+      statementFiledAt: new Date(),
+    });
+
+    logPortalEvent('merchant', email, 'chirp_statement_filed', fileName);
+    if (shouldSendMerchantAlert(`chirp_statement:${email}`, 24 * 60 * 60 * 1000)) {
+      sendAdminMerchantAlert({
+        title: "Chirp Bank Report Filed as Statement",
+        event: "chirp_statement_filed",
+        merchantEmail: email,
+        businessName: decision?.businessName || undefined,
+        details: {
+          institution: snapshot.institutionName || "Unknown",
+          fileName,
+          sizeKb: Math.round(pdf.length / 1024),
+          note: "Auto-generated from the merchant's live bank connection — visible in Bank Statements.",
+        },
+      }).catch(() => {});
+    }
+    console.log(`[CHIRP] Filed bank report PDF as statement for ${email} (${Math.round(pdf.length / 1024)} KB)`);
+    return true;
+  }
+
   async function syncMerchantSnapshotFromChirp(merchantEmail: string, requestCode: string): Promise<MerchantBankSnapshot | null> {
     // Track whether ANY of the three read endpoints succeeded.
     let anySucceeded = false;
@@ -4117,6 +4196,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const netCashFlow = monthlyRevenue - monthlyExpenses;
 
+      // Normalize + store raw transactions so downstream analysis (MCA
+      // detection, NSF counts, statement replacement) works even when later
+      // Chirp reads are WAF-blocked
+      const rawTxns: any[] = (details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || [];
+      const normalizedTxns = normalizeChirpTransactions(rawTxns);
+      const underwriting = normalizedTxns.length > 0 ? computeUnderwritingMetrics(normalizedTxns) : null;
+
+      // Prefer transaction-derived revenue when the summary endpoint gave us
+      // nothing (it excludes self-transfers and MCA funding credits)
+      if (monthlyRevenue === 0 && underwriting && underwriting.avgMonthlyDeposits > 0) {
+        monthlyRevenue = underwriting.avgMonthlyTrueRevenue || underwriting.avgMonthlyDeposits;
+      }
+
       // Compute revenue trend from month-over-month data
       let revenueTrend: "growing" | "stable" | "declining" | null = null;
       if (perMonth.length >= 2) {
@@ -4124,6 +4216,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const half = Math.floor(perMonth.length / 2);
         const recentAvg = perMonth.slice(0, half).reduce((s, m) => s + parseMoney(m.totalCredit), 0) / half;
         const olderAvg = perMonth.slice(half).reduce((s, m) => s + parseMoney(m.totalCredit), 0) / (perMonth.length - half);
+        const changePercent = olderAvg > 0 ? ((recentAvg - olderAvg) / olderAvg) * 100 : 0;
+        revenueTrend = changePercent > 5 ? "growing" : changePercent < -5 ? "declining" : "stable";
+      } else if (underwriting && underwriting.monthly.length >= 2) {
+        // Fallback: derive trend from transaction-based monthly deposits (newest first)
+        const months = underwriting.monthly;
+        const half = Math.floor(months.length / 2);
+        const recentAvg = months.slice(0, half).reduce((s, m) => s + m.trueRevenue, 0) / half;
+        const olderAvg = months.slice(half).reduce((s, m) => s + m.trueRevenue, 0) / (months.length - half);
         const changePercent = olderAvg > 0 ? ((recentAvg - olderAvg) / olderAvg) * 100 : 0;
         revenueTrend = changePercent > 5 ? "growing" : changePercent < -5 ? "declining" : "stable";
       }
@@ -4137,32 +4237,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const trendScore = revenueTrend === "growing" ? 30 : revenueTrend === "stable" ? 20 : 10; // 10-30 pts
       const healthScore = Math.round(Math.min(100, cashFlowScore + balanceScore + trendScore));
 
+      // Connection state: trust the status endpoint when we have it; otherwise
+      // infer from having real account/transaction data (webhook-only flows)
+      const existingSnap = await storage.getMerchantBankSnapshotByRequestCode(requestCode);
+      const inferredConnected = status
+        ? Boolean(status.isAccountConnected)
+        : (accounts.length > 0 || normalizedTxns.length > 0 || Boolean(existingSnap?.isAccountConnected));
+
       const snapshot = await storage.upsertMerchantBankSnapshot({
         merchantEmail,
         chirpRequestCode: requestCode,
         institutionName,
-        status: status?.status || null,
-        isAccountConnected: Boolean(status?.isAccountConnected),
-        accountsData: accounts.map((a: any) => ({
+        status: status?.status || existingSnap?.status || null,
+        isAccountConnected: inferredConnected,
+        accountsData: accounts.length > 0 ? accounts.map((a: any) => ({
           accountName: a.name || a.accountName || "Account",
           type: a.type || a.accountType || "",
           subtype: a.subtype || "",
           balance: parseMoney(a.balance ?? a.available_balance ?? 0),
           chirpAccountId: a.chirpAccountId || a.guid || null,
-        })),
-        summaryData: summary || null,
+          accountNumber: a.accountNumber || a.account_number || a.acctNumber || null,
+        })) : undefined,
+        summaryData: summary || undefined,
+        transactionsData: normalizedTxns.length > 0 ? (normalizedTxns as any) : undefined,
         metrics: {
           monthlyRevenue: Math.round(monthlyRevenue * 100) / 100,
           monthlyExpenses: Math.round(monthlyExpenses * 100) / 100,
           netCashFlow: Math.round(netCashFlow * 100) / 100,
           avgBalance: Math.round(avgBalance * 100) / 100,
           currentBalance: Math.round(currentBalance * 100) / 100,
-          monthsAnalyzed,
+          monthsAnalyzed: monthsAnalyzed || underwriting?.monthly.length || 0,
           revenueTrend,
           healthScore,
+          underwriting,
         },
         lastSyncedAt: new Date(),
       });
+
+      // Once connected with real data, auto-file the Chirp bank report PDF as a
+      // bank statement so underwriting can work from it (async, deduped inside)
+      if (snapshot?.isAccountConnected) {
+        fileChirpStatementForSnapshot(snapshot).catch(e =>
+          console.warn(`[CHIRP] statement auto-filing failed for ${merchantEmail}:`, e?.message || e)
+        );
+      }
+
       return snapshot;
     } catch (err: any) {
       console.error(`[CHIRP] syncMerchantSnapshotFromChirp upsert failed for ${merchantEmail}:`, err?.message || err);
@@ -4179,6 +4298,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
     try {
+      // Guard: don't clobber a live connection or spam Chirp with duplicate
+      // requests. Re-serve the pending link when one is still fresh.
+      const existingSnap = await storage.getMerchantBankSnapshot(merchantEmail);
+      if (existingSnap && !req.body?.force) {
+        if (existingSnap.isAccountConnected) {
+          return res.json({
+            success: true,
+            alreadyConnected: true,
+            institutionName: existingSnap.institutionName,
+            lastSyncedAt: existingSnap.lastSyncedAt,
+            message: "Your bank is already connected. Pass force=true to start a new connection.",
+          });
+        }
+        const ageMs = existingSnap.createdAt ? Date.now() - new Date(existingSnap.createdAt).getTime() : Infinity;
+        if (existingSnap.widgetUrl && ageMs < 24 * 60 * 60 * 1000) {
+          return res.json({
+            success: true,
+            widgetUrl: existingSnap.widgetUrl,
+            verificationUrl: existingSnap.verificationUrl || existingSnap.widgetUrl,
+            requestCode: existingSnap.chirpRequestCode,
+            resumed: true,
+          });
+        }
+      }
+
       // Pull contact info from the business underwriting decision so the merchant doesn't re-enter it.
       const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(merchantEmail);
       const primary = decisions[0];
@@ -6938,6 +7082,191 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (f.includes('biweekly') || f.includes('bi-weekly')) return 'biweekly';
     return 'weekly';
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // MERCHANT POSITIONS — renewal pipeline tracking
+  // ═══════════════════════════════════════════════════════════════
+
+  // GET /api/merchant-positions — list all positions with optional filters
+  app.get("/api/merchant-positions", async (req, res) => {
+    try {
+      const tier = req.query.tier ? String(req.query.tier) : null;
+      const status = req.query.status ? String(req.query.status) : null;
+      const outreachStatus = req.query.outreachStatus ? String(req.query.outreachStatus) : null;
+      const result = await db.execute(sql`
+        SELECT * FROM merchant_positions
+        WHERE (${tier}::text IS NULL OR tier = ${tier})
+          AND (${status}::text IS NULL OR status = ${status})
+          AND (${outreachStatus}::text IS NULL OR outreach_status = ${outreachStatus})
+        ORDER BY CASE tier WHEN 'HOT' THEN 1 WHEN 'WARM' THEN 2 WHEN 'SOON' THEN 3 WHEN 'EARLY' THEN 4 ELSE 5 END,
+                 percent_complete DESC NULLS LAST
+      `);
+      res.json({ positions: result.rows });
+    } catch (error) {
+      console.error("[MERCHANT-POSITIONS] Error fetching:", error);
+      res.status(500).json({ error: "Failed to fetch positions" });
+    }
+  });
+
+  // GET /api/merchant-positions/summary — grouped by merchant with UW data
+  app.get("/api/merchant-positions/summary", async (req, res) => {
+    try {
+      const posResult = await db.execute(sql`
+        SELECT mp.*, bud.status as uw_decision_status, bud.lender as uw_decision_lender,
+               bud.advance_amount as uw_decision_amount, bud.funded_date as uw_decision_funded_date,
+               bud.approval_date as uw_decision_approval_date, bud.decline_reason as uw_decision_decline_reason,
+               bud.additional_approvals as uw_additional_approvals, bud.additional_fundings as uw_additional_fundings,
+               bud.additional_declines as uw_additional_declines
+        FROM merchant_positions mp
+        LEFT JOIN business_underwriting_decisions bud ON LOWER(mp.business_email) = LOWER(bud.business_email)
+        WHERE mp.status = 'active'
+        ORDER BY CASE mp.tier WHEN 'HOT' THEN 1 WHEN 'WARM' THEN 2 WHEN 'SOON' THEN 3 WHEN 'EARLY' THEN 4 ELSE 5 END,
+                 mp.percent_complete DESC NULLS LAST
+      `);
+      res.json({ positions: posResult.rows });
+    } catch (error) {
+      console.error("[MERCHANT-POSITIONS] Error fetching summary:", error);
+      res.status(500).json({ error: "Failed to fetch position summary" });
+    }
+  });
+
+  // GET /api/merchant-positions/counts — tier counts for stat cards
+  app.get("/api/merchant-positions/counts", async (_req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT tier, COUNT(DISTINCT business_email) as merchant_count, COUNT(*) as position_count
+        FROM merchant_positions WHERE status = 'active'
+        GROUP BY tier
+      `);
+      const counts: Record<string, { merchants: number; positions: number }> = {};
+      for (const row of result.rows as any[]) {
+        counts[row.tier || 'UNKNOWN'] = { merchants: Number(row.merchant_count), positions: Number(row.position_count) };
+      }
+      res.json(counts);
+    } catch (error) {
+      console.error("[MERCHANT-POSITIONS] Error fetching counts:", error);
+      res.status(500).json({ error: "Failed to fetch counts" });
+    }
+  });
+
+  // POST /api/merchant-positions — create a new position
+  app.post("/api/merchant-positions", async (req, res) => {
+    try {
+      const pos = req.body;
+      const result = await db.execute(sql`
+        INSERT INTO merchant_positions (
+          business_email, business_name, funder_name, product_type,
+          payment_amount, payment_amount_display, payment_frequency,
+          estimated_funding_amount, estimated_total_payback, estimated_remaining_balance,
+          percent_complete, first_payment_seen, last_payment_seen,
+          estimated_start_date, estimated_payoff_date, renewal_eligible_date,
+          funding_deposit_amount, funding_deposit_date,
+          tier, outreach_status, outreach_notes, anomalies, source, status,
+          uw_status, uw_lender, uw_amount, uw_approval_count, uw_decline_count, uw_funded_date
+        ) VALUES (
+          ${pos.businessEmail}, ${pos.businessName}, ${pos.funderName}, ${pos.productType || null},
+          ${pos.paymentAmount || null}, ${pos.paymentAmountDisplay || null}, ${pos.paymentFrequency || null},
+          ${pos.estimatedFundingAmount || null}, ${pos.estimatedTotalPayback || null}, ${pos.estimatedRemainingBalance || null},
+          ${pos.percentComplete || null}, ${pos.firstPaymentSeen || null}, ${pos.lastPaymentSeen || null},
+          ${pos.estimatedStartDate || null}, ${pos.estimatedPayoffDate || null}, ${pos.renewalEligibleDate || null},
+          ${pos.fundingDepositAmount || null}, ${pos.fundingDepositDate || null},
+          ${pos.tier || null}, ${pos.outreachStatus || 'not_contacted'}, ${pos.outreachNotes || null},
+          ${pos.anomalies || null}, ${pos.source || 'ai_extraction'}, ${pos.status || 'active'},
+          ${pos.uwStatus || null}, ${pos.uwLender || null}, ${pos.uwAmount || null},
+          ${pos.uwApprovalCount || 0}, ${pos.uwDeclineCount || 0}, ${pos.uwFundedDate || null}
+        ) RETURNING *
+      `);
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("[MERCHANT-POSITIONS] Error creating:", error);
+      res.status(500).json({ error: "Failed to create position" });
+    }
+  });
+
+  // POST /api/merchant-positions/bulk — bulk insert positions
+  app.post("/api/merchant-positions/bulk", async (req, res) => {
+    try {
+      const { positions } = req.body;
+      if (!Array.isArray(positions) || positions.length === 0) {
+        return res.status(400).json({ error: "positions array required" });
+      }
+      let inserted = 0;
+      for (const pos of positions) {
+        await db.execute(sql`
+          INSERT INTO merchant_positions (
+            business_email, business_name, funder_name, product_type,
+            payment_amount, payment_amount_display, payment_frequency,
+            estimated_funding_amount, estimated_total_payback, estimated_remaining_balance,
+            percent_complete, first_payment_seen, last_payment_seen,
+            estimated_start_date, estimated_payoff_date, renewal_eligible_date,
+            funding_deposit_amount, funding_deposit_date,
+            tier, outreach_status, outreach_notes, anomalies, source, status,
+            uw_status, uw_lender, uw_amount, uw_approval_count, uw_decline_count, uw_funded_date
+          ) VALUES (
+            ${pos.businessEmail}, ${pos.businessName || null}, ${pos.funderName}, ${pos.productType || null},
+            ${pos.paymentAmount || null}, ${pos.paymentAmountDisplay || null}, ${pos.paymentFrequency || null},
+            ${pos.estimatedFundingAmount || null}, ${pos.estimatedTotalPayback || null}, ${pos.estimatedRemainingBalance || null},
+            ${pos.percentComplete || null}, ${pos.firstPaymentSeen || null}, ${pos.lastPaymentSeen || null},
+            ${pos.estimatedStartDate || null}, ${pos.estimatedPayoffDate || null}, ${pos.renewalEligibleDate || null},
+            ${pos.fundingDepositAmount || null}, ${pos.fundingDepositDate || null},
+            ${pos.tier || null}, ${pos.outreachStatus || 'not_contacted'}, ${pos.outreachNotes || null},
+            ${pos.anomalies || null}, ${pos.source || 'ai_extraction'}, ${pos.status || 'active'},
+            ${pos.uwStatus || null}, ${pos.uwLender || null}, ${pos.uwAmount || null},
+            ${pos.uwApprovalCount || 0}, ${pos.uwDeclineCount || 0}, ${pos.uwFundedDate || null}
+          )
+        `);
+        inserted++;
+      }
+      res.json({ inserted, total: positions.length });
+    } catch (error) {
+      console.error("[MERCHANT-POSITIONS] Error bulk insert:", error);
+      res.status(500).json({ error: "Failed to bulk insert positions" });
+    }
+  });
+
+  // PATCH /api/merchant-positions/:id — update a position (outreach status, notes, etc.)
+  app.patch("/api/merchant-positions/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const u = req.body;
+      const result = await db.execute(sql`
+        UPDATE merchant_positions SET
+          tier = COALESCE(${u.tier ?? null}, tier),
+          outreach_status = COALESCE(${u.outreachStatus ?? null}, outreach_status),
+          outreach_notes = COALESCE(${u.outreachNotes ?? null}, outreach_notes),
+          status = COALESCE(${u.status ?? null}, status),
+          percent_complete = COALESCE(${u.percentComplete ?? null}, percent_complete),
+          estimated_payoff_date = COALESCE(${u.estimatedPayoffDate ?? null}, estimated_payoff_date),
+          renewal_eligible_date = COALESCE(${u.renewalEligibleDate ?? null}, renewal_eligible_date),
+          anomalies = COALESCE(${u.anomalies ?? null}, anomalies),
+          uw_status = COALESCE(${u.uwStatus ?? null}, uw_status),
+          uw_lender = COALESCE(${u.uwLender ?? null}, uw_lender),
+          uw_amount = COALESCE(${u.uwAmount ?? null}, uw_amount),
+          uw_approval_count = COALESCE(${u.uwApprovalCount ?? null}, uw_approval_count),
+          uw_decline_count = COALESCE(${u.uwDeclineCount ?? null}, uw_decline_count),
+          uw_funded_date = COALESCE(${u.uwFundedDate ?? null}, uw_funded_date),
+          updated_at = NOW()
+        WHERE id = ${id} RETURNING *
+      `);
+      if (!result.rows.length) return res.status(404).json({ error: "Position not found" });
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("[MERCHANT-POSITIONS] Error updating:", error);
+      res.status(500).json({ error: "Failed to update position" });
+    }
+  });
+
+  // DELETE /api/merchant-positions/:id — remove a position
+  app.delete("/api/merchant-positions/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.execute(sql`DELETE FROM merchant_positions WHERE id = ${id}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[MERCHANT-POSITIONS] Error deleting:", error);
+      res.status(500).json({ error: "Failed to delete position" });
+    }
+  });
 
   // Accept Offer click tracking — fires GHL webhook then redirects to /congratulations
   app.get("/api/approval-letter/:slug/accept", async (req, res) => {

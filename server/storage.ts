@@ -588,23 +588,34 @@ export class DatabaseStorage implements IStorage {
 
   async upsertMerchantBankSnapshot(data: InsertMerchantBankSnapshot): Promise<MerchantBankSnapshot> {
     const normalized = { ...data, merchantEmail: data.merchantEmail.toLowerCase() };
+    // Preserve-when-undefined: only fields explicitly passed get overwritten on
+    // conflict, so partial updates (e.g. a webhook status ping) never wipe
+    // stored transactions/metrics. Pass an explicit null to clear a field.
+    const set: Record<string, any> = { updatedAt: new Date() };
+    const assignIfDefined = (key: keyof typeof normalized, column: string) => {
+      if (normalized[key] !== undefined) set[column] = normalized[key];
+    };
+    assignIfDefined("chirpRequestCode", "chirpRequestCode");
+    assignIfDefined("institutionName", "institutionName");
+    assignIfDefined("status", "status");
+    assignIfDefined("isAccountConnected", "isAccountConnected");
+    assignIfDefined("accountsData", "accountsData");
+    assignIfDefined("summaryData", "summaryData");
+    assignIfDefined("metrics", "metrics");
+    assignIfDefined("transactionsData", "transactionsData");
+    assignIfDefined("widgetUrl", "widgetUrl");
+    assignIfDefined("verificationUrl", "verificationUrl");
+    assignIfDefined("statementFiledAt", "statementFiledAt");
+    assignIfDefined("connectedAt", "connectedAt");
+    assignIfDefined("lastSyncedAt", "lastSyncedAt");
+    assignIfDefined("lastRefreshAt", "lastRefreshAt");
+
     const [row] = await db
       .insert(merchantBankSnapshots)
       .values(normalized)
       .onConflictDoUpdate({
         target: merchantBankSnapshots.merchantEmail,
-        set: {
-          chirpRequestCode: normalized.chirpRequestCode,
-          institutionName: normalized.institutionName ?? null,
-          status: normalized.status ?? null,
-          isAccountConnected: normalized.isAccountConnected ?? false,
-          accountsData: normalized.accountsData ?? null,
-          summaryData: normalized.summaryData ?? null,
-          metrics: normalized.metrics ?? null,
-          lastSyncedAt: normalized.lastSyncedAt ?? null,
-          lastRefreshAt: normalized.lastRefreshAt ?? null,
-          updatedAt: new Date(),
-        },
+        set,
       })
       .returning();
     return row;

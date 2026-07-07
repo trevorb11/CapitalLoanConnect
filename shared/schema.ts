@@ -732,7 +732,14 @@ export const merchantBankSnapshots = pgTable("merchant_bank_snapshots", {
   accountsData: jsonb("accounts_data"), // array of { name, type, subtype, balance, accountNumber? }
   summaryData: jsonb("summary_data"),   // raw `/summary` response (activityByMonth, currentBalance, etc.)
   // Derived metrics we compute once at sync time so merchant portal views are pure DB reads
-  metrics: jsonb("metrics"), // { monthlyRevenue, monthlyExpenses, netCashFlow, avgBalance, currentBalance, monthsAnalyzed }
+  metrics: jsonb("metrics"), // { monthlyRevenue, monthlyExpenses, netCashFlow, avgBalance, currentBalance, monthsAnalyzed, underwriting: UnderwritingMetrics }
+  // Normalized transactions (~90 days, capped) so analysis works even when Chirp reads are WAF-blocked later
+  transactionsData: jsonb("transactions_data"),
+  // Hosted verification URLs from createRequest — lets us re-serve a pending link instead of creating duplicate requests
+  widgetUrl: text("widget_url"),
+  verificationUrl: text("verification_url"),
+  // When we last auto-filed a Chirp bank report PDF into bank_statement_uploads
+  statementFiledAt: timestamp("statement_filed_at"),
   lastSyncedAt: timestamp("last_synced_at"),
   lastRefreshAt: timestamp("last_refresh_at"), // Last time we asked Chirp to refresh from the bank (rate-limited)
   connectedAt: timestamp("connected_at").defaultNow(),
@@ -946,6 +953,55 @@ export const insertAdsLeadSchema = createInsertSchema(adsLeads).omit({
 
 export type InsertAdsLead = z.infer<typeof insertAdsLeadSchema>;
 export type AdsLead = typeof adsLeads.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════
+// MERCHANT POSITIONS — funding positions detected from bank statements
+// ═══════════════════════════════════════════════════════════════
+
+export const merchantPositions = pgTable("merchant_positions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  businessEmail: text("business_email").notNull(),
+  businessName: text("business_name"),
+  funderName: text("funder_name").notNull(),
+  productType: text("product_type"), // MCA, LOC, Term Loan, Revenue Advance, Factoring, Equipment, SBA
+  paymentAmount: decimal("payment_amount", { precision: 12, scale: 2 }),
+  paymentAmountDisplay: text("payment_amount_display"), // human-readable e.g. "$981→$55 (declining)"
+  paymentFrequency: text("payment_frequency"), // daily, weekly, bi-weekly, monthly, per-transaction
+  estimatedFundingAmount: decimal("estimated_funding_amount", { precision: 12, scale: 2 }),
+  estimatedTotalPayback: decimal("estimated_total_payback", { precision: 12, scale: 2 }),
+  estimatedRemainingBalance: decimal("estimated_remaining_balance", { precision: 12, scale: 2 }),
+  percentComplete: integer("percent_complete"), // 0-100
+  firstPaymentSeen: text("first_payment_seen"), // date from bank statement e.g. "Sep 2025"
+  lastPaymentSeen: text("last_payment_seen"),
+  estimatedStartDate: text("estimated_start_date"),
+  estimatedPayoffDate: text("estimated_payoff_date"),
+  renewalEligibleDate: text("renewal_eligible_date"),
+  fundingDepositAmount: decimal("funding_deposit_amount", { precision: 12, scale: 2 }),
+  fundingDepositDate: text("funding_deposit_date"),
+  tier: text("tier"), // HOT, WARM, SOON, EARLY
+  outreachStatus: text("outreach_status").default("not_contacted"), // not_contacted, contacted, in_progress, converted, passed
+  outreachNotes: text("outreach_notes"),
+  anomalies: text("anomalies"),
+  source: text("source").default("ai_extraction"), // ai_extraction, manual
+  status: text("status").default("active"), // active, paid_off, defaulted, unknown
+  uwStatus: text("uw_status"), // from UW decisions: approved, declined, funded, unqualified
+  uwLender: text("uw_lender"), // primary lender from UW decision
+  uwAmount: decimal("uw_amount", { precision: 12, scale: 2 }), // approved/funded amount
+  uwApprovalCount: integer("uw_approval_count").default(0),
+  uwDeclineCount: integer("uw_decline_count").default(0),
+  uwFundedDate: text("uw_funded_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMerchantPositionSchema = createInsertSchema(merchantPositions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertMerchantPosition = z.infer<typeof insertMerchantPositionSchema>;
+export type MerchantPosition = typeof merchantPositions.$inferSelect;
 
 // ── Rep Call/Dial Statistics (synced from Zoom) ──
 export const repCallStats = pgTable("rep_call_stats", {
