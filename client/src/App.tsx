@@ -71,6 +71,7 @@ const MerchantResetPassword = lazy(() => import("@/pages/MerchantResetPassword")
 const MerchantProfile = lazy(() => import("@/pages/MerchantProfile"));
 const LeadPortal = lazy(() => import("@/pages/LeadPortal"));
 const TrackAdmin = lazy(() => import("@/pages/TrackAdmin"));
+const PortalMessages = lazy(() => import("@/pages/PortalMessages"));
 const AdsConsultation = lazy(() => import("@/pages/AdsConsultation"));
 const AdsLeads = lazy(() => import("@/pages/AdsLeads"));
 const ServiceLeads = lazy(() => import("@/pages/ServiceLeads"));
@@ -230,6 +231,7 @@ function Router() {
       <Route path="/track/signup" component={LeadPortal} />
       <Route path="/track/login" component={LeadPortal} />
       <Route path="/track-admin" component={TrackAdmin} />
+      <Route path="/portal-messages" component={PortalMessages} />
 
       {/* Partner Portal Routes */}
       <Route path="/partners" component={PartnerLanding} />

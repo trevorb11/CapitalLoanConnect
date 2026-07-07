@@ -319,6 +319,20 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
     },
   });
 
+  const { data: engagement } = useQuery<{
+    lastLoginAt: string | null;
+    loginCount: number;
+    hasPortalAccount: boolean;
+    recentEvents: Array<{ portal: string; event: string; detail: string | null; created_at: string }>;
+  }>({
+    queryKey: ["/api/admin/portal-engagement", email],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/portal-engagement/${encodeURIComponent(email)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load engagement");
+      return res.json();
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="text-center py-20">
@@ -407,6 +421,44 @@ function ProfileView({ email, onBack }: { email: string; onBack: () => void }) {
           <p className="text-2xl font-bold text-[#1e293b]">{documents.length}</p>
         </Card>
       </div>
+
+      {/* Portal Engagement */}
+      {engagement && (engagement.hasPortalAccount || engagement.recentEvents.length > 0) && (
+        <Card className="p-4 rounded-2xl border-[#e2e8f0] mb-8">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <p className="text-sm font-semibold flex items-center gap-2">
+              <Shield className="w-4 h-4 text-[#0d9488]" /> Portal Engagement
+            </p>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span>
+                Last login:{" "}
+                <strong className="text-foreground">
+                  {engagement.lastLoginAt ? new Date(engagement.lastLoginAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Never"}
+                </strong>
+              </span>
+              <span>
+                Logins: <strong className="text-foreground">{engagement.loginCount}</strong>
+              </span>
+            </div>
+          </div>
+          {engagement.recentEvents.length > 0 ? (
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {engagement.recentEvents.map((e, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground w-28 shrink-0">
+                    {new Date(e.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">{e.portal}</Badge>
+                  <span className="font-medium">{e.event.replace(/_/g, " ")}</span>
+                  {e.detail && <span className="text-muted-foreground truncate">{e.detail}</span>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No portal activity recorded yet. Events start logging from the next deploy.</p>
+          )}
+        </Card>
+      )}
 
       {/* Tabbed Content */}
       <Tabs defaultValue="overview" className="w-full">

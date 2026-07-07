@@ -44,6 +44,8 @@ interface Deal {
   approvalDeadline: string | null;
   additionalApprovals: AdditionalApproval[];
   decisionId: number;
+  reportedBalance?: number | null;
+  reportedAt?: string | null;
 }
 
 interface AdditionalApproval {
@@ -82,6 +84,9 @@ interface CalcResult {
   paymentsRemaining: number;
   projectedPayoff: Date;
   isComplete: boolean;
+  // true when the numbers are anchored to a balance the merchant reported,
+  // false when they're a time-based estimate assuming on-time payments
+  isReported: boolean;
 }
 
 function calcDeal(deal: Deal): CalcResult {
@@ -169,9 +174,21 @@ function calcDeal(deal: Deal): CalcResult {
   }
 
   paymentsMade = Math.min(paymentsMade, totalPayments);
-  const amountPaid = Math.min(paymentsMade * paymentAmount, totalPayback);
-  const remaining = Math.max(totalPayback - amountPaid, 0);
-  const pctComplete = (amountPaid / totalPayback) * 100;
+  let amountPaid = Math.min(paymentsMade * paymentAmount, totalPayback);
+  let remaining = Math.max(totalPayback - amountPaid, 0);
+
+  // When the merchant has reported their actual remaining balance, anchor
+  // everything to it instead of the elapsed-time estimate
+  const isReported = deal.reportedBalance != null && Number.isFinite(deal.reportedBalance) && totalPayback > 0;
+  if (isReported) {
+    remaining = Math.min(Math.max(deal.reportedBalance as number, 0), totalPayback);
+    amountPaid = totalPayback - remaining;
+    if (paymentAmount > 0) {
+      paymentsMade = Math.min(Math.round(amountPaid / paymentAmount), totalPayments);
+    }
+  }
+
+  const pctComplete = totalPayback > 0 ? (amountPaid / totalPayback) * 100 : 0;
   const paymentsRemaining = Math.max(totalPayments - paymentsMade, 0);
 
   let projectedPayoff: Date;
@@ -197,6 +214,7 @@ function calcDeal(deal: Deal): CalcResult {
       paymentsRemaining: 0,
       projectedPayoff: new Date(deal.fundedDate),
       isComplete: true,
+      isReported: false,
     };
   }
 
@@ -211,6 +229,7 @@ function calcDeal(deal: Deal): CalcResult {
     paymentsRemaining,
     projectedPayoff,
     isComplete: pctComplete >= 100,
+    isReported,
   };
 }
 
@@ -2538,7 +2557,91 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
   );
 }
 
-function DealDetail({ deal, onBack, previewToken }: { deal: Deal; onBack: () => void; previewToken?: string | null }) {
+// ── BALANCE CORRECTION ───────────────────────────────────────────────────
+// Lets the merchant anchor the payoff tracker to their actual remaining balance
+function BalanceCorrectionCard({ deal, previewToken, onReported }: { deal: Deal; previewToken?: string | null; onReported: (balance: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const submit = async () => {
+    const num = parseFloat(value.replace(/[^0-9.]/g, ""));
+    if (!Number.isFinite(num) || num < 0) { setError("Enter a valid dollar amount."); return; }
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch("/api/merchant/deals/balance-report", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dealId: deal.id, reportedBalance: num }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to save balance");
+      }
+      setSaved(true);
+      setOpen(false);
+      setValue("");
+      onReported(num);
+    } catch (e: any) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 14, padding: "14px 18px", marginTop: 14 }}>
+      {!open ? (
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
+            {saved
+              ? "Thanks — your tracker now uses the balance you reported."
+              : deal.reportedBalance != null
+                ? `Tracker anchored to your reported balance${deal.reportedAt ? ` from ${fmtDate(deal.reportedAt)}` : ""}.`
+                : "Balance not looking right? Tell us your actual remaining balance and we'll anchor the tracker to it."}
+          </div>
+          {!previewToken && (
+            <button
+              onClick={() => { setOpen(true); setSaved(false); }}
+              style={{ background: "none", border: "1px solid rgba(13,148,136,0.4)", color: "#0d9488", borderRadius: 20, padding: "6px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+            >
+              {deal.reportedBalance != null ? "Update balance" : "Correct my balance"}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>What's your current remaining balance with {deal.lender}?</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !saving && submit()}
+              placeholder="e.g. 18,400"
+              style={{ flex: 1, minWidth: 140, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "9px 12px", color: "#fff", fontSize: 14 }}
+            />
+            <button onClick={submit} disabled={saving || !value.trim()} style={{ background: "#0d9488", border: "none", color: "#fff", borderRadius: 8, padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: saving || !value.trim() ? 0.6 : 1 }}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => { setOpen(false); setError(null); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 13, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </div>
+          {error && <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }} role="alert">{error}</div>}
+          <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginTop: 6 }}>You can find this on your funder's latest statement or portal.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DealDetail({ deal: dealProp, onBack, previewToken }: { deal: Deal; onBack: () => void; previewToken?: string | null }) {
+  // Local override so a just-submitted balance correction reflects immediately
+  const [localReport, setLocalReport] = useState<{ balance: number; at: string } | null>(null);
+  const deal: Deal = localReport
+    ? { ...dealProp, reportedBalance: localReport.balance, reportedAt: localReport.at }
+    : dealProp;
   const calc = calcDeal(deal);
 
   return (
@@ -2590,7 +2693,19 @@ function DealDetail({ deal, onBack, previewToken }: { deal: Deal; onBack: () => 
         <>
           <div className="tracker-card">
             <div className="tracker-pct-display">{calc.pctComplete.toFixed(1)}%</div>
-            <div className="tracker-pct-label">of total payback complete</div>
+            <div className="tracker-pct-label">
+              of total payback complete
+              <span style={{
+                display: "inline-block", marginLeft: 8, padding: "2px 10px", borderRadius: 20,
+                fontSize: 11, fontWeight: 600, verticalAlign: "middle",
+                background: calc.isReported ? "rgba(13,148,136,0.12)" : "rgba(148,163,184,0.15)",
+                color: calc.isReported ? "#0d9488" : "#64748b",
+              }}>
+                {calc.isReported
+                  ? `Based on your reported balance${deal.reportedAt ? ` (${fmtDate(deal.reportedAt)})` : ""}`
+                  : "Estimated — assumes on-time payments"}
+              </span>
+            </div>
 
             <ProgressBar pct={calc.pctComplete} big />
 
@@ -2637,6 +2752,8 @@ function DealDetail({ deal, onBack, previewToken }: { deal: Deal; onBack: () => 
               <div className="payoff-date-sub">{calc.paymentsRemaining} {deal.paymentFrequency} payments remaining</div>
             </div>
           </div>
+
+          <BalanceCorrectionCard deal={deal} previewToken={previewToken} onReported={(balance) => setLocalReport({ balance, at: new Date().toISOString() })} />
         </>
       )}
 

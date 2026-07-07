@@ -864,6 +864,12 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
   const [otpPhone, setOtpPhone] = useState("");
   const [otp, setOtp] = useState("");
 
+  // Live platform stats for the signup hero
+  const [publicStats, setPublicStats] = useState<{ businesses: number; totalTracked: number } | null>(null);
+  useEffect(() => {
+    fetch("/api/lead/public-stats").then(r => r.ok ? r.json() : null).then(setPublicStats).catch(() => {});
+  }, []);
+
   // Handle any old magic-link URLs gracefully — redirect to phone sign-in
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1086,14 +1092,18 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
           </div>
 
           <div className="auth-stats">
-            <div className="auth-stat">
-              <div className="auth-stat-num">500+</div>
-              <div className="auth-stat-label">Businesses</div>
-            </div>
-            <div className="auth-stat">
-              <div className="auth-stat-num">$47M+</div>
-              <div className="auth-stat-label">Tracked</div>
-            </div>
+            {publicStats && publicStats.businesses > 0 && (
+              <div className="auth-stat">
+                <div className="auth-stat-num">{publicStats.businesses >= 20 ? `${Math.floor(publicStats.businesses / 10) * 10}+` : String(publicStats.businesses)}</div>
+                <div className="auth-stat-label">Businesses</div>
+              </div>
+            )}
+            {publicStats && publicStats.totalTracked > 0 && (
+              <div className="auth-stat">
+                <div className="auth-stat-num">{publicStats.totalTracked >= 1_000_000 ? `$${(publicStats.totalTracked / 1_000_000).toFixed(1)}M+` : `$${Math.round(publicStats.totalTracked / 1000)}K+`}</div>
+                <div className="auth-stat-label">Tracked</div>
+              </div>
+            )}
             <div className="auth-stat">
               <div className="auth-stat-num">Free</div>
               <div className="auth-stat-label">Forever</div>
@@ -1102,9 +1112,9 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
 
           {/* Mini dashboard preview */}
           <div className="auth-preview">
-            <div className="auth-preview-label">Your dashboard preview</div>
+            <div className="auth-preview-label">Dashboard preview — example data</div>
             <div className="auth-preview-pos">
-              <div className="auth-preview-pos-name">Apex Roofing LLC — Funder A</div>
+              <div className="auth-preview-pos-name">Example Roofing Co. — Funder A</div>
               <div className="auth-preview-pos-pct">78% paid off</div>
             </div>
             <div className="auth-preview-bar">
@@ -2735,7 +2745,7 @@ export default function LeadPortal() {
   const tabs = [
     ["overview", "Overview"],
     ["positions", "Positions"],
-    // ["financials", "Financials"], // Hidden until Chirp bank connection is stable
+    ["financials", "Financials"],
     ["qualify", "Get Funded"],
     ["resources", "Resources"],
     ["services", "Services"],

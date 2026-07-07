@@ -448,16 +448,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
-  // ── ADMIN PORTAL PREVIEW TOKEN STORE (in-memory, 30-min TTL) ──────────
+  // ── ADMIN PORTAL PREVIEW TOKENS (in-memory cache over portal_preview_tokens
+  //    DB table, so tokens survive restarts; 30-min TTL) ──────────
   const adminPreviewTokens = new Map<string, { email: string; name: string; businessName: string; expiresAt: number }>();
   setInterval(() => {
     const now = Date.now();
     for (const [token, data] of adminPreviewTokens.entries()) {
       if (data.expiresAt <= now) adminPreviewTokens.delete(token);
     }
+    db.execute(sql`DELETE FROM portal_preview_tokens WHERE expires_at < NOW()`).catch(() => {});
   }, 10 * 60 * 1000);
 
-  function getMerchantEmailFromRequest(req: any): string | null {
+  async function getMerchantEmailFromRequest(req: any): Promise<string | null> {
     if (req.session.user?.isAuthenticated && req.session.user.role === 'merchant' && req.session.user.merchantEmail) {
       return req.session.user.merchantEmail;
     }
@@ -465,9 +467,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (previewToken) {
       const preview = adminPreviewTokens.get(previewToken);
       if (preview && preview.expiresAt > Date.now()) return preview.email;
+      // Cache miss (e.g. server restarted since the token was issued) — check the DB
+      try {
+        const r = await db.execute(sql`SELECT email, expires_at FROM portal_preview_tokens WHERE token = ${previewToken} AND expires_at > NOW()`);
+        const row = r.rows[0] as any;
+        if (row?.email) {
+          adminPreviewTokens.set(previewToken, { email: row.email, name: "", businessName: "", expiresAt: new Date(row.expires_at).getTime() });
+          return row.email;
+        }
+      } catch {}
     }
     return null;
   }
+
+  // ── PORTAL ENGAGEMENT: fire-and-forget event log (portal_events table) ──
+  const logPortalEvent = (portal: 'merchant' | 'lead', email: string, event: string, detail?: string) => {
+    db.execute(sql`INSERT INTO portal_events (portal, email, event, detail) VALUES (${portal}, ${email.toLowerCase()}, ${event}, ${detail || null})`)
+      .catch((err: any) => console.error('[PORTAL EVENT] insert failed:', err?.message || err));
+  };
+  const recordMerchantLogin = (email: string, method: string) => {
+    logPortalEvent('merchant', email, 'login', method);
+    db.execute(sql`UPDATE merchant_portal_accounts SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1 WHERE LOWER(email) = ${email.toLowerCase()}`)
+      .catch(() => {});
+  };
+
+  // When a /track lead's business gets funded, carry them into the merchant
+  // portal: mark the lead account converted and pre-create a portal account
+  // (token only — staff still sends the invite from the Funded page).
+  const autoProvisionPortalForFundedLead = async (businessEmail: string, businessName?: string | null) => {
+    try {
+      const email = (businessEmail || '').toLowerCase().trim();
+      if (!email) return;
+      const leadRes = await db.execute(sql`SELECT email, status, business_name FROM lead_portal_accounts WHERE email = ${email}`);
+      const lead = leadRes.rows[0] as any;
+      if (!lead) return;
+      if (lead.status !== 'converted') {
+        await db.execute(sql`UPDATE lead_portal_accounts SET status = 'converted' WHERE email = ${email}`);
+      }
+      const existing = await storage.getMerchantPortalAccountByEmail(email);
+      if (!existing) {
+        const token = randomBytes(32).toString('hex');
+        await storage.createMerchantPortalAccount({
+          email,
+          businessName: businessName || lead.business_name || null,
+          portalToken: token,
+        } as any);
+        logPortalEvent('merchant', email, 'portal_auto_provisioned', 'from /track lead');
+        sendAdminMerchantAlert({
+          title: "Track Lead Funded — Portal Ready to Invite",
+          event: "lead_converted_portal_created",
+          merchantEmail: email,
+          businessName: businessName || lead.business_name || undefined,
+          details: { note: "Lead account marked converted and a merchant portal was pre-created (no invite sent). Send the invite from the Funded page." },
+        }).catch(() => {});
+        console.log(`[PORTAL] Auto-provisioned merchant portal for funded /track lead ${email}`);
+      }
+    } catch (err: any) {
+      console.error('[PORTAL] auto-provision for funded lead failed:', err?.message || err);
+    }
+  };
 
   // ========================================
   // HEALTH CHECK ENDPOINT (for deployment)
@@ -4116,7 +4174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // authenticated merchant and stash a stub snapshot so we can look up the
   // request code later by merchant email.
   app.post("/api/merchant/chirp/connect", async (req: Request, res: Response) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
+    const merchantEmail = await getMerchantEmailFromRequest(req);
     if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
@@ -4213,7 +4271,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/merchant/banking/insights — pure DB read, called on every portal
   // view. Returns our cached snapshot; never hits Chirp.
   app.get("/api/merchant/banking/insights", async (req: Request, res: Response) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
+    const merchantEmail = await getMerchantEmailFromRequest(req);
     if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
@@ -4260,7 +4318,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // /refresh (which would bill a bank sync). Server-side cooldown prevents
   // back-to-back calls from racing.
   app.post("/api/merchant/chirp/sync", async (req: Request, res: Response) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
+    const merchantEmail = await getMerchantEmailFromRequest(req);
     if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
@@ -4293,7 +4351,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // for the merchant's existing requestCode. Useful when PUBLIC_BASE_URL was not
   // set at the time the request was created, or after server restart.
   app.post("/api/merchant/chirp/register-webhook", async (req: Request, res: Response) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
+    const merchantEmail = await getMerchantEmailFromRequest(req);
     if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
@@ -4314,7 +4372,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // snapshot; Chirp side remains subscribed until we call unsubscribeRequest
   // from an admin flow — keeping this scope tight on purpose).
   app.delete("/api/merchant/chirp/connection", async (req: Request, res: Response) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
+    const merchantEmail = await getMerchantEmailFromRequest(req);
     if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
@@ -6131,6 +6189,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`[UNDERWRITING] ${reviewerEmail} set ${status} for business ${businessEmail}`);
 
+      // /track lead lifecycle: funded lead → mark converted + pre-create portal (async)
+      if (status === 'funded') {
+        autoProvisionPortalForFundedLead(businessEmail, businessName).catch(() => {});
+      }
+
       // Portal activation is now manual — staff clicks "Activate Portal" on the funded dashboard
 
       // Sync to GHL opportunity (async, non-blocking)
@@ -6333,12 +6396,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .join('; ');
       }
 
+      // Snapshot old JSONB counts so we can detect NEW offers/fundings after the update
+      const oldForNotify = (Array.isArray(updates.additionalApprovals) || Array.isArray(updates.additionalFundings))
+        ? await storage.getBusinessUnderwritingDecision(id).catch(() => null)
+        : null;
+
       const updated = await storage.updateBusinessUnderwritingDecision(id, updates);
       if (!updated) {
         return res.status(404).json({ error: "Decision not found" });
       }
 
       console.log(`[UNDERWRITING] Decision ${id} updated by ${req.session.user.agentEmail || 'admin'}`);
+
+      // /track lead lifecycle: if this business is a lead-portal signup and just funded,
+      // mark them converted and pre-create their merchant portal (async, non-blocking)
+      if (updates.status === 'funded' || (Array.isArray(updates.additionalFundings) && updates.additionalFundings.length > 0)) {
+        autoProvisionPortalForFundedLead(updated.businessEmail || updated.merchantEmail || '', updated.businessName).catch(() => {});
+      }
+
+      // Notify the merchant when a NEW offer or funding entry lands in their portal
+      // (only for merchants with an activated portal; 10-min dedupe; async, non-blocking)
+      try {
+        if (oldForNotify) {
+          const oldApprovals = Array.isArray(oldForNotify.additionalApprovals) ? (oldForNotify.additionalApprovals as any[]).length : 0;
+          const newApprovals = Array.isArray(updates.additionalApprovals) ? updates.additionalApprovals.length : oldApprovals;
+          const oldFundings = Array.isArray(oldForNotify.additionalFundings) ? (oldForNotify.additionalFundings as any[]).length : 0;
+          const newFundings = Array.isArray(updates.additionalFundings) ? updates.additionalFundings.length : oldFundings;
+          const notifyEmail = (updated.merchantEmail || updated.businessEmail || '').toLowerCase();
+          if (notifyEmail && (newApprovals > oldApprovals || newFundings > oldFundings)) {
+            storage.getMerchantPortalAccountByEmail(notifyEmail).then(portalAccount => {
+              const hasActivePortal = !!(portalAccount?.passwordHash || updated.merchantPasswordHash);
+              if (!hasActivePortal || !shouldSendMerchantAlert(`portal_update:${notifyEmail}`, 10 * 60 * 1000)) return;
+              const what = newFundings > oldFundings ? "funding update" : "new offer";
+              logPortalEvent('merchant', notifyEmail, 'portal_update_notified', what);
+              const html = `<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px;">
+    <table width="580" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;">
+      <tr><td style="background:#0f1e38;padding:24px 28px;">
+        <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;">There's a ${what} in your portal</p>
+      </td></tr>
+      <tr><td style="padding:28px;">
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">Hi${updated.businessName ? ` ${updated.businessName}` : ""}, your Today Capital Group merchant portal was just updated with a ${what}. Sign in to review the details.</p>
+        <table cellpadding="0" cellspacing="0" align="center"><tr><td style="background:#0d9488;border-radius:50px;">
+          <a href="https://app.todaycapitalgroup.com/merchant" style="display:inline-block;padding:13px 32px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">View My Portal</a>
+        </td></tr></table>
+      </td></tr>
+      <tr><td style="background:#f9fafb;padding:18px 28px;border-top:1px solid #e5e7eb;">
+        <p style="margin:0;font-size:12px;color:#9ca3af;">Today Capital Group &middot; 6303 Owensmouth Ave, Woodland Hills, CA 91367 &middot; (818) 351-0225</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+              gmailService.sendEmail(notifyEmail, `You have a ${what} — Today Capital Group`, html).catch(err => {
+                console.error('[MERCHANT] Failed to email portal update notification:', err);
+              });
+            }).catch(() => {});
+          }
+        }
+      } catch (notifyErr) {
+        console.error('[MERCHANT] portal update notify error:', notifyErr);
+      }
 
       // Portal activation is now manual — staff clicks "Activate Portal" on the funded dashboard
 
@@ -9010,6 +9128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS qualified_at TIMESTAMP`);
     await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS qualified_notified_at TIMESTAMP`);
     await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS nurture_steps_sent TEXT`);
+    await db.execute(sql`ALTER TABLE lead_portal_accounts ADD COLUMN IF NOT EXISTS referred_by TEXT`);
     await db.execute(sql`CREATE TABLE IF NOT EXISTS lead_positions (
       id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
       lead_email TEXT NOT NULL,
@@ -9049,10 +9168,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return null;
   }
 
+  // GET /api/lead/public-stats — real numbers for the /track signup page (cached 1h)
+  let _leadPublicStatsCache: { data: { businesses: number; totalTracked: number }; at: number } | null = null;
+  app.get("/api/lead/public-stats", async (_req: Request, res: Response) => {
+    try {
+      if (_leadPublicStatsCache && Date.now() - _leadPublicStatsCache.at < 60 * 60 * 1000) {
+        return res.json(_leadPublicStatsCache.data);
+      }
+      const [accounts, fundedBiz, posSum, fundedSum] = await Promise.all([
+        db.execute(sql`SELECT COUNT(*)::int AS c FROM lead_portal_accounts`),
+        db.execute(sql`SELECT COUNT(DISTINCT business_email)::int AS c FROM business_underwriting_decisions
+          WHERE status = 'funded' OR (jsonb_typeof(additional_fundings) = 'array' AND jsonb_array_length(additional_fundings) > 0)`),
+        db.execute(sql`SELECT COALESCE(SUM(COALESCE(payback_amount, funded_amount)), 0)::numeric AS s FROM lead_positions`),
+        db.execute(sql`SELECT COALESCE(SUM(NULLIF(REGEXP_REPLACE(f->>'advanceAmount', '[^0-9.]', '', 'g'), '')::numeric), 0) AS s
+          FROM business_underwriting_decisions d,
+          LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(d.additional_fundings) = 'array' THEN d.additional_fundings ELSE '[]'::jsonb END) f`),
+      ]);
+      const data = {
+        businesses: Number((accounts.rows[0] as any)?.c || 0) + Number((fundedBiz.rows[0] as any)?.c || 0),
+        totalTracked: Number((posSum.rows[0] as any)?.s || 0) + Number((fundedSum.rows[0] as any)?.s || 0),
+      };
+      _leadPublicStatsCache = { data, at: Date.now() };
+      res.json(data);
+    } catch (err: any) {
+      console.error("[LEAD] public-stats error:", err);
+      res.status(500).json({ error: "Failed to load stats" });
+    }
+  });
+
   // POST /api/lead/signup
   app.post("/api/lead/signup", async (req: Request, res: Response) => {
     try {
-      const { email, firstName, lastName, phone, businessName } = req.body;
+      const { email, firstName, lastName, phone, businessName, referralCode } = req.body;
       if (!email) return res.status(400).json({ error: "Email is required" });
 
       const normalizedEmail = email.toLowerCase().trim();
@@ -9063,9 +9210,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ error: "An account with this email already exists. Try signing in." });
       }
 
-      // No password on signup — user sets one later via the SetPasswordBanner
-      await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name)
-        VALUES (${normalizedEmail}, ${null}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null})`);
+      // Passwordless signup — sign-in happens via SMS OTP. Each account gets its
+      // own referral code; referred_by records the code they arrived through.
+      const ownReferralCode = randomBytes(4).toString("hex");
+      try {
+        await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name, referral_code, referred_by)
+          VALUES (${normalizedEmail}, ${null}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null}, ${ownReferralCode}, ${referralCode || null})`);
+      } catch {
+        // Fallback for a DB missing the newer referral columns
+        await db.execute(sql`INSERT INTO lead_portal_accounts (email, password_hash, first_name, last_name, phone, business_name)
+          VALUES (${normalizedEmail}, ${null}, ${firstName || null}, ${lastName || null}, ${phone || null}, ${businessName || null})`);
+      }
 
       // Auto-login
       req.session.user = {
@@ -9075,6 +9230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         merchantName: [firstName, lastName].filter(Boolean).join(" ") || undefined,
       };
 
+      logPortalEvent('lead', normalizedEmail, 'signup', referralCode ? `ref:${referralCode}` : undefined);
       const { subject: leadSub, html: leadHtml } = buildLeadPortalSignupEmail({ email: normalizedEmail, firstName, lastName, phone, businessName });
       sendMarketingNotification(leadSub, leadHtml).catch(() => {});
 
@@ -9085,42 +9241,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/lead/login
-  app.post("/api/lead/login", async (req: Request, res: Response) => {
-    try {
-      const { email, password } = req.body;
-      if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
-
-      const normalizedEmail = email.toLowerCase().trim();
-      const result = await db.execute(sql`SELECT password_hash, first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${normalizedEmail}`);
-      if (result.rows.length === 0) return res.status(401).json({ error: "Invalid email or password" });
-
-      const row = result.rows[0] as any;
-      if (!row.password_hash) {
-        return res.status(401).json({ error: "no_password_set", message: "You haven't set a password yet. Sign in with your email to get access, then set a password from your dashboard." });
-      }
-      if (!verifyPassword(password, row.password_hash)) {
-        return res.status(401).json({ error: "Invalid email or password" });
-      }
-
-      const name = [row.first_name, row.last_name].filter(Boolean).join(" ");
-      req.session.user = {
-        isAuthenticated: true,
-        role: 'lead',
-        merchantEmail: normalizedEmail,
-        merchantName: name || undefined,
-      };
-
-      // Update last active
-      await db.execute(sql`UPDATE lead_portal_accounts SET last_active_at = NOW() WHERE email = ${normalizedEmail}`);
-
-      res.json({ success: true, name, businessName: row.business_name });
-    } catch (err: any) {
-      console.error("[LEAD] login error:", err);
-      res.status(500).json({ error: "Login failed" });
-    }
-  });
-
   // GET /api/lead/auth/check
   app.get("/api/lead/auth/check", async (req: Request, res: Response) => {
     if (req.session.user?.isAuthenticated && req.session.user.role === 'lead' && req.session.user.merchantEmail) {
@@ -9128,13 +9248,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Try full query first (includes columns added in later migrations)
         const result = await db.execute(sql`SELECT first_name, last_name, business_name, password_hash, referral_code, onboarding_step FROM lead_portal_accounts WHERE email = ${req.session.user.merchantEmail}`);
         const row = result.rows[0] as any;
+        // Backfill a referral code for accounts created before codes existed
+        let referralCode = row?.referral_code || "";
+        if (row && !referralCode) {
+          referralCode = randomBytes(4).toString("hex");
+          await db.execute(sql`UPDATE lead_portal_accounts SET referral_code = ${referralCode} WHERE email = ${req.session.user.merchantEmail}`);
+        }
         return res.json({
           isAuthenticated: true,
           email: req.session.user.merchantEmail,
           name: row ? [row.first_name, row.last_name].filter(Boolean).join(" ") : req.session.user.merchantName,
           businessName: row?.business_name || "",
           hasPassword: !!row?.password_hash,
-          referralCode: row?.referral_code || "",
+          referralCode,
           onboardingStep: row?.onboarding_step || "add_position",
         });
       } catch (err: any) {
@@ -9287,122 +9413,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
       await db.execute(sql`UPDATE lead_portal_accounts SET last_active_at = NOW() WHERE email = ${entry.email}`);
+      logPortalEvent('lead', entry.email, 'login', 'sms_otp');
 
       res.json({ success: true, name, businessName: row.business_name });
     } catch (err: any) {
       console.error("[LEAD] verify-otp error:", err);
-      res.status(500).json({ error: "Verification failed. Please try again." });
-    }
-  });
-
-  // ── Magic Link Auth (legacy — kept for any old links still in transit) ──
-  // In-memory store: token → { email, expires }
-  const _magicTokens = new Map<string, { email: string; expires: number }>();
-
-  // POST /api/lead/request-magic-link
-  // Accepts { contact } which can be an email address or phone number
-  app.post("/api/lead/request-magic-link", async (req: Request, res: Response) => {
-    try {
-      const { contact, email: legacyEmail } = req.body;
-      const raw = (contact || legacyEmail || "").trim();
-      if (!raw) return res.status(400).json({ error: "Email or phone number is required" });
-
-      const isEmail = raw.includes("@");
-      const origin = (req.headers.origin as string) || "https://app.todaycapitalgroup.com";
-
-      let accountEmail: string | null = null;
-      let firstName = "there";
-
-      if (isEmail) {
-        const normalizedEmail = raw.toLowerCase();
-        const result = await db.execute(sql`SELECT email, first_name FROM lead_portal_accounts WHERE email = ${normalizedEmail}`);
-        if (result.rows.length > 0) {
-          const row = result.rows[0] as any;
-          accountEmail = row.email;
-          firstName = row.first_name || "there";
-        }
-      } else {
-        // Normalize phone: strip non-digits, add +1 for US numbers
-        const digits = raw.replace(/\D/g, "");
-        const normalized = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith("1") ? `+${digits}` : `+${digits}`;
-        const result = await db.execute(sql`SELECT email, first_name FROM lead_portal_accounts WHERE phone = ${raw} OR phone = ${normalized} OR REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = ${digits} LIMIT 1`);
-        if (result.rows.length > 0) {
-          const row = result.rows[0] as any;
-          accountEmail = row.email;
-          firstName = row.first_name || "there";
-        }
-      }
-
-      // Always respond success to avoid revealing account existence
-      if (!accountEmail) return res.json({ success: true });
-
-      const token = randomBytes(24).toString("hex");
-      _magicTokens.set(token, { email: accountEmail, expires: Date.now() + 15 * 60 * 1000 });
-      const magicUrl = `${origin}/track?magic=${token}`;
-
-      if (isEmail) {
-        await sendMarketingNotification(
-          "Your sign-in link - Today Capital Group",
-          `<div style="font-family:'DM Sans',Arial,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#080d18;color:#e8eaf0;border-radius:16px;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;">
-              <div style="width:32px;height:32px;background:linear-gradient(135deg,#14B8A6,#2dd4bf);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#080d18;">TCG</div>
-              <span style="font-weight:700;font-size:14px;">Today Capital Group</span>
-            </div>
-            <h2 style="font-size:22px;font-weight:700;margin-bottom:10px;color:#fff;">Hi ${firstName}, here's your sign-in link</h2>
-            <p style="color:#94a3b8;font-size:14px;line-height:1.7;margin-bottom:24px;">Click the button below to sign in to your funding dashboard. This link expires in <strong style="color:#e8eaf0;">15 minutes</strong> and can only be used once.</p>
-            <a href="${magicUrl}" style="display:inline-block;background:linear-gradient(135deg,#14B8A6,#0d9488);color:#080d18;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;margin-bottom:20px;">Sign In to My Dashboard</a>
-            <p style="color:#64748b;font-size:12px;margin-top:16px;">Or copy this link into your browser:<br><span style="color:#2dd4bf;">${magicUrl}</span></p>
-            <p style="color:#4b5568;font-size:11px;margin-top:24px;border-top:1px solid rgba(255,255,255,0.06);padding-top:16px;">If you didn't request this, you can safely ignore this email.</p>
-          </div>`,
-          accountEmail
-        ).catch(() => {});
-      } else {
-        // Send SMS via Twilio
-        const { sendSms } = await import('./services/twilio');
-        await sendSms(raw, `Hi ${firstName}! Here's your Today Capital Group sign-in link:\n${magicUrl}\n\nExpires in 15 minutes. Tap to access your dashboard.`).catch(() => {});
-      }
-
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error("[LEAD] magic-link request error:", err);
-      res.status(500).json({ error: "Failed to send sign-in link. Please try again." });
-    }
-  });
-
-  // GET /api/lead/verify-magic-link?token=XXX
-  app.get("/api/lead/verify-magic-link", async (req: Request, res: Response) => {
-    try {
-      const token = req.query.token as string;
-      if (!token) return res.status(400).json({ error: "Token is required" });
-
-      const entry = _magicTokens.get(token);
-      if (!entry || Date.now() > entry.expires) {
-        _magicTokens.delete(token);
-        return res.status(401).json({ error: "This link has expired or already been used. Please request a new one." });
-      }
-
-      _magicTokens.delete(token); // one-time use
-
-      const result = await db.execute(sql`SELECT first_name, last_name, business_name FROM lead_portal_accounts WHERE email = ${entry.email}`);
-      if (result.rows.length === 0) return res.status(404).json({ error: "Account not found" });
-
-      const row = result.rows[0] as any;
-      const name = [row.first_name, row.last_name].filter(Boolean).join(" ");
-
-      req.session.user = {
-        isAuthenticated: true,
-        role: "lead",
-        merchantEmail: entry.email,
-        merchantName: name || undefined,
-      };
-
-      await new Promise<void>((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
-
-      await db.execute(sql`UPDATE lead_portal_accounts SET last_active_at = NOW() WHERE email = ${entry.email}`);
-
-      res.json({ success: true, name, businessName: row.business_name });
-    } catch (err: any) {
-      console.error("[LEAD] magic-link verify error:", err);
       res.status(500).json({ error: "Verification failed. Please try again." });
     }
   });
@@ -9456,6 +9471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await db.execute(sql`INSERT INTO lead_positions (lead_email, funder_name, product_type, funded_amount, payback_amount, factor_rate, payment_amount, payment_frequency, funded_date, remaining_balance)
       VALUES (${email}, ${String(funderName).trim().slice(0, 200)}, ${productType || null}, ${funded}, ${payback}, ${factorRate || null}, ${payment}, ${paymentFrequency || null}, ${fundedDate || null}, ${remaining})`);
 
+    logPortalEvent('lead', email, 'position_added', String(funderName).trim().slice(0, 100));
     evaluateLeadQualification(email).catch(() => {});
     res.json({ success: true });
   });
@@ -9879,6 +9895,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[LEAD] bank-statements list error:", err);
       res.status(500).json({ error: "Failed to fetch statements" });
+    }
+  });
+
+  // POST /api/lead/upload-statement — lead uploads a PDF bank statement from the tracker
+  app.post("/api/lead/upload-statement", (req, res, next) => {
+    bankStatementUpload.single("file")(req, res, (err: any) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: "File too large (25MB max)" });
+        if (err.message === 'Only PDF files are allowed') return res.status(400).json({ error: err.message });
+        return res.status(400).json({ error: "Upload error: " + err.message });
+      }
+      next();
+    });
+  }, async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+      let storedFileName: string;
+      if (objectStorage.isConfigured()) {
+        storedFileName = await objectStorage.uploadFile(
+          file.buffer,
+          `bank-statements/${email}/${Date.now()}_${file.originalname}`,
+          file.mimetype,
+        );
+      } else {
+        storedFileName = `${Date.now()}_${file.originalname}`;
+        fs.writeFileSync(path.join(UPLOAD_DIR, storedFileName), file.buffer);
+      }
+
+      await storage.createBankStatementUpload({
+        email,
+        originalFileName: file.originalname,
+        storedFileName,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        source: "lead_portal",
+        viewToken: randomUUID(),
+      });
+
+      logPortalEvent('lead', email, 'statement_upload', file.originalname);
+      sendMarketingNotification(
+        `Track lead uploaded a bank statement: ${email}`,
+        `<p><strong>${email}</strong> uploaded <strong>${file.originalname}</strong> (${Math.round(file.size / 1024)} KB) from the /track portal.</p>`
+      ).catch(() => {});
+
+      console.log(`[LEAD UPLOAD] ${email} uploaded ${file.originalname} (${(file.size / 1024).toFixed(0)} KB)`);
+      res.json({ success: true, fileName: file.originalname, fileSize: file.size });
+    } catch (err: any) {
+      console.error("[LEAD UPLOAD] error:", err);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
+  // POST /api/lead/onboarding/advance — persist onboarding progress
+  app.post("/api/lead/onboarding/advance", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    const step = String(req.body?.step || "");
+    const allowedSteps = ["add_position", "connect_bank", "view_qualify", "done"];
+    if (!allowedSteps.includes(step)) return res.status(400).json({ error: "Invalid step" });
+    try {
+      await db.execute(sql`UPDATE lead_portal_accounts SET onboarding_step = ${step} WHERE email = ${email}`);
+      res.json({ success: true, step });
+    } catch (err: any) {
+      console.error("[LEAD] onboarding advance error:", err);
+      res.status(500).json({ error: "Failed to save progress" });
+    }
+  });
+
+  // GET /api/lead/referrals — how many businesses signed up through my referral link
+  app.get("/api/lead/referrals", async (req: Request, res: Response) => {
+    const email = getLeadEmail(req);
+    if (!email) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const me = await db.execute(sql`SELECT referral_code FROM lead_portal_accounts WHERE email = ${email}`);
+      const code = (me.rows[0] as any)?.referral_code;
+      if (!code) return res.json({ referralCount: 0 });
+      const result = await db.execute(sql`SELECT COUNT(*)::int AS count FROM lead_portal_accounts WHERE referred_by = ${code} AND email != ${email}`);
+      res.json({ referralCount: Number((result.rows[0] as any)?.count) || 0 });
+    } catch (err: any) {
+      console.error("[LEAD] referrals error:", err);
+      res.status(500).json({ error: "Failed to fetch referrals" });
     }
   });
 
@@ -12601,11 +12702,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  // Rate limiter for merchant login — max 5 attempts per email per 15 minutes
-  const merchantLoginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+  // Rate limiter for merchant login — max 5 attempts per email per 15 minutes.
+  // DB-backed (merchant_login_attempts / merchant_otp_codes) so limits and codes
+  // survive server restarts and work across instances.
   const MERCHANT_LOGIN_MAX_ATTEMPTS = 5;
   const MERCHANT_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-  const merchantOtpStore = new Map<string, { code: string; email: string; expires: number }>();
+  const isMerchantLoginBlocked = async (email: string): Promise<boolean> => {
+    try {
+      const r = await db.execute(sql`SELECT attempts, window_start FROM merchant_login_attempts WHERE email = ${email}`);
+      const row = r.rows[0] as any;
+      if (!row) return false;
+      if (Date.now() - new Date(row.window_start).getTime() > MERCHANT_LOGIN_WINDOW_MS) {
+        await db.execute(sql`DELETE FROM merchant_login_attempts WHERE email = ${email}`);
+        return false;
+      }
+      return Number(row.attempts) >= MERCHANT_LOGIN_MAX_ATTEMPTS;
+    } catch { return false; }
+  };
+  const bumpMerchantLoginAttempts = (email: string) => {
+    db.execute(sql`INSERT INTO merchant_login_attempts (email, attempts, window_start) VALUES (${email}, 1, NOW())
+      ON CONFLICT (email) DO UPDATE SET attempts = merchant_login_attempts.attempts + 1`).catch(() => {});
+  };
+  const clearMerchantLoginAttempts = (email: string) => {
+    db.execute(sql`DELETE FROM merchant_login_attempts WHERE email = ${email}`).catch(() => {});
+  };
   const merchantAlertDedupe = new Map<string, number>();
   const shouldSendMerchantAlert = (key: string, cooldownMs = 60 * 60 * 1000) => {
     const now = Date.now();
@@ -12643,7 +12763,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const code = String(Math.floor(100000 + Math.random() * 900000));
-      merchantOtpStore.set(normalized, { code, email: appByPhone.email.toLowerCase(), expires: Date.now() + 10 * 60 * 1000 });
+      await db.execute(sql`
+        INSERT INTO merchant_otp_codes (phone, code, email, attempts, expires_at, created_at)
+        VALUES (${normalized}, ${code}, ${appByPhone.email.toLowerCase()}, 0, NOW() + INTERVAL '10 minutes', NOW())
+        ON CONFLICT (phone) DO UPDATE SET
+          code = EXCLUDED.code, email = EXCLUDED.email, attempts = 0,
+          expires_at = EXCLUDED.expires_at, created_at = NOW()
+      `);
 
       const { sendSms } = await import('./services/twilio');
       const smsResult = await sendSms(normalized, `Your Today Capital Group merchant portal code is: ${code}\n\nExpires in 10 minutes. Do not share this code.`);
@@ -12664,11 +12790,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rawPhone = String(req.body?.phone || "");
       const code = String(req.body?.code || "").trim();
       const normalized = rawPhone.replace(/\D/g, "");
-      const entry = merchantOtpStore.get(normalized);
-      if (!entry || entry.expires < Date.now() || entry.code !== code) {
+      const otpRes = await db.execute(sql`SELECT code, email, attempts, expires_at FROM merchant_otp_codes WHERE phone = ${normalized}`);
+      const entry = otpRes.rows[0] as any;
+      if (!entry || new Date(entry.expires_at).getTime() < Date.now()) {
+        await db.execute(sql`DELETE FROM merchant_otp_codes WHERE phone = ${normalized}`);
         return res.status(400).json({ error: "Invalid or expired code." });
       }
-      merchantOtpStore.delete(normalized);
+      if (Number(entry.attempts) >= 5) {
+        await db.execute(sql`DELETE FROM merchant_otp_codes WHERE phone = ${normalized}`);
+        return res.status(400).json({ error: "Too many incorrect attempts. Please request a new code." });
+      }
+      if (entry.code !== code) {
+        await db.execute(sql`UPDATE merchant_otp_codes SET attempts = attempts + 1 WHERE phone = ${normalized}`);
+        return res.status(400).json({ error: "Invalid or expired code." });
+      }
+      await db.execute(sql`DELETE FROM merchant_otp_codes WHERE phone = ${normalized}`); // one-time use
 
       const portalAccount = await storage.getMerchantPortalAccountByEmail(entry.email);
       const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(entry.email);
@@ -12680,6 +12816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         merchantEmail: entry.email,
         merchantName: merchantName || undefined,
       };
+      recordMerchantLogin(entry.email, "sms_otp");
       sendAdminMerchantAlert({
         title: "Merchant Portal Login",
         event: "merchant_login_sms_otp",
@@ -12704,16 +12841,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Email and password are required" });
       }
 
-      // Rate limiting check
+      // Rate limiting check (DB-backed)
       const normalizedEmail = email.toLowerCase();
-      const now = Date.now();
-      const attempts = merchantLoginAttempts.get(normalizedEmail);
-      if (attempts) {
-        if (now - attempts.firstAttempt > MERCHANT_LOGIN_WINDOW_MS) {
-          merchantLoginAttempts.delete(normalizedEmail);
-        } else if (attempts.count >= MERCHANT_LOGIN_MAX_ATTEMPTS) {
-          return res.status(429).json({ error: "Too many login attempts. Please try again in 15 minutes." });
-        }
+      if (await isMerchantLoginBlocked(normalizedEmail)) {
+        return res.status(429).json({ error: "Too many login attempts. Please try again in 15 minutes." });
       }
 
       // Check merchantPortalAccounts first (new system), then fall back to businessUnderwritingDecisions (legacy)
@@ -12722,20 +12853,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const passwordHash = portalAccount?.passwordHash || decision?.merchantPasswordHash;
       if (!passwordHash) {
-        const entry = merchantLoginAttempts.get(normalizedEmail);
-        if (entry) { entry.count++; } else { merchantLoginAttempts.set(normalizedEmail, { count: 1, firstAttempt: now }); }
+        bumpMerchantLoginAttempts(normalizedEmail);
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
       const isValid = verifyPassword(password, passwordHash);
       if (!isValid) {
-        const entry = merchantLoginAttempts.get(normalizedEmail);
-        if (entry) { entry.count++; } else { merchantLoginAttempts.set(normalizedEmail, { count: 1, firstAttempt: now }); }
+        bumpMerchantLoginAttempts(normalizedEmail);
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
       // Clear rate limit on successful login
-      merchantLoginAttempts.delete(normalizedEmail);
+      clearMerchantLoginAttempts(normalizedEmail);
+      recordMerchantLogin(normalizedEmail, "password");
 
       const merchantName = portalAccount?.name || portalAccount?.businessName || decision?.businessName;
       req.session.user = {
@@ -12788,6 +12918,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           merchantEmail: portalAccount.email,
           merchantName: portalAccount.name || portalAccount.businessName || undefined,
         };
+        recordMerchantLogin(portalAccount.email, "activate");
 
         return res.json({ success: true });
       }
@@ -12856,6 +12987,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
+      logPortalEvent('merchant', req.session.user.merchantEmail, 'portal_view');
       const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(req.session.user.merchantEmail);
       const deals: any[] = [];
 
@@ -12944,10 +13076,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Attach the merchant's latest self-reported balance per deal so the
+      // client can anchor payoff math to reality instead of the time estimate
+      try {
+        const reports = await db.execute(sql`
+          SELECT DISTINCT ON (deal_id) deal_id, reported_balance, reported_at
+          FROM merchant_balance_reports
+          WHERE LOWER(merchant_email) = ${req.session.user.merchantEmail.toLowerCase()}
+          ORDER BY deal_id, reported_at DESC
+        `);
+        const byDeal = new Map((reports.rows as any[]).map(r => [String(r.deal_id), r]));
+        for (const d of deals) {
+          const rep = byDeal.get(String(d.id));
+          d.reportedBalance = rep ? Number(rep.reported_balance) : null;
+          d.reportedAt = rep ? rep.reported_at : null;
+        }
+      } catch (repErr) {
+        console.error("[MERCHANT] balance reports lookup failed:", repErr);
+      }
+
       res.json(deals);
     } catch (error) {
       console.error("[MERCHANT] Error fetching deals:", error);
       res.status(500).json({ error: "Failed to fetch deals" });
+    }
+  });
+
+  // Merchant reports their actual remaining balance for a deal (balance correction)
+  app.post("/api/merchant/deals/balance-report", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role !== 'merchant' || !req.session.user.merchantEmail) {
+      return res.status(401).json({ error: "Merchant authentication required" });
+    }
+    try {
+      const email = req.session.user.merchantEmail.toLowerCase();
+      const dealId = String(req.body?.dealId || "").trim();
+      const raw = String(req.body?.reportedBalance ?? "").replace(/[^0-9.]/g, "");
+      const reportedBalance = parseFloat(raw);
+      if (!dealId) return res.status(400).json({ error: "dealId is required" });
+      if (!Number.isFinite(reportedBalance) || reportedBalance < 0 || reportedBalance > 10_000_000) {
+        return res.status(400).json({ error: "Please enter a valid balance amount" });
+      }
+
+      await db.execute(sql`INSERT INTO merchant_balance_reports (merchant_email, deal_id, reported_balance)
+        VALUES (${email}, ${dealId}, ${reportedBalance})`);
+      logPortalEvent('merchant', email, 'balance_reported', `${dealId}: $${reportedBalance}`);
+      if (shouldSendMerchantAlert(`balance_report:${email}`, 60 * 60 * 1000)) {
+        sendAdminMerchantAlert({
+          title: "Merchant Updated Remaining Balance",
+          event: "merchant_balance_report",
+          merchantEmail: email,
+          details: { dealId, reportedBalance: `$${reportedBalance.toLocaleString()}` },
+        }).catch(() => {});
+      }
+
+      res.json({ success: true, reportedBalance });
+    } catch (error) {
+      console.error("[MERCHANT] balance-report error:", error);
+      res.status(500).json({ error: "Failed to save balance" });
     }
   });
 
@@ -12958,6 +13143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const email = req.session.user.merchantEmail;
     try {
+      logPortalEvent('merchant', email, 'renewal_request');
       const decisions = await storage.getBusinessUnderwritingDecisionsByMerchantEmail(email);
       const latest = decisions[0];
       const note = typeof req.body?.note === "string" ? req.body.note.slice(0, 500) : "";
@@ -13186,7 +13372,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Merchant Activity Feed - aggregates milestones, messages, and offers
   app.get("/api/merchant/activity", async (req, res) => {
-    const email = getMerchantEmailFromRequest(req);
+    const email = await getMerchantEmailFromRequest(req);
     if (!email) return res.status(401).json({ error: "Merchant authentication required" });
     try {
       const activities: any[] = [];
@@ -13260,13 +13446,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Email is required" });
       }
 
-      const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(email.toLowerCase());
-      // Always return success to prevent email enumeration
+      const normalizedEmail = email.toLowerCase();
+      const token = randomBytes(32).toString('hex');
+
+      // Check the new merchantPortalAccounts table first, then legacy decision columns.
+      // Always return success to prevent email enumeration.
+      const portalAccount = await storage.getMerchantPortalAccountByEmail(normalizedEmail);
+      if (portalAccount?.passwordHash) {
+        await storage.updateMerchantPortalAccount(portalAccount.id, { portalToken: token });
+        await sendMerchantResetEmail(normalizedEmail, portalAccount.businessName || portalAccount.name || '', token);
+        return res.json({ success: true, message: "If an account exists with that email, a reset link has been sent." });
+      }
+
+      const decision = await storage.getBusinessUnderwritingDecisionByMerchantEmail(normalizedEmail);
       if (!decision || !decision.merchantPasswordHash) {
         return res.json({ success: true, message: "If an account exists with that email, a reset link has been sent." });
       }
 
-      const token = randomBytes(32).toString('hex');
       await storage.updateBusinessUnderwritingDecision(decision.id, {
         merchantPortalToken: token,
       });
@@ -13293,12 +13489,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Password must be at least 6 characters" });
       }
 
+      const passwordHash = hashPassword(password);
+
+      // Check new merchantPortalAccounts first, then legacy decision columns
+      const portalAccount = await storage.getMerchantPortalAccountByToken(token);
+      if (portalAccount) {
+        await storage.updateMerchantPortalAccount(portalAccount.id, {
+          passwordHash,
+          portalToken: null,
+        });
+        req.session.user = {
+          isAuthenticated: true,
+          role: 'merchant',
+          merchantEmail: portalAccount.email,
+          merchantName: portalAccount.name || portalAccount.businessName || undefined,
+        };
+        recordMerchantLogin(portalAccount.email, "password_reset");
+        return res.json({ success: true });
+      }
+
       const decision = await storage.getBusinessUnderwritingDecisionByMerchantToken(token);
       if (!decision) {
         return res.status(400).json({ error: "Invalid or expired reset link" });
       }
 
-      const passwordHash = hashPassword(password);
       await storage.updateBusinessUnderwritingDecision(decision.id, {
         merchantPasswordHash: passwordHash,
         merchantPortalToken: null,
@@ -13310,6 +13524,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         merchantEmail: decision.merchantEmail || decision.businessEmail,
         merchantName: decision.businessName || undefined,
       };
+      recordMerchantLogin((decision.merchantEmail || decision.businessEmail || '').toLowerCase(), "password_reset");
 
       res.json({ success: true });
     } catch (error) {
@@ -13346,6 +13561,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         merchantEmail: decision.businessEmail.toLowerCase(),
         merchantPortalToken: token,
       });
+      // Mirror into merchantPortalAccounts (new system) so both auth paths agree
+      await storage.createMerchantPortalAccount({
+        email: decision.businessEmail.toLowerCase(),
+        businessName: decision.businessName || null,
+        portalToken: token,
+      } as any).catch((err: any) => console.error('[MERCHANT] create-portal account mirror failed:', err?.message || err));
 
       console.log(`[MERCHANT] Portal created (no email sent) for ${decision.businessEmail} by ${req.session.user.agentEmail || 'admin'}`);
       res.json({ success: true, message: `Portal created for ${decision.businessEmail}. No invite sent yet.` });
@@ -13383,6 +13604,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         businessName: decision.businessName || '',
         expiresAt: Date.now() + 30 * 60 * 1000, // 30-minute TTL
       });
+      // Persist so the token survives a server restart mid-preview
+      await db.execute(sql`INSERT INTO portal_preview_tokens (token, email, created_by, expires_at)
+        VALUES (${token}, ${email}, ${req.session.user.agentEmail || 'admin'}, NOW() + INTERVAL '30 minutes')`).catch(() => {});
 
       const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0]?.trim();
       const baseUrl = replitDomain
@@ -13402,7 +13626,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const token = req.query.token as string;
     if (!token) return res.status(400).json({ error: "token is required" });
 
-    const preview = adminPreviewTokens.get(token);
+    let preview = adminPreviewTokens.get(token);
+    if (!preview || preview.expiresAt <= Date.now()) {
+      // Cache miss (e.g. restart since token was issued) — check the DB
+      try {
+        const r = await db.execute(sql`SELECT email, expires_at FROM portal_preview_tokens WHERE token = ${token} AND expires_at > NOW()`);
+        const row = r.rows[0] as any;
+        if (row?.email) {
+          preview = { email: row.email, name: "", businessName: "", expiresAt: new Date(row.expires_at).getTime() };
+          adminPreviewTokens.set(token, preview);
+        }
+      } catch {}
+    }
     if (!preview || preview.expiresAt <= Date.now()) {
       return res.status(401).json({ error: "Invalid or expired preview token" });
     }
@@ -13653,107 +13888,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── MERCHANT FINANCIALS ──────────────────────────────────────────────
-
-  // Route 1: Create Plaid Link Token for merchant
-  app.post("/api/merchant/plaid/create-link-token", async (req, res) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
-    if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
-    try {
-      const tokenData = await plaidService.createMerchantLinkToken(merchantEmail);
-      res.json({ link_token: tokenData.link_token });
-    } catch (error) {
-      console.error("[MERCHANT PLAID] Create link token error:", error);
-      res.status(500).json({ error: "Failed to create link token" });
-    }
-  });
-
-  // Route 2: Exchange Plaid public token for merchant
-  app.post("/api/merchant/plaid/exchange-token", async (req, res) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
-    if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
-    try {
-      const { publicToken, metadata } = req.body;
-      if (!publicToken) return res.status(400).json({ error: "publicToken is required" });
-      const tokenResponse = await plaidService.exchangePublicToken(publicToken);
-      const { item_id, access_token } = tokenResponse;
-      const institutionName = metadata?.institution?.name || null;
-
-      // Create plaidItems row
-      await storage.createPlaidItem({
-        itemId: item_id,
-        accessToken: access_token,
-        institutionName,
-      });
-
-      // Create merchantPlaidConnections row
-      await storage.createMerchantPlaidConnection({
-        merchantEmail: merchantEmail.toLowerCase(),
-        plaidItemId: item_id,
-        institutionName,
-      });
-
-      // Run initial financial analysis in background
-      (async () => {
-        try {
-          const analysisResult = await plaidService.analyzeFinancials(access_token);
-          if (analysisResult) {
-            await storage.createOrUpdateMerchantInsight({
-              merchantEmail: merchantEmail.toLowerCase(),
-              sourceType: 'plaid',
-              insightsData: analysisResult as any,
-              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-            });
-            console.log(`[MERCHANT PLAID] Cached initial Plaid insights for ${merchantEmail}`);
-          }
-        } catch (err) {
-          console.error('[MERCHANT PLAID] Background analysis failed:', err);
-        }
-      })();
-
-      res.json({ success: true, institutionName });
-    } catch (error) {
-      console.error("[MERCHANT PLAID] Exchange token error:", error);
-      res.status(500).json({ error: "Failed to connect bank account" });
-    }
-  });
-
-  // Route 3: Get merchant's Plaid connections
-  app.get("/api/merchant/plaid/connections", async (req, res) => {
-    const email = getMerchantEmailFromRequest(req);
-    if (!email) return res.status(401).json({ error: "Merchant authentication required" });
-    try {
-      const connections = await storage.getMerchantPlaidConnectionsByEmail(email);
-
-      // Also check fundingAnalyses for intake-linked items via access token lookup
-      const legacyTokens = await storage.getPlaidAccessTokensForMerchant(email);
-
-      const result = connections.map(c => ({
-        id: c.id as string,
-        institutionName: c.institutionName,
-        connectedAt: c.connectedAt,
-        isActive: c.isActive,
-        source: 'portal' as 'portal' | 'intake',
-      }));
-
-      // Add legacy connections not already in the list
-      for (const lt of legacyTokens) {
-        if (!connections.some(c => c.institutionName === lt.institutionName)) {
-          result.push({
-            id: `legacy-${lt.institutionName || 'unknown'}`,
-            institutionName: lt.institutionName,
-            connectedAt: null as any,
-            isActive: true,
-            source: 'intake' as const,
-          });
-        }
-      }
-
-      res.json(result);
-    } catch (error) {
-      console.error("[MERCHANT PLAID] Get connections error:", error);
-      res.status(500).json({ error: "Failed to fetch connections" });
-    }
-  });
+  // (Merchant-portal Plaid Link endpoints removed — Chirp replaced Plaid in the
+  // portal UI. Historical Plaid insights still surface via /financial-insights.)
 
   // Route 3b: Merchant/lead portal statement upload
   app.post("/api/merchant/bank-statements/upload", (req, res, next) => {
@@ -13766,7 +13902,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       next();
     });
   }, async (req, res) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
+    const merchantEmail = await getMerchantEmailFromRequest(req);
     if (!merchantEmail) return res.status(401).json({ error: "Authentication required" });
 
     try {
@@ -13809,6 +13945,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).catch(() => {});
       }
 
+      logPortalEvent('merchant', merchantEmail, 'statement_upload', file.originalname);
       console.log(`[MERCHANT UPLOAD] ${merchantEmail} uploaded ${file.originalname} (${(file.size / 1024).toFixed(0)} KB)`);
       res.json({ success: true, fileName: file.originalname, fileSize: file.size });
     } catch (err: any) {
@@ -13819,7 +13956,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route 4: Analyze merchant's uploaded PDF bank statements
   app.post("/api/merchant/bank-statements/analyze", async (req, res) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
+    const merchantEmail = await getMerchantEmailFromRequest(req);
     if (!merchantEmail) {
       return res.status(401).json({ error: "Merchant authentication required" });
     }
@@ -13884,7 +14021,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Route 5: Get combined financial insights
   app.get("/api/merchant/financial-insights", async (req, res) => {
-    const email = getMerchantEmailFromRequest(req);
+    const email = await getMerchantEmailFromRequest(req);
     if (!email) return res.status(401).json({ error: "Merchant authentication required" });
     try {
 
@@ -14010,25 +14147,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Route 6: Deactivate a Plaid connection
-  app.delete("/api/merchant/plaid/connections/:id", async (req, res) => {
-    const ownerEmail = getMerchantEmailFromRequest(req);
-    if (!ownerEmail) return res.status(401).json({ error: "Merchant authentication required" });
-    try {
-      const { id } = req.params;
-      const connections = await storage.getMerchantPlaidConnectionsByEmail(ownerEmail);
-      const conn = connections.find(c => c.id === id);
-      if (!conn) {
-        return res.status(404).json({ error: "Connection not found" });
-      }
-      await storage.deactivateMerchantPlaidConnection(id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("[MERCHANT PLAID] Deactivate connection error:", error);
-      res.status(500).json({ error: "Failed to disconnect bank" });
-    }
-  });
-
   // ── MERCHANT PORTAL PREMIUM FEATURES ─────────────────────────────────
 
   // Merchant Documents (Document Vault) - returns congratulations uploads (voided check, driver's license) + bank statements
@@ -14071,7 +14189,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Merchant Messages - List messages for authenticated merchant
   app.get("/api/merchant/messages", async (req, res) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
+    const merchantEmail = await getMerchantEmailFromRequest(req);
     if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
     try {
       const messages = await storage.getMerchantMessagesByEmail(merchantEmail);
@@ -14104,6 +14222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: message.trim(),
         isRead: false,
       });
+      logPortalEvent('merchant', req.session.user.merchantEmail, 'message_sent');
 
       // Notify assigned rep via email (async, non-blocking)
       const decision = await storage.getBusinessUnderwritingDecisionByEmail(req.session.user.merchantEmail);
@@ -14126,7 +14245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Merchant Messages - Unread count for merchant
   app.get("/api/merchant/messages/unread", async (req, res) => {
-    const merchantEmail = getMerchantEmailFromRequest(req);
+    const merchantEmail = await getMerchantEmailFromRequest(req);
     if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
     try {
       const count = await storage.getUnreadMerchantMessageCount(merchantEmail, 'merchant');
@@ -14220,6 +14339,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[MERCHANT] Staff messages fetch error:", error);
       res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  // Staff: All merchant message threads, grouped by merchant (admin/underwriting only)
+  app.get("/api/admin/merchant-messages/threads", async (req, res) => {
+    if (!req.session.user?.isAuthenticated) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    if (req.session.user.role !== 'admin' && req.session.user.role !== 'underwriting') {
+      return res.status(403).json({ error: "Staff access required" });
+    }
+    try {
+      const result = await db.execute(sql`
+        SELECT m.merchant_email AS "merchantEmail",
+          MAX(m.created_at) AS "lastAt",
+          (SELECT message FROM merchant_messages WHERE merchant_email = m.merchant_email ORDER BY created_at DESC LIMIT 1) AS "lastMessage",
+          (SELECT sender_role FROM merchant_messages WHERE merchant_email = m.merchant_email ORDER BY created_at DESC LIMIT 1) AS "lastSenderRole",
+          COUNT(*) FILTER (WHERE m.sender_role = 'merchant' AND m.is_read = false)::int AS "unreadCount",
+          COUNT(*)::int AS "messageCount",
+          (SELECT business_name FROM business_underwriting_decisions WHERE business_email = m.merchant_email LIMIT 1) AS "businessName",
+          (SELECT assigned_rep FROM business_underwriting_decisions WHERE business_email = m.merchant_email LIMIT 1) AS "assignedRep"
+        FROM merchant_messages m
+        GROUP BY m.merchant_email
+        ORDER BY MAX(m.created_at) DESC
+      `);
+      res.json(result.rows);
+    } catch (error) {
+      console.error("[MERCHANT] Threads fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch threads" });
+    }
+  });
+
+  // Staff: Portal engagement for one merchant — last login + recent events
+  app.get("/api/admin/portal-engagement/:email", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Staff access required" });
+    }
+    try {
+      const email = req.params.email.toLowerCase();
+      const [account, events] = await Promise.all([
+        db.execute(sql`SELECT last_login_at, login_count, portal_link_sent_at FROM merchant_portal_accounts WHERE LOWER(email) = ${email} LIMIT 1`),
+        db.execute(sql`SELECT portal, event, detail, created_at FROM portal_events WHERE LOWER(email) = ${email} ORDER BY created_at DESC LIMIT 25`),
+      ]);
+      const acct = account.rows[0] as any;
+      res.json({
+        lastLoginAt: acct?.last_login_at || null,
+        loginCount: Number(acct?.login_count) || 0,
+        portalLinkSentAt: acct?.portal_link_sent_at || null,
+        hasPortalAccount: !!acct,
+        recentEvents: events.rows,
+      });
+    } catch (error) {
+      console.error("[MERCHANT] Engagement fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch engagement" });
+    }
+  });
+
+  // Staff: Total unread merchant messages (for nav badge)
+  app.get("/api/admin/merchant-messages/unread-count", async (req, res) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Staff access required" });
+    }
+    try {
+      const result = await db.execute(sql`SELECT COUNT(*)::int AS c FROM merchant_messages WHERE sender_role = 'merchant' AND is_read = false`);
+      res.json({ count: Number((result.rows[0] as any)?.c) || 0 });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get unread count" });
     }
   });
 

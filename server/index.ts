@@ -482,6 +482,51 @@ app.use((req, res, next) => {
         END $$
       `);
       console.log('[STARTUP] Migration: merchant_portal_accounts.application_id varchar ensured');
+      // Portal engagement: last-login tracking + persistent event log
+      await db.execute(sql`ALTER TABLE merchant_portal_accounts ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`);
+      await db.execute(sql`ALTER TABLE merchant_portal_accounts ADD COLUMN IF NOT EXISTS login_count INTEGER DEFAULT 0`);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS portal_events (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        portal TEXT NOT NULL,
+        email TEXT NOT NULL,
+        event TEXT NOT NULL,
+        detail TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_portal_events_email ON portal_events (LOWER(email), created_at)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_portal_events_created ON portal_events (created_at)`);
+      // DB-backed merchant OTP codes, login rate limits, and admin preview tokens
+      // (previously in-memory Maps that were lost on every Replit restart)
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS merchant_otp_codes (
+        phone TEXT PRIMARY KEY,
+        code TEXT NOT NULL,
+        email TEXT NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS merchant_login_attempts (
+        email TEXT PRIMARY KEY,
+        attempts INTEGER DEFAULT 0,
+        window_start TIMESTAMP DEFAULT NOW()
+      )`);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS portal_preview_tokens (
+        token TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        created_by TEXT,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`);
+      // Merchant-reported balance corrections — anchors portal payoff estimates to reality
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS merchant_balance_reports (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        merchant_email TEXT NOT NULL,
+        deal_id TEXT NOT NULL,
+        reported_balance DECIMAL(12,2) NOT NULL,
+        reported_at TIMESTAMP DEFAULT NOW()
+      )`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mbr_email_deal ON merchant_balance_reports (LOWER(merchant_email), deal_id, reported_at DESC)`);
+      console.log('[STARTUP] Migration: portal engagement + auth tables ensured');
     } catch (migErr) {
       console.warn('[STARTUP] Migration warning (non-fatal):', migErr);
     }

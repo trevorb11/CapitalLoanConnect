@@ -3524,6 +3524,15 @@ export default function Dashboard() {
     queryFn: getQueryFn({ on401: "returnNull" }),
   });
 
+  // Unread merchant portal messages — badge on the Portal Messages nav item
+  const { data: portalUnread } = useQuery<{ count: number } | null>({
+    queryKey: ["/api/admin/merchant-messages/unread-count"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+    enabled: !!authData?.isAuthenticated && (authData.role === 'admin' || authData.role === 'underwriting'),
+    refetchInterval: 60000,
+  });
+  const portalUnreadCount = portalUnread?.count || 0;
+
   // Debounce search: wait 400 ms after the user stops typing before hitting the server
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 400);
@@ -4019,6 +4028,19 @@ export default function Dashboard() {
                       <DropdownMenuItem className="cursor-pointer">
                         <MessageSquare className="w-4 h-4 mr-2" />
                         Messaging
+                      </DropdownMenuItem>
+                    </Link>
+                  )}
+                  {(authData.role === 'admin' || authData.role === 'underwriting') && (
+                    <Link href="/portal-messages">
+                      <DropdownMenuItem className="cursor-pointer">
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Portal Messages
+                        {portalUnreadCount > 0 && (
+                          <span className="ml-auto inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold h-5 min-w-5 px-1.5">
+                            {portalUnreadCount}
+                          </span>
+                        )}
                       </DropdownMenuItem>
                     </Link>
                   )}
