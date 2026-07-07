@@ -78,7 +78,7 @@ export const LENDER_NETWORK: LenderContact[] = [
   },
   {
     name: "Fintegra",
-    emails: ["Submissions@getfintegra.com"],
+    emails: ["Submissions@getfintegra.com", "stephaniec@getfintegra.com"],
     contactName: "Bryan Koegel",
     contactPhone: "267-977-5548",
     notes: "Min TIB: 12mo | Min avg monthly rev: $10K | Min avg balance: $1K | Min FICO: 550 | Min deposits: 5/mo | Max NSFs: 5 | No Texas | Solid B paper (1st, 2nd, 3rd positions) | $10K-$250K funding | Avg term: 8-10mo (up to 15mo) | Full & partial consolidations | Upfront underwriting with hard offers | <2hr turnaround | Minimal stips | Industry-leading early payoff discounts",
@@ -141,7 +141,7 @@ export const LENDER_NETWORK: LenderContact[] = [
   {
     name: "Pearl",
     emails: ["submitpearl@pearlcash.com"],
-    ccEmails: ["brett.spass@revenued.com"],
+    ccEmails: ["brett.spass@pearlcash.com"],
     notes: "Grades A-D (A: 12.5mo 1.25x to D: 5mo 1.36x) | Min $20K-$50K deposits | Stips: DL, Voided Check, A/R, Login (+Financials >$150K, +Tax Guard >$250K) | Preferred: Manufacturing/Medical/Tech/Construction/Auto | High Risk: Insurance/Real Estate/Home-based/Lawyers/Lenders | Prohibited: Marijuana (CBD/Hemp OK)",
   },
   {
@@ -223,7 +223,6 @@ export const LENDER_NETWORK: LenderContact[] = [
   {
     name: "Top Choice Financial",
     emails: ["submissions@topchoicefinancial.com"],
-    ccEmails: ["Kimberly@topchoicefinancial.com"],
     tier: "A-C",
     notes: "Min TIB: 2yr | Min FICO: 600 | Min avg monthly deposits: $25K | Max NSFs: 5 in last 90 days | Prohibited states: Virginia | Prohibited: Trucking/Construction/Cannabis/Escort/Adult/Debt Consolidation/Credit Repair/Bail Bonds/Property Mgmt/Real Estate/Law Firms",
   },
@@ -245,7 +244,6 @@ export const LENDER_NETWORK: LenderContact[] = [
   {
     name: "Vox Funding",
     emails: ["submissions@voxfunding.com", "nvarner@voxfunding.com"],
-    ccEmails: ["jscavuzzo@voxfunding.com"],
     tier: "A-C",
     notes: "Min rev: $15K | Positions 1-3 | Max neg days: 5/mo | TIB: 1yr | Min deposits: 5/mo | Min FICO: 600 | Funding up to $1.5M | 12pt upsell | jscavuzzo@ for deals $150K+ | Funds Texas | Prohibited: Adult Entertainment/Cash Advance/Credit Card Protection/Credit Restoration/Escort/Mortgage Lenders/Pawn Shops/Check Cashier/Wire Transfer/Government/Used Car/Sole Props/Trucking",
   },
@@ -253,7 +251,7 @@ export const LENDER_NETWORK: LenderContact[] = [
   // ── W ──────────────────────────────────────────────────────────────
   {
     name: "Westwood Funding",
-    emails: ["Masoncap@westwoodfunding.com"],
+    emails: ["subs@masoncapitalfp.com"],
     contactName: "Juan Monegro",
     contactPhone: "954-350-0331 ext 1032 | 347-865-7773",
     tier: "C",
