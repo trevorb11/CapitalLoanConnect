@@ -1960,7 +1960,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const isGFGUpdate = isGFGSubmission(updatedOrExisting) || isGFGSubmission(applicationData);
         if (isGFGUpdate && !applicationData.isCompleted && updatedApp) {
           console.log(`[GFG] Guide Funding Group update detected — firing intake webhook for ${updatedApp.email}`);
-          ghlService.sendIntakeWebhook(updatedApp).catch(err =>
+          ghlService.sendIntakeWebhook(updatedApp, "https://guidefundinggroup.com/").catch(err =>
             console.error("[GFG] Intake webhook error (non-blocking):", err)
           );
 
@@ -2090,7 +2090,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGFG = isGFGSubmission(finalApp) || isGFGSubmission(applicationData);
       if (isGFG && !applicationData.isCompleted) {
         console.log(`[GFG] Guide Funding Group submission detected — firing intake webhook for ${finalApp.email}`);
-        ghlService.sendIntakeWebhook(finalApp).catch(err =>
+        ghlService.sendIntakeWebhook(finalApp, "https://guidefundinggroup.com/").catch(err =>
           console.error("[GFG] Intake webhook error (non-blocking):", err)
         );
 
