@@ -978,7 +978,7 @@ export class GoHighLevelService {
       use_of_funds: application.useOfFunds || null,
       submission_date: new Date().toISOString(),
       source: "Website Lead Form",
-      page_url: pageUrl || "https://www.todaycapitalgroup.com/intake/quiz",
+      page_url: pageUrl || "https://app.todaycapitalgroup.com/intake/quiz",
       utm_source: application.utmSource || null,
       utm_medium: application.utmMedium || null,
       utm_campaign: application.utmCampaign || null,
