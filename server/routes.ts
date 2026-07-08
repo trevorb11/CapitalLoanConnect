@@ -17264,12 +17264,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "Sage", "Sage Robinson",
         "Trevor Bosetti",
         "Greg Dergevorkian", // alias — rolls up into Gregory Dergevorkian
+        // First-name-only aliases — all roll up into the canonical full-name entry below
+        "Kenny", "Bryce", "Caden", "Dennys", "Diego", "Dillon",
+        "Dominic", "Gregory", "Jonathan", "Julius", "Ryan",
       ]);
 
       // Reverse alias map: stored-name → canonical rep name (for legacy DB records)
       const CALL_NAME_ALIASES: Record<string, string> = {
         "Carlos Batista": "Jonathan Rendon",
         "Greg Dergevorkian": "Gregory Dergevorkian",
+        // First-name-only variants stored in legacy DB records
+        "Kenny": "Kenny Nwobi",
+        "Bryce": "Bryce Jennings",
+        "Caden": "Caden Lehto",
+        "Dennys": "Dennys Cisne",
+        "Diego": "Diego Orellana",
+        "Dillon": "Dillon LeBlanc",
+        "Dominic": "Dominic Kendl",
+        "Gregory": "Gregory Dergevorkian",
+        "Jonathan": "Jonathan Rendon",
+        "Julius": "Julius Speck",
+        "Ryan": "Ryan Wilcox",
       };
 
       // Build set of known rep names from all sources (excluding blocked reps)
@@ -17332,7 +17347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const dec of allDecisions) {
           const fundings = Array.isArray(dec.additionalFundings) ? dec.additionalFundings as any[] : [];
           for (const f of fundings) {
-            if (f.assignedRep === repName) {
+            if (f.assignedRep === repName || aliasNames.includes(f.assignedRep || "")) {
               additional_funded_count++;
               additional_funded_amount += f.advanceAmount ? Number(f.advanceAmount) : 0;
             }
