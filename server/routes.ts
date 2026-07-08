@@ -4354,13 +4354,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         details: { requestCode: result.requestCode },
       }).catch(() => {});
 
+      // Sanitize URLs — Chirp sandbox sometimes returns "NA" as a placeholder
+      const sanitizeUrl = (u?: string) =>
+        u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
+      const safeWidget = sanitizeUrl(result.widgetUrl)
+        || `https://chirp.digital/api/widget?requestCode=${result.requestCode}`;
+      const safeVerification = sanitizeUrl(result.verificationUrl) || safeWidget;
+
       // Persist a stub snapshot tied to merchant email so we can look up the
-      // request code later without trusting the client.
+      // request code later without trusting the client. Explicit nulls reset
+      // any data from a previous connection (this is a NEW request).
       await storage.upsertMerchantBankSnapshot({
         merchantEmail,
         chirpRequestCode: result.requestCode,
         status: "Unverified",
         isAccountConnected: false,
+        institutionName: null,
+        accountsData: null,
+        summaryData: null,
+        metrics: null,
+        transactionsData: null,
+        widgetUrl: safeWidget,
+        verificationUrl: safeVerification,
+        statementFiledAt: null,
+        lastSyncedAt: null,
       });
 
       // Also persist on the loan application for cross-compat with existing admin views.
@@ -4392,13 +4409,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           active: true,
         }).catch(e => console.warn("[CHIRP] Failed to register REFRESH webhook:", e?.message || e));
       }
-
-      // Sanitize URLs — Chirp sandbox sometimes returns "NA" as a placeholder
-      const sanitizeUrl = (u?: string) =>
-        u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
-      const safeWidget = sanitizeUrl(result.widgetUrl)
-        || `https://chirp.digital/api/widget?requestCode=${result.requestCode}`;
-      const safeVerification = sanitizeUrl(result.verificationUrl) || safeWidget;
 
       res.json({
         success: true,
@@ -4606,6 +4616,198 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[CHIRP] webhook error:", err);
       res.status(500).json({ error: "Webhook handler failed" });
+    }
+  });
+
+  // ── CHIRP BACKGROUND POLLER ────────────────────────────────────────────
+  // Two jobs, every 10 minutes:
+  //  1. Pending connections (<72h old): poll Chirp status so merchants who
+  //     verified while our webhook wasn't registered still resolve.
+  //  2. Connected snapshots stale >24h: re-sync from Chirp's cache so metrics
+  //     and auto-filed statements stay fresh (cache reads — no billed refresh).
+  if (process.env.CHIRP_POLLER_DISABLED !== "true") {
+    const CHIRP_POLL_INTERVAL_MS = 10 * 60 * 1000;
+    setInterval(async () => {
+      try {
+        const pending = await db.execute(sql`
+          SELECT merchant_email, chirp_request_code FROM merchant_bank_snapshots
+          WHERE is_account_connected = false
+            AND created_at > NOW() - INTERVAL '72 hours'
+            AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '9 minutes')
+          LIMIT 10
+        `);
+        for (const row of pending.rows as any[]) {
+          try {
+            const status = await chirpService.getRequestStatus(row.chirp_request_code);
+            if (status?.isAccountConnected || /verified/i.test(status?.status || "")) {
+              console.log(`[CHIRP POLL] ${row.merchant_email} verified — running full sync`);
+              await syncMerchantSnapshotFromChirp(row.merchant_email, row.chirp_request_code);
+            } else {
+              // Stamp so we don't re-poll the same pending code every tick
+              await db.execute(sql`UPDATE merchant_bank_snapshots SET last_synced_at = NOW() WHERE chirp_request_code = ${row.chirp_request_code}`);
+            }
+          } catch (e: any) {
+            console.warn(`[CHIRP POLL] status check failed for ${row.merchant_email}: ${e?.message}`);
+          }
+        }
+
+        const stale = await db.execute(sql`
+          SELECT merchant_email, chirp_request_code FROM merchant_bank_snapshots
+          WHERE is_account_connected = true
+            AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '24 hours')
+          LIMIT 5
+        `);
+        for (const row of stale.rows as any[]) {
+          try {
+            await syncMerchantSnapshotFromChirp(row.merchant_email, row.chirp_request_code);
+          } catch (e: any) {
+            console.warn(`[CHIRP POLL] stale re-sync failed for ${row.merchant_email}: ${e?.message}`);
+          }
+        }
+      } catch (err: any) {
+        console.error("[CHIRP POLL] tick error:", err?.message || err);
+      }
+    }, CHIRP_POLL_INTERVAL_MS);
+    console.log("[CHIRP] Background poller started (10-min interval)");
+  }
+
+  // ── CHIRP ADMIN + DIAGNOSTICS ──────────────────────────────────────────
+  // Staff session OR Claude API key — lets us inspect/test the pipeline
+  // without a merchant login.
+  function isStaffOrClaude(req: Request): boolean {
+    if (req.session.user?.isAuthenticated && req.session.user.role !== 'merchant' && req.session.user.role !== 'lead') return true;
+    const key = req.headers['x-claude-api-key'] || req.query.apiKey;
+    return !!process.env.CLAUDE_API_KEY && key === process.env.CLAUDE_API_KEY;
+  }
+
+  // All bank connections with underwriting-relevant rollups
+  app.get("/api/admin/chirp/connections", async (req: Request, res: Response) => {
+    if (!isStaffOrClaude(req)) return res.status(401).json({ error: "Staff access required" });
+    try {
+      const rows = await db.execute(sql`
+        SELECT merchant_email, chirp_request_code, institution_name, status,
+          is_account_connected, statement_filed_at, last_synced_at, created_at,
+          CASE WHEN jsonb_typeof(transactions_data) = 'array' THEN jsonb_array_length(transactions_data) ELSE 0 END AS txn_count,
+          metrics->'underwriting'->>'avgMonthlyTrueRevenue' AS avg_true_revenue,
+          metrics->'underwriting'->>'totalNsfCount' AS nsf_count,
+          metrics->'underwriting'->>'totalMcaMonthlyLoad' AS mca_monthly_load,
+          metrics->>'healthScore' AS health_score
+        FROM merchant_bank_snapshots
+        ORDER BY updated_at DESC
+      `);
+      res.json(rows.rows);
+    } catch (err: any) {
+      console.error("[CHIRP ADMIN] connections error:", err);
+      res.status(500).json({ error: "Failed to list connections" });
+    }
+  });
+
+  // Force a full sync for one merchant/lead email (bypasses portal cooldown)
+  app.post("/api/admin/chirp/sync", async (req: Request, res: Response) => {
+    if (!isStaffOrClaude(req)) return res.status(401).json({ error: "Staff access required" });
+    try {
+      const email = String(req.body?.email || "").toLowerCase().trim();
+      if (!email) return res.status(400).json({ error: "email is required" });
+      const snap = await storage.getMerchantBankSnapshot(email);
+      if (!snap?.chirpRequestCode) return res.status(404).json({ error: "No bank connection found for that email" });
+      const updated = await syncMerchantSnapshotFromChirp(email, snap.chirpRequestCode);
+      if (!updated) return res.json({ success: false, message: "All Chirp read endpoints failed (likely WAF) — webhook re-registered." });
+      const m = (updated.metrics as any) || {};
+      res.json({
+        success: true,
+        status: updated.status,
+        isAccountConnected: updated.isAccountConnected,
+        institutionName: updated.institutionName,
+        txnCount: Array.isArray(updated.transactionsData) ? (updated.transactionsData as any[]).length : 0,
+        metrics: { monthlyRevenue: m.monthlyRevenue, healthScore: m.healthScore },
+        underwriting: m.underwriting ? {
+          avgMonthlyTrueRevenue: m.underwriting.avgMonthlyTrueRevenue,
+          totalNsfCount: m.underwriting.totalNsfCount,
+          mcaPositions: (m.underwriting.mcaPositions || []).length,
+          totalMcaMonthlyLoad: m.underwriting.totalMcaMonthlyLoad,
+          months: (m.underwriting.monthly || []).length,
+        } : null,
+        statementFiledAt: updated.statementFiledAt,
+      });
+    } catch (err: any) {
+      console.error("[CHIRP ADMIN] sync error:", err);
+      res.status(500).json({ error: err.message || "Sync failed" });
+    }
+  });
+
+  // Force-file the Chirp bank report PDF as a statement (force=true bypasses the 25-day dedupe)
+  app.post("/api/admin/chirp/file-statement", async (req: Request, res: Response) => {
+    if (!isStaffOrClaude(req)) return res.status(401).json({ error: "Staff access required" });
+    try {
+      const email = String(req.body?.email || "").toLowerCase().trim();
+      if (!email) return res.status(400).json({ error: "email is required" });
+      let snap = await storage.getMerchantBankSnapshot(email);
+      if (!snap?.chirpRequestCode) return res.status(404).json({ error: "No bank connection found for that email" });
+      if (req.body?.force && snap.statementFiledAt) {
+        snap = await storage.upsertMerchantBankSnapshot({
+          merchantEmail: email,
+          chirpRequestCode: snap.chirpRequestCode,
+          statementFiledAt: null,
+        });
+      }
+      const filed = await fileChirpStatementForSnapshot(snap!);
+      res.json({ success: filed, message: filed ? "Bank report filed into Bank Statements." : "Not filed — check logs (already filed recently, no accounts, or PDF fetch failed)." });
+    } catch (err: any) {
+      console.error("[CHIRP ADMIN] file-statement error:", err);
+      res.status(500).json({ error: err.message || "Filing failed" });
+    }
+  });
+
+  // Raw Chirp passthrough for live testing: status | details | summary | report-link | track | config
+  app.post("/api/admin/chirp/diag", async (req: Request, res: Response) => {
+    if (!isStaffOrClaude(req)) return res.status(401).json({ error: "Staff access required" });
+    const { action, requestCode, accountNumber, chirpAccountId } = req.body || {};
+    try {
+      let result: any;
+      switch (action) {
+        case "config":
+          result = {
+            middlewareConfigured: !!(process.env.CHIRP_MIDDLEWARE_URL && process.env.CHIRP_MIDDLEWARE_KEY),
+            directTokenConfigured: !!process.env.CHIRP_API_TOKEN,
+            publicBaseUrl: process.env.PUBLIC_BASE_URL || null,
+            webhookSecretConfigured: !!process.env.CHIRP_WEBHOOK_SECRET,
+            pollerEnabled: process.env.CHIRP_POLLER_DISABLED !== "true",
+          };
+          break;
+        case "status":
+          if (!requestCode) return res.status(400).json({ error: "requestCode is required" });
+          result = await chirpService.getRequestStatus(requestCode);
+          break;
+        case "details": {
+          if (!requestCode) return res.status(400).json({ error: "requestCode is required" });
+          const details = await chirpService.getRequestDetails(requestCode, { numberOfDays: Number(req.body?.days) || 90, sort: "DESCENDING" });
+          const txns = (details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || [];
+          result = {
+            ...details,
+            TransactionSummaries: Array.isArray(txns) ? txns.slice(0, 25) : txns,
+            _txnCountTotal: Array.isArray(txns) ? txns.length : 0,
+            _note: Array.isArray(txns) && txns.length > 25 ? "Transactions truncated to 25 for readability" : undefined,
+          };
+          break;
+        }
+        case "summary":
+          if (!requestCode) return res.status(400).json({ error: "requestCode is required" });
+          result = await chirpService.getSummaryInfoByRequestCode(requestCode, accountNumber, chirpAccountId);
+          break;
+        case "report-link":
+          if (!requestCode) return res.status(400).json({ error: "requestCode is required" });
+          result = await chirpService.getRequestReportAsPDF(requestCode, { accountNumber, chirpAccountId });
+          break;
+        case "track":
+          if (!requestCode) return res.status(400).json({ error: "requestCode is required" });
+          result = await chirpService.getRequestTrackInfo([requestCode]);
+          break;
+        default:
+          return res.status(400).json({ error: "Unknown action. Use config|status|details|summary|report-link|track" });
+      }
+      res.json({ success: true, result });
+    } catch (err: any) {
+      res.status(err instanceof ChirpApiError ? err.status : 500).json({ error: err.message, body: (err as any)?.body });
     }
   });
 
@@ -9959,91 +10161,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No bank connection found. Connect your bank in the Financials tab first." });
       }
 
-      // Fetch transaction details from Chirp
-      let details: any = null;
-      try {
-        details = await chirpService.getRequestDetails(snapshot.chirpRequestCode, { numberOfDays: 90, sort: "DESCENDING" });
-      } catch (e: any) {
-        console.warn("[LEAD] detect-positions: Chirp fetch failed:", e?.message);
-        return res.status(503).json({ error: "Unable to read bank transactions right now. Try again shortly." });
+      // Prefer transactions already stored on the snapshot (survives Chirp WAF
+      // blocks); fall back to a live read + normalize
+      let txns: NormalizedTxn[] = Array.isArray(snapshot.transactionsData) ? (snapshot.transactionsData as any) : [];
+      if (txns.length === 0) {
+        let details: any = null;
+        try {
+          details = await chirpService.getRequestDetails(snapshot.chirpRequestCode, { numberOfDays: 90, sort: "DESCENDING" });
+        } catch (e: any) {
+          console.warn("[LEAD] detect-positions: Chirp fetch failed:", e?.message);
+          return res.status(503).json({ error: "Unable to read bank transactions right now. Try again shortly." });
+        }
+        txns = normalizeChirpTransactions((details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || []);
       }
-
-      const allTxns: any[] = (details as any)?.TransactionSummaries || (details as any)?.transactionSummaries || [];
-      if (allTxns.length === 0) {
+      if (txns.length === 0) {
         return res.json({ detected: 0, added: 0, message: "No transactions found in your connected bank. Try syncing your bank first." });
       }
 
-      // Filter to debit transactions only, within reasonable MCA range
-      const parseMoney = (v: unknown): number => {
-        if (typeof v === "number") return Math.abs(v);
-        if (typeof v !== "string") return 0;
-        const n = Number.parseFloat(v.replace(/[^0-9.\-]/g, ""));
-        return Number.isFinite(n) ? Math.abs(n) : 0;
-      };
       const normalize = (s: string) =>
         s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
 
-      const debits = allTxns.filter((t: any) => {
-        const type = (t.type || "").toUpperCase();
-        const isDebit = type === "DEBIT" || type === "WITHDRAWAL" || type === "ACH_DEBIT";
-        const notIncome = !t.is_income && !t.is_direct_deposit;
-        const amt = parseMoney(t.amount);
-        return (isDebit || notIncome) && amt >= 50 && amt <= 100000;
-      });
-
-      // Group by normalized description
-      const groups = new Map<string, { desc: string; amounts: number[]; dates: string[] }>();
-      for (const t of debits) {
-        const rawDesc = t.description || t.desc || t.memo || t.name || "Unknown";
-        const key = normalize(rawDesc);
-        const amt = parseMoney(t.amount);
-        const date = t.date || t.transacted_at || t.posted_at || "";
-        const g = groups.get(key) || { desc: rawDesc, amounts: [] as number[], dates: [] as string[] };
-        g.amounts.push(amt);
-        g.dates.push(date);
-        groups.set(key, g);
-      }
-
-      // Find recurring patterns: 3+ occurrences with consistent amounts (±15%)
-      const patterns: Array<{
-        desc: string; amount: number; frequency: string; count: number; firstDate: string;
-      }> = [];
-
-      for (const [, g] of groups) {
-        if (g.amounts.length < 3) continue;
-        const avg = g.amounts.reduce((s, a) => s + a, 0) / g.amounts.length;
-        const allConsistent = g.amounts.every(a => Math.abs(a - avg) / avg < 0.15);
-        if (!allConsistent) continue;
-
-        const sortedDates = g.dates.filter(d => d).sort();
-        if (sortedDates.length < 2) continue;
-
-        const diffs: number[] = [];
-        for (let i = 1; i < sortedDates.length; i++) {
-          const a = new Date(sortedDates[i - 1]);
-          const b = new Date(sortedDates[i]);
-          if (!isNaN(a.getTime()) && !isNaN(b.getTime())) {
-            diffs.push(Math.abs(b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
-          }
-        }
-        if (diffs.length < 2) continue;
-        const avgDiff = diffs.reduce((s, d) => s + d, 0) / diffs.length;
-
-        let frequency = "monthly";
-        if (avgDiff <= 2) frequency = "daily";
-        else if (avgDiff <= 10) frequency = "weekly";
-        else if (avgDiff <= 18) frequency = "bi-weekly";
-        else if (avgDiff <= 35) frequency = "monthly";
-        else continue; // not frequent enough to be an MCA
-
-        patterns.push({
-          desc: g.desc.slice(0, 80),
-          amount: Math.round(avg * 100) / 100,
-          frequency,
-          count: g.amounts.length,
-          firstDate: sortedDates[0],
-        });
-      }
+      // Shared detector (same logic that powers underwriting metrics)
+      const patterns = detectMcaPatterns(txns).map(p => ({
+        desc: p.funderGuess || p.description,
+        amount: p.amount,
+        frequency: p.frequency,
+        count: p.count,
+        firstDate: p.firstDate,
+      }));
 
       if (patterns.length === 0) {
         return res.json({
@@ -10106,6 +10251,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!email) return res.status(401).json({ error: "Authentication required" });
 
     try {
+      // Guard: don't clobber a live connection or duplicate a fresh pending request
+      const existingSnap = await storage.getMerchantBankSnapshot(email);
+      if (existingSnap && !req.body?.force) {
+        if (existingSnap.isAccountConnected) {
+          return res.json({
+            success: true,
+            alreadyConnected: true,
+            institutionName: existingSnap.institutionName,
+            lastSyncedAt: existingSnap.lastSyncedAt,
+          });
+        }
+        const ageMs = existingSnap.createdAt ? Date.now() - new Date(existingSnap.createdAt).getTime() : Infinity;
+        if (existingSnap.widgetUrl && ageMs < 24 * 60 * 60 * 1000) {
+          return res.json({
+            requestCode: existingSnap.chirpRequestCode,
+            widgetUrl: existingSnap.widgetUrl,
+            verificationUrl: existingSnap.verificationUrl || existingSnap.widgetUrl,
+            resumed: true,
+          });
+        }
+      }
+
       const leadAccount = await db.execute(sql`SELECT first_name, last_name, phone FROM lead_portal_accounts WHERE email = ${email}`);
       const lead = leadAccount.rows[0] as any;
 
@@ -10119,12 +10286,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cusPhone: phone,
       });
 
-      // Save stub snapshot
+      // Sanitize URLs before persisting — Chirp sandbox sometimes returns "NA"
+      const sanitizeLeadUrl = (u?: string) =>
+        u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
+      const leadSafeWidget = sanitizeLeadUrl(result.widgetUrl)
+        || `https://chirp.digital/api/widget?requestCode=${result.requestCode}`;
+      const leadSafeVerification = sanitizeLeadUrl(result.verificationUrl) || leadSafeWidget;
+
+      // Save stub snapshot (explicit nulls reset any previous connection's data)
       await storage.upsertMerchantBankSnapshot({
         merchantEmail: email,
         chirpRequestCode: result.requestCode,
         status: "Unverified",
         isAccountConnected: false,
+        institutionName: null,
+        accountsData: null,
+        summaryData: null,
+        metrics: null,
+        transactionsData: null,
+        widgetUrl: leadSafeWidget,
+        verificationUrl: leadSafeVerification,
+        statementFiledAt: null,
         lastSyncedAt: new Date(),
       });
 
@@ -10153,14 +10335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).catch(e => console.warn("[CHIRP][LEAD] refresh webhook register error:", e?.message));
       }
 
-      // Sanitize URLs — Chirp sandbox sometimes returns "NA" as a placeholder
-      const sanitizeUrl = (u?: string) =>
-        u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
-      const safeWidget = sanitizeUrl(result.widgetUrl)
-        || `https://chirp.digital/api/widget?requestCode=${result.requestCode}`;
-      const safeVerification = sanitizeUrl(result.verificationUrl) || safeWidget;
-
-      res.json({ requestCode: result.requestCode, widgetUrl: safeWidget, verificationUrl: safeVerification });
+      res.json({ requestCode: result.requestCode, widgetUrl: leadSafeWidget, verificationUrl: leadSafeVerification });
     } catch (err: any) {
       console.error("[LEAD] chirp connect error:", err);
       res.status(500).json({ error: err.message || "Failed to start bank connection" });
