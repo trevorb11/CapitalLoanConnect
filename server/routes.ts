@@ -10517,7 +10517,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mp_agg.tier, mp_agg.funder_count, mp_agg.named_funder_count, mp_agg.daily_load,
         mp_agg.uw_status, mp_agg.uw_lender, mp_agg.uw_amount, mp_agg.uw_funded_date,
         mp_agg.uw_approval_count, mp_agg.uw_decline_count, mp_agg.outreach_status,
-        mp_agg.outreach_notes, mp_agg.funder_names
+        mp_agg.outreach_notes, mp_agg.funder_names,
+        clc.clc_status, clc.clc_lender, clc.clc_amount, clc.clc_funded_date,
+        clc.clc_additional_fundings, clc.clc_approval_date
         FROM lead_portal_accounts l
         LEFT JOIN LATERAL (
           SELECT
@@ -10539,6 +10541,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           FROM merchant_positions mp
           WHERE LOWER(mp.business_email) = LOWER(l.email) AND mp.status = 'active'
         ) mp_agg ON true
+        LEFT JOIN LATERAL (
+          SELECT bud.status as clc_status, bud.lender as clc_lender,
+                 bud.advance_amount::numeric as clc_amount,
+                 bud.funded_date as clc_funded_date,
+                 bud.additional_fundings as clc_additional_fundings,
+                 bud.approval_date as clc_approval_date
+          FROM business_underwriting_decisions bud
+          WHERE LOWER(bud.business_email) = LOWER(l.email)
+          LIMIT 1
+        ) clc ON true
         ORDER BY l.created_at DESC`);
       res.json(result.rows);
     } catch (err: any) {
@@ -10572,6 +10584,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                mp_agg.uw_status, mp_agg.uw_lender, mp_agg.uw_amount, mp_agg.uw_funded_date,
                mp_agg.uw_approval_count, mp_agg.uw_decline_count, mp_agg.outreach_status,
                mp_agg.outreach_notes, mp_agg.funder_names,
+               clc.clc_status, clc.clc_lender, clc.clc_amount, clc.clc_funded_date,
+               clc.clc_additional_fundings, clc.clc_approval_date,
                agent_info.agent_name, agent_info.agent_email
         FROM lead_portal_accounts l
         LEFT JOIN LATERAL (
@@ -10591,6 +10605,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           FROM merchant_positions mp
           WHERE LOWER(mp.business_email) = LOWER(l.email) AND mp.status = 'active'
         ) mp_agg ON true
+        LEFT JOIN LATERAL (
+          SELECT bud.status as clc_status, bud.lender as clc_lender,
+                 bud.advance_amount::numeric as clc_amount,
+                 bud.funded_date as clc_funded_date,
+                 bud.additional_fundings as clc_additional_fundings,
+                 bud.approval_date as clc_approval_date
+          FROM business_underwriting_decisions bud
+          WHERE LOWER(bud.business_email) = LOWER(l.email)
+          LIMIT 1
+        ) clc ON true
         LEFT JOIN LATERAL (
           SELECT agent_name, agent_email
           FROM loan_applications WHERE LOWER(email) = LOWER(l.email) AND agent_name IS NOT NULL

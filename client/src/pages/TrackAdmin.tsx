@@ -84,11 +84,39 @@ interface LeadAccount {
   outreach_status: string | null;
   outreach_notes: string | null;
   funder_names: string | null;
+  // CLC funding data from business_underwriting_decisions
+  clc_status: string | null;
+  clc_lender: string | null;
+  clc_amount: string | null;
+  clc_funded_date: string | null;
+  clc_additional_fundings: any[] | null;
+  clc_approval_date: string | null;
 }
 
 type SortField = "score" | "name" | "daily_load" | "created";
 type FilterTier = "all" | "HOT" | "WARM" | "SOON" | "EARLY" | "none";
 type FilterOutreach = "all" | "not_contacted" | "contacted" | "in_progress" | "converted" | "passed";
+
+function getLatestClcFundingDate(a: LeadAccount): Date | null {
+  let latest: Date | null = null;
+  if (a.clc_funded_date) {
+    const d = new Date(a.clc_funded_date);
+    if (!isNaN(d.getTime())) latest = d;
+  }
+  if (a.clc_additional_fundings && Array.isArray(a.clc_additional_fundings)) {
+    for (const f of a.clc_additional_fundings) {
+      if (f.fundedDate) {
+        const d = new Date(f.fundedDate);
+        if (!isNaN(d.getTime()) && (!latest || d > latest)) latest = d;
+      }
+    }
+  }
+  return latest;
+}
+
+function daysSince(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+}
 
 function computeScore(a: LeadAccount): number {
   let score = 0;
@@ -99,8 +127,16 @@ function computeScore(a: LeadAccount): number {
 
   score += (a.named_funder_count || 0) * 10;
 
-  if (a.uw_funded_date) score += 25;
-  else if (a.uw_status === "approved") score += 20;
+  // CLC funding recency: recently funded = not a hot lead; older = renewal opportunity
+  const latestFunding = getLatestClcFundingDate(a);
+  if (latestFunding) {
+    const days = daysSince(latestFunding);
+    if (days < 60) score -= 30;
+    else if (days < 120) score += 5;
+    else score += 20;
+  } else if (a.uw_status === "approved" || a.clc_status === "approved") {
+    score += 20;
+  }
   score += Math.min(a.uw_approval_count || 0, 5) * 5;
 
   const load = parseFloat(a.daily_load || "0");
@@ -111,7 +147,7 @@ function computeScore(a: LeadAccount): number {
   if (a.monthly_revenue) score += 3;
   if (a.phone) score += 5;
 
-  if ((a.uw_decline_count || 0) > 0 && !(a.uw_approval_count || 0) && !a.uw_funded_date) score -= 10;
+  if ((a.uw_decline_count || 0) > 0 && !(a.uw_approval_count || 0) && !latestFunding) score -= 10;
 
   const outreach = a.outreach_status || "not_contacted";
   if (outreach === "contacted") score -= 5;
@@ -137,7 +173,17 @@ function getPitchType(a: LeadAccount): { type: string; label: string; color: str
       talk: `"I see you're currently working with ${funders}. A lot of our clients in your situation save $${Math.round(load * 0.3)}/day by consolidating into a single position with better terms. Would it make sense to see what that looks like for your business?"`,
     };
   }
-  if (a.uw_funded_date) {
+  const latestFunding = getLatestClcFundingDate(a);
+  if (latestFunding) {
+    const days = daysSince(latestFunding);
+    if (days < 60) {
+      return {
+        type: "recently_funded",
+        label: "Recently Funded",
+        color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+        talk: `Recently funded ${days} days ago — check in on how funding is working out, build the relationship for future renewal.`,
+      };
+    }
     return {
       type: "renewal",
       label: "Renewal",
@@ -382,27 +428,63 @@ function AccountRow({ account, onOutreachUpdate }: { account: LeadAccount; onOut
             </div>
           </div>
 
-          {/* UW History */}
-          {account.uw_status && (
+          {/* CLC Funding / UW History */}
+          {(account.clc_status || account.uw_status) && (
             <div className="bg-background rounded-md p-3">
               <h4 className="text-xs font-semibold mb-2 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-primary" /> Underwriting History
+                <FileText className="w-3.5 h-3.5 text-primary" /> CLC History
               </h4>
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <Badge variant={account.uw_status === "funded" ? "default" : account.uw_status === "approved" ? "secondary" : "outline"} className="text-xs">
-                  {account.uw_status === "funded" && <CheckCircle2 className="w-3 h-3 mr-1" />}
-                  {account.uw_status.toUpperCase()}
-                </Badge>
-                {account.uw_lender && <span>by {account.uw_lender}</span>}
-                {account.uw_amount && <span className="font-medium">{fmt$(account.uw_amount)}</span>}
-                {account.uw_funded_date && <span className="text-muted-foreground text-xs">funded {fmtDate(account.uw_funded_date)}</span>}
-                {(account.uw_approval_count || 0) > 0 && (
-                  <span className="text-xs text-green-600 dark:text-green-400">{account.uw_approval_count} approval{(account.uw_approval_count || 0) !== 1 ? "s" : ""}</span>
-                )}
-                {(account.uw_decline_count || 0) > 0 && (
-                  <span className="text-xs text-red-500">{account.uw_decline_count} decline{(account.uw_decline_count || 0) !== 1 ? "s" : ""}</span>
-                )}
-              </div>
+              {(() => {
+                const latestFunding = getLatestClcFundingDate(account);
+                const recentlyFunded = latestFunding && daysSince(latestFunding) < 60;
+                const allFundings: { lender: string; amount: string | null; date: Date }[] = [];
+                if (account.clc_funded_date) {
+                  const d = new Date(account.clc_funded_date);
+                  if (!isNaN(d.getTime())) allFundings.push({ lender: account.clc_lender || "Unknown", amount: account.clc_amount, date: d });
+                }
+                if (account.clc_additional_fundings && Array.isArray(account.clc_additional_fundings)) {
+                  for (const f of account.clc_additional_fundings) {
+                    if (f.fundedDate) {
+                      const d = new Date(f.fundedDate);
+                      if (!isNaN(d.getTime())) allFundings.push({ lender: f.lender || "Unknown", amount: f.advanceAmount, date: d });
+                    }
+                  }
+                }
+                allFundings.sort((a, b) => b.date.getTime() - a.date.getTime());
+                return (
+                  <div className="space-y-1">
+                    {recentlyFunded && (
+                      <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-xs mb-1">
+                        <CheckCircle2 className="w-3 h-3 mr-1" /> Recently Funded — {daysSince(latestFunding!)}d ago
+                      </Badge>
+                    )}
+                    {allFundings.length > 0 ? allFundings.map((f, i) => (
+                      <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
+                        <Badge variant="default" className="text-xs"><CheckCircle2 className="w-3 h-3 mr-1" />FUNDED</Badge>
+                        <span>{f.lender}</span>
+                        {f.amount && <span className="font-medium">{fmt$(f.amount)}</span>}
+                        <span className="text-muted-foreground text-xs">{fmtDate(f.date.toISOString())}</span>
+                      </div>
+                    )) : (
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <Badge variant={account.clc_status === "approved" ? "secondary" : "outline"} className="text-xs">
+                          {(account.clc_status || account.uw_status || "").toUpperCase()}
+                        </Badge>
+                        {(account.clc_lender || account.uw_lender) && <span>by {account.clc_lender || account.uw_lender}</span>}
+                        {(account.clc_amount || account.uw_amount) && <span className="font-medium">{fmt$(account.clc_amount || account.uw_amount)}</span>}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {(account.uw_approval_count || 0) > 0 && (
+                        <span className="text-xs text-green-600 dark:text-green-400">{account.uw_approval_count} approval{(account.uw_approval_count || 0) !== 1 ? "s" : ""}</span>
+                      )}
+                      {(account.uw_decline_count || 0) > 0 && (
+                        <span className="text-xs text-red-500">{account.uw_decline_count} decline{(account.uw_decline_count || 0) !== 1 ? "s" : ""}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -583,7 +665,7 @@ export default function TrackAdmin() {
   const withPositions = accounts.filter(a => (parseInt(a.position_count) || 0) > 0);
   const hotLeads = accounts.filter(a => a.tier === "HOT");
   const warmLeads = accounts.filter(a => a.tier === "WARM");
-  const readyToClose = accounts.filter(a => a.uw_status === "approved" && !a.uw_funded_date);
+  const readyToClose = accounts.filter(a => (a.uw_status === "approved" || a.clc_status === "approved") && !getLatestClcFundingDate(a));
   const notContacted = accounts.filter(a => (a.outreach_status || "not_contacted") === "not_contacted" && (parseInt(a.position_count) || 0) > 0);
   const totalDailyLoad = accounts.reduce((s, a) => s + parseFloat(a.daily_load || "0"), 0);
 

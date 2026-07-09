@@ -72,9 +72,36 @@ interface Lead {
   funder_names: string | null;
   agent_name: string | null;
   agent_email: string | null;
+  clc_status: string | null;
+  clc_lender: string | null;
+  clc_amount: string | null;
+  clc_funded_date: string | null;
+  clc_additional_fundings: any[] | null;
+  clc_approval_date: string | null;
 }
 
 type SortField = "score" | "name" | "daily_load" | "created";
+
+function getLatestClcFundingDate(a: Lead): Date | null {
+  let latest: Date | null = null;
+  if (a.clc_funded_date) {
+    const d = new Date(a.clc_funded_date);
+    if (!isNaN(d.getTime())) latest = d;
+  }
+  if (a.clc_additional_fundings && Array.isArray(a.clc_additional_fundings)) {
+    for (const f of a.clc_additional_fundings) {
+      if (f.fundedDate) {
+        const d = new Date(f.fundedDate);
+        if (!isNaN(d.getTime()) && (!latest || d > latest)) latest = d;
+      }
+    }
+  }
+  return latest;
+}
+
+function daysSince(date: Date): number {
+  return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+}
 
 function computeScore(a: Lead): number {
   let score = 0;
@@ -83,8 +110,15 @@ function computeScore(a: Lead): number {
   else if (tier === "WARM") score += 15;
   else if (tier === "SOON") score += 5;
   score += (a.named_funder_count || 0) * 10;
-  if (a.uw_funded_date) score += 25;
-  else if (a.uw_status === "approved") score += 20;
+  const latestFunding = getLatestClcFundingDate(a);
+  if (latestFunding) {
+    const days = daysSince(latestFunding);
+    if (days < 60) score -= 30;
+    else if (days < 120) score += 5;
+    else score += 20;
+  } else if (a.uw_status === "approved" || a.clc_status === "approved") {
+    score += 20;
+  }
   score += Math.min(a.uw_approval_count || 0, 5) * 5;
   const load = parseFloat(a.daily_load || "0");
   if (load > 2000) score += 15;
@@ -92,7 +126,7 @@ function computeScore(a: Lead): number {
   else if (load > 500) score += 5;
   if (a.monthly_revenue) score += 3;
   if (a.phone) score += 5;
-  if ((a.uw_decline_count || 0) > 0 && !(a.uw_approval_count || 0) && !a.uw_funded_date) score -= 10;
+  if ((a.uw_decline_count || 0) > 0 && !(a.uw_approval_count || 0) && !latestFunding) score -= 10;
   const outreach = a.outreach_status || "not_contacted";
   if (outreach === "contacted") score -= 5;
   if (outreach === "in_progress") score -= 10;
@@ -112,18 +146,27 @@ function getPitch(a: Lead): { type: string; label: string; color: string; talk: 
       talk: `"I see you're working with ${funders}. A lot of our clients save ~$${Math.round(load * 0.3)}/day by consolidating into a single position with better terms. Would it make sense to see what that looks like?"`,
     };
   }
-  if (a.uw_funded_date) {
+  const latestFunding = getLatestClcFundingDate(a);
+  if (latestFunding) {
+    const days = daysSince(latestFunding);
+    if (days < 60) {
+      return {
+        type: "recently_funded", label: "Recently Funded",
+        color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+        talk: `Recently funded ${days} days ago — check in on how funding is working out, build the relationship for future renewal.`,
+      };
+    }
     return {
       type: "renewal", label: "Renewal",
       color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
       talk: `"Since you've been funded through us and have been paying down your balance, you likely qualify for a larger advance at a better rate. Want me to run the numbers?"`,
     };
   }
-  if (a.uw_status === "approved") {
+  if (a.uw_status === "approved" || a.clc_status === "approved") {
     return {
       type: "close", label: "Close Deal",
       color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
-      talk: `"You're already approved for ${a.uw_amount ? "$" + parseFloat(a.uw_amount).toLocaleString() : "funding"} through ${a.uw_lender || "our network"}. We can get you funded in as little as 24 hours. Is there anything holding you back?"`,
+      talk: `"You're already approved for ${(a.clc_amount || a.uw_amount) ? "$" + parseFloat((a.clc_amount || a.uw_amount)!).toLocaleString() : "funding"} through ${a.clc_lender || a.uw_lender || "our network"}. We can get you funded in as little as 24 hours. Is there anything holding you back?"`,
     };
   }
   return {
