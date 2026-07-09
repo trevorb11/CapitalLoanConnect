@@ -1960,7 +1960,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const isGFGUpdate = isGFGSubmission(updatedOrExisting) || isGFGSubmission(applicationData);
         if (isGFGUpdate && !applicationData.isCompleted && updatedApp) {
           console.log(`[GFG] Guide Funding Group update detected — firing intake webhook for ${updatedApp.email}`);
-          ghlService.sendIntakeWebhook(updatedApp).catch(err =>
+          ghlService.sendIntakeWebhook(updatedApp, "https://guidefundinggroup.com/").catch(err =>
             console.error("[GFG] Intake webhook error (non-blocking):", err)
           );
 
@@ -2090,7 +2090,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGFG = isGFGSubmission(finalApp) || isGFGSubmission(applicationData);
       if (isGFG && !applicationData.isCompleted) {
         console.log(`[GFG] Guide Funding Group submission detected — firing intake webhook for ${finalApp.email}`);
-        ghlService.sendIntakeWebhook(finalApp).catch(err =>
+        ghlService.sendIntakeWebhook(finalApp, "https://guidefundinggroup.com/").catch(err =>
           console.error("[GFG] Intake webhook error (non-blocking):", err)
         );
 
@@ -17393,12 +17393,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "Sage", "Sage Robinson",
         "Trevor Bosetti",
         "Greg Dergevorkian", // alias — rolls up into Gregory Dergevorkian
+        // First-name-only aliases — all roll up into the canonical full-name entry below
+        "Kenny", "Bryce", "Caden", "Dennys", "Diego", "Dillon",
+        "Dominic", "Gregory", "Jonathan", "Julius", "Ryan",
       ]);
 
       // Reverse alias map: stored-name → canonical rep name (for legacy DB records)
       const CALL_NAME_ALIASES: Record<string, string> = {
         "Carlos Batista": "Jonathan Rendon",
         "Greg Dergevorkian": "Gregory Dergevorkian",
+        // First-name-only variants stored in legacy DB records
+        "Kenny": "Kenny Nwobi",
+        "Bryce": "Bryce Jennings",
+        "Caden": "Caden Lehto",
+        "Dennys": "Dennys Cisne",
+        "Diego": "Diego Orellana",
+        "Dillon": "Dillon LeBlanc",
+        "Dominic": "Dominic Kendl",
+        "Gregory": "Gregory Dergevorkian",
+        "Jonathan": "Jonathan Rendon",
+        "Julius": "Julius Speck",
+        "Ryan": "Ryan Wilcox",
       };
 
       // Build set of known rep names from all sources (excluding blocked reps)
@@ -17461,7 +17476,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const dec of allDecisions) {
           const fundings = Array.isArray(dec.additionalFundings) ? dec.additionalFundings as any[] : [];
           for (const f of fundings) {
-            if (f.assignedRep === repName) {
+            if (f.assignedRep === repName || aliasNames.includes(f.assignedRep || "")) {
               additional_funded_count++;
               additional_funded_amount += f.advanceAmount ? Number(f.advanceAmount) : 0;
             }
