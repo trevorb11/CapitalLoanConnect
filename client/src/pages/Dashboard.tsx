@@ -4173,6 +4173,11 @@ export default function Dashboard() {
                     </div>
                     {/* Tools */}
                     <div className="hidden md:flex items-center gap-1 pl-2 border-l border-gray-200 dark:border-gray-700">
+                      <Link href="/my-leads">
+                        <Button variant="ghost" size="sm" className="text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30">
+                          <Target className="w-4 h-4 mr-1.5" />My Leads
+                        </Button>
+                      </Link>
                       <Link href="/renewal-pipeline">
                         <Button variant="ghost" size="sm" className="text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30">
                           <TrendingUp className="w-4 h-4 mr-1.5" />Renewals
@@ -4207,6 +4212,9 @@ export default function Dashboard() {
                             <Banknote className="w-4 h-4 mr-2 text-purple-600" />Funded
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => window.location.href = '/my-leads'}>
+                            <Target className="w-4 h-4 mr-2 text-violet-600" />My Leads
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => window.location.href = '/renewal-pipeline'}>
                             <TrendingUp className="w-4 h-4 mr-2 text-orange-600" />Renewals
                           </DropdownMenuItem>

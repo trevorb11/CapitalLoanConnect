@@ -10547,6 +10547,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/my-leads — role-scoped lead pipeline (agents see their own, admins see all)
+  app.get("/api/my-leads", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    const role = req.session.user.role;
+    const agentEmail = req.session.user.agentEmail?.toLowerCase();
+    const isAdmin = role === 'admin' || role === 'underwriting';
+
+    try {
+      const result = await db.execute(sql`
+        SELECT l.id, l.email, l.first_name, l.last_name, l.phone, l.business_name,
+               l.industry, l.monthly_revenue, l.time_in_business, l.notes, l.status, l.created_at,
+               (SELECT COUNT(*) FROM lead_positions WHERE lead_email = l.email) as position_count,
+               (SELECT json_agg(json_build_object(
+                 'id', lp.id, 'funderName', lp.funder_name, 'productType', lp.product_type,
+                 'fundedAmount', lp.funded_amount, 'paybackAmount', lp.payback_amount,
+                 'paymentAmount', lp.payment_amount, 'paymentFrequency', lp.payment_frequency,
+                 'fundedDate', lp.funded_date, 'estimatedPayoffDate', lp.estimated_payoff_date,
+                 'remainingBalance', lp.remaining_balance, 'status', lp.status
+               )) FROM lead_positions lp WHERE lp.lead_email = l.email) as positions,
+               mp_agg.tier, mp_agg.funder_count, mp_agg.named_funder_count, mp_agg.daily_load,
+               mp_agg.uw_status, mp_agg.uw_lender, mp_agg.uw_amount, mp_agg.uw_funded_date,
+               mp_agg.uw_approval_count, mp_agg.uw_decline_count, mp_agg.outreach_status,
+               mp_agg.outreach_notes, mp_agg.funder_names,
+               agent_info.agent_name, agent_info.agent_email
+        FROM lead_portal_accounts l
+        LEFT JOIN LATERAL (
+          SELECT
+            MAX(CASE WHEN mp.tier = 'HOT' THEN 'HOT' WHEN mp.tier = 'WARM' THEN 'WARM' WHEN mp.tier = 'SOON' THEN 'SOON' ELSE 'EARLY' END) as tier,
+            COUNT(*)::int as funder_count,
+            COUNT(*) FILTER (WHERE mp.funder_name != 'Unknown Funder')::int as named_funder_count,
+            COALESCE(SUM(CASE WHEN mp.payment_frequency = 'daily' THEN mp.payment_amount::numeric
+              WHEN mp.payment_frequency = 'weekly' THEN mp.payment_amount::numeric / 5
+              ELSE 0 END), 0)::numeric as daily_load,
+            MAX(mp.uw_status) as uw_status, MAX(mp.uw_lender) as uw_lender,
+            MAX(mp.uw_amount)::numeric as uw_amount, MAX(mp.uw_funded_date) as uw_funded_date,
+            MAX(mp.uw_approval_count)::int as uw_approval_count,
+            MAX(mp.uw_decline_count)::int as uw_decline_count,
+            MAX(mp.outreach_status) as outreach_status, MAX(mp.outreach_notes) as outreach_notes,
+            string_agg(DISTINCT mp.funder_name, ', ') FILTER (WHERE mp.funder_name != 'Unknown Funder') as funder_names
+          FROM merchant_positions mp
+          WHERE LOWER(mp.business_email) = LOWER(l.email) AND mp.status = 'active'
+        ) mp_agg ON true
+        LEFT JOIN LATERAL (
+          SELECT agent_name, agent_email
+          FROM loan_applications WHERE LOWER(email) = LOWER(l.email) AND agent_name IS NOT NULL
+          ORDER BY created_at DESC LIMIT 1
+        ) agent_info ON true
+        WHERE (${isAdmin} OR LOWER(agent_info.agent_email) = LOWER(${agentEmail || ''}))
+        ORDER BY l.created_at DESC
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error("[MY-LEADS] fetch error:", err);
+      res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+
   // PATCH /api/admin/lead-portal/leads/:id/outreach — update outreach status
   app.patch("/api/admin/lead-portal/leads/:id/outreach", async (req: Request, res: Response) => {
     if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {

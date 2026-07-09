@@ -92,6 +92,7 @@ const RepStats = lazy(() => import("@/pages/RepStats"));
 const RepScorecard = lazy(() => import("@/pages/RepScorecard"));
 const ProcessingReview = lazy(() => import("@/pages/ProcessingReview"));
 const RenewalPipeline = lazy(() => import("@/pages/RenewalPipeline"));
+const MyLeads = lazy(() => import("@/pages/MyLeads"));
 import { AGENTS, getAgentByInitials } from "@shared/agents";
 
 // Shown briefly while a lazy-loaded page chunk downloads
@@ -235,6 +236,7 @@ function Router() {
       <Route path="/track/signup" component={LeadPortal} />
       <Route path="/track/login" component={LeadPortal} />
       <Route path="/track-admin" component={TrackAdmin} />
+      <Route path="/my-leads" component={MyLeads} />
       <Route path="/portal-messages" component={PortalMessages} />
 
       {/* Partner Portal Routes */}
