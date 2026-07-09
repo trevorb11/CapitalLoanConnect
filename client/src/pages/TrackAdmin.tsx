@@ -118,6 +118,24 @@ function daysSince(date: Date): number {
   return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+// Does this statement-detected funder match one of OUR CLC funding lenders?
+// e.g. clc lender "Fuji Funding" matches statement funder "Fuji"
+function isOurFunder(a: LeadAccount, funderName: string | null): boolean {
+  if (!funderName) return false;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const target = norm(funderName);
+  if (!target) return false;
+  const ourLenders: string[] = [];
+  if (a.clc_lender) ourLenders.push(a.clc_lender);
+  if (a.clc_additional_fundings && Array.isArray(a.clc_additional_fundings)) {
+    for (const f of a.clc_additional_fundings) if (f.lender) ourLenders.push(f.lender);
+  }
+  return ourLenders.some(l => {
+    const ln = norm(l);
+    return ln && (ln.includes(target) || target.includes(ln));
+  });
+}
+
 function computeScore(a: LeadAccount): number {
   let score = 0;
   const tier = a.tier || "EARLY";
@@ -165,6 +183,16 @@ function getPitchType(a: LeadAccount): { type: string; label: string; color: str
   const loadPct = revenue > 0 ? Math.round((monthlyLoad / revenue) * 100) : null;
   const funders = a.funder_names || "their current funder(s)";
 
+  // Recently funded wins over everything — don't pitch consolidation to someone we just funded
+  const latestFunding = getLatestClcFundingDate(a);
+  if (latestFunding && daysSince(latestFunding) < 60) {
+    return {
+      type: "recently_funded",
+      label: "Recently Funded",
+      color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+      talk: `Recently funded ${daysSince(latestFunding)} days ago — check in on how funding is working out, build the relationship for future renewal.`,
+    };
+  }
   if (named >= 2) {
     return {
       type: "consolidation",
@@ -173,17 +201,7 @@ function getPitchType(a: LeadAccount): { type: string; label: string; color: str
       talk: `"I see you're currently working with ${funders}. A lot of our clients in your situation save $${Math.round(load * 0.3)}/day by consolidating into a single position with better terms. Would it make sense to see what that looks like for your business?"`,
     };
   }
-  const latestFunding = getLatestClcFundingDate(a);
   if (latestFunding) {
-    const days = daysSince(latestFunding);
-    if (days < 60) {
-      return {
-        type: "recently_funded",
-        label: "Recently Funded",
-        color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-        talk: `Recently funded ${days} days ago — check in on how funding is working out, build the relationship for future renewal.`,
-      };
-    }
     return {
       type: "renewal",
       label: "Renewal",
@@ -191,12 +209,12 @@ function getPitchType(a: LeadAccount): { type: string; label: string; color: str
       talk: `"Since you've already been funded through us and have been paying down your balance, you likely qualify for a larger advance at a better rate. We've seen businesses like yours get ${loadPct && loadPct > 20 ? "their payments cut significantly" : "25-40% more capital"}. Want me to run the numbers?"`,
     };
   }
-  if (a.uw_status === "approved") {
+  if (a.uw_status === "approved" || a.clc_status === "approved") {
     return {
       type: "close",
       label: "Close Deal",
       color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
-      talk: `"You're already approved for ${a.uw_amount ? "$" + parseFloat(a.uw_amount).toLocaleString() : "funding"} through ${a.uw_lender || "our network"}. If the timing works, we can get you funded in as little as 24 hours. Is there anything holding you back from moving forward?"`,
+      talk: `"You're already approved for ${(a.clc_amount || a.uw_amount) ? "$" + parseFloat((a.clc_amount || a.uw_amount)!).toLocaleString() : "funding"} through ${a.clc_lender || a.uw_lender || "our network"}. If the timing works, we can get you funded in as little as 24 hours. Is there anything holding you back from moving forward?"`,
     };
   }
   return {
@@ -495,10 +513,15 @@ function AccountRow({ account, onOutreachUpdate }: { account: LeadAccount; onOut
                 <Briefcase className="w-3.5 h-3.5 text-primary" /> MCA Positions ({posCount})
               </h4>
               <div className="space-y-1.5">
-                {account.positions.map((pos, i) => (
-                  <div key={i} className="bg-background rounded-md p-2.5 text-sm">
+                {account.positions.map((pos, i) => {
+                  const ours = isOurFunder(account, pos.funderName);
+                  return (
+                  <div key={i} className={`rounded-md p-2.5 text-sm ${ours ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800" : "bg-background"}`}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-xs">{pos.funderName}</span>
+                      <span className="font-medium text-xs">
+                        {pos.funderName}
+                        {ours && <Badge className="ml-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-[10px] px-1 py-0">Our Funding</Badge>}
+                      </span>
                       <div className="flex items-center gap-1.5">
                         {pos.paymentAmount && (
                           <span className="text-xs font-medium">{fmt$(pos.paymentAmount)}{pos.paymentFrequency ? `/${pos.paymentFrequency}` : ""}</span>
@@ -513,7 +536,8 @@ function AccountRow({ account, onOutreachUpdate }: { account: LeadAccount; onOut
                       {pos.fundedDate && <span>Since: {pos.fundedDate}</span>}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
