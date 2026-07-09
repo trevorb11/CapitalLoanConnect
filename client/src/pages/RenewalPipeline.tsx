@@ -81,6 +81,13 @@ interface MerchantPosition {
   uw_additional_approvals?: any[];
   uw_additional_fundings?: any[];
   uw_additional_declines?: any[];
+  uw_business_phone?: string;
+  // Joined from loan_applications
+  app_owner_name?: string;
+  app_phone?: string;
+  app_industry?: string;
+  app_monthly_revenue?: string;
+  app_time_in_business?: string;
 }
 
 interface MerchantGroup {
@@ -97,6 +104,20 @@ interface MerchantGroup {
   uwFundingCount: number;
   bestPosition: string;
   outreachNotes?: string;
+  // Action card fields
+  ownerName?: string;
+  phone?: string;
+  industry?: string;
+  monthlyRevenue?: string;
+  timeInBusiness?: string;
+  totalDailyLoad: number;
+  totalWeeklyLoad: number;
+  namedFunderCount: number;
+  uwApprovals: Array<{ lender: string; amount?: string; date?: string }>;
+  uwDeclines: Array<{ lender: string; reason?: string }>;
+  uwFundings: Array<{ lender: string; amount?: string; date?: string }>;
+  talkTrack: string;
+  pitchType: "consolidation" | "renewal" | "new_funding" | "stacking_relief";
 }
 
 const TIER_CONFIG: Record<string, { label: string; desc: string; icon: React.ElementType; color: string; bg: string; border: string; barColor: string }> = {
@@ -196,21 +217,106 @@ export default function RenewalPipeline() {
 
     for (const [email, positions] of Object.entries(grouped)) {
       const first = positions[0];
-      const uwApprovals = first.uw_additional_approvals;
-      const uwFundings = first.uw_additional_fundings;
-      const uwDeclines = first.uw_additional_declines;
+      const rawApprovals = first.uw_additional_approvals;
+      const rawFundings = first.uw_additional_fundings;
+      const rawDeclines = first.uw_additional_declines;
 
-      const approvalCount = (first.uw_decision_status === "approved" || first.uw_decision_status === "funded" ? 1 : 0)
-        + (Array.isArray(uwApprovals) ? uwApprovals.length : 0);
-      const declineCount = (first.uw_decision_status === "declined" ? 1 : 0)
-        + (Array.isArray(uwDeclines) ? uwDeclines.length : 0);
-      const fundingCount = (first.uw_decision_funded_date ? 1 : 0)
-        + (Array.isArray(uwFundings) ? uwFundings.length : 0);
+      // Build structured UW lists
+      const approvalsList: Array<{ lender: string; amount?: string; date?: string }> = [];
+      const declinesList: Array<{ lender: string; reason?: string }> = [];
+      const fundingsList: Array<{ lender: string; amount?: string; date?: string }> = [];
+
+      if (first.uw_decision_status === "approved" || first.uw_decision_status === "funded") {
+        approvalsList.push({
+          lender: first.uw_decision_lender || "Unknown",
+          amount: first.uw_decision_amount || undefined,
+          date: first.uw_decision_approval_date || undefined,
+        });
+      }
+      if (first.uw_decision_status === "declined") {
+        declinesList.push({
+          lender: first.uw_decision_lender || "Unknown",
+          reason: first.uw_decision_decline_reason || undefined,
+        });
+      }
+      if (first.uw_decision_funded_date) {
+        fundingsList.push({
+          lender: first.uw_decision_lender || "Unknown",
+          amount: first.uw_decision_amount || undefined,
+          date: first.uw_decision_funded_date,
+        });
+      }
+      if (Array.isArray(rawApprovals)) {
+        rawApprovals.forEach((a: any) => approvalsList.push({
+          lender: a.lender || a.funder || "Unknown",
+          amount: a.amount || a.advance_amount || undefined,
+          date: a.date || a.approval_date || undefined,
+        }));
+      }
+      if (Array.isArray(rawDeclines)) {
+        rawDeclines.forEach((d: any) => declinesList.push({
+          lender: d.lender || d.funder || "Unknown",
+          reason: d.reason || d.decline_reason || undefined,
+        }));
+      }
+      if (Array.isArray(rawFundings)) {
+        rawFundings.forEach((f: any) => fundingsList.push({
+          lender: f.lender || f.funder || "Unknown",
+          amount: f.amount || f.funded_amount || undefined,
+          date: f.date || f.funded_date || undefined,
+        }));
+      }
 
       const bestPos = positions.reduce((best, p) => {
         const pct = p.percent_complete ?? 0;
         return pct > (best.percent_complete ?? 0) ? p : best;
       }, positions[0]);
+
+      // Compute daily/weekly payment loads
+      let totalDailyLoad = 0;
+      let totalWeeklyLoad = 0;
+      const namedFunders = positions.filter(p => p.funder_name !== "Unknown Funder");
+      for (const p of positions) {
+        const amt = Number(p.payment_amount) || 0;
+        if (p.payment_frequency === "daily") {
+          totalDailyLoad += amt;
+          totalWeeklyLoad += amt * 5;
+        } else if (p.payment_frequency === "weekly") {
+          totalWeeklyLoad += amt;
+          totalDailyLoad += amt / 5;
+        }
+      }
+
+      // Generate talk track
+      const pitchType = namedFunders.length >= 2 ? "consolidation"
+        : fundingsList.length > 0 ? "renewal"
+        : approvalsList.length > 0 ? "new_funding"
+        : "stacking_relief";
+
+      let talkTrack = "";
+      const bizName = first.business_name || "this business";
+      if (pitchType === "consolidation") {
+        const funderNames = namedFunders.map(p => p.funder_name).join(" and ");
+        talkTrack = `${bizName} has ${namedFunders.length} active positions with ${funderNames}`;
+        if (totalDailyLoad > 0) talkTrack += `, paying roughly $${Math.round(totalDailyLoad).toLocaleString()}/day combined`;
+        talkTrack += `. Consolidation pitch: "We can roll your ${namedFunders.length} payments into one, lower your daily, and potentially put cash back in your pocket."`;
+      } else if (pitchType === "renewal") {
+        const lastFunding = fundingsList[fundingsList.length - 1];
+        talkTrack = `${bizName} was funded $${Number(lastFunding?.amount || 0).toLocaleString()} through ${lastFunding?.lender || "us"}`;
+        if (namedFunders.length > 0) talkTrack += ` and currently has a position with ${namedFunders[0].funder_name}`;
+        talkTrack += `. Renewal pitch: "Now that you've paid down your balance, you qualify for a larger advance at better terms."`;
+      } else if (pitchType === "new_funding") {
+        talkTrack = `${bizName} was previously approved`;
+        if (approvalsList.length > 0) talkTrack += ` by ${approvalsList.map(a => `${a.lender}${a.amount ? ` ($${Number(a.amount).toLocaleString()})` : ""}`).join(", ")}`;
+        talkTrack += `. They have existing MCA activity on their statements. Pitch: "You've already been approved — let's get you funded and working with better terms."`;
+      } else {
+        if (namedFunders.length > 0) {
+          talkTrack = `${bizName} shows MCA activity with ${namedFunders[0].funder_name}`;
+        } else {
+          talkTrack = `${bizName} has recurring debit patterns consistent with MCA payments`;
+        }
+        talkTrack += `. Intro pitch: "We specialize in working with businesses that already have advances — we can find you better rates and terms."`;
+      }
 
       merchantGroups.push({
         email,
@@ -221,11 +327,24 @@ export default function RenewalPipeline() {
         uwLender: first.uw_decision_lender || first.uw_lender || undefined,
         uwAmount: first.uw_decision_amount || (first.uw_amount ? String(first.uw_amount) : undefined),
         uwFundedDate: first.uw_decision_funded_date || first.uw_funded_date || undefined,
-        uwApprovalCount: approvalCount,
-        uwDeclineCount: declineCount,
-        uwFundingCount: fundingCount,
+        uwApprovalCount: approvalsList.length,
+        uwDeclineCount: declinesList.length,
+        uwFundingCount: fundingsList.length,
         bestPosition: `${bestPos.funder_name} — ${bestPos.percent_complete ?? 0}%${bestPos.estimated_payoff_date ? `, payoff ${bestPos.estimated_payoff_date}` : ""}`,
         outreachNotes: first.outreach_notes || undefined,
+        ownerName: first.app_owner_name || undefined,
+        phone: first.app_phone || first.uw_business_phone || undefined,
+        industry: first.app_industry || undefined,
+        monthlyRevenue: first.app_monthly_revenue || undefined,
+        timeInBusiness: first.app_time_in_business || undefined,
+        totalDailyLoad,
+        totalWeeklyLoad,
+        namedFunderCount: namedFunders.length,
+        uwApprovals: approvalsList,
+        uwDeclines: declinesList,
+        uwFundings: fundingsList,
+        talkTrack,
+        pitchType,
       });
     }
   }
@@ -385,9 +504,18 @@ export default function RenewalPipeline() {
                             </Badge>
                           </div>
                           <div className="text-xs text-muted-foreground mt-0.5">{group.email}</div>
-                          <div className="text-sm mt-1">
-                            <span className="text-muted-foreground">Best: </span>
-                            <span className="font-medium">{group.bestPosition}</span>
+                          <div className="flex items-center gap-3 text-sm mt-1 flex-wrap">
+                            {group.namedFunderCount > 0 && (
+                              <span>
+                                <span className="text-muted-foreground">{group.namedFunderCount} funder{group.namedFunderCount > 1 ? "s" : ""}: </span>
+                                <span className="font-medium">{group.positions.filter(p => p.funder_name !== "Unknown Funder").map(p => p.funder_name).join(", ")}</span>
+                              </span>
+                            )}
+                            {group.totalDailyLoad > 0 && (
+                              <span className="text-red-600 dark:text-red-400 font-semibold">
+                                ~${Math.round(group.totalDailyLoad).toLocaleString()}/day
+                              </span>
+                            )}
                           </div>
                           <div className="mt-1.5">
                             <UwBadges group={group} />
@@ -402,26 +530,177 @@ export default function RenewalPipeline() {
                         </div>
                       </div>
 
-                      {/* Expanded Detail */}
+                      {/* Action Card */}
                       {isExpanded && (
-                        <div className="border-t px-4 pb-4 pt-3 space-y-3">
-                          {/* UW Decision Summary */}
-                          {group.uwStatus && (
-                            <div className="rounded-md bg-muted/50 p-3 text-sm">
-                              <div className="font-semibold mb-1 flex items-center gap-2">
-                                <Building2 className="w-4 h-4" /> Underwriting History
+                        <div className="border-t px-4 pb-4 pt-3 space-y-4">
+                          {/* Talk Track */}
+                          <div className={`rounded-lg p-3 text-sm border-l-4 ${
+                            group.pitchType === "consolidation" ? "bg-orange-50 dark:bg-orange-950/20 border-orange-400" :
+                            group.pitchType === "renewal" ? "bg-purple-50 dark:bg-purple-950/20 border-purple-400" :
+                            group.pitchType === "new_funding" ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-400" :
+                            "bg-blue-50 dark:bg-blue-950/20 border-blue-400"
+                          }`}>
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <MessageSquare className="w-4 h-4 shrink-0" />
+                              <span className="font-semibold text-xs uppercase tracking-wide">
+                                {group.pitchType === "consolidation" ? "Consolidation Pitch" :
+                                 group.pitchType === "renewal" ? "Renewal Pitch" :
+                                 group.pitchType === "new_funding" ? "Funding Pitch" : "Intro Pitch"}
+                              </span>
+                            </div>
+                            <p className="text-sm leading-relaxed">{group.talkTrack}</p>
+                          </div>
+
+                          {/* Quick Stats Row */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="rounded-lg bg-muted/50 p-2.5 text-center">
+                              <div className="text-lg font-bold">{group.namedFunderCount}</div>
+                              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Active Funders</div>
+                            </div>
+                            <div className="rounded-lg bg-muted/50 p-2.5 text-center">
+                              <div className="text-lg font-bold">
+                                {group.totalDailyLoad > 0 ? `$${Math.round(group.totalDailyLoad).toLocaleString()}` : "—"}
                               </div>
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                                <div><span className="text-muted-foreground">Status: </span><span className="font-medium capitalize">{group.uwStatus}</span></div>
-                                {group.uwLender && <div><span className="text-muted-foreground">Lender: </span><span className="font-medium">{group.uwLender}</span></div>}
-                                {group.uwAmount && <div><span className="text-muted-foreground">Amount: </span><span className="font-medium">${Number(group.uwAmount).toLocaleString()}</span></div>}
-                                {group.uwFundedDate && <div><span className="text-muted-foreground">Funded: </span><span className="font-medium">{new Date(group.uwFundedDate).toLocaleDateString()}</span></div>}
+                              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Est. Daily Load</div>
+                            </div>
+                            <div className="rounded-lg bg-muted/50 p-2.5 text-center">
+                              <div className="text-lg font-bold">
+                                {group.monthlyRevenue ? `$${Number(group.monthlyRevenue).toLocaleString()}` : "—"}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Monthly Revenue</div>
+                            </div>
+                            <div className="rounded-lg bg-muted/50 p-2.5 text-center">
+                              <div className="text-lg font-bold">
+                                {group.totalDailyLoad > 0 && group.monthlyRevenue
+                                  ? `${Math.round((group.totalDailyLoad * 22 / Number(group.monthlyRevenue)) * 100)}%`
+                                  : "—"}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">MCA Load Ratio</div>
+                            </div>
+                          </div>
+
+                          {/* Contact & Business Info */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="rounded-lg border bg-muted/30 p-3">
+                              <div className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-2">Contact</div>
+                              <div className="space-y-1.5 text-sm">
+                                {group.ownerName && (
+                                  <div className="flex items-center gap-2">
+                                    <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                    <span className="font-medium">{group.ownerName}</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                  <a href={`mailto:${group.email}`} className="text-blue-600 dark:text-blue-400 hover:underline">{group.email}</a>
+                                </div>
+                                {group.phone && (
+                                  <div className="flex items-center gap-2">
+                                    <Phone className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                    <a href={`tel:${group.phone}`} className="text-blue-600 dark:text-blue-400 hover:underline">{group.phone}</a>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border bg-muted/30 p-3">
+                              <div className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-2">Business</div>
+                              <div className="space-y-1.5 text-sm">
+                                {group.industry && <div><span className="text-muted-foreground">Industry: </span><span className="font-medium">{group.industry}</span></div>}
+                                {group.timeInBusiness && <div><span className="text-muted-foreground">Time in Business: </span><span className="font-medium">{group.timeInBusiness}</span></div>}
+                                {group.monthlyRevenue && <div><span className="text-muted-foreground">Monthly Revenue: </span><span className="font-medium">${Number(group.monthlyRevenue).toLocaleString()}</span></div>}
+                                {group.totalWeeklyLoad > 0 && <div><span className="text-muted-foreground">Weekly MCA Payments: </span><span className="font-medium text-red-600 dark:text-red-400">${Math.round(group.totalWeeklyLoad).toLocaleString()}</span></div>}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* UW History — Approvals & Fundings */}
+                          {(group.uwApprovals.length > 0 || group.uwFundings.length > 0) && (
+                            <div className="rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/10 p-3">
+                              <div className="font-semibold text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-2 flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5" />Approval & Funding History
+                              </div>
+                              <div className="space-y-1">
+                                {group.uwFundings.map((f, i) => (
+                                  <div key={`f-${i}`} className="flex items-center gap-2 text-sm">
+                                    <Banknote className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                                    <span className="font-medium">{f.lender}</span>
+                                    {f.amount && <span className="text-emerald-700 dark:text-emerald-400 font-semibold">${Number(f.amount).toLocaleString()}</span>}
+                                    {f.date && <span className="text-muted-foreground text-xs">({new Date(f.date).toLocaleDateString()})</span>}
+                                    <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-[10px]">Funded</Badge>
+                                  </div>
+                                ))}
+                                {group.uwApprovals.filter(a => !group.uwFundings.some(f => f.lender === a.lender && f.amount === a.amount)).map((a, i) => (
+                                  <div key={`a-${i}`} className="flex items-center gap-2 text-sm">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                    <span className="font-medium">{a.lender}</span>
+                                    {a.amount && <span className="text-emerald-700 dark:text-emerald-400 font-semibold">${Number(a.amount).toLocaleString()}</span>}
+                                    {a.date && <span className="text-muted-foreground text-xs">({new Date(a.date).toLocaleDateString()})</span>}
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}
 
-                          {/* Outreach Controls */}
-                          <div className="flex items-center gap-3 flex-wrap">
+                          {/* UW History — Declines */}
+                          {group.uwDeclines.length > 0 && (
+                            <div className="rounded-lg border bg-red-50/50 dark:bg-red-950/10 p-3">
+                              <div className="font-semibold text-xs uppercase tracking-wide text-red-700 dark:text-red-400 mb-2 flex items-center gap-1.5">
+                                <XCircle className="w-3.5 h-3.5" />Decline History ({group.uwDeclines.length})
+                              </div>
+                              <div className="space-y-1">
+                                {group.uwDeclines.map((d, i) => (
+                                  <div key={`d-${i}`} className="flex items-center gap-2 text-sm">
+                                    <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                                    <span className="font-medium">{d.lender}</span>
+                                    {d.reason && <span className="text-muted-foreground text-xs">— {d.reason}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Active Positions */}
+                          <div>
+                            <div className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                              Active Positions ({group.positions.length})
+                            </div>
+                            <div className="space-y-2">
+                              {group.positions.map((pos) => {
+                                const pct = pos.percent_complete ?? 0;
+                                const barTier = pct >= 75 ? "HOT" : pct >= 50 ? "WARM" : pct >= 30 ? "SOON" : "EARLY";
+
+                                return (
+                                  <div key={pos.id} className="rounded-lg border bg-muted/30 p-3">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-bold text-sm">{pos.funder_name}</span>
+                                        <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                                          {pos.product_type || "MCA"}
+                                        </Badge>
+                                      </div>
+                                      <span className="text-sm font-semibold">
+                                        {pos.payment_amount_display || (pos.payment_amount ? `$${Number(pos.payment_amount).toLocaleString()}` : "—")}
+                                        {pos.payment_frequency && <span className="text-muted-foreground font-normal text-xs">/{pos.payment_frequency === "daily" ? "day" : "wk"}</span>}
+                                      </span>
+                                    </div>
+                                    <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full transition-all duration-500 ${TIER_CONFIG[barTier].barColor}`}
+                                        style={{ width: `${Math.min(pct, 100)}%` }}
+                                      />
+                                    </div>
+                                    <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
+                                      <span>{pct}% complete</span>
+                                      <span>{pos.estimated_payoff_date || ""}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Controls */}
+                          <div className="flex items-center gap-3 flex-wrap pt-2 border-t">
                             <Select
                               value={group.positions[0]?.outreach_status || "not_contacted"}
                               onValueChange={(val) => {
@@ -443,73 +722,9 @@ export default function RenewalPipeline() {
                               variant="outline" size="sm"
                               onClick={() => navigate(`/merchant-profile/${encodeURIComponent(group.email)}`)}
                             >
-                              <ExternalLink className="w-3 h-3 mr-1" />Profile
+                              <ExternalLink className="w-3 h-3 mr-1" />Full Profile
                             </Button>
                           </div>
-
-                          {/* Positions */}
-                          {group.positions.map((pos) => {
-                            const pct = pos.percent_complete ?? 0;
-                            const barTier = pct >= 75 ? "HOT" : pct >= 50 ? "WARM" : pct >= 30 ? "SOON" : "EARLY";
-
-                            return (
-                              <div key={pos.id} className="rounded-lg border bg-muted/30 p-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                                    {pos.product_type || "Unknown"}
-                                  </Badge>
-                                  <span className="font-bold text-sm">{pos.funder_name}</span>
-                                  {pos.status === "paid_off" && (
-                                    <Badge className="bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Paid Off</Badge>
-                                  )}
-                                </div>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-xs mb-2">
-                                  <div>
-                                    <span className="text-muted-foreground">Payment: </span>
-                                    <span className="font-medium">{pos.payment_amount_display || (pos.payment_amount ? `$${Number(pos.payment_amount).toLocaleString()}` : "Unknown")}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Frequency: </span>
-                                    <span className="font-medium capitalize">{pos.payment_frequency || "Unknown"}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Est. Payoff: </span>
-                                    <span className="font-medium">{pos.estimated_payoff_date || "Unknown"}</span>
-                                  </div>
-                                  {pos.funding_deposit_date && (
-                                    <div>
-                                      <span className="text-muted-foreground">Funding Deposit: </span>
-                                      <span className="font-medium text-red-600 dark:text-red-400">
-                                        ${Number(pos.funding_deposit_amount || 0).toLocaleString()} on {pos.funding_deposit_date}
-                                      </span>
-                                    </div>
-                                  )}
-                                  <div>
-                                    <span className="text-muted-foreground">First / Last Seen: </span>
-                                    <span className="font-medium">{pos.first_payment_seen || "?"} — {pos.last_payment_seen || "?"}</span>
-                                  </div>
-                                </div>
-                                {/* Progress Bar */}
-                                <div className="mt-2">
-                                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full transition-all duration-500 ${TIER_CONFIG[barTier].barColor}`}
-                                      style={{ width: `${Math.min(pct, 100)}%` }}
-                                    />
-                                  </div>
-                                  <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
-                                    <span>{pct}% complete</span>
-                                    <span className="font-medium text-foreground">{pos.estimated_payoff_date || ""}</span>
-                                  </div>
-                                </div>
-                                {pos.anomalies && (
-                                  <p className="text-[11px] text-muted-foreground italic mt-1.5 pt-1.5 border-t border-dashed">
-                                    {pos.anomalies}
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })}
                         </div>
                       )}
                     </Card>

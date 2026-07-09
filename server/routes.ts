@@ -7310,7 +7310,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/merchant-positions/summary — grouped by merchant with UW data
+  // GET /api/merchant-positions/summary — grouped by merchant with UW data + application info
   app.get("/api/merchant-positions/summary", async (req, res) => {
     try {
       const posResult = await db.execute(sql`
@@ -7318,9 +7318,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
                bud.advance_amount as uw_decision_amount, bud.funded_date as uw_decision_funded_date,
                bud.approval_date as uw_decision_approval_date, bud.decline_reason as uw_decision_decline_reason,
                bud.additional_approvals as uw_additional_approvals, bud.additional_fundings as uw_additional_fundings,
-               bud.additional_declines as uw_additional_declines
+               bud.additional_declines as uw_additional_declines,
+               bud.business_phone as uw_business_phone,
+               la.full_name as app_owner_name, la.phone as app_phone,
+               la.industry as app_industry, la.monthly_revenue as app_monthly_revenue,
+               la.time_in_business as app_time_in_business
         FROM merchant_positions mp
         LEFT JOIN business_underwriting_decisions bud ON LOWER(mp.business_email) = LOWER(bud.business_email)
+        LEFT JOIN LATERAL (
+          SELECT full_name, phone, industry, monthly_revenue, time_in_business
+          FROM loan_applications WHERE LOWER(email) = LOWER(mp.business_email)
+          ORDER BY created_at DESC LIMIT 1
+        ) la ON true
         WHERE mp.status = 'active'
         ORDER BY CASE mp.tier WHEN 'HOT' THEN 1 WHEN 'WARM' THEN 2 WHEN 'SOON' THEN 3 WHEN 'EARLY' THEN 4 ELSE 5 END,
                  mp.percent_complete DESC NULLS LAST
@@ -10487,7 +10496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/admin/lead-portal/leads — admin view of all lead portal signups
+  // GET /api/admin/lead-portal/leads — admin view with sales intelligence
   app.get("/api/admin/lead-portal/leads", async (req: Request, res: Response) => {
     if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
       return res.status(401).json({ error: "Admin access required" });
@@ -10495,16 +10504,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const result = await db.execute(sql`SELECT l.*,
         (SELECT COUNT(*) FROM lead_positions WHERE lead_email = l.email) as position_count,
-        (SELECT json_agg(json_build_object('funderName', funder_name, 'productType', product_type, 'fundedAmount', funded_amount, 'status', status))
-         FROM lead_positions WHERE lead_email = l.email) as positions,
+        (SELECT json_agg(json_build_object(
+          'id', lp.id, 'funderName', lp.funder_name, 'productType', lp.product_type,
+          'fundedAmount', lp.funded_amount, 'paybackAmount', lp.payback_amount,
+          'paymentAmount', lp.payment_amount, 'paymentFrequency', lp.payment_frequency,
+          'fundedDate', lp.funded_date, 'estimatedPayoffDate', lp.estimated_payoff_date,
+          'remainingBalance', lp.remaining_balance, 'status', lp.status, 'notes', lp.notes
+        )) FROM lead_positions lp WHERE lp.lead_email = l.email) as positions,
         (SELECT COUNT(*) FROM bank_statement_uploads WHERE email = l.email) as statement_count,
         (SELECT json_agg(json_build_object('id', id, 'fileName', original_file_name, 'uploadedAt', created_at, 'source', source) ORDER BY created_at DESC)
-         FROM bank_statement_uploads WHERE email = l.email) as statements
-        FROM lead_portal_accounts l ORDER BY l.created_at DESC`);
+         FROM bank_statement_uploads WHERE email = l.email) as statements,
+        mp_agg.tier, mp_agg.funder_count, mp_agg.named_funder_count, mp_agg.daily_load,
+        mp_agg.uw_status, mp_agg.uw_lender, mp_agg.uw_amount, mp_agg.uw_funded_date,
+        mp_agg.uw_approval_count, mp_agg.uw_decline_count, mp_agg.outreach_status,
+        mp_agg.outreach_notes, mp_agg.funder_names
+        FROM lead_portal_accounts l
+        LEFT JOIN LATERAL (
+          SELECT
+            MAX(CASE WHEN mp.tier = 'HOT' THEN 'HOT' WHEN mp.tier = 'WARM' THEN 'WARM' WHEN mp.tier = 'SOON' THEN 'SOON' ELSE 'EARLY' END) as tier,
+            COUNT(*)::int as funder_count,
+            COUNT(*) FILTER (WHERE mp.funder_name != 'Unknown Funder')::int as named_funder_count,
+            COALESCE(SUM(CASE WHEN mp.payment_frequency = 'daily' THEN mp.payment_amount::numeric
+              WHEN mp.payment_frequency = 'weekly' THEN mp.payment_amount::numeric / 5
+              ELSE 0 END), 0)::numeric as daily_load,
+            MAX(mp.uw_status) as uw_status,
+            MAX(mp.uw_lender) as uw_lender,
+            MAX(mp.uw_amount)::numeric as uw_amount,
+            MAX(mp.uw_funded_date) as uw_funded_date,
+            MAX(mp.uw_approval_count)::int as uw_approval_count,
+            MAX(mp.uw_decline_count)::int as uw_decline_count,
+            MAX(mp.outreach_status) as outreach_status,
+            MAX(mp.outreach_notes) as outreach_notes,
+            string_agg(DISTINCT mp.funder_name, ', ') FILTER (WHERE mp.funder_name != 'Unknown Funder') as funder_names
+          FROM merchant_positions mp
+          WHERE LOWER(mp.business_email) = LOWER(l.email) AND mp.status = 'active'
+        ) mp_agg ON true
+        ORDER BY l.created_at DESC`);
       res.json(result.rows);
     } catch (err: any) {
       console.error("[LEAD] admin leads fetch error:", err);
       res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+
+  // PATCH /api/admin/lead-portal/leads/:id/outreach — update outreach status
+  app.patch("/api/admin/lead-portal/leads/:id/outreach", async (req: Request, res: Response) => {
+    if (!req.session.user?.isAuthenticated || req.session.user.role === 'merchant' || req.session.user.role === 'lead') {
+      return res.status(401).json({ error: "Admin access required" });
+    }
+    const { status, notes } = req.body;
+    const validStatuses = ['not_contacted', 'contacted', 'in_progress', 'converted', 'passed'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid outreach status" });
+    }
+    try {
+      const account = await db.execute(sql`SELECT email FROM lead_portal_accounts WHERE id = ${parseInt(req.params.id)}`);
+      if (!account.rows.length) return res.status(404).json({ error: "Account not found" });
+      const email = (account.rows[0] as any).email;
+
+      if (status) {
+        await db.execute(sql`UPDATE merchant_positions SET outreach_status = ${status}, updated_at = NOW()
+          WHERE LOWER(business_email) = LOWER(${email})`);
+      }
+      if (notes !== undefined) {
+        await db.execute(sql`UPDATE merchant_positions SET outreach_notes = ${notes}, updated_at = NOW()
+          WHERE LOWER(business_email) = LOWER(${email})`);
+        await db.execute(sql`UPDATE lead_portal_accounts SET notes = ${notes} WHERE id = ${parseInt(req.params.id)}`);
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[LEAD] outreach update error:", err);
+      res.status(500).json({ error: "Failed to update outreach" });
     }
   });
 
