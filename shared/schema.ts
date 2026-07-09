@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, decimal, integer, serial, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, decimal, integer, serial, timestamp, boolean, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -165,7 +165,11 @@ export const loanApplications = pgTable("loan_applications", {
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_la_email").on(sql`LOWER(${table.email})`),
+  index("idx_la_created_at").on(table.createdAt),
+  index("idx_la_gigfi_status").on(table.gigfiStatus).where(sql`gigfi_status IS NOT NULL`),
+]);
 
 export const insertLoanApplicationSchema = createInsertSchema(loanApplications).omit({
   id: true,
@@ -191,7 +195,9 @@ export const applicationSubmissions = pgTable("application_submissions", {
   submissionType: text("submission_type").notNull(), // 'intake' | 'full_application'
   requestedAmount: decimal("requested_amount", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_app_subs_email").on(sql`LOWER(${table.email})`),
+]);
 
 export type ApplicationSubmission = typeof applicationSubmissions.$inferSelect;
 
@@ -366,7 +372,10 @@ export const bankStatementUploads = pgTable("bank_statement_uploads", {
   lenderName: text("lender_name"), // Denormalized lender name for quick access
   
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_bsu_email").on(sql`LOWER(${table.email})`),
+  index("idx_bsu_created_at").on(table.createdAt),
+]);
 
 export const insertBankStatementUploadSchema = createInsertSchema(bankStatementUploads).omit({
   id: true,
@@ -460,7 +469,9 @@ export const lenderApprovals = pgTable("lender_approvals", {
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_lender_approvals_email").on(sql`LOWER(${table.businessEmail})`),
+]);
 
 export const insertLenderApprovalSchema = createInsertSchema(lenderApprovals).omit({
   id: true,
@@ -546,7 +557,11 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   reviewedBy: text("reviewed_by"), // Email of underwriter who made the decision
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_bud_business_email").on(sql`LOWER(${table.businessEmail})`),
+  index("idx_bud_status").on(table.status),
+  index("idx_bud_created_at").on(table.createdAt),
+]);
 
 export const insertBusinessUnderwritingDecisionSchema = createInsertSchema(businessUnderwritingDecisions).omit({
   id: true,
@@ -594,7 +609,10 @@ export const visitLogs = pgTable("visit_logs", {
   userAgent: text("user_agent"),
   ipAddress: text("ip_address"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_visit_logs_email").on(sql`LOWER(${table.email})`),
+  index("idx_visit_logs_created_at").on(table.createdAt),
+]);
 
 export const insertVisitLogSchema = createInsertSchema(visitLogs).omit({
   id: true,
@@ -992,7 +1010,11 @@ export const merchantPositions = pgTable("merchant_positions", {
   uwFundedDate: text("uw_funded_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_mp_business_email").on(sql`LOWER(${table.businessEmail})`),
+  index("idx_mp_tier").on(table.tier),
+  index("idx_mp_status").on(table.status),
+]);
 
 export const insertMerchantPositionSchema = createInsertSchema(merchantPositions).omit({
   id: true,
