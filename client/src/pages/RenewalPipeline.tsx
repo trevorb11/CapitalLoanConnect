@@ -88,7 +88,78 @@ interface MerchantPosition {
   app_industry?: string;
   app_monthly_revenue?: string;
   app_time_in_business?: string;
+  created_at?: string;
+  updated_at?: string;
 }
+
+// ── Live progress projection ──────────────────────────────────────
+// percent_complete is a snapshot from when the bank statements were
+// analyzed. These helpers roll it forward to today so progress bars
+// tick up over time and merchants get promoted between tiers.
+
+// Parses "May 2026", "Sep 2025", "2026-05-14", "05/14/2026"
+function parseLooseDate(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const monthYear = s.match(/([A-Za-z]{3,})\s+(\d{4})/);
+  if (monthYear) {
+    const d = new Date(`${monthYear[1]} 15, ${monthYear[2]}`);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Days a full payoff typically takes, by payment frequency
+function typicalTermDays(frequency: string | null): number {
+  const f = (frequency || "").toLowerCase();
+  if (f === "monthly") return 365;
+  return 280; // daily (~200 biz days) and weekly (~40 wks) both ≈ 280 calendar days
+}
+
+// Roll the analysis-time percent forward to today. Returns the stored
+// value untouched when there's nothing to project from.
+function projectedPercent(pos: MerchantPosition): { pct: number | null; isProjected: boolean } {
+  const base = pos.percent_complete;
+  if (base === null || base === undefined) return { pct: null, isProjected: false };
+  if (base >= 100) return { pct: 100, isProjected: false };
+
+  // Anchor: when was `base` true? Statement coverage ends at last_payment_seen;
+  // fall back to when the position record was created (extraction time).
+  const anchor = parseLooseDate(pos.last_payment_seen) ||
+    (pos.created_at ? new Date(pos.created_at) : null);
+  if (!anchor || isNaN(anchor.getTime())) return { pct: base, isProjected: false };
+
+  const daysSinceAnchor = Math.floor((Date.now() - anchor.getTime()) / 86400000);
+  if (daysSinceAnchor <= 0) return { pct: base, isProjected: false };
+
+  // Progress rate: observed (pct earned between first and last payment seen),
+  // else assume a typical MCA term for the frequency
+  let ratePerDay: number;
+  const firstSeen = parseLooseDate(pos.first_payment_seen);
+  const observedDays = firstSeen ? Math.floor((anchor.getTime() - firstSeen.getTime()) / 86400000) : 0;
+  if (firstSeen && observedDays >= 14 && base > 0) {
+    ratePerDay = base / observedDays;
+  } else {
+    ratePerDay = 100 / typicalTermDays(pos.payment_frequency);
+  }
+
+  // Cap at 99 — we never claim a position is done without seeing it on a statement
+  const projected = Math.min(99, Math.round(base + ratePerDay * daysSinceAnchor));
+  return { pct: projected, isProjected: projected > base };
+}
+
+function tierFromPercent(pct: number): string {
+  if (pct >= 75) return "HOT";
+  if (pct >= 50) return "WARM";
+  if (pct >= 30) return "SOON";
+  return "EARLY";
+}
+
+const TIER_RANK: Record<string, number> = { HOT: 0, WARM: 1, SOON: 2, EARLY: 3 };
 
 interface MerchantGroup {
   email: string;
@@ -103,6 +174,7 @@ interface MerchantGroup {
   uwDeclineCount: number;
   uwFundingCount: number;
   bestPosition: string;
+  bestProjectedPct: number;
   outreachNotes?: string;
   // Action card fields
   ownerName?: string;
@@ -268,9 +340,26 @@ export default function RenewalPipeline() {
       }
 
       const bestPos = positions.reduce((best, p) => {
-        const pct = p.percent_complete ?? 0;
-        return pct > (best.percent_complete ?? 0) ? p : best;
+        const pct = projectedPercent(p).pct ?? 0;
+        return pct > (projectedPercent(best).pct ?? 0) ? p : best;
       }, positions[0]);
+      const bestProjected = projectedPercent(bestPos);
+
+      // Live tier: promote from projected percent as time passes
+      // (SOON -> WARM -> HOT), but never demote below the stored tier —
+      // the extraction assigned it with more context than percent alone,
+      // and paying down only ever moves a position closer to payoff.
+      let liveTier = "EARLY";
+      for (const p of positions) {
+        const stored = p.tier || "EARLY";
+        const proj = projectedPercent(p);
+        let t = stored;
+        if (proj.pct !== null && proj.isProjected) {
+          const projTier = tierFromPercent(proj.pct);
+          if ((TIER_RANK[projTier] ?? 3) < (TIER_RANK[stored] ?? 3)) t = projTier;
+        }
+        if ((TIER_RANK[t] ?? 3) < (TIER_RANK[liveTier] ?? 3)) liveTier = t;
+      }
 
       // Compute daily/weekly payment loads
       let totalDailyLoad = 0;
@@ -321,7 +410,7 @@ export default function RenewalPipeline() {
       merchantGroups.push({
         email,
         businessName: first.business_name || email,
-        tier: first.tier || "EARLY",
+        tier: liveTier,
         positions,
         uwStatus: first.uw_decision_status || first.uw_status || undefined,
         uwLender: first.uw_decision_lender || first.uw_lender || undefined,
@@ -330,7 +419,8 @@ export default function RenewalPipeline() {
         uwApprovalCount: approvalsList.length,
         uwDeclineCount: declinesList.length,
         uwFundingCount: fundingsList.length,
-        bestPosition: `${bestPos.funder_name} — ${bestPos.percent_complete ?? 0}%${bestPos.estimated_payoff_date ? `, payoff ${bestPos.estimated_payoff_date}` : ""}`,
+        bestPosition: `${bestPos.funder_name} — ${bestProjected.pct ?? 0}%${bestProjected.isProjected ? " est." : ""}${bestPos.estimated_payoff_date ? `, payoff ${bestPos.estimated_payoff_date}` : ""}`,
+        bestProjectedPct: bestProjected.pct ?? 0,
         outreachNotes: first.outreach_notes || undefined,
         ownerName: first.app_owner_name || undefined,
         phone: first.app_phone || first.uw_business_phone || undefined,
@@ -469,7 +559,9 @@ export default function RenewalPipeline() {
         {/* Pipeline Tiers */}
         {(["HOT", "WARM", "SOON", "EARLY"] as const).map((tier) => {
           if (activeTier && activeTier !== tier) return null;
-          const tierMerchants = filtered.filter((g) => g.tier === tier);
+          const tierMerchants = filtered
+            .filter((g) => g.tier === tier)
+            .sort((a, b) => b.bestProjectedPct - a.bestProjectedPct);
           if (tierMerchants.length === 0) return null;
           const cfg = TIER_CONFIG[tier];
           const Icon = cfg.icon;
@@ -666,7 +758,8 @@ export default function RenewalPipeline() {
                             </div>
                             <div className="space-y-2">
                               {group.positions.map((pos) => {
-                                const pct = pos.percent_complete ?? 0;
+                                const proj = projectedPercent(pos);
+                                const pct = proj.pct ?? 0;
                                 const barTier = pct >= 75 ? "HOT" : pct >= 50 ? "WARM" : pct >= 30 ? "SOON" : "EARLY";
 
                                 return (
@@ -690,7 +783,12 @@ export default function RenewalPipeline() {
                                       />
                                     </div>
                                     <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
-                                      <span>{pct}% complete</span>
+                                      <span>
+                                        {pct}% complete
+                                        {proj.isProjected && (
+                                          <span className="text-muted-foreground/70"> (est. today — {pos.percent_complete}% at analysis)</span>
+                                        )}
+                                      </span>
                                       <span>{pos.estimated_payoff_date || ""}</span>
                                     </div>
                                   </div>
