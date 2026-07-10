@@ -106,6 +106,20 @@ function PageLoader() {
 
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "";
 
+// When the React SPA handles /agent/application/:id via client-side navigation
+// (e.g. popup blocked, Replit preview), force a full page reload so Express
+// serves ApplicationView.html instead of the SPA showing a 404.
+function AgentViewRedirect() {
+  useEffect(() => {
+    window.location.reload();
+  }, []);
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -245,6 +259,12 @@ function Router() {
       <Route path="/partner/dashboard" component={PartnerDashboard} />
       <Route path="/apply/:slug" component={PartnerApplication} />
       <Route path="/r/:code" component={ReferralLanding} />
+
+      {/* Agent application view — serves ApplicationView.html via Express.
+          This route catches client-side navigation to /agent/application/:id
+          (e.g. blocked popup) and forces a full reload so Express can serve
+          the correct static HTML page instead of the SPA showing 404. */}
+      <Route path="/agent/application/:id" component={AgentViewRedirect} />
 
       {/* Agent-specific application pages - use two-page format */}
       {AGENTS.map((agent) => (

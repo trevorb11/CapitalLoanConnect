@@ -149,6 +149,17 @@
 </head>
 <body>
 
+<div id="errorState" style="display:none; min-height:100vh; display:none; flex-direction:column; align-items:center; justify-content:center; background:#f3f4f6; padding:40px; text-align:center;">
+    <div style="background:white; padding:48px 40px; border-radius:8px; box-shadow:0 4px 6px rgba(0,0,0,0.07); max-width:480px; width:100%;">
+        <div style="width:56px; height:56px; background:#fee2e2; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 20px;">
+            <svg style="width:28px;height:28px;color:#dc2626" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+        </div>
+        <h2 style="font-size:22px; font-weight:700; color:#111827; margin:0 0 10px;">Application Not Found</h2>
+        <p style="color:#6b7280; font-size:15px; margin:0 0 28px;" id="errorMessage">This application could not be loaded. It may have been removed or the link may be invalid.</p>
+        <button onclick="history.back()" style="background:#1B2E4D; color:white; border:none; padding:12px 28px; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer;">Go Back</button>
+    </div>
+</div>
+
 <div class="container" id="appContent">
     <div class="header">
         <div class="header-left">
@@ -336,7 +347,7 @@
     async function loadApplicationData() {
         try {
             const response = await fetch(`/api/applications/${applicationId}/view?t=${Date.now()}`, { cache: 'no-store' });
-            if (!response.ok) throw new Error('Failed to load application');
+            if (!response.ok) throw new Error(`Failed to load application: ${response.status}`);
             
             const data = await response.json();
             
@@ -438,7 +449,18 @@
             }
         } catch (error) {
             console.error('Error loading application:', error);
-            alert('Failed to load application data');
+            // Hide the main content and show a proper error page
+            const appContent = document.getElementById('appContent');
+            const errorState = document.getElementById('errorState');
+            if (appContent) appContent.style.display = 'none';
+            if (errorState) {
+                errorState.style.display = 'flex';
+                // Provide a more specific message when we know the app wasn't found
+                if (error && error.message && error.message.includes('404')) {
+                    const msg = document.getElementById('errorMessage');
+                    if (msg) msg.textContent = 'No application was found for this link. It may have been removed, merged, or the URL may be incorrect.';
+                }
+            }
         }
     }
 
