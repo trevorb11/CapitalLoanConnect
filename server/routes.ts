@@ -1947,8 +1947,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Send webhook only (GHL API sync disabled for now)
-        // Only send intake webhook when explicitly completed
-        if (applicationData.isCompleted && updatedApp) {
+        // Only send intake webhook on the FIRST completion — skip if already completed before this update
+        if (applicationData.isCompleted && updatedApp && !existingApp.isCompleted) {
           ghlService.sendIntakeWebhook(updatedApp).catch(err =>
             console.error("Intake webhook error (non-blocking):", err)
           );
