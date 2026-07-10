@@ -4749,7 +4749,9 @@ export default function Dashboard() {
                                 {r.isFullApplicationCompleted ? "Full App" : r.isCompleted ? "Intake" : "Partial"}
                               </Badge>
                               <a
-                                href={`/dashboard/application/${r.id}`}
+                                href={`/agent/application/${r.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="text-xs text-blue-600 hover:underline"
                                 data-testid={`link-round-view-${r.id}`}
                               >
