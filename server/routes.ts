@@ -1947,11 +1947,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Send webhook only (GHL API sync disabled for now)
-        // Only send intake webhook on the FIRST completion — skip if already completed before this update
-        if (applicationData.isCompleted && updatedApp && !existingApp.isCompleted) {
-          ghlService.sendIntakeWebhook(updatedApp).catch(err =>
-            console.error("Intake webhook error (non-blocking):", err)
-          );
+        // Fire on first completion OR if it's been more than 7 days since the last intake submission
+        // (allows a returning lead to re-enter the GHL workflow after a cooldown period)
+        if (applicationData.isCompleted && updatedApp) {
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          const lastSent = (existingApp as any).lastSubmissionAt
+            ? new Date((existingApp as any).lastSubmissionAt)
+            : null;
+          const isFirstCompletion = !existingApp.isCompleted;
+          const isCooledDown = !lastSent || lastSent < sevenDaysAgo;
+          if (isFirstCompletion || isCooledDown) {
+            ghlService.sendIntakeWebhook(updatedApp).catch(err =>
+              console.error("Intake webhook error (non-blocking):", err)
+            );
+          }
         }
 
         // Guide Funding Group: fire webhooks on update if GFG submission
