@@ -113,8 +113,8 @@ export default function QuizIntake({ agent }: { agent?: Agent } = {}) {
   const [showPrequalScreen, setShowPrequalScreen] = useState(false);
   const [prequalResult, setPrequalResult] = useState<{ applicationId: string; businessName: string; monthlyRevenue: number } | null>(null);
   const [applicationId, setApplicationId] = useState<string>("");
-  const [ghlFormLoaded, setGhlFormLoaded] = useState(false);
-  const [ghlFormSubmitted, setGhlFormSubmitted] = useState(false);
+  const [nativeFormSubmitted, setNativeFormSubmitted] = useState(false);
+  const [contactForm, setContactForm] = useState({ fullName: "", businessName: "", email: "", phone: "", consentTransactional: false });
 
   // Revenue threshold for the main application flow
   const LOW_REVENUE_THRESHOLD = 10000;
@@ -148,21 +148,6 @@ export default function QuizIntake({ agent }: { agent?: Agent } = {}) {
     initUTMTracking();
   }, []);
 
-  // Load GHL form embed script when reaching step 8
-  useEffect(() => {
-    if (currentQuestion === 8 && !ghlFormLoaded) {
-      const existingScript = document.querySelector('script[src="https://link.msgsndr.com/js/form_embed.js"]');
-      if (!existingScript) {
-        const script = document.createElement('script');
-        script.src = 'https://link.msgsndr.com/js/form_embed.js';
-        script.async = true;
-        script.onload = () => setGhlFormLoaded(true);
-        document.body.appendChild(script);
-      } else {
-        setGhlFormLoaded(true);
-      }
-    }
-  }, [currentQuestion, ghlFormLoaded]);
 
   const submitMutation = useMutation({
     mutationFn: async (data: QuizData & { recaptchaToken?: string }) => {
@@ -233,98 +218,32 @@ export default function QuizIntake({ agent }: { agent?: Agent } = {}) {
     },
   });
 
-  // Listen for GHL form postMessage events to capture submission data
-  useEffect(() => {
-    const GHL_ORIGINS = ['https://api.leadconnectorhq.com', 'https://link.msgsndr.com', 'https://backend.leadconnectorhq.com'];
+  const handleNativeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (nativeFormSubmitted || submitMutation.isPending) return;
 
-    const extractGhlFormData = (eventData: any): Record<string, any> | null => {
-      if (Array.isArray(eventData) && eventData.length >= 3 && typeof eventData[2] === 'string') {
-        const jsonStr = eventData[2];
-        if (jsonStr.includes('customer_id') || jsonStr.includes('full_address') || jsonStr.includes('email')) {
-          const parsed = JSON.parse(jsonStr);
-          console.log('[GHL Form] Extracted from array format, keys:', Object.keys(parsed));
-          return parsed;
-        }
-      }
-      if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
-        if (eventData.type === 'form-submit' || eventData.type === 'form-submit-success' || eventData.formId) {
-          const data = eventData.data || eventData;
-          console.log('[GHL Form] Extracted from object format, type:', eventData.type, 'keys:', Object.keys(data));
-          return data;
-        }
-      }
-      if (typeof eventData === 'string') {
-        try {
-          const parsed = JSON.parse(eventData);
-          if (parsed && typeof parsed === 'object' && (parsed.email || parsed.full_name || parsed.phone)) {
-            console.log('[GHL Form] Extracted from string format, keys:', Object.keys(parsed));
-            return parsed;
-          }
-        } catch {}
-      }
-      return null;
+    const { fullName, businessName, email, phone, consentTransactional } = contactForm;
+    if (!fullName.trim() || !businessName.trim() || !email.trim() || !phone.trim()) {
+      setFormError("Please fill in all required fields.");
+      return;
+    }
+    if (!consentTransactional) {
+      setFormError("Please agree to the Terms of Service to continue.");
+      return;
+    }
+    setFormError("");
+    setNativeFormSubmitted(true);
+
+    const submissionData: QuizData & { recaptchaToken?: string } = {
+      ...quizData,
+      fullName: fullName.trim(),
+      businessName: businessName.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      consentTransactional: true,
     };
-
-    const handleGhlMessage = (event: MessageEvent) => {
-      if (ghlFormSubmitted) return;
-      if (event.origin && !GHL_ORIGINS.some(o => event.origin.startsWith(o))) return;
-
-      try {
-        const formData = extractGhlFormData(event.data);
-        if (!formData) return;
-
-        console.log('[GHL Form] Captured submission data:', JSON.stringify(formData, null, 2));
-        console.log('[GHL Form] All keys:', Object.keys(formData));
-        setGhlFormSubmitted(true);
-
-        const looksLikeEmail = (s: string) => typeof s === 'string' && s.includes('@');
-        const capturedName = (!looksLikeEmail(formData.full_name) ? formData.full_name : '')
-          || (!looksLikeEmail(formData.name) ? formData.name : '')
-          || (!looksLikeEmail(formData.first_name) ? formData.first_name : '')
-          || '';
-        const capturedEmail = formData.email || '';
-        const capturedPhone = formData.phone || formData.full_phone || '';
-
-        let capturedBusiness = formData.company_name || formData.business_name || formData.companyName || formData.businessName || formData.company || '';
-        if (!capturedBusiness) {
-          const businessKey = Object.keys(formData).find(k => {
-            const lower = k.toLowerCase();
-            return lower.includes('business') || lower.includes('company') || lower.includes('organization');
-          });
-          if (businessKey) {
-            capturedBusiness = formData[businessKey] || '';
-            console.log(`[GHL Form] Found business name via key scan: "${businessKey}" = "${capturedBusiness}"`);
-          }
-        }
-        console.log(`[GHL Form] Captured business: "${capturedBusiness}", name: "${capturedName}", email: "${capturedEmail}"`);
-
-        setQuizData(prev => ({
-          ...prev,
-          fullName: capturedName || prev.fullName,
-          email: capturedEmail || prev.email,
-          phone: capturedPhone || prev.phone,
-          businessName: capturedBusiness || prev.businessName,
-          consentTransactional: true,
-        }));
-
-        const submissionData: QuizData & { recaptchaToken?: string } = {
-          ...quizData,
-          fullName: capturedName || quizData.fullName,
-          email: capturedEmail || quizData.email,
-          phone: capturedPhone || quizData.phone,
-          businessName: capturedBusiness || quizData.businessName,
-          consentTransactional: true,
-        };
-
-        submitMutation.mutate(submissionData);
-      } catch (e) {
-        // Not a GHL message or parse error, ignore
-      }
-    };
-
-    window.addEventListener('message', handleGhlMessage);
-    return () => window.removeEventListener('message', handleGhlMessage);
-  }, [quizData, ghlFormSubmitted, submitMutation]);
+    submitMutation.mutate(submissionData);
+  };
 
   const goToQuestion = (num: number) => {
     if (num === currentQuestion) return;
@@ -940,44 +859,120 @@ export default function QuizIntake({ agent }: { agent?: Agent } = {}) {
               We'll connect you with the best financing options based on your business profile.
             </p>
 
-            <div className="w-full mx-auto relative" style={{ maxWidth: '650px' }}>
-              {/* GHL Embedded Form - kept in DOM to prevent NotFoundError */}
-              <div className="relative" data-testid="ghl-form-container" style={{ display: ghlFormSubmitted ? 'none' : 'block' }}>
-                <div className="rounded-lg overflow-hidden">
-                  <iframe
-                    src="https://api.leadconnectorhq.com/widget/form/9lPCXmZ6jBCV2lHiRvM0"
-                    style={{ width: '100%', height: '700px', border: 'none', background: 'transparent' }}
-                    id="inline-9lPCXmZ6jBCV2lHiRvM0"
-                    data-layout="{'id':'INLINE'}"
-                    data-trigger-type="alwaysShow"
-                    data-trigger-value=""
-                    data-activation-type="alwaysActivated"
-                    data-activation-value=""
-                    data-deactivation-type="neverDeactivate"
-                    data-deactivation-value=""
-                    data-form-name="Initial Contact Form"
-                    data-height="700"
-                    data-layout-iframe-id="inline-9lPCXmZ6jBCV2lHiRvM0"
-                    data-form-id="9lPCXmZ6jBCV2lHiRvM0"
-                    title="Initial Contact Form"
-                    allow="clipboard-write"
-                    data-testid="ghl-form-iframe"
-                  />
-                </div>
-                <p className="text-white/50 text-[10px] leading-relaxed mt-3">
-                  By submitting, I agree to the{" "}
-                  <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
-                    Terms of Service
-                  </a>{" "}
-                  and{" "}
-                  <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
-                    Privacy Policy
-                  </a>.
-                </p>
-              </div>
+            <div className="w-full mx-auto relative" style={{ maxWidth: '500px' }}>
+              {/* Native contact form (temporary while GHL forms are down) */}
+              {!nativeFormSubmitted && (
+                <form
+                  onSubmit={handleNativeSubmit}
+                  className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 p-6 text-left space-y-4"
+                  data-testid="native-contact-form"
+                >
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-white/80 text-sm font-medium mb-1" htmlFor="cf-fullName">Full Name *</label>
+                      <input
+                        id="cf-fullName"
+                        type="text"
+                        autoComplete="name"
+                        placeholder="Jane Smith"
+                        value={contactForm.fullName}
+                        onChange={e => setContactForm(p => ({ ...p, fullName: e.target.value }))}
+                        className="w-full bg-white/10 border border-white/25 rounded-lg px-3 py-2.5 text-white placeholder-white/40 text-sm focus:outline-none focus:border-white/60 focus:ring-1 focus:ring-white/30"
+                        data-testid="input-fullName"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-white/80 text-sm font-medium mb-1" htmlFor="cf-businessName">Business Name *</label>
+                      <input
+                        id="cf-businessName"
+                        type="text"
+                        autoComplete="organization"
+                        placeholder="Acme LLC"
+                        value={contactForm.businessName}
+                        onChange={e => setContactForm(p => ({ ...p, businessName: e.target.value }))}
+                        className="w-full bg-white/10 border border-white/25 rounded-lg px-3 py-2.5 text-white placeholder-white/40 text-sm focus:outline-none focus:border-white/60 focus:ring-1 focus:ring-white/30"
+                        data-testid="input-businessName"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-white/80 text-sm font-medium mb-1" htmlFor="cf-email">Email Address *</label>
+                      <input
+                        id="cf-email"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="jane@business.com"
+                        value={contactForm.email}
+                        onChange={e => setContactForm(p => ({ ...p, email: e.target.value }))}
+                        className="w-full bg-white/10 border border-white/25 rounded-lg px-3 py-2.5 text-white placeholder-white/40 text-sm focus:outline-none focus:border-white/60 focus:ring-1 focus:ring-white/30"
+                        data-testid="input-email"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-white/80 text-sm font-medium mb-1" htmlFor="cf-phone">Phone Number *</label>
+                      <input
+                        id="cf-phone"
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="555-555-5555"
+                        value={contactForm.phone}
+                        onChange={e => setContactForm(p => ({ ...p, phone: formatPhone(e.target.value) }))}
+                        className="w-full bg-white/10 border border-white/25 rounded-lg px-3 py-2.5 text-white placeholder-white/40 text-sm focus:outline-none focus:border-white/60 focus:ring-1 focus:ring-white/30"
+                        data-testid="input-phone"
+                      />
+                    </div>
+                  </div>
 
-              {ghlFormSubmitted && (
-                <div className="py-8" data-testid="ghl-form-submitted">
+                  <label className="flex items-start gap-3 cursor-pointer" data-testid="label-consent">
+                    <input
+                      type="checkbox"
+                      checked={contactForm.consentTransactional}
+                      onChange={e => setContactForm(p => ({ ...p, consentTransactional: e.target.checked }))}
+                      className="mt-0.5 w-4 h-4 rounded border-white/40 bg-white/10 accent-white cursor-pointer flex-shrink-0"
+                      data-testid="checkbox-consent"
+                    />
+                    <span className="text-white/50 text-[11px] leading-relaxed">
+                      By submitting, I agree to the{" "}
+                      <a href="https://www.todaycapitalgroup.com/terms-of-service" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
+                        Terms of Service
+                      </a>{" "}
+                      and{" "}
+                      <a href="https://www.todaycapitalgroup.com/privacy-policy" target="_blank" rel="noopener noreferrer" className="underline text-white/70 hover:text-white">
+                        Privacy Policy
+                      </a>. I consent to receive communications about my application.
+                    </span>
+                  </label>
+
+                  {formError && (
+                    <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-lg" data-testid="form-error">
+                      <p className="text-red-300 font-medium text-sm">{formError}</p>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submitMutation.isPending}
+                    className="w-full bg-white text-[#1B2E4D] font-semibold py-3 rounded-lg text-sm hover:bg-white/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    data-testid="button-submit-contact"
+                  >
+                    {submitMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        Get My Financing Quote
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+
+              {nativeFormSubmitted && (
+                <div className="py-8" data-testid="native-form-submitted">
                   <div className="flex flex-col items-center gap-4">
                     {submitMutation.isPending ? (
                       <>
@@ -987,6 +982,13 @@ export default function QuizIntake({ agent }: { agent?: Agent } = {}) {
                     ) : submitMutation.isError ? (
                       <>
                         <p className="text-red-400 font-medium text-sm">{formError || "There was an error. Please try again."}</p>
+                        <button
+                          onClick={() => { setNativeFormSubmitted(false); setFormError(""); }}
+                          className="text-white/70 underline text-sm"
+                          data-testid="button-retry"
+                        >
+                          Try again
+                        </button>
                       </>
                     ) : (
                       <>
@@ -995,12 +997,6 @@ export default function QuizIntake({ agent }: { agent?: Agent } = {}) {
                       </>
                     )}
                   </div>
-                </div>
-              )}
-
-              {formError && !ghlFormSubmitted && (
-                <div className="p-3 bg-red-500/20 border-2 border-red-500/50 rounded-lg text-center mt-4" data-testid="form-error">
-                  <p className="text-red-400 font-medium text-sm">{formError}</p>
                 </div>
               )}
             </div>
