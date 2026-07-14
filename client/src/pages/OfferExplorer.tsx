@@ -159,7 +159,7 @@ function earlyPayoffRows(
   const tMonths = termMonths(offer.term);
   const parsedStart = parseFloat(offer.earlyPayoffStartFactor || "");
   const startFactor =
-    Number.isFinite(parsedStart) && parsedStart > 1
+    Number.isFinite(parsedStart) && parsedStart > 1 && parsedStart < factor
       ? parsedStart
       : Math.round((1 + (factor - 1) / 2) * 100) / 100;
   const parsedStep = parseFloat(offer.earlyPayoffStep || "");
