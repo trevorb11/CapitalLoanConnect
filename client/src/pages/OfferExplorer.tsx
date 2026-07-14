@@ -810,32 +810,6 @@ export default function OfferExplorer() {
               </div>
             )}
 
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "8px",
-                marginTop: "16px",
-                fontSize: "0.8rem",
-                color: TEXT_GRAY,
-              }}
-            >
-              <Info
-                style={{
-                  width: "14px",
-                  height: "14px",
-                  flexShrink: 0,
-                  marginTop: "2px",
-                  color: LABEL_GRAY,
-                }}
-              />
-              <span>
-                Enter different draw amounts to see how your estimated{" "}
-                {freqLabel(current?.paymentFrequency || null).toLowerCase()}{" "}
-                payment changes. Early payoff discounts may be available — ask
-                your rep.
-              </span>
-            </div>
           </div>
         )}
 
