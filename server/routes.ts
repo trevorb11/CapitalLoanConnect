@@ -7607,6 +7607,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           approvalDate: a.approvalDate || null,
           notes: a.notes || null,
           minimumDraw: a.minimumDraw || null,
+          earlyPayoffEnabled: a.earlyPayoffEnabled || false,
+          earlyPayoffStartFactor: a.earlyPayoffStartFactor || null,
+          earlyPayoffStep: a.earlyPayoffStep || null,
+          earlyPayoffMonths: a.earlyPayoffMonths || null,
         }));
 
       // Legacy top-level approval fields

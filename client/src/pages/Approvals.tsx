@@ -78,6 +78,10 @@ interface FullApprovalEntry {
   sellRate: string;
   maxUpsell: string;
   minimumDraw?: string; // floor for the Offer Explorer slider (TCG offers)
+  earlyPayoffEnabled?: boolean;
+  earlyPayoffStartFactor?: string;
+  earlyPayoffStep?: string;
+  earlyPayoffMonths?: string;
   totalPayback: string;
   netAfterFees: string;
   notes: string;
@@ -141,6 +145,10 @@ export default function Approvals() {
     sellRate: '',
     maxUpsell: '',
     minimumDraw: '',
+    earlyPayoffEnabled: false as boolean,
+    earlyPayoffStartFactor: '',
+    earlyPayoffStep: '',
+    earlyPayoffMonths: '',
     totalPayback: '',
     netAfterFees: '',
     lender: '',
@@ -595,6 +603,10 @@ export default function Approvals() {
           sellRate: existing.sellRate || '',
           maxUpsell: existing.maxUpsell || '',
           minimumDraw: existing.minimumDraw || '',
+          earlyPayoffEnabled: existing.earlyPayoffEnabled || false,
+          earlyPayoffStartFactor: existing.earlyPayoffStartFactor || '',
+          earlyPayoffStep: existing.earlyPayoffStep || '',
+          earlyPayoffMonths: existing.earlyPayoffMonths || '',
           totalPayback: existing.totalPayback,
           netAfterFees: existing.netAfterFees,
           lender: existing.lender,
@@ -615,6 +627,10 @@ export default function Approvals() {
         sellRate: '',
         maxUpsell: '',
         minimumDraw: '',
+        earlyPayoffEnabled: false,
+        earlyPayoffStartFactor: '',
+        earlyPayoffStep: '',
+        earlyPayoffMonths: '',
         totalPayback: '',
         netAfterFees: '',
         lender: '',
@@ -644,6 +660,10 @@ export default function Approvals() {
         sellRate: editForm.sellRate,
         maxUpsell: editForm.maxUpsell,
         minimumDraw: editForm.minimumDraw,
+        earlyPayoffEnabled: editForm.earlyPayoffEnabled,
+        earlyPayoffStartFactor: editForm.earlyPayoffStartFactor || undefined,
+        earlyPayoffStep: editForm.earlyPayoffStep || undefined,
+        earlyPayoffMonths: editForm.earlyPayoffMonths || undefined,
         totalPayback: editForm.totalPayback,
         netAfterFees: editForm.netAfterFees,
         notes: editForm.notes,
@@ -1653,6 +1673,74 @@ export default function Approvals() {
                 <p className="text-xs text-muted-foreground mt-1">Slider floor on the offer page (TCG offers)</p>
               </div>
             </div>
+
+            {/* Early Payoff Toggle */}
+            <div className="border rounded-md p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="edit-earlyPayoffEnabled" className="text-sm font-medium">Early Payoff Table</Label>
+                  <p className="text-xs text-muted-foreground">Show month-by-month pre-payment options on the offer page</p>
+                </div>
+                <button
+                  type="button"
+                  id="edit-earlyPayoffEnabled"
+                  role="switch"
+                  aria-checked={editForm.earlyPayoffEnabled}
+                  onClick={() => setEditForm(prev => ({ ...prev, earlyPayoffEnabled: !prev.earlyPayoffEnabled }))}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${editForm.earlyPayoffEnabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                  data-testid="toggle-early-payoff-enabled"
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.earlyPayoffEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              {editForm.earlyPayoffEnabled && (
+                <div className="grid grid-cols-3 gap-3 pt-1">
+                  <div>
+                    <Label htmlFor="edit-earlyPayoffStartFactor" className="text-xs">Start Factor</Label>
+                    <Input
+                      id="edit-earlyPayoffStartFactor"
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      placeholder="e.g. 1.14"
+                      value={editForm.earlyPayoffStartFactor}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, earlyPayoffStartFactor: e.target.value }))}
+                      data-testid="input-early-payoff-start-factor"
+                    />
+                    <p className="text-xs text-muted-foreground mt-0.5">Month 1 factor (default: midpoint)</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-earlyPayoffStep" className="text-xs">Step per Month</Label>
+                    <Input
+                      id="edit-earlyPayoffStep"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="e.g. 0.01"
+                      value={editForm.earlyPayoffStep}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, earlyPayoffStep: e.target.value }))}
+                      data-testid="input-early-payoff-step"
+                    />
+                    <p className="text-xs text-muted-foreground mt-0.5">Factor increase per month (default: 0.01)</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-earlyPayoffMonths" className="text-xs">Months Shown</Label>
+                    <Input
+                      id="edit-earlyPayoffMonths"
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="e.g. 6"
+                      value={editForm.earlyPayoffMonths}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, earlyPayoffMonths: e.target.value }))}
+                      data-testid="input-early-payoff-months"
+                    />
+                    <p className="text-xs text-muted-foreground mt-0.5">Rows in table (default: half the term)</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-approvalDate">Approval Date</Label>
