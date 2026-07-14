@@ -78,6 +78,7 @@ interface FullApprovalEntry {
   sellRate: string;
   maxUpsell: string;
   minimumDraw?: string; // floor for the Offer Explorer slider (TCG offers)
+  lenderName?: string; // optional display name shown on offer sheet (e.g. "PIRS Capital")
   earlyPayoffEnabled?: boolean;
   earlyPayoffAmounts?: string[]; // dollar amounts per month as strings for input binding
   totalPayback: string;
@@ -143,6 +144,7 @@ export default function Approvals() {
     sellRate: '',
     maxUpsell: '',
     minimumDraw: '',
+    lenderName: '',
     earlyPayoffEnabled: false as boolean,
     earlyPayoffAmounts: [] as string[],
     totalPayback: '',
@@ -599,6 +601,7 @@ export default function Approvals() {
           sellRate: existing.sellRate || '',
           maxUpsell: existing.maxUpsell || '',
           minimumDraw: existing.minimumDraw || '',
+          lenderName: existing.lenderName || '',
           earlyPayoffEnabled: existing.earlyPayoffEnabled || false,
           earlyPayoffAmounts: (existing.earlyPayoffAmounts || []).map(String),
           totalPayback: existing.totalPayback,
@@ -621,6 +624,7 @@ export default function Approvals() {
         sellRate: '',
         maxUpsell: '',
         minimumDraw: '',
+        lenderName: '',
         earlyPayoffEnabled: false,
         earlyPayoffAmounts: [],
         totalPayback: '',
@@ -652,6 +656,7 @@ export default function Approvals() {
         sellRate: editForm.sellRate,
         maxUpsell: editForm.maxUpsell,
         minimumDraw: editForm.minimumDraw,
+        lenderName: editForm.lenderName || undefined,
         earlyPayoffEnabled: editForm.earlyPayoffEnabled,
         earlyPayoffAmounts: editForm.earlyPayoffEnabled && editForm.earlyPayoffAmounts.length > 0
           ? editForm.earlyPayoffAmounts.map(v => parseFloat(v)).filter(n => !isNaN(n) && n > 0)
@@ -1664,6 +1669,20 @@ export default function Approvals() {
                 />
                 <p className="text-xs text-muted-foreground mt-1">Slider floor on the offer page (TCG offers)</p>
               </div>
+            </div>
+
+            {/* Lender Display Name */}
+            <div>
+              <Label htmlFor="edit-lenderName">Lender Name (optional)</Label>
+              <Input
+                id="edit-lenderName"
+                type="text"
+                placeholder="e.g. PIRS Capital"
+                value={editForm.lenderName}
+                onChange={(e) => setEditForm(prev => ({ ...prev, lenderName: e.target.value }))}
+                data-testid="input-edit-lender-name"
+              />
+              <p className="text-xs text-muted-foreground mt-1">If filled, this name appears on the merchant offer page instead of "Today Capital Group"</p>
             </div>
 
             {/* Early Payoff Toggle */}

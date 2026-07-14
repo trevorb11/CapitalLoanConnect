@@ -13,6 +13,7 @@ interface OfferTerms {
   approvalDate: string | null;
   notes: string | null;
   minimumDraw: string | null;
+  lenderName?: string | null;
   earlyPayoffEnabled?: boolean;
   earlyPayoffAmounts?: number[] | null;
 }
@@ -148,17 +149,22 @@ function termMonths(term: string | null): number {
   return Math.round(num);
 }
 
-// Month-by-month early payoff schedule
+// Month-by-month early payoff schedule — amounts scale proportionally with slider draw
 function earlyPayoffRows(
   offer: OfferTerms,
   factor: number,
   draw: number,
+  approved: number,
 ): Array<{ month: number; amount: number; savings: number }> {
   const amounts = offer.earlyPayoffAmounts;
   if (!Array.isArray(amounts) || amounts.length === 0) return [];
+  const scale = approved > 0 ? draw / approved : 1;
   const fullPayback = draw * factor;
   return amounts
-    .map((amt, i) => ({ month: i + 1, amount: Number(amt), savings: fullPayback - Number(amt) }))
+    .map((baseAmt, i) => {
+      const amount = Number(baseAmt) * scale;
+      return { month: i + 1, amount, savings: fullPayback - amount };
+    })
     .filter(row => Number.isFinite(row.amount) && row.amount > 0);
 }
 
@@ -205,7 +211,7 @@ export default function OfferExplorer() {
   const hasMultiple = offers.length > 1;
   const accent = OPTION_COLORS[selectedIndex % OPTION_COLORS.length];
   const prePayRows = current?.earlyPayoffEnabled
-    ? earlyPayoffRows(current, factor, draw)
+    ? earlyPayoffRows(current, factor, draw, approved)
     : [];
 
   const metric = (label: string, value: string, highlight = false) => (
@@ -405,274 +411,118 @@ export default function OfferExplorer() {
           Understand Your Pricing — {businessName}
         </h1>
         <p style={{ color: TEXT_GRAY, fontSize: "0.9rem", marginBottom: "28px" }}>
-          {hasMultiple
-            ? "Select from following options or enter draw amount"
-            : "Adjust your draw amount to see your pricing"}
+          Adjust your draw amount to see your pricing
         </p>
 
-        {/* Option tabs */}
-        {hasMultiple && (
+        {/* Single offer card */}
+        {current && (() => {
+          const metrics = calcOfferMetrics(current, draw);
+          const displayName = current.lenderName?.trim() || "Today Capital Group";
+          return (
           <div
-            style={{ display: "flex", gap: "2px", marginBottom: "0" }}
-            data-testid="section-options"
+            style={{
+              border: `1px solid ${BORDER_GRAY}`,
+              borderRadius: "12px",
+              overflow: "hidden",
+              boxShadow: "0 2px 12px rgba(10, 17, 40, 0.06)",
+            }}
+            data-testid="section-cards"
           >
-            {offers.map((_, idx) => {
-              const isActive = idx === selectedIndex;
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedIndex(idx)}
-                  style={{
-                    flex: 1,
-                    padding: "13px 8px",
-                    border: "none",
-                    cursor: "pointer",
-                    borderRadius: "8px 8px 0 0",
-                    background: isActive ? TEAL : "#E5E7EB",
-                    color: isActive ? "#fff" : "#4B5563",
-                    fontWeight: 700,
-                    fontSize: "0.875rem",
-                    fontFamily: fontStack,
-                    letterSpacing: "0.01em",
-                    transition: "background 0.2s ease, color 0.2s ease",
-                  }}
-                  data-testid={`button-option-${idx}`}
-                >
-                  Option {idx + 1}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Side-by-side option cards */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${Math.min(offers.length, 3)}, 1fr)`,
-            border: `1px solid ${BORDER_GRAY}`,
-            borderRadius: hasMultiple ? "0 0 12px 12px" : "12px",
-            overflow: "hidden",
-            boxShadow: "0 2px 12px rgba(10, 17, 40, 0.06)",
-          }}
-          data-testid="section-cards"
-        >
-          {offers.map((offer, idx) => {
-            const isSelected = idx === selectedIndex;
-            const metrics = calcOfferMetrics(
-              offer,
-              isSelected ? draw : undefined,
-            );
-            return (
+            <div
+              style={{
+                background: TEAL,
+                color: "#fff",
+                padding: "24px 20px",
+              }}
+              data-testid="card-option-0"
+            >
               <div
-                key={idx}
-                onClick={() => setSelectedIndex(idx)}
                 style={{
-                  background: isSelected ? TEAL : "#fff",
-                  color: isSelected ? "#fff" : NAVY,
-                  padding: "24px 20px",
-                  cursor: "pointer",
-                  borderRight:
-                    idx < offers.length - 1
-                      ? `1px solid ${isSelected ? "rgba(255,255,255,0.2)" : BORDER_GRAY}`
-                      : "none",
-                  transition: "background 0.25s ease",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  marginBottom: "16px",
                 }}
-                data-testid={`card-option-${idx}`}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    marginBottom: "16px",
-                  }}
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    style={{ width: "16px", height: "16px" }}
-                  >
-                    <circle
-                      cx="8"
-                      cy="8"
-                      r="7"
-                      stroke={
-                        isSelected ? "rgba(255,255,255,0.7)" : BORDER_GRAY
-                      }
-                      strokeWidth="1.5"
-                    />
-                    <polyline
-                      points="4,8 6.5,10.5 12,5"
-                      stroke={isSelected ? "#fff" : TEAL}
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  <span
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 700,
-                      color: isSelected ? "#fff" : NAVY,
-                    }}
-                  >
-                    Today Capital Group
-                  </span>
-                </div>
+                <svg viewBox="0 0 16 16" fill="none" style={{ width: "16px", height: "16px" }}>
+                  <circle cx="8" cy="8" r="7" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" />
+                  <polyline points="4,8 6.5,10.5 12,5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#fff" }}>
+                  {displayName}
+                </span>
+              </div>
 
-                <div
-                  style={{
-                    fontSize: "0.6875rem",
-                    fontWeight: 600,
-                    letterSpacing: "0.04em",
-                    color: isSelected ? "rgba(255,255,255,0.7)" : LABEL_GRAY,
-                    marginBottom: "4px",
-                  }}
-                >
-                  Available Spending Limit
-                </div>
-                <div
-                  style={{
-                    fontSize: "clamp(1.4rem, 3vw, 1.875rem)",
-                    fontWeight: 800,
+              <div
+                style={{
+                  fontSize: "0.6875rem",
+                  fontWeight: 600,
+                  letterSpacing: "0.04em",
+                  color: "rgba(255,255,255,0.7)",
+                  marginBottom: "4px",
+                }}
+              >
+                Available Spending Limit
+              </div>
+              <div
+                style={{
+                  fontSize: "clamp(1.4rem, 3vw, 1.875rem)",
+                  fontWeight: 800,
                     letterSpacing: "-0.02em",
                     marginBottom: "14px",
                   }}
-                  data-testid={`text-amount-${idx}`}
+                  data-testid="text-amount-0"
                 >
                   {fmtMoney(metrics.draw)}
                 </div>
 
                 <div
                   style={{
-                    background: isSelected ? "rgba(0,0,0,0.12)" : "#F9FAFB",
-                    border: `1px solid ${isSelected ? "rgba(255,255,255,0.2)" : BORDER_GRAY}`,
+                    background: "rgba(0,0,0,0.12)",
+                    border: "1px solid rgba(255,255,255,0.2)",
                     borderRadius: "8px",
                     padding: "9px 12px",
                     fontSize: "0.75rem",
-                    color: isSelected ? "rgba(255,255,255,0.85)" : TEXT_GRAY,
+                    color: "rgba(255,255,255,0.85)",
                     marginBottom: "18px",
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "8px",
                   }}
                 >
-                  <Info
-                    style={{
-                      width: "13px",
-                      height: "13px",
-                      flexShrink: 0,
-                      marginTop: "1px",
-                      color: isSelected ? "rgba(255,255,255,0.7)" : LABEL_GRAY,
-                    }}
-                  />
-                  <span>
-                    Accepting This Offer May Require Additional Financials
-                  </span>
+                  <Info style={{ width: "13px", height: "13px", flexShrink: 0, marginTop: "1px", color: "rgba(255,255,255,0.7)" }} />
+                  <span>Accepting This Offer May Require Additional Financials</span>
                 </div>
 
-                <div
-                  className={
-                    isSelected ? "offer-metric-row-sel" : "offer-metric-row"
-                  }
-                >
-                  <span
-                    style={{
-                      fontSize: "0.6875rem",
-                      fontWeight: 600,
-                      letterSpacing: "0.03em",
-                      color: isSelected
-                        ? "rgba(255,255,255,0.65)"
-                        : LABEL_GRAY,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
+                <div className="offer-metric-row-sel">
+                  <span style={{ fontSize: "0.6875rem", fontWeight: 600, letterSpacing: "0.03em", color: "rgba(255,255,255,0.65)", display: "flex", alignItems: "center", gap: "4px" }}>
                     Estimated Payback Period
-                    <Info
-                      style={{
-                        width: "11px",
-                        height: "11px",
-                        color: isSelected
-                          ? "rgba(255,255,255,0.5)"
-                          : LABEL_GRAY,
-                      }}
-                    />
+                    <Info style={{ width: "11px", height: "11px", color: "rgba(255,255,255,0.5)" }} />
                   </span>
-                  <span
-                    style={{
-                      fontSize: "1.125rem",
-                      fontWeight: 700,
-                      color: isSelected ? "#fff" : NAVY,
-                    }}
-                  >
-                    {paybackPeriodLabel(
-                      offer.term || null,
-                      offer.paymentFrequency || null,
-                    )}
+                  <span style={{ fontSize: "1.125rem", fontWeight: 700, color: "#fff" }}>
+                    {paybackPeriodLabel(current.term || null, current.paymentFrequency || null)}
                   </span>
                 </div>
-                <div
-                  className={
-                    isSelected ? "offer-metric-row-sel" : "offer-metric-row"
-                  }
-                >
-                  <span
-                    style={{
-                      fontSize: "0.6875rem",
-                      fontWeight: 600,
-                      letterSpacing: "0.03em",
-                      color: isSelected
-                        ? "rgba(255,255,255,0.65)"
-                        : LABEL_GRAY,
-                    }}
-                  >
-                    Estimated {freqLabel(offer.paymentFrequency || null)}{" "}
-                    Payment
+                <div className="offer-metric-row-sel">
+                  <span style={{ fontSize: "0.6875rem", fontWeight: 600, letterSpacing: "0.03em", color: "rgba(255,255,255,0.65)" }}>
+                    Estimated {freqLabel(current.paymentFrequency || null)} Payment
                   </span>
-                  <span
-                    style={{
-                      fontSize: "1.125rem",
-                      fontWeight: 700,
-                      color: isSelected ? "#fff" : NAVY,
-                    }}
-                  >
+                  <span style={{ fontSize: "1.125rem", fontWeight: 700, color: "#fff" }}>
                     {fmtMoney(metrics.payment, true)}
                   </span>
                 </div>
-                <div
-                  className={
-                    isSelected ? "offer-metric-row-sel" : "offer-metric-row"
-                  }
-                >
-                  <span
-                    style={{
-                      fontSize: "0.6875rem",
-                      fontWeight: 600,
-                      letterSpacing: "0.03em",
-                      color: isSelected
-                        ? "rgba(255,255,255,0.65)"
-                        : LABEL_GRAY,
-                    }}
-                  >
+                <div className="offer-metric-row-sel">
+                  <span style={{ fontSize: "0.6875rem", fontWeight: 600, letterSpacing: "0.03em", color: "rgba(255,255,255,0.65)" }}>
                     Total Payback
                   </span>
-                  <span
-                    style={{
-                      fontSize: "1.125rem",
-                      fontWeight: 700,
-                      color: isSelected ? "#fff" : NAVY,
-                    }}
-                  >
+                  <span style={{ fontSize: "1.125rem", fontWeight: 700, color: "#fff" }}>
                     {fmtMoney(metrics.payback)}
                   </span>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })()}
 
         {/* Slider panel */}
         {approved > 0 && (
