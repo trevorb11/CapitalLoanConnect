@@ -303,14 +303,6 @@ export default function OfferExplorer() {
 
                 {/* Metric rows */}
                 <div className={isSelected ? "offer-metric-row-sel" : "offer-metric-row"}>
-                  <span style={{ fontSize: "0.6875rem", fontWeight: 600, letterSpacing: "0.03em", color: isSelected ? "rgba(255,255,255,0.65)" : LABEL_GRAY }}>
-                    Repayment Per $1
-                  </span>
-                  <span style={{ fontSize: "1.125rem", fontWeight: 700, color: isSelected ? "#fff" : NAVY }}>
-                    ${metrics.factor.toFixed(2)}
-                  </span>
-                </div>
-                <div className={isSelected ? "offer-metric-row-sel" : "offer-metric-row"}>
                   <span style={{ fontSize: "0.6875rem", fontWeight: 600, letterSpacing: "0.03em", color: isSelected ? "rgba(255,255,255,0.65)" : LABEL_GRAY, display: "flex", alignItems: "center", gap: "4px" }}>
                     Estimated Payback Period
                     <Info style={{ width: "11px", height: "11px", color: isSelected ? "rgba(255,255,255,0.5)" : LABEL_GRAY }} />
