@@ -7608,9 +7608,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           notes: a.notes || null,
           minimumDraw: a.minimumDraw || null,
           earlyPayoffEnabled: a.earlyPayoffEnabled || false,
-          earlyPayoffStartFactor: a.earlyPayoffStartFactor || null,
-          earlyPayoffStep: a.earlyPayoffStep || null,
-          earlyPayoffMonths: a.earlyPayoffMonths || null,
+          earlyPayoffAmounts: Array.isArray(a.earlyPayoffAmounts) ? a.earlyPayoffAmounts : null,
         }));
 
       // Legacy top-level approval fields

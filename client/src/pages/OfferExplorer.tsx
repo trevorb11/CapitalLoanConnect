@@ -14,9 +14,7 @@ interface OfferTerms {
   notes: string | null;
   minimumDraw: string | null;
   earlyPayoffEnabled?: boolean;
-  earlyPayoffStartFactor?: string | null;
-  earlyPayoffStep?: string | null;
-  earlyPayoffMonths?: string | null;
+  earlyPayoffAmounts?: number[] | null;
 }
 
 interface OfferData {
@@ -156,29 +154,12 @@ function earlyPayoffRows(
   factor: number,
   draw: number,
 ): Array<{ month: number; amount: number; savings: number }> {
-  const tMonths = termMonths(offer.term);
-  const parsedStart = parseFloat(offer.earlyPayoffStartFactor || "");
-  const startFactor =
-    Number.isFinite(parsedStart) && parsedStart > 1 && parsedStart < factor
-      ? parsedStart
-      : Math.round((1 + (factor - 1) / 2) * 100) / 100;
-  const parsedStep = parseFloat(offer.earlyPayoffStep || "");
-  const step = Number.isFinite(parsedStep) && parsedStep > 0 ? parsedStep : 0.01;
-  const parsedMonths = parseFloat(offer.earlyPayoffMonths || "");
-  const months =
-    Number.isFinite(parsedMonths) && parsedMonths >= 1
-      ? Math.round(parsedMonths)
-      : Math.max(1, Math.round(tMonths / 2));
+  const amounts = offer.earlyPayoffAmounts;
+  if (!Array.isArray(amounts) || amounts.length === 0) return [];
   const fullPayback = draw * factor;
-
-  const rows: Array<{ month: number; amount: number; savings: number }> = [];
-  for (let m = 1; m <= Math.min(months, tMonths); m++) {
-    const f = Math.min(factor, startFactor + step * (m - 1));
-    if (f >= factor) break;
-    const amount = draw * f;
-    rows.push({ month: m, amount, savings: fullPayback - amount });
-  }
-  return rows;
+  return amounts
+    .map((amt, i) => ({ month: i + 1, amount: Number(amt), savings: fullPayback - Number(amt) }))
+    .filter(row => Number.isFinite(row.amount) && row.amount > 0);
 }
 
 export default function OfferExplorer() {
