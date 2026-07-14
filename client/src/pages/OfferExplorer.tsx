@@ -118,7 +118,6 @@ export default function OfferExplorer() {
 
   const payback = draw * factor;
   const payment = payback / nPayments;
-  const costOfCapital = payback - draw;
   const pctOfApproval = approved > 0 ? Math.round((draw / approved) * 100) : 100;
 
   const acceptUrl = `/api/offer/${slug}/accept?` + new URLSearchParams({
@@ -290,14 +289,11 @@ export default function OfferExplorer() {
         </section>
 
         {/* Live metrics */}
-        <section style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "20px" }} data-testid="section-metrics">
+        <section style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "28px" }} data-testid="section-metrics">
           {metric(`${freqLabel(current?.paymentFrequency || null)} Payment`, fmtMoney(payment, payment < 10000), true)}
           {metric("Total Payback", fmtMoney(payback))}
           {metric("Number of Payments", String(nPayments))}
-        </section>
-        <section style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "28px" }}>
           {metric("Term", current?.term || "—")}
-          {metric("Cost of Capital", fmtMoney(costOfCapital))}
         </section>
 
         <p style={{ textAlign: "center", color: "#6B7280", fontSize: "0.8125rem", marginBottom: "28px" }}>
