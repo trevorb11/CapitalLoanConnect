@@ -690,28 +690,66 @@ export default function OfferExplorer() {
                     overflow: "hidden",
                   }}
                 >
+                  {/* Header row */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "stretch",
+                      background: TEAL,
+                    }}
+                  >
+                    <div
+                      style={{
+                        flex: "0 0 58%",
+                        padding: "10px 16px",
+                        fontSize: "0.6875rem",
+                        fontWeight: 700,
+                        letterSpacing: "0.04em",
+                        color: "#fff",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Payoff Period
+                    </div>
+                    <div
+                      style={{
+                        flex: 1,
+                        padding: "10px 16px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "8px",
+                      }}
+                    >
+                      <span style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.04em", color: "#fff", textTransform: "uppercase" }}>
+                        Amount Due
+                      </span>
+                      <span style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.04em", color: "rgba(255,255,255,0.8)", textTransform: "uppercase" }}>
+                        You Save
+                      </span>
+                    </div>
+                  </div>
                   {prePayRows.map((row, idx) => (
                     <div
                       key={row.month}
                       style={{
                         display: "flex",
                         alignItems: "stretch",
-                        borderTop:
-                          idx > 0 ? `1px solid ${BORDER_GRAY}` : "none",
+                        borderTop: `1px solid ${BORDER_GRAY}`,
                       }}
                       data-testid={`row-prepay-month-${row.month}`}
                     >
                       <div
                         style={{
                           flex: "0 0 58%",
-                          background:
-                            "linear-gradient(90deg, #123B70 0%, #1D5799 100%)",
-                          color: "#fff",
+                          background: "#fff",
+                          color: NAVY,
                           fontWeight: 600,
                           fontSize: "0.8125rem",
                           padding: "13px 16px",
                           display: "flex",
                           alignItems: "center",
+                          borderRight: `1px solid ${BORDER_GRAY}`,
                         }}
                       >
                         Pre-Payment Amount Month {row.month}
