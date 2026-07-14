@@ -47,15 +47,15 @@ function paymentsCount(term: string | null, frequency: string | null): number {
   }
   if (t.includes("month")) {
     if (freq === "monthly") return Math.round(num);
-    if (freq === "weekly") return Math.round(num * 4.33);
-    if (freq === "biweekly") return Math.round(num * 2.17);
+    if (freq === "weekly") return Math.round(num * 4);    // 1 month = 4 weeks
+    if (freq === "biweekly") return Math.round(num * 2); // 1 month = 2 bi-weekly periods
     return Math.round(num * 21);
   }
   if (t.includes("week")) {
     if (freq === "weekly") return Math.round(num);
     if (freq === "daily") return Math.round(num * 5);
     if (freq === "biweekly") return Math.max(1, Math.round(num / 2));
-    return Math.max(1, Math.round(num / 4.33));
+    return Math.max(1, Math.round(num / 4));
   }
   if (t.includes("day")) {
     if (freq === "daily") return Math.round(num);
