@@ -166,16 +166,11 @@ export default function OfferExplorer() {
   );
 
   const step = sliderStep(approved);
-<<<<<<< HEAD
-  // Minimum draw is 40% of the approved amount
-  const minDraw = Math.min(approved, Math.max(step, Math.round(approved * 0.40 / step) * step));
-=======
-  // Admin-set minimum draw wins; otherwise default the floor to 10% of the approval
+  // Admin-set minimum draw wins; otherwise floor defaults to 40% of the approval
   const adminMin = parseFloat(current?.minimumDraw || "");
   const minDraw = Number.isFinite(adminMin) && adminMin > 0
     ? Math.min(approved, adminMin)
-    : Math.min(approved, Math.max(step, Math.round(approved * 0.1 / step) * step));
->>>>>>> fd9932a182a721f552846ea2fcec5566d42a83aa
+    : Math.min(approved, Math.max(step, Math.round(approved * 0.40 / step) * step));
   const draw = Math.min(approved, Math.max(minDraw, draws[selectedIndex] ?? approved));
 
   const payback = draw * factor;
