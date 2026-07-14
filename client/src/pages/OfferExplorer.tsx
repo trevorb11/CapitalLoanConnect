@@ -13,6 +13,10 @@ interface OfferTerms {
   approvalDate: string | null;
   notes: string | null;
   minimumDraw: string | null;
+  earlyPayoffEnabled?: boolean;
+  earlyPayoffStartFactor?: string | null;
+  earlyPayoffStep?: string | null;
+  earlyPayoffMonths?: string | null;
 }
 
 interface OfferData {
@@ -95,6 +99,43 @@ function sliderStep(max: number): number {
   return 500;
 }
 
+// Term length in months (approximate for day/week terms)
+function termMonths(term: string | null): number {
+  const t = (term || "").toLowerCase();
+  const num = parseFloat(t.match(/([\d.]+)/)?.[1] || "");
+  if (!num || Number.isNaN(num)) return 6;
+  if (t.includes("month")) return Math.round(num);
+  if (t.includes("week")) return Math.max(1, Math.round(num / 4.33));
+  if (t.includes("day")) return Math.max(1, Math.round(num / 30));
+  return Math.round(num);
+}
+
+// Month-by-month early payoff schedule: factor starts low and steps up until
+// it meets the full factor. Amounts scale with the selected draw.
+function earlyPayoffRows(offer: OfferTerms, factor: number, draw: number): Array<{ month: number; amount: number; savings: number }> {
+  const tMonths = termMonths(offer.term);
+  const parsedStart = parseFloat(offer.earlyPayoffStartFactor || "");
+  const startFactor = Number.isFinite(parsedStart) && parsedStart > 1
+    ? parsedStart
+    : Math.round((1 + (factor - 1) / 2) * 100) / 100; // default: half the margin
+  const parsedStep = parseFloat(offer.earlyPayoffStep || "");
+  const step = Number.isFinite(parsedStep) && parsedStep > 0 ? parsedStep : 0.01;
+  const parsedMonths = parseFloat(offer.earlyPayoffMonths || "");
+  const months = Number.isFinite(parsedMonths) && parsedMonths >= 1
+    ? Math.round(parsedMonths)
+    : Math.max(1, Math.round(tMonths / 2)); // default: half the term
+  const fullPayback = draw * factor;
+
+  const rows: Array<{ month: number; amount: number; savings: number }> = [];
+  for (let m = 1; m <= Math.min(months, tMonths); m++) {
+    const f = Math.min(factor, startFactor + step * (m - 1));
+    if (f >= factor) break; // no discount left — stop the table
+    const amount = draw * f;
+    rows.push({ month: m, amount, savings: fullPayback - amount });
+  }
+  return rows;
+}
+
 export default function OfferExplorer() {
   const { slug } = useParams<{ slug: string }>();
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -138,6 +179,7 @@ export default function OfferExplorer() {
 
   const hasMultiple = offers.length > 1;
   const accent = OPTION_COLORS[selectedIndex % OPTION_COLORS.length];
+  const prePayRows = current?.earlyPayoffEnabled ? earlyPayoffRows(current, factor, draw) : [];
 
   const acceptUrl = `/api/offer/${slug}/accept?` + new URLSearchParams({
     approved: String(Math.round(approved)),
@@ -310,6 +352,43 @@ export default function OfferExplorer() {
               {metric("Number of Payments", String(nPayments))}
               {metric("Term", current?.term || "—")}
             </div>
+
+            {/* Pre-Payment Options — month-by-month early payoff table */}
+            {prePayRows.length > 0 && (
+              <div style={{ marginTop: "26px" }} data-testid="section-prepayment">
+                <h2 style={{ fontSize: "1.0625rem", fontWeight: 700, color: NAVY, marginBottom: "12px" }}>
+                  Pre-Payment Options
+                </h2>
+                <div style={{ border: `1px solid ${BORDER_GRAY}`, borderRadius: "10px", overflow: "hidden" }}>
+                  {prePayRows.map((row, idx) => (
+                    <div key={row.month} style={{
+                      display: "flex", alignItems: "stretch",
+                      borderTop: idx > 0 ? `1px solid ${BORDER_GRAY}` : "none",
+                    }} data-testid={`row-prepay-month-${row.month}`}>
+                      <div style={{
+                        flex: "0 0 58%", background: "linear-gradient(90deg, #123B70 0%, #1D5799 100%)",
+                        color: "#fff", fontWeight: 600, fontSize: "0.8125rem",
+                        padding: "13px 16px", display: "flex", alignItems: "center",
+                      }}>
+                        Pre-Payment Amount Month {row.month}
+                      </div>
+                      <div style={{
+                        flex: 1, padding: "13px 16px", display: "flex", alignItems: "center",
+                        justifyContent: "space-between", gap: "8px", background: "#fff", flexWrap: "wrap",
+                      }}>
+                        <span style={{ fontWeight: 700, fontSize: "1rem", color: NAVY }}>{fmtMoney(row.amount)}</span>
+                        <span style={{ fontSize: "0.75rem", fontWeight: 600, color: GREEN }}>save {fmtMoney(row.savings)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ color: TEXT_GRAY, fontSize: "0.8125rem", marginTop: "10px", lineHeight: 1.55 }}>
+                  If you pay off within the scheduled time frame, the payments you've already made are
+                  subtracted from the amount shown above. E.g. if you've made {fmtMoney(payment * 2, false)} in
+                  payments by then, you'd pay the month's amount minus {fmtMoney(payment * 2, false)}.
+                </p>
+              </div>
+            )}
 
             <div style={{
               display: "flex", alignItems: "center", gap: "10px", marginTop: "18px",

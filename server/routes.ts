@@ -7607,6 +7607,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           approvalDate: a.approvalDate || null,
           notes: a.notes || null,
           minimumDraw: a.minimumDraw || null,
+          earlyPayoffEnabled: !!a.earlyPayoffEnabled,
+          earlyPayoffStartFactor: a.earlyPayoffStartFactor || null,
+          earlyPayoffStep: a.earlyPayoffStep || null,
+          earlyPayoffMonths: a.earlyPayoffMonths || null,
         }));
 
       // Legacy top-level approval fields
@@ -7621,6 +7625,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           approvalDate: decision.approvalDate ? String(decision.approvalDate) : null,
           notes: decision.notes || null,
           minimumDraw: null,
+          earlyPayoffEnabled: false,
+          earlyPayoffStartFactor: null,
+          earlyPayoffStep: null,
+          earlyPayoffMonths: null,
         }];
       }
 
