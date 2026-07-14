@@ -7606,6 +7606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           netAfterFees: a.netAfterFees || null,
           approvalDate: a.approvalDate || null,
           notes: a.notes || null,
+          minimumDraw: a.minimumDraw || null,
         }));
 
       // Legacy top-level approval fields
@@ -7619,6 +7620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           netAfterFees: decision.netAfterFees ? String(decision.netAfterFees) : null,
           approvalDate: decision.approvalDate ? String(decision.approvalDate) : null,
           notes: decision.notes || null,
+          minimumDraw: null,
         }];
       }
 

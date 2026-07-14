@@ -12,6 +12,7 @@ interface OfferTerms {
   netAfterFees: string | null;
   approvalDate: string | null;
   notes: string | null;
+  minimumDraw: string | null;
 }
 
 interface OfferData {
@@ -124,7 +125,11 @@ export default function OfferExplorer() {
   );
 
   const step = sliderStep(approved);
-  const minDraw = Math.min(approved, Math.max(step, Math.round(approved * 0.1 / step) * step));
+  // Admin-set minimum draw wins; otherwise default the floor to 10% of the approval
+  const adminMin = parseFloat(current?.minimumDraw || "");
+  const minDraw = Number.isFinite(adminMin) && adminMin > 0
+    ? Math.min(approved, adminMin)
+    : Math.min(approved, Math.max(step, Math.round(approved * 0.1 / step) * step));
   const draw = Math.min(approved, Math.max(minDraw, draws[selectedIndex] ?? approved));
 
   const payback = draw * factor;

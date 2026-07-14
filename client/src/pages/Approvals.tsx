@@ -77,6 +77,7 @@ interface FullApprovalEntry {
   buyRate: string;
   sellRate: string;
   maxUpsell: string;
+  minimumDraw?: string; // floor for the Offer Explorer slider (TCG offers)
   totalPayback: string;
   netAfterFees: string;
   notes: string;
@@ -139,6 +140,7 @@ export default function Approvals() {
     buyRate: '',
     sellRate: '',
     maxUpsell: '',
+    minimumDraw: '',
     totalPayback: '',
     netAfterFees: '',
     lender: '',
@@ -592,6 +594,7 @@ export default function Approvals() {
           buyRate: existing.buyRate || '',
           sellRate: existing.sellRate || '',
           maxUpsell: existing.maxUpsell || '',
+          minimumDraw: existing.minimumDraw || '',
           totalPayback: existing.totalPayback,
           netAfterFees: existing.netAfterFees,
           lender: existing.lender,
@@ -611,6 +614,7 @@ export default function Approvals() {
         buyRate: '',
         sellRate: '',
         maxUpsell: '',
+        minimumDraw: '',
         totalPayback: '',
         netAfterFees: '',
         lender: '',
@@ -639,6 +643,7 @@ export default function Approvals() {
         buyRate: editForm.buyRate,
         sellRate: editForm.sellRate,
         maxUpsell: editForm.maxUpsell,
+        minimumDraw: editForm.minimumDraw,
         totalPayback: editForm.totalPayback,
         netAfterFees: editForm.netAfterFees,
         notes: editForm.notes,
@@ -1633,6 +1638,19 @@ export default function Approvals() {
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">%</span>
                 </div>
+              </div>
+              <div>
+                <Label htmlFor="edit-minimumDraw">Minimum Draw ($)</Label>
+                <Input
+                  id="edit-minimumDraw"
+                  type="number"
+                  min="0"
+                  placeholder="25,000"
+                  value={editForm.minimumDraw}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, minimumDraw: e.target.value }))}
+                  data-testid="input-edit-minimum-draw"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Slider floor on the offer page (TCG offers)</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
