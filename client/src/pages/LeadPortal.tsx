@@ -880,6 +880,17 @@ function LeadAuth({ onAuth }: { onAuth: () => Promise<void> | void }) {
     setError("That sign-in link is no longer valid. Enter your phone number below to get a code instead.");
   }, []);
 
+  // Personal sign-in links (shared via CRM/SMS): /track?signin=1&phone=5551234567
+  // lands on the OTP screen with the phone prefilled — no auto-auth, they still get texted a code.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("signin") !== "1") return;
+    const prefillPhone = params.get("phone") || "";
+    window.history.replaceState({}, "", "/track");
+    if (prefillPhone) setOtpPhone(prefillPhone);
+    setMode("phone-entry");
+  }, []);
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError(null);
