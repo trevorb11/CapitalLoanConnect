@@ -297,7 +297,6 @@ export default function OfferExplorer() {
         </section>
         <section style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "28px" }}>
           {metric("Term", current?.term || "—")}
-          {metric("Factor Rate", factor.toFixed(2))}
           {metric("Cost of Capital", fmtMoney(costOfCapital))}
         </section>
 
