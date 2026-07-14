@@ -78,6 +78,7 @@ interface FullApprovalEntry {
   sellRate: string;
   maxUpsell: string;
   minimumDraw?: string; // floor for the Offer Explorer slider (TCG offers)
+  numberOfPayments?: string; // manual override for payment count (e.g. 52 for 12-month weekly at 52wk/yr)
   lenderName?: string; // optional display name shown on offer sheet (e.g. "PIRS Capital")
   earlyPayoffEnabled?: boolean;
   earlyPayoffAmounts?: string[]; // dollar amounts per month as strings for input binding
@@ -144,6 +145,7 @@ export default function Approvals() {
     sellRate: '',
     maxUpsell: '',
     minimumDraw: '',
+    numberOfPayments: '',
     lenderName: '',
     earlyPayoffEnabled: false as boolean,
     earlyPayoffAmounts: [] as string[],
@@ -601,6 +603,7 @@ export default function Approvals() {
           sellRate: existing.sellRate || '',
           maxUpsell: existing.maxUpsell || '',
           minimumDraw: existing.minimumDraw || '',
+          numberOfPayments: existing.numberOfPayments || '',
           lenderName: existing.lenderName || '',
           earlyPayoffEnabled: existing.earlyPayoffEnabled || false,
           earlyPayoffAmounts: (existing.earlyPayoffAmounts || []).map(String),
@@ -624,6 +627,7 @@ export default function Approvals() {
         sellRate: '',
         maxUpsell: '',
         minimumDraw: '',
+        numberOfPayments: '',
         lenderName: '',
         earlyPayoffEnabled: false,
         earlyPayoffAmounts: [],
@@ -656,6 +660,7 @@ export default function Approvals() {
         sellRate: editForm.sellRate,
         maxUpsell: editForm.maxUpsell,
         minimumDraw: editForm.minimumDraw,
+        numberOfPayments: editForm.numberOfPayments || undefined,
         lenderName: editForm.lenderName || undefined,
         earlyPayoffEnabled: editForm.earlyPayoffEnabled,
         earlyPayoffAmounts: editForm.earlyPayoffEnabled && editForm.earlyPayoffAmounts.length > 0
@@ -1571,7 +1576,7 @@ export default function Approvals() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="edit-paymentFrequency">Payment Frequency</Label>
                 <Select
@@ -1587,6 +1592,22 @@ export default function Approvals() {
                     <SelectItem value="monthly">Monthly</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="edit-numberOfPayments">
+                  # of Payments <span className="text-muted-foreground font-normal">(optional)</span>
+                </Label>
+                <Input
+                  id="edit-numberOfPayments"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="e.g. 52"
+                  value={editForm.numberOfPayments}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, numberOfPayments: e.target.value }))}
+                  data-testid="input-edit-number-of-payments"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Overrides the calculated count (e.g. 52 for 12-month weekly at 52 wk/yr)</p>
               </div>
               <div>
                 <Label htmlFor="edit-lender">Lender</Label>

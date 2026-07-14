@@ -13,6 +13,7 @@ interface OfferTerms {
   approvalDate: string | null;
   notes: string | null;
   minimumDraw: string | null;
+  numberOfPayments?: string | null;
   lenderName?: string | null;
   earlyPayoffEnabled?: boolean;
   earlyPayoffAmounts?: number[] | null;
@@ -127,11 +128,14 @@ function sliderStep(max: number): number {
   return 500;
 }
 
-// Used by side-by-side option cards
+// Used by single offer card
 function calcOfferMetrics(offer: OfferTerms, drawAmount?: number) {
   const approved = parseFloat(offer.advanceAmount || "") || 0;
   const factor = parseFloat(offer.factorRate || "") || 1.25;
-  const nPayments = Math.max(1, paymentsCount(offer.term || null, offer.paymentFrequency || null));
+  const manualN = parseFloat(offer.numberOfPayments || "");
+  const nPayments = Number.isFinite(manualN) && manualN >= 1
+    ? Math.round(manualN)
+    : Math.max(1, paymentsCount(offer.term || null, offer.paymentFrequency || null));
   const draw = drawAmount ?? approved;
   const payback = draw * factor;
   const payment = payback / nPayments;
@@ -191,10 +195,11 @@ export default function OfferExplorer() {
     return Number.isFinite(n) && n > 1 ? n : 1.25;
   }, [current]);
 
-  const nPayments = useMemo(
-    () => Math.max(1, paymentsCount(current?.term || null, current?.paymentFrequency || null)),
-    [current],
-  );
+  const nPayments = useMemo(() => {
+    const manualN = parseFloat(current?.numberOfPayments || "");
+    if (Number.isFinite(manualN) && manualN >= 1) return Math.round(manualN);
+    return Math.max(1, paymentsCount(current?.term || null, current?.paymentFrequency || null));
+  }, [current]);
 
   const step = sliderStep(approved);
   const adminMin = parseFloat(current?.minimumDraw || "");

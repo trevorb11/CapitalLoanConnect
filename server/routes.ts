@@ -7615,6 +7615,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             approvalDate: a.approvalDate || null,
             notes: a.notes || null,
             minimumDraw: a.minimumDraw || null,
+            numberOfPayments: a.numberOfPayments || null,
             lenderName: a.lenderName || null,
             earlyPayoffEnabled,
             earlyPayoffAmounts,
