@@ -7594,22 +7594,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const entries: any[] = Array.isArray(decision.additionalApprovals) ? decision.additionalApprovals as any[] : [];
+      // Find the primary approval entry (any lender) to inherit early payoff data if needed
+      const primaryEntry: any = entries.find((a) => a.isPrimary) || entries[0] || null;
       let offers = entries
         .filter((a) => isTcgLender(a?.lender))
         .sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0))
-        .map((a) => ({
-          advanceAmount: a.advanceAmount || null,
-          term: a.term || null,
-          paymentFrequency: a.paymentFrequency || null,
-          factorRate: a.factorRate || null,
-          totalPayback: a.totalPayback || null,
-          netAfterFees: a.netAfterFees || null,
-          approvalDate: a.approvalDate || null,
-          notes: a.notes || null,
-          minimumDraw: a.minimumDraw || null,
-          earlyPayoffEnabled: a.earlyPayoffEnabled || false,
-          earlyPayoffAmounts: Array.isArray(a.earlyPayoffAmounts) ? a.earlyPayoffAmounts : null,
-        }));
+        .map((a) => {
+          // Inherit early payoff data from the primary entry when this TCG offer doesn't have it
+          const earlyPayoffEnabled = a.earlyPayoffEnabled || (primaryEntry && !isTcgLender(primaryEntry.lender) ? primaryEntry.earlyPayoffEnabled : false) || false;
+          const earlyPayoffAmounts = Array.isArray(a.earlyPayoffAmounts) && a.earlyPayoffAmounts.length > 0
+            ? a.earlyPayoffAmounts
+            : (primaryEntry && !isTcgLender(primaryEntry.lender) && Array.isArray(primaryEntry.earlyPayoffAmounts) ? primaryEntry.earlyPayoffAmounts : null);
+          return {
+            advanceAmount: a.advanceAmount || null,
+            term: a.term || null,
+            paymentFrequency: a.paymentFrequency || null,
+            factorRate: a.factorRate || null,
+            totalPayback: a.totalPayback || null,
+            netAfterFees: a.netAfterFees || null,
+            approvalDate: a.approvalDate || null,
+            notes: a.notes || null,
+            minimumDraw: a.minimumDraw || null,
+            earlyPayoffEnabled,
+            earlyPayoffAmounts,
+          };
+        });
 
       // Legacy top-level approval fields
       if (offers.length === 0 && isTcgLender(decision.lender)) {
