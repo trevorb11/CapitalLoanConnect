@@ -50,6 +50,7 @@ const Analytics = lazy(() => import("@/pages/Analytics"));
 const Services = lazy(() => import("@/pages/Services"));
 const AchForm = lazy(() => import("@/pages/AchForm"));
 const ApprovalLetter = lazy(() => import("@/pages/ApprovalLetter"));
+const OfferExplorer = lazy(() => import("@/pages/OfferExplorer"));
 const InternalStatementsUpload = lazy(() => import("@/pages/InternalStatementsUpload"));
 const SBALanding = lazy(() => import("@/pages/SBALanding"));
 const SignatureApplication = lazy(() => import("@/pages/SignatureApplication"));
@@ -204,6 +205,9 @@ function Router() {
 
       {/* Approval Letter - Public page for approved businesses */}
       <Route path="/approved/:slug" component={ApprovalLetter} />
+
+      {/* Offer Explorer - interactive pricing page for Today Capital Group offers */}
+      <Route path="/offer/:slug" component={OfferExplorer} />
 
       {/* Merchant Portal Routes */}
       <Route path="/merchant" component={MerchantPortal} />

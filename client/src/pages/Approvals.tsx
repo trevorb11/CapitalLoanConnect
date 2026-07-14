@@ -1181,6 +1181,32 @@ export default function Approvals() {
                             View Letter
                           </Button>
                         )}
+                        {decision.approvalSlug && approvals.some(a => /today\s*capital|\btcg\b/i.test(a.lender || '')) && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`${window.location.origin}/offer/${decision.approvalSlug}`);
+                                toast({ title: "URL Copied", description: "Offer explorer URL copied to clipboard" });
+                              }}
+                              className="text-teal-600 border-teal-600/30 hover:bg-teal-600/10"
+                              data-testid={`button-copy-offer-${decision.id}`}
+                            >
+                              <Copy className="w-3 h-3 mr-1" />
+                              Copy Offer URL
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => window.open(`/offer/${decision.approvalSlug}`, '_blank')}
+                              data-testid={`button-view-offer-${decision.id}`}
+                            >
+                              <Link2 className="w-3 h-3 mr-1" />
+                              Offer Page
+                            </Button>
+                          </>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         {decision.businessEmail && (

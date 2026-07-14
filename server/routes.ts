@@ -7576,6 +7576,128 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // OFFER EXPLORER — interactive pricing page for in-house (Today Capital Group) offers.
+  // Any approval entry whose lender is Today Capital Group automatically gets
+  // /offer/:slug where the merchant can slide the draw amount and see payments.
+  // ═══════════════════════════════════════════════════════════════
+
+  const isTcgLender = (lender: string | null | undefined) =>
+    !!lender && /today\s*capital|\btcg\b/i.test(lender);
+
+  // Public: offer terms for the explorer page (TCG-lender approvals only)
+  app.get("/api/offer/:slug", async (req, res) => {
+    try {
+      const decision = await storage.getBusinessUnderwritingDecisionBySlug(req.params.slug);
+      if (!decision || (decision.status !== 'approved' && decision.status !== 'funded')) {
+        return res.status(404).json({ error: "Offer not found" });
+      }
+
+      const entries: any[] = Array.isArray(decision.additionalApprovals) ? decision.additionalApprovals as any[] : [];
+      let offers = entries
+        .filter((a) => isTcgLender(a?.lender))
+        .sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0))
+        .map((a) => ({
+          advanceAmount: a.advanceAmount || null,
+          term: a.term || null,
+          paymentFrequency: a.paymentFrequency || null,
+          factorRate: a.factorRate || null,
+          totalPayback: a.totalPayback || null,
+          netAfterFees: a.netAfterFees || null,
+          approvalDate: a.approvalDate || null,
+          notes: a.notes || null,
+        }));
+
+      // Legacy top-level approval fields
+      if (offers.length === 0 && isTcgLender(decision.lender)) {
+        offers = [{
+          advanceAmount: decision.advanceAmount ? String(decision.advanceAmount) : null,
+          term: decision.term || null,
+          paymentFrequency: decision.paymentFrequency || null,
+          factorRate: decision.factorRate ? String(decision.factorRate) : null,
+          totalPayback: decision.totalPayback ? String(decision.totalPayback) : null,
+          netAfterFees: decision.netAfterFees ? String(decision.netAfterFees) : null,
+          approvalDate: decision.approvalDate ? String(decision.approvalDate) : null,
+          notes: decision.notes || null,
+        }];
+      }
+
+      if (offers.length === 0) {
+        return res.status(404).json({ error: "No Today Capital Group offer on this approval" });
+      }
+
+      res.json({ businessName: decision.businessName, offers });
+    } catch (error) {
+      console.error("[OFFER EXPLORER] fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch offer" });
+    }
+  });
+
+  // Accept from the explorer — carries the merchant's chosen draw amount into the GHL webhook
+  app.get("/api/offer/:slug/accept", async (req, res) => {
+    const { slug } = req.params;
+    try {
+      const decision = await storage.getBusinessUnderwritingDecisionBySlug(slug);
+
+      const params = new URLSearchParams();
+      if (decision?.businessEmail) params.set("email", decision.businessEmail);
+      if (decision?.businessName) params.set("businessName", decision.businessName);
+      if (decision?.businessPhone) params.set("phone", decision.businessPhone);
+      if (decision?.ghlOpportunityId) params.set("opportunityId", decision.ghlOpportunityId);
+
+      if (decision) {
+        const GHL_ACCEPT_WEBHOOK_URL =
+          "https://services.leadconnectorhq.com/hooks/n778xwOps9t8Q34eRPfM/webhook-trigger/52ad2d89-b393-4f32-a102-5b835e7f6db7";
+        const payload = {
+          event: "offer_explorer_accept_clicked",
+          email: decision.businessEmail,
+          businessName: decision.businessName || null,
+          phone: decision.businessPhone || null,
+          lender: "Today Capital Group",
+          approvedAmount: req.query.approved ? String(req.query.approved) : null,
+          selectedDrawAmount: req.query.amount ? String(req.query.amount) : null,
+          estimatedPayment: req.query.payment ? String(req.query.payment) : null,
+          estimatedPayback: req.query.payback ? String(req.query.payback) : null,
+          term: req.query.term ? String(req.query.term) : null,
+          factorRate: req.query.factor ? String(req.query.factor) : null,
+          ghlOpportunityId: decision.ghlOpportunityId || null,
+          slug,
+          clickedAt: new Date().toISOString(),
+        };
+        console.log(`[OFFER EXPLORER] Accept clicked for ${decision.businessEmail}`, payload);
+        fetch(GHL_ACCEPT_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }).then((r) => {
+          if (!r.ok) r.text().then((t) => console.error(`[OFFER EXPLORER] GHL webhook failed (${r.status}): ${t}`));
+        }).catch((e) => console.error("[OFFER EXPLORER] GHL webhook error:", e));
+
+        // Alert the team with the merchant's selected structure
+        sendAdminMerchantAlert({
+          title: "Offer Explorer: Merchant Accepted a TCG Offer",
+          event: "offer_explorer_accept",
+          merchantEmail: decision.businessEmail,
+          businessName: decision.businessName || null,
+          details: {
+            "Approved Amount": req.query.approved ? `$${req.query.approved}` : null,
+            "Selected Draw": req.query.amount ? `$${req.query.amount}` : null,
+            "Estimated Payment": req.query.payment ? `$${req.query.payment}` : null,
+            "Total Payback": req.query.payback ? `$${req.query.payback}` : null,
+            "Term": req.query.term ? String(req.query.term) : null,
+            "Factor Rate": req.query.factor ? String(req.query.factor) : null,
+            "Next Step": "Reach out to finalize docs",
+          },
+        }).catch(() => {});
+      }
+
+      res.redirect(302, `/congratulations${params.toString() ? `?${params.toString()}` : ""}`);
+    } catch (error) {
+      console.error("[OFFER EXPLORER] accept error:", error);
+      res.redirect(302, "/congratulations");
+    }
+  });
+
   // 2b. Get combined view URL for all statements by email (for dashboard "View All" button)
   app.get("/api/bank-statements/view-url", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
