@@ -76,6 +76,48 @@ function freqLabel(frequency: string | null): string {
   }
 }
 
+function paybackPeriodLabel(term: string | null, frequency: string | null): string {
+  const t = (term || "").toLowerCase().trim();
+  const freq = (frequency || "monthly").toLowerCase();
+  const num = parseFloat(t.match(/([\d.]+)/)?.[1] || "");
+  if (!num || Number.isNaN(num)) return term || "—";
+
+  // Normalise everything to a base of months and weeks
+  let months: number | null = null;
+  let weeks: number | null = null;
+  let days: number | null = null;
+
+  if (t.includes("month")) {
+    months = num;
+    weeks = num * 4;          // 1 month = 4 weeks (as specified)
+    days = num * 30;
+  } else if (t.includes("week")) {
+    weeks = num;
+    months = num / 4;
+    days = num * 7;
+  } else if (t.includes("day")) {
+    days = num;
+    weeks = num / 7;
+    months = num / 30;
+  } else {
+    // Bare number — show it as-is
+    return `${Math.round(num)}`;
+  }
+
+  // Choose display unit based on payment frequency
+  if (freq === "weekly" || freq === "biweekly") {
+    const w = Math.round(weeks!);
+    return `${w} week${w !== 1 ? "s" : ""}`;
+  }
+  if (freq === "daily") {
+    const d = Math.round(days!);
+    return `${d} days`;
+  }
+  // monthly / default — show months
+  const m = Math.round(months!);
+  return `${m} month${m !== 1 ? "s" : ""}`;
+}
+
 function sliderStep(max: number): number {
   if (max >= 500000) return 10000;
   if (max >= 200000) return 5000;
@@ -308,7 +350,7 @@ export default function OfferExplorer() {
                     <Info style={{ width: "11px", height: "11px", color: isSelected ? "rgba(255,255,255,0.5)" : LABEL_GRAY }} />
                   </span>
                   <span style={{ fontSize: "1.125rem", fontWeight: 700, color: isSelected ? "#fff" : NAVY }}>
-                    {metrics.nPayments}
+                    {paybackPeriodLabel(offer.term || null, offer.paymentFrequency || null)}
                   </span>
                 </div>
                 <div className={isSelected ? "offer-metric-row-sel" : "offer-metric-row"}>
