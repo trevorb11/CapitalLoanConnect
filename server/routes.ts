@@ -34,6 +34,12 @@ import { startLeadNurtureScheduler } from "./services/leadNurture";
 import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
+
+// ─── SALESFORCE SYNC KILL-SWITCH ──────────────────────────────────────────────
+// Set to true to re-enable all Salesforce sync (application, decisions, scheduled retry)
+const SF_SYNC_ENABLED = false;
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { z } from "zod";
 import type { LoanApplication, MerchantBankSnapshot, RepCallStat } from "@shared/schema";
 
@@ -2038,18 +2044,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Sync to Salesforce (fire-and-forget — never blocks the merchant experience)
-      syncApplicationToSalesforce(updatedApp || application).then(sfResult => {
-        // Also sync to dialer_contacts with SF IDs
-        if (sfResult.synced) {
-          syncApplicationToDialer(updatedApp || application, {
-            accountId: sfResult.accountId,
-            contactId: sfResult.contactId,
-            oppId: sfResult.oppId,
-          }).catch(err => console.error("[Dialer Sync] Error:", err.message));
-        }
-      }).catch(err =>
-        console.error('[SF Sync] Background error:', err.message)
-      );
+      if (SF_SYNC_ENABLED) {
+        syncApplicationToSalesforce(updatedApp || application).then(sfResult => {
+          // Also sync to dialer_contacts with SF IDs
+          if (sfResult.synced) {
+            syncApplicationToDialer(updatedApp || application, {
+              accountId: sfResult.accountId,
+              contactId: sfResult.contactId,
+              oppId: sfResult.oppId,
+            }).catch(err => console.error("[Dialer Sync] Error:", err.message));
+          }
+        }).catch(err =>
+          console.error('[SF Sync] Background error:', err.message)
+        );
+      }
 
       // Also sync to dialer even without SF (for business field updates)
       syncApplicationToDialer(updatedApp || application).catch(err =>
@@ -6569,7 +6577,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Sync to Salesforce (async, non-blocking)
-      syncDecisionToSalesforce(decision).then(async (sfResult) => {
+      if (SF_SYNC_ENABLED) syncDecisionToSalesforce(decision).then(async (sfResult) => {
         try {
           await storage.updateBusinessUnderwritingDecision(decision.id, {
             sfSynced: sfResult.synced,
@@ -6833,7 +6841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Sync updated decision to Salesforce (async, non-blocking)
-      syncDecisionToSalesforce(updated).then(async (sfResult) => {
+      if (SF_SYNC_ENABLED) syncDecisionToSalesforce(updated).then(async (sfResult) => {
         try {
           await storage.updateBusinessUnderwritingDecision(id, {
             sfSynced: sfResult.synced,
@@ -16664,14 +16672,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Schedule: check every hour, run at 8am/1pm/8pm EST
   const SF_SYNC_HOURS_UTC = [12, 17, 0]; // 8am, 1pm, 8pm EST (UTC-4 EDT)
   let lastSfSyncHour = -1;
-  setInterval(() => {
-    const nowUtc = new Date().getUTCHours();
-    if (SF_SYNC_HOURS_UTC.includes(nowUtc) && lastSfSyncHour !== nowUtc) {
-      lastSfSyncHour = nowUtc;
-      console.log(`[SF Scheduled Sync] Triggered at UTC hour ${nowUtc}`);
-      retryFailedSfSyncs();
-    }
-  }, 10 * 60 * 1000); // Check every 10 minutes
+  if (SF_SYNC_ENABLED) {
+    setInterval(() => {
+      const nowUtc = new Date().getUTCHours();
+      if (SF_SYNC_HOURS_UTC.includes(nowUtc) && lastSfSyncHour !== nowUtc) {
+        lastSfSyncHour = nowUtc;
+        console.log(`[SF Scheduled Sync] Triggered at UTC hour ${nowUtc}`);
+        retryFailedSfSyncs();
+      }
+    }, 10 * 60 * 1000); // Check every 10 minutes
+  }
 
   // ═══════════════════════════════════════════════════════════════
   // ADMIN GIGFI CSV SUBMISSION

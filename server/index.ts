@@ -609,24 +609,8 @@ app.use((req, res, next) => {
       startScheduledTriggers();
 
       // Auto-poll Salesforce for inbound changes every 15 minutes
-      const SF_POLL_INTERVAL_MS = 15 * 60 * 1000;
-      if (process.env.SF_INSTANCE_URL && (process.env.SF_REFRESH_TOKEN || process.env.SF_ACCESS_TOKEN)) {
-        console.log(`[STARTUP] SF auto-poll enabled (every ${SF_POLL_INTERVAL_MS / 1000}s)`);
-        // Initial poll after 30s delay (let server fully warm up)
-        setTimeout(() => {
-          pollSalesforceChanges().catch(err =>
-            console.error("[SF Poll] Initial poll error:", err.message)
-          );
-        }, 30000);
-        // Then every 5 minutes
-        setInterval(() => {
-          pollSalesforceChanges().catch(err =>
-            console.error("[SF Poll] Scheduled poll error:", err.message)
-          );
-        }, SF_POLL_INTERVAL_MS);
-      } else {
-        console.log("[STARTUP] SF auto-poll disabled — no SF credentials configured");
-      }
+      // DISABLED — set SF_SYNC_ENABLED = true in routes.ts to re-enable sync, then uncomment below
+      console.log("[STARTUP] SF auto-poll disabled (kill-switch active)");
     });
   } catch (error) {
     console.error('[STARTUP] Failed to start server:', error);
