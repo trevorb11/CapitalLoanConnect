@@ -79,17 +79,10 @@ interface FullApprovalEntry {
   sellRate: string;
   maxUpsell: string;
   minimumDraw?: string; // floor for the Offer Explorer slider (TCG offers)
-<<<<<<< HEAD
   numberOfPayments?: string; // manual override for payment count (e.g. 52 for 12-month weekly at 52wk/yr)
   lenderName?: string; // optional display name shown on offer sheet (e.g. "PIRS Capital")
   earlyPayoffEnabled?: boolean;
-  earlyPayoffAmounts?: string[]; // dollar amounts per month as strings for input binding
-=======
-  earlyPayoffEnabled?: boolean; // show Pre-Payment Options table on the offer page
-  earlyPayoffStartFactor?: string; // month-1 payoff factor (default: 1 + half the margin)
-  earlyPayoffStep?: string; // factor increase per month (default 0.01)
-  earlyPayoffMonths?: string; // months shown (default: half the term)
->>>>>>> 011ceb8c5018ccf371faf61897992d104e31c011
+  earlyPayoffAmounts?: (string | number)[]; // dollar amounts per month; stored as numbers, edited as strings
   totalPayback: string;
   netAfterFees: string;
   notes: string;
@@ -153,17 +146,10 @@ export default function Approvals() {
     sellRate: '',
     maxUpsell: '',
     minimumDraw: '',
-<<<<<<< HEAD
     numberOfPayments: '',
     lenderName: '',
     earlyPayoffEnabled: false as boolean,
     earlyPayoffAmounts: [] as string[],
-=======
-    earlyPayoffEnabled: false,
-    earlyPayoffStartFactor: '',
-    earlyPayoffStep: '',
-    earlyPayoffMonths: '',
->>>>>>> 011ceb8c5018ccf371faf61897992d104e31c011
     totalPayback: '',
     netAfterFees: '',
     lender: '',
@@ -618,17 +604,10 @@ export default function Approvals() {
           sellRate: existing.sellRate || '',
           maxUpsell: existing.maxUpsell || '',
           minimumDraw: existing.minimumDraw || '',
-<<<<<<< HEAD
           numberOfPayments: existing.numberOfPayments || '',
           lenderName: existing.lenderName || '',
           earlyPayoffEnabled: existing.earlyPayoffEnabled || false,
           earlyPayoffAmounts: (existing.earlyPayoffAmounts || []).map(String),
-=======
-          earlyPayoffEnabled: existing.earlyPayoffEnabled || false,
-          earlyPayoffStartFactor: existing.earlyPayoffStartFactor || '',
-          earlyPayoffStep: existing.earlyPayoffStep || '',
-          earlyPayoffMonths: existing.earlyPayoffMonths || '',
->>>>>>> 011ceb8c5018ccf371faf61897992d104e31c011
           totalPayback: existing.totalPayback,
           netAfterFees: existing.netAfterFees,
           lender: existing.lender,
@@ -649,17 +628,10 @@ export default function Approvals() {
         sellRate: '',
         maxUpsell: '',
         minimumDraw: '',
-<<<<<<< HEAD
         numberOfPayments: '',
         lenderName: '',
         earlyPayoffEnabled: false,
         earlyPayoffAmounts: [],
-=======
-        earlyPayoffEnabled: false,
-        earlyPayoffStartFactor: '',
-        earlyPayoffStep: '',
-        earlyPayoffMonths: '',
->>>>>>> 011ceb8c5018ccf371faf61897992d104e31c011
         totalPayback: '',
         netAfterFees: '',
         lender: '',
@@ -689,19 +661,12 @@ export default function Approvals() {
         sellRate: editForm.sellRate,
         maxUpsell: editForm.maxUpsell,
         minimumDraw: editForm.minimumDraw,
-<<<<<<< HEAD
         numberOfPayments: editForm.numberOfPayments || undefined,
         lenderName: editForm.lenderName || undefined,
         earlyPayoffEnabled: editForm.earlyPayoffEnabled,
         earlyPayoffAmounts: editForm.earlyPayoffEnabled && editForm.earlyPayoffAmounts.length > 0
           ? editForm.earlyPayoffAmounts.map(v => parseFloat(v)).filter(n => !isNaN(n) && n > 0)
           : undefined,
-=======
-        earlyPayoffEnabled: editForm.earlyPayoffEnabled,
-        earlyPayoffStartFactor: editForm.earlyPayoffStartFactor,
-        earlyPayoffStep: editForm.earlyPayoffStep,
-        earlyPayoffMonths: editForm.earlyPayoffMonths,
->>>>>>> 011ceb8c5018ccf371faf61897992d104e31c011
         totalPayback: editForm.totalPayback,
         netAfterFees: editForm.netAfterFees,
         notes: editForm.notes,
@@ -1727,7 +1692,6 @@ export default function Approvals() {
                 <p className="text-xs text-muted-foreground mt-1">Slider floor on the offer page (TCG offers)</p>
               </div>
             </div>
-<<<<<<< HEAD
 
             {/* Lender Display Name */}
             <div>
@@ -1811,66 +1775,6 @@ export default function Approvals() {
               )}
             </div>
 
-=======
-            <div className="rounded-md border p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="edit-earlyPayoff" className="cursor-pointer">Early Payoff Options (offer page)</Label>
-                  <p className="text-xs text-muted-foreground">Show a month-by-month pre-payment table on the offer explorer</p>
-                </div>
-                <Switch
-                  id="edit-earlyPayoff"
-                  checked={editForm.earlyPayoffEnabled}
-                  onCheckedChange={(checked) => setEditForm(prev => ({ ...prev, earlyPayoffEnabled: checked }))}
-                  data-testid="switch-edit-early-payoff"
-                />
-              </div>
-              {editForm.earlyPayoffEnabled && (
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="edit-earlyStartFactor">Month-1 Factor</Label>
-                    <Input
-                      id="edit-earlyStartFactor"
-                      type="number"
-                      step="0.01"
-                      placeholder={editForm.factorRate ? (1 + (parseFloat(editForm.factorRate) - 1) / 2).toFixed(2) : "1.22"}
-                      value={editForm.earlyPayoffStartFactor}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, earlyPayoffStartFactor: e.target.value }))}
-                      data-testid="input-edit-early-start-factor"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">Blank = half the margin</p>
-                  </div>
-                  <div>
-                    <Label htmlFor="edit-earlyStep">Step / Month</Label>
-                    <Input
-                      id="edit-earlyStep"
-                      type="number"
-                      step="0.005"
-                      placeholder="0.01"
-                      value={editForm.earlyPayoffStep}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, earlyPayoffStep: e.target.value }))}
-                      data-testid="input-edit-early-step"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">Factor added each month</p>
-                  </div>
-                  <div>
-                    <Label htmlFor="edit-earlyMonths">Months Shown</Label>
-                    <Input
-                      id="edit-earlyMonths"
-                      type="number"
-                      step="1"
-                      min="1"
-                      placeholder="6"
-                      value={editForm.earlyPayoffMonths}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, earlyPayoffMonths: e.target.value }))}
-                      data-testid="input-edit-early-months"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">Blank = half the term</p>
-                  </div>
-                </div>
-              )}
-            </div>
->>>>>>> 011ceb8c5018ccf371faf61897992d104e31c011
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-approvalDate">Approval Date</Label>

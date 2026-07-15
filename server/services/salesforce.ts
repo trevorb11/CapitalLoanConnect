@@ -218,6 +218,23 @@ export function computePipelineBucket(stage: string, hasApproval?: boolean): str
   }
 }
 
+// ── Sync kill switch ─────────────────────────────────────────────────────────
+// system_settings key 'sf_sync_disabled' = 'true' pauses ALL CLC→SF syncing
+// without a redeploy (used during the July 2026 clean-slate re-import).
+// Flip it back with: UPDATE system_settings SET value='false' WHERE key='sf_sync_disabled'
+let sfSyncDisabledCache: { value: boolean; at: number } | null = null;
+export async function isSfSyncDisabled(): Promise<boolean> {
+  if (sfSyncDisabledCache && Date.now() - sfSyncDisabledCache.at < 60_000) return sfSyncDisabledCache.value;
+  let disabled = false;
+  try {
+    const { neonPool } = await import("../db");
+    const r = await neonPool?.query("SELECT value FROM system_settings WHERE key = 'sf_sync_disabled' LIMIT 1");
+    disabled = String(r?.rows?.[0]?.value ?? "").toLowerCase() === "true";
+  } catch {}
+  sfSyncDisabledCache = { value: disabled, at: Date.now() };
+  return disabled;
+}
+
 /**
  * Main sync function — call this after saving a loan_application.
  * UPDATE-ONLY: searches for existing SF Leads and Opportunities by email/phone,
@@ -227,6 +244,10 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
   if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) {
     console.log("[SF Sync] Skipped — no SF credentials configured");
     return { synced: false, reason: "no credentials" };
+  }
+  if (await isSfSyncDisabled()) {
+    console.log("[SF Sync] Skipped — sync disabled via system_settings sf_sync_disabled");
+    return { synced: false, reason: "sync disabled" };
   }
 
   try {
@@ -506,6 +527,9 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
   if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) {
     return { synced: false, error: "no credentials" };
   }
+  if (await isSfSyncDisabled()) {
+    return { synced: false, reason: "sync disabled" };
+  }
 
   try {
     const email = decision.business_email || decision.businessEmail || app?.email || "";
@@ -728,6 +752,7 @@ export async function syncLenderSubmissionsToSalesforce(
   decision: Record<string, any>
 ): Promise<{ created: number; updated: number; errors: number }> {
   const results = { created: 0, updated: 0, errors: 0 };
+  if (await isSfSyncDisabled()) return results;
 
   // Gather all lender submissions from the decision
   const submissions: Array<{
@@ -1427,6 +1452,7 @@ export async function syncUwSubmissionToSalesforce(
   }
 ): Promise<void> {
   if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) return;
+  if (await isSfSyncDisabled()) return;
 
   const { snapshot, dealOverview } = options || {};
   const safeEmail = email.toLowerCase().trim();
@@ -1624,6 +1650,7 @@ export async function syncAiSnapshotToSalesforce(
   snapshot: Record<string, any>
 ): Promise<void> {
   if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) return;
+  if (await isSfSyncDisabled()) return;
 
   const safeEmail = email.toLowerCase().trim();
 

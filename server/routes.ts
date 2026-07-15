@@ -7599,7 +7599,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let offers = entries
         .filter((a) => isTcgLender(a?.lender))
         .sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0))
-<<<<<<< HEAD
         .map((a) => {
           // Inherit early payoff data from the primary entry when this TCG offer doesn't have it
           const earlyPayoffEnabled = a.earlyPayoffEnabled || (primaryEntry && !isTcgLender(primaryEntry.lender) ? primaryEntry.earlyPayoffEnabled : false) || false;
@@ -7622,23 +7621,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             earlyPayoffAmounts,
           };
         });
-=======
-        .map((a) => ({
-          advanceAmount: a.advanceAmount || null,
-          term: a.term || null,
-          paymentFrequency: a.paymentFrequency || null,
-          factorRate: a.factorRate || null,
-          totalPayback: a.totalPayback || null,
-          netAfterFees: a.netAfterFees || null,
-          approvalDate: a.approvalDate || null,
-          notes: a.notes || null,
-          minimumDraw: a.minimumDraw || null,
-          earlyPayoffEnabled: !!a.earlyPayoffEnabled,
-          earlyPayoffStartFactor: a.earlyPayoffStartFactor || null,
-          earlyPayoffStep: a.earlyPayoffStep || null,
-          earlyPayoffMonths: a.earlyPayoffMonths || null,
-        }));
->>>>>>> 011ceb8c5018ccf371faf61897992d104e31c011
 
       // Legacy top-level approval fields
       if (offers.length === 0 && isTcgLender(decision.lender)) {
@@ -7652,10 +7634,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           approvalDate: decision.approvalDate ? String(decision.approvalDate) : null,
           notes: decision.notes || null,
           minimumDraw: null,
+          numberOfPayments: null,
+          lenderName: null,
           earlyPayoffEnabled: false,
-          earlyPayoffStartFactor: null,
-          earlyPayoffStep: null,
-          earlyPayoffMonths: null,
+          earlyPayoffAmounts: null,
         }];
       }
 
@@ -15265,7 +15247,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   async function createSfTask(fields: Record<string, any>): Promise<boolean> {
     try {
-      const { getAccessToken: getSfToken } = await import("./services/salesforce");
+      const { getAccessToken: getSfToken, isSfSyncDisabled } = await import("./services/salesforce");
+      if (await isSfSyncDisabled()) return false;
       const token = await getSfToken();
       if (!token || !process.env.SF_INSTANCE_URL) return false;
       const r = await fetch(`${process.env.SF_INSTANCE_URL}/services/data/v66.0/sobjects/Task`, {
