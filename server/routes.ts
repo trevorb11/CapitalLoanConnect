@@ -10254,8 +10254,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const email = getLeadEmail(req);
     if (!email) return res.status(401).json({ error: "Authentication required" });
 
+    // Statement-based analysis (cached from uploaded PDFs) — lets the Financials
+    // tab show real numbers before a bank is ever connected.
+    let statementInsights: any = null;
+    try {
+      const pdfCache = await storage.getMerchantInsight(email, 'pdf');
+      const pd = pdfCache?.insightsData as any;
+      if (pd) {
+        statementInsights = {
+          analyzedAt: (pdfCache as any).updatedAt || (pdfCache as any).createdAt || null,
+          overallScore: Number(pd.overallScore) || 0,
+          scoreExplanation: pd.scoreExplanation || "",
+          monthlyRevenue: Number(pd.estimatedMonthlyRevenue) || 0,
+          monthlyExpenses: Number(pd.estimatedMonthlyExpenses) || 0,
+          netCashFlow: Number(pd.netCashFlow) || 0,
+          avgDailyBalance: Number(pd.averageDailyBalance) || 0,
+          revenueConsistency: pd.revenueConsistency || null,
+          monthlyBreakdown: Array.isArray(pd.monthlyBreakdown) ? pd.monthlyBreakdown.slice(-6) : [],
+        };
+      }
+    } catch {}
+
     const snapshot = await storage.getMerchantBankSnapshot(email);
-    if (!snapshot) return res.json({ connected: false, hasPendingConnection: false });
+    if (!snapshot) return res.json({ connected: false, hasPendingConnection: false, statementInsights });
 
     // Bank data can arrive via the Chirp webhook while the lead is away —
     // re-evaluate qualification whenever they view their financials.
@@ -10290,6 +10311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({
       connected: Boolean(snapshot.isAccountConnected),
       hasPendingConnection,
+      statementInsights,
       status: snapshot.status,
       institutionName: snapshot.institutionName,
       connectedAt: snapshot.connectedAt,
@@ -14823,6 +14845,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[MERCHANT PDF] Analysis error:", error);
       res.status(500).json({ error: "Failed to analyze statements" });
+    }
+  });
+
+  // Admin/batch: run the same statement analysis for any email — used to pre-warm
+  // /track Financials for provisioned accounts so insights are ready at first login.
+  app.post("/api/admin/claude/analyze-statements", claudeAuth, async (req, res) => {
+    const email = String(req.body?.email || "").toLowerCase().trim();
+    if (!email || !email.includes("@")) return res.status(400).json({ error: "body.email required" });
+    try {
+      // Skip if a fresh analysis is already cached (unless force)
+      if (!req.body?.force) {
+        const cached = await storage.getMerchantInsight(email, 'pdf');
+        if (cached && (!cached.expiresAt || new Date(cached.expiresAt) > new Date())) {
+          return res.json({ success: true, skipped: "fresh analysis already cached" });
+        }
+      }
+      const uploads = await storage.getBankStatementUploadsByEmail(email);
+      if (!uploads || uploads.length === 0) return res.status(404).json({ error: "no statements on file" });
+
+      // Most recent statements first
+      const sorted = [...uploads].sort((a: any, b: any) =>
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      const extractedTexts: string[] = [];
+      for (const upload of sorted.slice(0, 6)) {
+        try {
+          let fileBuffer: Buffer;
+          if (upload.storedFileName && upload.storedFileName.includes("bank-statements/")) {
+            fileBuffer = await objectStorage.getFileBuffer(upload.storedFileName);
+          } else {
+            const filePath = path.join(UPLOAD_DIR, upload.storedFileName);
+            if (!fs.existsSync(filePath)) continue;
+            fileBuffer = fs.readFileSync(filePath);
+          }
+          const parser = new PDFParse({ data: fileBuffer });
+          const result = await parser.getText();
+          extractedTexts.push(`--- Statement: ${upload.originalFileName} ---\n${result.text || ""}\n`);
+          await parser.destroy();
+        } catch (pdfError) {
+          console.error(`[ADMIN PDF] parse error ${upload.originalFileName}:`, pdfError);
+        }
+      }
+      if (extractedTexts.length === 0) return res.status(422).json({ error: "could not extract text from statements" });
+
+      const analysis = await analyzeBankStatements(extractedTexts.join("\n\n"), {});
+      await storage.createOrUpdateMerchantInsight({
+        merchantEmail: email,
+        sourceType: 'pdf',
+        insightsData: analysis as any,
+        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // pre-warmed: keep 90 days
+      });
+      console.log(`[ADMIN PDF] Pre-warmed analysis for ${email}. Score: ${analysis.overallScore}`);
+      res.json({ success: true, score: analysis.overallScore, statements: extractedTexts.length });
+    } catch (error: any) {
+      console.error("[ADMIN PDF] analyze error:", error);
+      res.status(500).json({ error: error.message || "analysis failed" });
     }
   });
 
