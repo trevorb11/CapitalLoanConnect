@@ -36,7 +36,9 @@ import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialer
 import { pollSalesforceChanges } from "./services/salesforcePoll";
 
 // ─── SALESFORCE SYNC KILL-SWITCH ──────────────────────────────────────────────
-// Set to true to re-enable all Salesforce sync (application, decisions, scheduled retry)
+// SF_APP_SYNC_ENABLED  — syncs new/updated applications to Salesforce on submit
+// SF_SYNC_ENABLED      — syncs underwriting decisions + scheduled retry batch
+const SF_APP_SYNC_ENABLED = true;
 const SF_SYNC_ENABLED = false;
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2044,7 +2046,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Sync to Salesforce (fire-and-forget — never blocks the merchant experience)
-      if (SF_SYNC_ENABLED) {
+      if (SF_APP_SYNC_ENABLED) {
         syncApplicationToSalesforce(updatedApp || application).then(sfResult => {
           // Also sync to dialer_contacts with SF IDs
           if (sfResult.synced) {
