@@ -158,16 +158,35 @@ function mapCreditScore(v: any): string | null {
 function mapIndustry(v: any): string | null {
   if (!v) return null;
   const map: Record<string, string> = {
-    "Construction": "Construction",
-    "Transportation": "Transportation",
-    "Health Services": "Healthcare",
+    // Full application / Step2Business values
     "Retail": "Retail",
+    "Restaurant/Food Service": "Restaurant",
+    "Healthcare": "Healthcare",
+    "Construction": "Construction",
     "Professional Services": "Professional Services",
+    "Manufacturing": "Manufacturing",
+    "Technology": "Technology",
+    "Transportation": "Transportation",
+    "Real Estate": "Real Estate",
+    "Wholesale": "Wholesale",
+    "Other": "Other",
+    // Quiz / intake form values
+    "Restaurants & Food Services": "Restaurant",
+    "Health Services": "Healthcare",
     "Utilities and Home Services": "Construction",
     "Hospitality": "Hospitality",
     "Restaurant": "Restaurant",
+    // Lowercase variants
+    "restaurant": "Restaurant",
+    "retail": "Retail",
+    "healthcare": "Healthcare",
+    "construction": "Construction",
+    "transportation": "Transportation",
+    "technology": "Technology",
+    "manufacturing": "Manufacturing",
   };
-  return map[v] || v;
+  // Return null for unmapped values so SF's restricted picklist isn't violated
+  return map[v] ?? null;
 }
 
 function clean(obj: Record<string, any>): Record<string, any> {
