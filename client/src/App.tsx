@@ -4,7 +4,44 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { GoogleReCaptchaProvider } from "react-google-recaptcha-v3";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useEffect, lazy, Suspense } from "react";
+import { Component, type ErrorInfo, type ReactNode, useEffect, lazy, Suspense } from "react";
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[ErrorBoundary] Caught error:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center max-w-md px-6">
+            <h2 className="text-2xl font-bold mb-2">Something went wrong</h2>
+            <p className="text-muted-foreground mb-4">
+              The page encountered an error. Please refresh to try again.
+            </p>
+            <p className="text-xs text-muted-foreground font-mono bg-muted rounded-md p-2 text-left break-all">
+              {this.state.error?.message}
+            </p>
+            <button
+              className="mt-4 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium"
+              onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            >
+              Reload page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { Loader2 } from "lucide-react";
 import { initUTMTracking } from "@/lib/utm";
 // Eager: root route (lead conversion) + 404
@@ -329,9 +366,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Suspense fallback={<PageLoader />}>
-          <Router />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<PageLoader />}>
+            <Router />
+          </Suspense>
+        </ErrorBoundary>
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -81,9 +81,7 @@ export function getAgentByInitials(initials: string): Agent | undefined {
 // Agents with restricted "user" role - can only see their own submissions
 // These users can submit applications and bank statements but cannot access
 // full agent dashboard or view other agents' data
-export const RESTRICTED_AGENTS: string[] = [
-  "bryce@todaycapitalgroup.com",
-];
+export const RESTRICTED_AGENTS: string[] = [];
 
 export function isRestrictedAgent(email: string): boolean {
   return RESTRICTED_AGENTS.some(e => e.toLowerCase() === email.toLowerCase());
