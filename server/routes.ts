@@ -621,6 +621,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ---------------------------------------------------------------------------
+  // Manually sync a single application to Salesforce by ID or email
+  // Body: { id?: string, email?: string }
+  // ---------------------------------------------------------------------------
+  app.post("/api/admin/sf-sync-application", async (req, res) => {
+    const apiKey = req.headers["x-claude-api-key"] as string;
+    const isAuthed = apiKey === process.env.CLAUDE_API_KEY || req.session?.user;
+    if (!isAuthed) return res.status(401).json({ error: "Unauthorized" });
+
+    const { id, email } = req.body;
+    if (!id && !email) return res.status(400).json({ error: "body.id or body.email is required" });
+
+    try {
+      let application: any = null;
+      if (id) {
+        application = await storage.getLoanApplication(id);
+      } else {
+        application = await storage.getLoanApplicationByEmailOrPhone(email);
+      }
+      if (!application) return res.status(404).json({ error: "Application not found" });
+
+      const sfResult = await syncApplicationToSalesforce(application);
+
+      if (sfResult.synced && sfResult.contactId) {
+        await storage.updateLoanApplication(application.id, {
+          sfContactId: sfResult.contactId,
+          sfSyncedAt: new Date(),
+          sfSyncMessage: sfResult.action || "manual-sync",
+        } as any);
+      } else if (!sfResult.synced) {
+        await storage.updateLoanApplication(application.id, {
+          sfSyncedAt: new Date(),
+          sfSyncMessage: sfResult.error || sfResult.reason || "manual-sync-failed",
+        } as any);
+      }
+
+      return res.json({ ok: true, applicationId: application.id, ...sfResult });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
   // Re-sync UW submissions to Salesforce (find-or-create Opp per submission)
   // Body: { emails?: string[] }  — omit to sync all of today's submissions
   // ---------------------------------------------------------------------------
