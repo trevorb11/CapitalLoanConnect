@@ -227,8 +227,8 @@ export function BankStatementSnapshot({ email, compact = false, businessName, cr
                 </span>
                 <span>
                   <span className="text-gray-400">Positions: </span>
-                  <span className={`font-medium ${snapshot.existingPositions.length > 0 ? 'text-orange-500' : 'text-emerald-600'}`}>
-                    {snapshot.existingPositions.length === 0 ? 'None' : snapshot.existingPositions.map(p => p.funder).join(', ')}
+                  <span className={`font-medium ${(snapshot.existingPositions?.length ?? 0) > 0 ? 'text-orange-500' : 'text-emerald-600'}`}>
+                    {(snapshot.existingPositions?.length ?? 0) === 0 ? 'None' : snapshot.existingPositions!.map(p => p.funder).join(', ')}
                   </span>
                 </span>
                 {snapshot.maxRecommendedAdvance > 0 && (
@@ -261,10 +261,10 @@ export function BankStatementSnapshot({ email, compact = false, businessName, cr
                       {snapshot.summary && (
                         <p className="text-gray-600 leading-relaxed">{snapshot.summary}</p>
                       )}
-                      {snapshot.existingPositions.length > 0 && (
+                      {(snapshot.existingPositions?.length ?? 0) > 0 && (
                         <div>
                           <p className="font-medium text-gray-700 mb-1">Current Positions:</p>
-                          {snapshot.existingPositions.map((pos, i) => (
+                          {snapshot.existingPositions!.map((pos, i) => (
                             <p key={i} className="text-gray-500">{pos.funder}: {pos.estimatedPayment} ({pos.frequency})</p>
                           ))}
                           {snapshot.totalMonthlyDebtPayments > 0 && (
