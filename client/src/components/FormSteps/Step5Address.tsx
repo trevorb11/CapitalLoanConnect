@@ -26,6 +26,7 @@ const states = [
   "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
   "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
   "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+  "AB", "BC", "MB", "NB", "NL", "NS", "ON", "PE", "QC", "SK",
 ];
 
 export function Step5Address({ form }: Step5AddressProps) {
