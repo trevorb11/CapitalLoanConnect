@@ -2475,6 +2475,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ghlService.sendWebhook(updatedApp).catch(err =>
           console.error("Webhook error (non-blocking):", err)
         );
+
+        // Sync to Salesforce on full application completion (fire-and-forget)
+        if (SF_APP_SYNC_ENABLED) {
+          syncApplicationToSalesforce(updatedApp).then(sfResult => {
+            if (sfResult.synced) {
+              syncApplicationToDialer(updatedApp, {
+                accountId: sfResult.accountId,
+                contactId: sfResult.contactId,
+                oppId: sfResult.oppId,
+              }).catch(err => console.error("[Dialer Sync] Error:", err.message));
+            } else {
+              console.warn(`[SF Sync] Full app completion sync failed for ${updatedApp.email}: ${sfResult.error || sfResult.reason}`);
+            }
+          }).catch(err => console.error('[SF Sync] Full app background error:', err.message));
+        }
+
         // SMS: app_submitted (full 11-step application)
         if (updatedApp.phone) {
           const _parts = (updatedApp.fullName || '').trim().split(' ');
