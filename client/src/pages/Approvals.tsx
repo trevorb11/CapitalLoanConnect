@@ -187,6 +187,8 @@ export default function Approvals() {
     notes: '',
     approvalDate: '',
     fundedDate: new Date().toISOString().split('T')[0],
+    isLineOfCredit: false,
+    creditLineTotal: '',
   });
   const [fundSaving, setFundSaving] = useState(false);
 
@@ -787,6 +789,8 @@ export default function Approvals() {
       notes: primary?.notes || decision.notes || '',
       approvalDate: primary?.approvalDate || (decision.approvalDate ? new Date(decision.approvalDate).toISOString().split('T')[0] : ''),
       fundedDate: new Date().toISOString().split('T')[0],
+      isLineOfCredit: (decision as any).isLineOfCredit || false,
+      creditLineTotal: (decision as any).creditLineTotal?.toString() || '',
     });
     setFundingDecision(decision);
   };
@@ -828,6 +832,11 @@ export default function Approvals() {
           status: 'funded',
           fundedDate: fundForm.fundedDate,
           additionalFundings: mergedFundings,
+          // Save LOC settings alongside the funding so they're always in sync
+          isLineOfCredit: fundForm.isLineOfCredit,
+          creditLineTotal: fundForm.isLineOfCredit && fundForm.creditLineTotal
+            ? parseFloat(fundForm.creditLineTotal)
+            : null,
           // additionalApprovals intentionally omitted — approval packages are never touched when funding
         },
       });
@@ -2243,6 +2252,40 @@ export default function Approvals() {
                 onChange={(e) => setFundForm(prev => ({ ...prev, notes: e.target.value }))}
                 data-testid="input-fund-notes"
               />
+            </div>
+
+            {/* Line of Credit */}
+            <div className="border rounded-md p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium">Line of Credit</Label>
+                  <p className="text-xs text-muted-foreground">This draw is part of a revolving credit facility</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={fundForm.isLineOfCredit}
+                  onClick={() => setFundForm(prev => ({ ...prev, isLineOfCredit: !prev.isLineOfCredit }))}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${fundForm.isLineOfCredit ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                  data-testid="toggle-fund-line-of-credit"
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${fundForm.isLineOfCredit ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              {fundForm.isLineOfCredit && (
+                <div>
+                  <Label htmlFor="fund-creditLineTotal">Total Credit Line Amount</Label>
+                  <Input
+                    id="fund-creditLineTotal"
+                    type="number"
+                    placeholder="750000"
+                    value={fundForm.creditLineTotal}
+                    onChange={(e) => setFundForm(prev => ({ ...prev, creditLineTotal: e.target.value }))}
+                    data-testid="input-fund-credit-line-total"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Total approved facility (e.g. $750,000). This draw of {fundForm.advanceAmount ? `$${parseInt(fundForm.advanceAmount).toLocaleString()}` : '...'} will be shown against it in the merchant portal.</p>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
