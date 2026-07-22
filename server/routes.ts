@@ -7686,7 +7686,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             netAfterFees: a.netAfterFees || null,
             approvalDate: a.approvalDate || null,
             notes: a.notes || null,
-            minimumDraw: a.minimumDraw || null,
+            minimumDraw: a.minimumDraw != null && a.minimumDraw !== "" ? a.minimumDraw : null,
             numberOfPayments: a.numberOfPayments || null,
             lenderName: a.lenderName || null,
             earlyPayoffEnabled,

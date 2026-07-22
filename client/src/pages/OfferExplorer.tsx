@@ -219,8 +219,8 @@ export default function OfferExplorer() {
   }, [current]);
 
   const step = sliderStep(approved);
-  const adminMin = parseFloat(current?.minimumDraw || "");
-  const hasCustomMin = Number.isFinite(adminMin) && adminMin > 0;
+  const adminMin = parseFloat(current?.minimumDraw ?? "");
+  const hasCustomMin = Number.isFinite(adminMin) && adminMin >= 0;
   const minDraw = hasCustomMin
     ? Math.min(approved, Math.round(adminMin / step) * step)
     : Math.min(approved, Math.max(step, Math.round((approved * 0.4) / step) * step));
