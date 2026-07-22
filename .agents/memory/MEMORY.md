@@ -1,2 +1,4 @@
 - [Upload 403 production fix](upload-proxy-block.md) — multipart/form-data POST blocked by Replit proxy; fixed by base64 JSON endpoint.
 - [Salesforce JWT Bearer Auth](sf-jwt-auth.md) — store SF_PRIVATE_KEY as base64; Replit secrets panel truncates multiline to 64 chars.
+- [Dev vs prod databases are separate](dev-prod-db-separation.md) — executeSql hits Replit-managed dev DB; production uses external Neon DB with real data. Do not assume they're the same.
+- [admin-preview-data is a separate deal pipeline](admin-preview-deal-pipeline.md) — any field added to /api/merchant/deals must also be added to /api/merchant/admin-preview-data or portal won't show it in admin preview mode.

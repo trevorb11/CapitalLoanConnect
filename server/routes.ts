@@ -14588,6 +14588,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           additionalApprovals: Array.isArray(decision.additionalApprovals) ? decision.additionalApprovals : [],
           decisionId: decision.id,
         };
+        const locFields = {
+          isLineOfCredit: (decision as any).isLineOfCredit || false,
+          creditLineTotal: (decision as any).creditLineTotal ? parseFloat(String((decision as any).creditLineTotal)) : null,
+        };
         const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
         if (fundings.length > 0) {
           for (const funding of fundings) {
@@ -14604,6 +14608,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               status: 'active',
               assignedRep: funding.assignedRep || decision.assignedRep || null,
               ...sharedFields,
+              ...locFields,
             });
           }
         } else {
@@ -14620,6 +14625,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'active',
             assignedRep: decision.assignedRep || null,
             ...sharedFields,
+            ...locFields,
           });
         }
       }
