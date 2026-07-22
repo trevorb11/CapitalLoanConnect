@@ -2724,6 +2724,92 @@ function BalanceCorrectionCard({ deal, previewToken, onReported }: { deal: Deal;
   );
 }
 
+// ── EARLY PAYOFF SCHEDULE ─────────────────────────────────────────────────
+function EarlyPayoffTable({ deal }: { deal: Deal }) {
+  const calc = calcDeal(deal);
+  if (calc.isComplete) return null;
+
+  const paymentsPerMonth =
+    deal.paymentFrequency === 'daily' ? 21.67 :
+    deal.paymentFrequency === 'weekly' ? 4.33 :
+    (deal.paymentFrequency === 'bi-weekly' || deal.paymentFrequency === 'biweekly') ? 2.17 : 1;
+
+  const funded = new Date(deal.fundedDate);
+  const now = new Date();
+  const msPerMonth = 30.44 * 24 * 60 * 60 * 1000;
+  const monthsElapsed = Math.max(0, (now.getTime() - funded.getTime()) / msPerMonth);
+
+  // Build rows: from current position going forward, month by month
+  const rows: { label: string; date: Date; balance: number; paid: number }[] = [];
+  const totalMonths = Math.ceil(calc.totalPayments / paymentsPerMonth);
+
+  for (let m = 0; m <= totalMonths + 1; m++) {
+    const absoluteMonths = monthsElapsed + m;
+    const paymentsMade = Math.min(Math.round(absoluteMonths * paymentsPerMonth), calc.totalPayments);
+    const paid = paymentsMade * calc.paymentAmount;
+    const balance = Math.max(0, calc.totalPayback - paid);
+    const date = new Date(funded.getTime() + absoluteMonths * msPerMonth);
+    const label = m === 0 ? 'Today' : `+${m} mo`;
+    rows.push({ label, date, balance, paid });
+    if (balance <= 0) break;
+  }
+
+  const [expanded, setExpanded] = useState(false);
+  const visibleRows = expanded ? rows : rows.slice(0, 7);
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginBottom: 12, gap: 12
+      }}>
+        <div>
+          <div style={{ color: "#cdd9e5", fontWeight: 600, fontSize: 15 }}>Early Payoff Schedule</div>
+          <div style={{ color: "#8aaac8", fontSize: 12, marginTop: 2 }}>
+            What you'd owe if you paid off this draw at the start of each month
+            &nbsp;&middot;&nbsp;{deal.factorRate}x factor rate &middot;&nbsp;{fmt$(calc.paymentAmount)}/{deal.paymentFrequency}
+          </div>
+        </div>
+      </div>
+      <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid rgba(100,148,196,0.15)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: "rgba(13,148,136,0.08)" }}>
+              <th style={{ padding: "10px 14px", textAlign: "left", color: "#2dd4bf", fontWeight: 600, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>Period</th>
+              <th style={{ padding: "10px 14px", textAlign: "left", color: "#2dd4bf", fontWeight: 600, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>Est. Date</th>
+              <th style={{ padding: "10px 14px", textAlign: "right", color: "#2dd4bf", fontWeight: 600, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>Amount Paid</th>
+              <th style={{ padding: "10px 14px", textAlign: "right", color: "#2dd4bf", fontWeight: 600, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase" }}>Balance If Paid Off</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row, i) => (
+              <tr key={i} style={{
+                borderTop: "1px solid rgba(100,148,196,0.1)",
+                background: row.balance === 0 ? "rgba(13,148,136,0.06)" : i % 2 === 0 ? "transparent" : "rgba(100,148,196,0.03)"
+              }}>
+                <td style={{ padding: "9px 14px", color: i === 0 ? "#2dd4bf" : "#cdd9e5", fontWeight: i === 0 ? 600 : 400 }}>{row.label}</td>
+                <td style={{ padding: "9px 14px", color: "#8aaac8" }}>{fmtDate(row.date)}</td>
+                <td style={{ padding: "9px 14px", textAlign: "right", color: "#8aaac8" }}>{fmt$(row.paid)}</td>
+                <td style={{ padding: "9px 14px", textAlign: "right", color: row.balance === 0 ? "#2dd4bf" : "#cdd9e5", fontWeight: 600 }}>
+                  {row.balance === 0 ? "Paid Off" : fmt$(row.balance)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > 7 && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          style={{ marginTop: 8, background: "none", border: "none", color: "#2dd4bf", fontSize: 12, cursor: "pointer", padding: "4px 0" }}
+        >
+          {expanded ? "Show less" : `Show all ${rows.length} months`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function DealDetail({ deal: dealProp, onBack, previewToken }: { deal: Deal; onBack: () => void; previewToken?: string | null }) {
   // Local override so a just-submitted balance correction reflects immediately
   const [localReport, setLocalReport] = useState<{ balance: number; at: string } | null>(null);
@@ -2867,8 +2953,11 @@ function DealDetail({ deal: dealProp, onBack, previewToken }: { deal: Deal; onBa
         </>
       )}
 
+      {/* Early Payoff Schedule */}
+      <EarlyPayoffTable deal={deal} />
+
       {/* Payoff Countdown */}
-      <PayoffCountdownWidget deal={deal} />
+      {!deal.isLineOfCredit && <PayoffCountdownWidget deal={deal} />}
 
       {/* Payoff coverage from bank revenue (only shown if merchant has connected via Chirp) */}
       <PayoffCoverageInsight deal={deal} />
@@ -5613,8 +5702,10 @@ export default function MerchantPortal() {
     );
   }
 
-  const activeDeals = deals.filter(d => d.status === "active");
-  const completedDeals = deals.filter(d => d.status === "completed");
+  // Use calcDeal to determine actual completion — server always returns status='active'
+  const activeDeals = deals.filter(d => !calcDeal(d).isComplete);
+  const completedDeals = deals.filter(d => calcDeal(d).isComplete);
+  const isLocMerchant = deals.some(d => d.isLineOfCredit);
 
   return (
     <div className="merchant-portal">
@@ -5728,7 +5819,7 @@ export default function MerchantPortal() {
                     <div style={{ display: "grid", gap: 20 }}>
                       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
                         <div className="insight-card">
-                          <div className="insight-title">Active Positions</div>
+                          <div className="insight-title">{isLocMerchant ? "Active Draws" : "Active Positions"}</div>
                           <div className="insight-value">{activeDeals.length}</div>
                         </div>
                         <div className="insight-card">
@@ -5751,7 +5842,12 @@ export default function MerchantPortal() {
                       {!loadingDeals && deals.length > 0 && (
                         <PreQualifiedOfferBanner deals={deals} />
                       )}
-                      {!loadingDeals && activeDeals.length > 0 && (
+
+                      {/* For LOC merchants: show credit line banner prominently at top; for regular: show payoff countdown */}
+                      {!loadingDeals && isLocMerchant && activeDeals.some(d => d.isLineOfCredit) && (
+                        <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} />
+                      )}
+                      {!loadingDeals && !isLocMerchant && activeDeals.length > 0 && (
                         <PayoffCountdownWidget
                           deal={activeDeals[0]}
                           onViewDeal={() => setSelectedDeal(activeDeals[0])}
@@ -5772,10 +5868,7 @@ export default function MerchantPortal() {
                             <>
                               {activeDeals.length > 0 && (
                                 <>
-                                  <div className="section-label">Active Positions</div>
-                                  {activeDeals.some(d => d.isLineOfCredit) && (
-                                    <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} />
-                                  )}
+                                  <div className="section-label">{isLocMerchant ? "Active Draws" : "Active Positions"}</div>
                                   <div className="deals-grid">
                                     {activeDeals.map(d => (
                                       <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />
@@ -5859,14 +5952,12 @@ export default function MerchantPortal() {
                         <PreQualifiedOfferBanner deals={deals} />
                       )}
 
-                      {/* Payoff Countdown Widget - show for primary active deal */}
-                      {!loadingDeals && activeDeals.length > 0 && (
-                        <PayoffCountdownWidget deal={activeDeals[0]} />
-                      )}
-
-                      {/* Credit Line Banner - above activity feed */}
-                      {!loadingDeals && activeDeals.some(d => d.isLineOfCredit) && (
+                      {/* LOC: credit line banner at top; non-LOC: payoff countdown */}
+                      {!loadingDeals && isLocMerchant && activeDeals.some(d => d.isLineOfCredit) && (
                         <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} />
+                      )}
+                      {!loadingDeals && !isLocMerchant && activeDeals.length > 0 && (
+                        <PayoffCountdownWidget deal={activeDeals[0]} />
                       )}
 
                       {/* Activity Feed */}
@@ -5887,7 +5978,7 @@ export default function MerchantPortal() {
                         <>
                           {activeDeals.length > 0 && (
                             <>
-                              <div className="section-label">Active</div>
+                              <div className="section-label">{isLocMerchant ? "Active Draws" : "Active"}</div>
                               <div className="deals-grid">
                                 {activeDeals.map(d => (
                                   <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />
