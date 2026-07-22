@@ -3044,8 +3044,8 @@ function PaymentScheduleCard({ deal, previewToken }: { deal: Deal; previewToken?
             {visibleRows.map((r) => (
               <tr key={r.n} style={{ borderTop: "1px solid #f3f4f6", background: r.status === "next" ? "#f0fdfa" : "transparent" }}>
                 <td style={{ padding: "8px 12px", color: "#6B7280" }}>{r.n}</td>
-                <td style={{ padding: "8px 12px" }}>{fmtDate(r.date)}</td>
-                <td style={{ padding: "8px 12px" }}>{fmt$(calc.paymentAmount)}</td>
+                <td style={{ padding: "8px 12px", color: r.status === "next" ? "#111827" : undefined, fontWeight: r.status === "next" ? 600 : undefined }}>{fmtDate(r.date)}</td>
+                <td style={{ padding: "8px 12px", color: r.status === "next" ? "#111827" : undefined, fontWeight: r.status === "next" ? 600 : undefined }}>{fmt$(calc.paymentAmount)}</td>
                 <td style={{ padding: "8px 12px" }}>
                   {r.status === "paid" ? (
                     <span style={{ color: "#059669", fontWeight: 600 }}>&#10003; Paid</span>
