@@ -46,6 +46,9 @@ interface Deal {
   decisionId: number;
   reportedBalance?: number | null;
   reportedAt?: string | null;
+  // Line of Credit fields
+  isLineOfCredit?: boolean;
+  creditLineTotal?: number | null;
 }
 
 interface AdditionalApproval {
@@ -488,6 +491,45 @@ const CSS = `
     color: #8aaac8;
     margin-bottom: 40px;
   }
+
+  .loc-banner {
+    background: linear-gradient(135deg, #0f2a4a 0%, #0d3557 100%);
+    border: 1px solid rgba(45,212,191,0.25);
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+  .loc-banner-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: #2dd4bf;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .loc-banner-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #dce8f5;
+    margin-bottom: 18px;
+  }
+  .loc-stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .loc-stat {
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .loc-stat-label { font-size: 0.7rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .loc-stat-val { font-size: 1.25rem; font-weight: 800; color: #f1f5f9; }
+  .loc-stat-val.teal { color: #2dd4bf; }
+  .loc-track { height: 8px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden; margin-bottom: 8px; }
+  .loc-fill { height: 100%; background: linear-gradient(90deg,#0d9488,#2dd4bf); border-radius: 999px; transition: width 0.7s ease; }
+  .loc-track-labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: #64748b; }
 
   .deals-grid {
     display: grid;
@@ -2468,6 +2510,52 @@ function ProgressBar({ pct, big = false }: { pct: number; big?: boolean }) {
   return (
     <div className="progress-track">
       <div className="progress-fill" style={{ width: `${width}%` }} />
+    </div>
+  );
+}
+
+// ── CREDIT LINE BANNER ───────────────────────────────────────────────────
+// Shown above a group of draws that belong to a line-of-credit facility.
+function CreditLineBanner({ deals }: { deals: Deal[] }) {
+  const first = deals[0];
+  if (!first?.isLineOfCredit || !first?.creditLineTotal) return null;
+
+  const totalLine = first.creditLineTotal;
+  const totalDrawn = deals.reduce((sum, d) => sum + d.advanceAmount, 0);
+  const available = Math.max(0, totalLine - totalDrawn);
+  const utilPct = totalLine > 0 ? Math.min(100, (totalDrawn / totalLine) * 100) : 0;
+
+  const [animWidth, setAnimWidth] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setAnimWidth(utilPct), 150);
+    return () => clearTimeout(t);
+  }, [utilPct]);
+
+  return (
+    <div className="loc-banner">
+      <div className="loc-banner-label">Credit Line Overview</div>
+      <div className="loc-banner-title">{first.lender} — Revolving Credit Facility</div>
+      <div className="loc-stats-row">
+        <div className="loc-stat">
+          <div className="loc-stat-label">Total Credit Line</div>
+          <div className="loc-stat-val">{fmt$(totalLine)}</div>
+        </div>
+        <div className="loc-stat">
+          <div className="loc-stat-label">Total Drawn</div>
+          <div className="loc-stat-val">{fmt$(totalDrawn)}</div>
+        </div>
+        <div className="loc-stat">
+          <div className="loc-stat-label">Available to Draw</div>
+          <div className="loc-stat-val teal">{fmt$(available)}</div>
+        </div>
+      </div>
+      <div className="loc-track">
+        <div className="loc-fill" style={{ width: `${animWidth}%` }} />
+      </div>
+      <div className="loc-track-labels">
+        <span>{utilPct.toFixed(1)}% utilized</span>
+        <span>{fmt$(available)} remaining</span>
+      </div>
     </div>
   );
 }
@@ -5704,6 +5792,9 @@ export default function MerchantPortal() {
                               {activeDeals.length > 0 && (
                                 <>
                                   <div className="section-label">Active Positions</div>
+                                  {activeDeals.some(d => d.isLineOfCredit) && (
+                                    <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} />
+                                  )}
                                   <div className="deals-grid">
                                     {activeDeals.map(d => (
                                       <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />
@@ -5811,6 +5902,9 @@ export default function MerchantPortal() {
                           {activeDeals.length > 0 && (
                             <>
                               <div className="section-label">Active</div>
+                              {activeDeals.some(d => d.isLineOfCredit) && (
+                                <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} />
+                              )}
                               <div className="deals-grid">
                                 {activeDeals.map(d => (
                                   <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />

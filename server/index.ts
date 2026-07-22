@@ -536,6 +536,8 @@ app.use((req, res, next) => {
 
       // Web lead flag — marks applications that came in via public intake/quiz (not rep-submitted)
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS is_web_lead BOOLEAN DEFAULT FALSE`);
+      await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS is_line_of_credit BOOLEAN DEFAULT FALSE`);
+      await db.execute(sql`ALTER TABLE business_underwriting_decisions ADD COLUMN IF NOT EXISTS credit_line_total DECIMAL(12,2)`);
       console.log('[STARTUP] Migration: is_web_lead column ensured');
 
       // Merchant Positions — funding positions detected from bank statement analysis

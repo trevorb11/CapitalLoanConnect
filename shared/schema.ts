@@ -554,6 +554,11 @@ export const businessUnderwritingDecisions = pgTable("business_underwriting_deci
   sfContactId: text("sf_contact_id"),
   sfOpportunityId: text("sf_opportunity_id"),
 
+  // Line of Credit settings — when enabled the merchant portal shows total credit line,
+  // total drawn across all fundings, and remaining available to draw.
+  isLineOfCredit: boolean("is_line_of_credit").default(false),
+  creditLineTotal: decimal("credit_line_total", { precision: 12, scale: 2 }),
+
   // Audit fields
   reviewedBy: text("reviewed_by"), // Email of underwriter who made the decision
   createdAt: timestamp("created_at").defaultNow(),

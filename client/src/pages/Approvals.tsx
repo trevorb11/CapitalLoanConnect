@@ -159,6 +159,8 @@ export default function Approvals() {
     notes: '',
     approvalDate: '',
     fundedDate: '',
+    isLineOfCredit: false as boolean,
+    creditLineTotal: '',
   });
   const [saving, setSaving] = useState(false);
   
@@ -619,6 +621,8 @@ export default function Approvals() {
           notes: existing.notes,
           approvalDate: existing.approvalDate || '',
           fundedDate: existing.fundedDate || '',
+          isLineOfCredit: (decision as any).isLineOfCredit || false,
+          creditLineTotal: (decision as any).creditLineTotal?.toString() || '',
         });
       }
     } else {
@@ -645,6 +649,8 @@ export default function Approvals() {
         notes: '',
         approvalDate: new Date().toISOString().split('T')[0],
         fundedDate: '',
+        isLineOfCredit: (decision as any).isLineOfCredit || false,
+        creditLineTotal: (decision as any).creditLineTotal?.toString() || '',
       });
     }
     setEditingApproval({ decision, approvalId });
@@ -704,6 +710,11 @@ export default function Approvals() {
       if (editForm.assignedRep2 !== ((decision as any).assignedRep2 || '')) {
         updates.assignedRep2 = editForm.assignedRep2 || null;
       }
+      // Decision-level LOC settings
+      updates.isLineOfCredit = editForm.isLineOfCredit;
+      updates.creditLineTotal = editForm.isLineOfCredit && editForm.creditLineTotal
+        ? parseFloat(editForm.creditLineTotal)
+        : null;
       await updateMutation.mutateAsync({
         id: decision.id,
         updates,
@@ -1565,6 +1576,41 @@ export default function Approvals() {
                 </Select>
               </div>
             </div>
+
+            {/* Line of Credit — decision-level toggle */}
+            <div className="border rounded-md p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium">Line of Credit</Label>
+                  <p className="text-xs text-muted-foreground">Merchant portal shows total credit line, drawn amount, and available balance</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={editForm.isLineOfCredit}
+                  onClick={() => setEditForm(prev => ({ ...prev, isLineOfCredit: !prev.isLineOfCredit }))}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${editForm.isLineOfCredit ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                  data-testid="toggle-line-of-credit"
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.isLineOfCredit ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              {editForm.isLineOfCredit && (
+                <div>
+                  <Label htmlFor="edit-creditLineTotal">Total Credit Line Amount</Label>
+                  <Input
+                    id="edit-creditLineTotal"
+                    type="number"
+                    placeholder="750000"
+                    value={editForm.creditLineTotal}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, creditLineTotal: e.target.value }))}
+                    data-testid="input-credit-line-total"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">The total approved credit facility (e.g. $750,000 for EK Line). Individual draws are tracked separately.</p>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-advanceAmount">Advance Amount</Label>

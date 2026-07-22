@@ -13919,6 +13919,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           decisionId: decision.id,
         };
 
+        // Line-of-credit fields propagated to all deals from this decision
+        const locFields = {
+          isLineOfCredit: (decision as any).isLineOfCredit || false,
+          creditLineTotal: (decision as any).creditLineTotal ? parseFloat(String((decision as any).creditLineTotal)) : null,
+        };
+
         // Build deals from additionalFundings JSONB array
         const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
 
@@ -13936,6 +13942,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'active',
             assignedRep: funding.assignedRep || decision.assignedRep || null,
             ...sharedFields,
+            ...locFields,
           });
         }
 
@@ -13954,6 +13961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'active',
             assignedRep: decision.assignedRep || null,
             ...sharedFields,
+            ...locFields,
           });
         }
       }
