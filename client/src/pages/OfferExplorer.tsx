@@ -638,9 +638,10 @@ export default function OfferExplorer() {
                   onBlur={() => {
                     const parsed = parseInt(drawRawInputs[selectedIndex] ?? "", 10);
                     if (!isNaN(parsed)) {
-                      const snapped = Math.round(Math.min(approved, Math.max(minDraw, parsed)) / step) * step;
-                      setDraws((d) => ({ ...d, [selectedIndex]: snapped }));
-                      setDrawRawInputs((r) => ({ ...r, [selectedIndex]: String(snapped) }));
+                      // Clamp to [minDraw, approved] but keep the exact typed value — no step rounding
+                      const clamped = Math.min(approved, Math.max(minDraw, parsed));
+                      setDraws((d) => ({ ...d, [selectedIndex]: clamped }));
+                      setDrawRawInputs((r) => ({ ...r, [selectedIndex]: String(clamped) }));
                     } else {
                       // Reset to current draw if invalid
                       setDrawRawInputs((r) => ({ ...r, [selectedIndex]: String(draw) }));
