@@ -191,6 +191,7 @@ export default function Approvals() {
     creditLineTotal: '',
   });
   const [fundSaving, setFundSaving] = useState(false);
+  const [existingFundingsEdits, setExistingFundingsEdits] = useState<any[]>([]);
 
   // Check authentication first
   useEffect(() => {
@@ -792,6 +793,9 @@ export default function Approvals() {
       isLineOfCredit: (decision as any).isLineOfCredit || false,
       creditLineTotal: (decision as any).creditLineTotal?.toString() || '',
     });
+    // Initialize existing fundings edits so admin can toggle portal visibility
+    const existingFundings = Array.isArray(decision.additionalFundings) ? (decision.additionalFundings as any[]) : [];
+    setExistingFundingsEdits(existingFundings.map((f: any) => ({ ...f })));
     setFundingDecision(decision);
   };
 
@@ -821,10 +825,8 @@ export default function Approvals() {
         createdAt: new Date().toISOString(),
       };
 
-      // Prepend new entry to existing funded entries (newest first)
-      const rawFundings = fundingDecision.additionalFundings;
-      const existingFundings: unknown[] = Array.isArray(rawFundings) ? rawFundings : [];
-      const mergedFundings = [fundedEntry, ...existingFundings];
+      // Prepend new entry to existing funded entries (newest first), preserving any hiddenFromPortal edits
+      const mergedFundings = [fundedEntry, ...existingFundingsEdits];
 
       await updateMutation.mutateAsync({
         id: fundingDecision.id,
@@ -844,6 +846,24 @@ export default function Approvals() {
       toast({ title: "Deal Funded", description: `${fundingDecision.businessName || fundingDecision.businessEmail} has been marked as funded.` });
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to mark deal as funded.", variant: "destructive" });
+    } finally {
+      setFundSaving(false);
+    }
+  };
+
+  // Save only portal visibility changes on existing fundings (no new funding added)
+  const handleSaveVisibilityOnly = async () => {
+    if (!fundingDecision) return;
+    setFundSaving(true);
+    try {
+      await updateMutation.mutateAsync({
+        id: fundingDecision.id,
+        updates: { additionalFundings: existingFundingsEdits },
+      });
+      setFundingDecision(null);
+      toast({ title: "Portal visibility updated", description: "Merchant portal will now reflect these changes." });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update.", variant: "destructive" });
     } finally {
       setFundSaving(false);
     }
@@ -2253,6 +2273,47 @@ export default function Approvals() {
                 data-testid="input-fund-notes"
               />
             </div>
+
+            {/* Previous Fundings — portal visibility */}
+            {existingFundingsEdits.length > 0 && (
+              <div className="border rounded-md p-3 space-y-2">
+                <Label className="text-sm font-medium">Previous Fundings</Label>
+                <p className="text-xs text-muted-foreground">Toggle which positions appear in the merchant portal.</p>
+                {existingFundingsEdits.map((f, idx) => (
+                  <div key={f.id || idx} className="flex items-center justify-between py-1.5 border-t first:border-t-0">
+                    <div>
+                      <div className="text-sm font-medium">{f.lender || 'Unknown lender'} — {f.advanceAmount ? `$${parseFloat(f.advanceAmount).toLocaleString()}` : 'N/A'}</div>
+                      <div className="text-xs text-muted-foreground">{f.fundedDate ? new Date(f.fundedDate).toLocaleDateString() : ''}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{f.hiddenFromPortal ? 'Hidden' : 'Visible'}</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={!f.hiddenFromPortal}
+                        onClick={() => setExistingFundingsEdits(prev => prev.map((item, i) =>
+                          i === idx ? { ...item, hiddenFromPortal: !item.hiddenFromPortal } : item
+                        ))}
+                        className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none ${!f.hiddenFromPortal ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                        data-testid={`toggle-funding-visibility-${idx}`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${!f.hiddenFromPortal ? 'translate-x-5' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-1"
+                  onClick={handleSaveVisibilityOnly}
+                  disabled={fundSaving}
+                  data-testid="button-save-visibility-only"
+                >
+                  Save portal visibility changes
+                </Button>
+              </div>
+            )}
 
             {/* Line of Credit */}
             <div className="border rounded-md p-3 space-y-3">

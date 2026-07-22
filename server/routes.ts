@@ -13930,8 +13930,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         for (let fi = 0; fi < fundings.length; fi++) {
           const funding = fundings[fi];
-          // Only tag the most-recent (last) funding as LOC — earlier fundings pre-date the credit line
-          const thisLocFields = fi === fundings.length - 1 ? locFields : { isLineOfCredit: false, creditLineTotal: null };
+          // Skip fundings hidden from merchant portal
+          if (funding.hiddenFromPortal) continue;
+          // Fundings are stored newest-first (index 0 = most recent draw).
+          // Only tag the most-recent (first) funding as LOC — older fundings pre-date the credit line.
+          const thisLocFields = fi === 0 ? locFields : { isLineOfCredit: false, creditLineTotal: null };
           deals.push({
             id: funding.id || decision.id,
             businessName: decision.businessName || 'N/A',
@@ -14599,8 +14602,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (fundings.length > 0) {
           for (let fi = 0; fi < fundings.length; fi++) {
             const funding = fundings[fi];
-            // Only tag the most-recent (last) funding as LOC — earlier fundings pre-date the credit line
-            const thisLocFields = fi === fundings.length - 1 ? locFields : { isLineOfCredit: false, creditLineTotal: null };
+            // Skip fundings hidden from merchant portal
+            if (funding.hiddenFromPortal) continue;
+            // Fundings are stored newest-first (index 0 = most recent draw).
+            // Only tag the most-recent (first) funding as LOC — older fundings pre-date the credit line.
+            const thisLocFields = fi === 0 ? locFields : { isLineOfCredit: false, creditLineTotal: null };
             deals.push({
               id: funding.id || decision.id,
               businessName: decision.businessName || 'N/A',
