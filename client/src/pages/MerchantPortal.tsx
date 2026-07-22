@@ -4537,10 +4537,10 @@ function FinancialsTab({ merchantEmail, merchantName, assignedRep, onSwitchToMes
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
                   </svg>
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>
                       {stmt.fileName}
                     </p>
-                    <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                    <p style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
                       {stmt.uploadedAt ? new Date(stmt.uploadedAt).toLocaleDateString() : "Uploaded"}
                       {stmt.fileSize ? ` · ${(stmt.fileSize / 1024).toFixed(0)} KB` : ""}
                     </p>
