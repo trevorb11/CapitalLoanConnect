@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronUp, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy, Phone, Send } from "lucide-react";
+import { Search, ExternalLink, Filter, CheckCircle2, Clock, Lock, LogOut, User, Shield, Landmark, FileText, X, Loader2, TrendingUp, TrendingDown, Minus, Building2, DollarSign, Calendar as CalendarIcon, Download, Upload, Pencil, Save, Bot, AlertTriangle, Star, FolderArchive, ChevronDown, ChevronUp, ChevronRight, Sparkles, AlertCircle, ThumbsUp, ThumbsDown, Target, Mail, Eye, Check, FileEdit, Link2, Copy, Plus, Trash2, Banknote, Menu, MessageSquare, BarChart3, Trophy, Phone, Send, Globe } from "lucide-react";
 import { Link } from "wouter";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { BotAttemptsTab } from "@/components/dashboard/BotAttemptsTab";
@@ -3888,6 +3888,7 @@ export default function Dashboard() {
           const matchesAgentFilter =
             selectedAgentFilter === "all" ||
             (selectedAgentFilter === "unassigned" && !app.agentName) ||
+            (selectedAgentFilter === "web-leads" && !!(app as any).isWebLead) ||
             app.agentName === selectedAgentFilter;
 
           return matchesFilter && matchesAgentFilter;
@@ -4357,6 +4358,7 @@ export default function Dashboard() {
                   <SelectContent>
                     <SelectItem value="all">All Agents</SelectItem>
                     <SelectItem value="unassigned">Unassigned</SelectItem>
+                    <SelectItem value="web-leads">Web Leads</SelectItem>
                     {uniqueAgentNames.map((agentName) => (
                       <SelectItem key={agentName} value={agentName || ""}>
                         {agentName}
@@ -4433,6 +4435,12 @@ export default function Dashboard() {
                         );
                         return null;
                       })()}
+                      {(app as any).isWebLead && (
+                        <Badge variant="outline" className="text-xs border-sky-400 text-sky-600 dark:text-sky-400 dark:border-sky-700" data-testid={`badge-web-lead-${app.id}`}>
+                          <Globe className="w-3 h-3 mr-1" />
+                          Web Lead
+                        </Badge>
+                      )}
                       {authData.role === "admin" && app.agentName && (
                         <Badge variant="outline" className="text-xs" data-testid={`badge-agent-${app.id}`}>
                           <User className="w-3 h-3 mr-1" />

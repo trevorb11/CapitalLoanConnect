@@ -534,6 +534,10 @@ app.use((req, res, next) => {
       await db.execute(sql`ALTER TABLE merchant_bank_snapshots ADD COLUMN IF NOT EXISTS statement_filed_at TIMESTAMP`);
       console.log('[STARTUP] Migration: chirp snapshot columns ensured');
 
+      // Web lead flag — marks applications that came in via public intake/quiz (not rep-submitted)
+      await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS is_web_lead BOOLEAN DEFAULT FALSE`);
+      console.log('[STARTUP] Migration: is_web_lead column ensured');
+
       // Merchant Positions — funding positions detected from bank statement analysis
       await db.execute(sql`CREATE TABLE IF NOT EXISTS merchant_positions (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),

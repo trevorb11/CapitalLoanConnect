@@ -381,6 +381,29 @@ function isGFGSubmission(data: any): boolean {
   );
 }
 
+/**
+ * 5-minute delayed GHL owner lookup.
+ * After intake webhook fires, wait 5 min, then find the GHL contact by phone/email,
+ * read the assignedTo user, and write them as agentName on the application so
+ * the rep can see the file in their dashboard.
+ */
+function scheduleGhlOwnerSync(appId: string | number, phone?: string | null, email?: string | null) {
+  setTimeout(async () => {
+    try {
+      const result = await ghlService.resolveOwnerRepName(phone, email);
+      if (!result) {
+        console.log(`[GHL Owner Sync] No assigned owner found for app ${appId} (phone=${phone}, email=${email})`);
+        return;
+      }
+      await storage.updateLoanApplication(appId as any, { agentName: result.repName } as any);
+      console.log(`[GHL Owner Sync] Assigned rep "${result.repName}" to web lead app ${appId}`);
+    } catch (err: any) {
+      console.error(`[GHL Owner Sync] Error syncing owner for app ${appId}:`, err.message);
+    }
+  }, 5 * 60 * 1000);
+  console.log(`[GHL Owner Sync] Scheduled owner lookup in 5 min for app ${appId}`);
+}
+
 function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string; faxNumber?: string } {
   const { recaptchaToken, faxNumber, ...rest } = data;
   const sanitized = { ...rest };
@@ -2010,6 +2033,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ghlService.sendIntakeWebhook(updatedApp).catch(err =>
               console.error("Intake webhook error (non-blocking):", err)
             );
+            // On first intake completion with no agent, flag as web lead and schedule GHL owner sync
+            if (isFirstCompletion && !existingApp.agentEmail && !existingApp.agentName) {
+              storage.updateLoanApplication(updatedApp.id, { isWebLead: true } as any).catch(() => {});
+              scheduleGhlOwnerSync(updatedApp.id, updatedApp.phone, updatedApp.email);
+            }
           }
         }
 
@@ -2075,11 +2103,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (applicationData.businessName as string | undefined) || (applicationData as any).legalBusinessName,
       );
 
+      // Flag web leads: intake completed without agent attribution
+      const isWebLead = !!(applicationData.isCompleted && !applicationData.agentEmail && !applicationData.agentName);
+
       // Update with agentViewUrl, fundingReportUrl, and merchantId
       const updatedApp = await storage.updateLoanApplication(application.id, {
         agentViewUrl,
         ...(fundingReportUrl && { fundingReportUrl }),
         ...(newMerchantId && { merchantId: newMerchantId }),
+        ...(isWebLead && { isWebLead: true }),
       });
 
       // Record the first submission when the intake completes in one shot
@@ -2114,6 +2146,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await ghlService.sendIntakeWebhook(updatedApp || application);
         } catch (webhookError) {
           console.error("Intake webhook error (non-blocking):", webhookError);
+        }
+        // Schedule 5-min delayed GHL owner lookup for web leads
+        if (isWebLead) {
+          const _app = updatedApp || application;
+          scheduleGhlOwnerSync(_app.id, _app.phone, _app.email);
         }
         // SMS: app_submitted
         const _smsApp = updatedApp || application;

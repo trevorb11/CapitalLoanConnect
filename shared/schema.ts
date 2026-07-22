@@ -128,6 +128,7 @@ export const loanApplications = pgTable("loan_applications", {
   agentName: text("agent_name"), // Name of the agent who sent the application
   agentEmail: text("agent_email"), // Email of the agent
   agentGhlId: text("agent_ghl_id"), // GoHighLevel user ID of the agent
+  isWebLead: boolean("is_web_lead").default(false), // true = came in via public intake/quiz (not a rep's submission)
 
   // --- System Fields ---
   agentViewUrl: text("agent_view_url"), // To store the generated PDF link

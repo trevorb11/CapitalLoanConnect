@@ -489,6 +489,43 @@ export class GoHighLevelService {
   }
 
   /**
+   * Look up a GHL contact by phone number and return the full contact object.
+   */
+  async getContactByPhone(phone: string): Promise<any | null> {
+    if (!this.isEnabled || !phone) return null;
+    try {
+      const normalized = phone.replace(/\D/g, '');
+      const e164 = normalized.length === 10 ? `+1${normalized}` : `+${normalized}`;
+      const response = await this.makeRequest(
+        `/contacts/lookup?locationId=${this.locationId}&phone=${encodeURIComponent(e164)}`,
+        "GET"
+      );
+      const contacts = response.contacts || (response.contact ? [response.contact] : []);
+      if (contacts.length > 0) return contacts[0];
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolve the assigned rep name for a contact found by phone (first) or email (fallback).
+   * Returns { repName, repEmail, userId } or null if no assigned owner found.
+   */
+  async resolveOwnerRepName(phone?: string | null, email?: string | null): Promise<{ repName: string; repEmail: string; userId: string } | null> {
+    if (!this.isEnabled) return null;
+    let contact: any = null;
+    if (phone) contact = await this.getContactByPhone(phone);
+    if (!contact && email) contact = await this.getContactByEmail(email);
+    if (!contact) return null;
+    const userId: string = contact.assignedTo || contact.assigned_to || contact.ownerId || "";
+    if (!userId) return null;
+    const user = await this.getUser(userId);
+    if (!user || !user.name) return null;
+    return { repName: user.name, repEmail: user.email, userId };
+  }
+
+  /**
    * Get a GHL user by ID (for resolving assignedTo → rep name).
    */
   async getUser(userId: string): Promise<{ name: string; email: string } | null> {
