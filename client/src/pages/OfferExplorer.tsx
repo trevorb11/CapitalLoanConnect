@@ -203,10 +203,10 @@ export default function OfferExplorer() {
 
   const step = sliderStep(approved);
   const adminMin = parseFloat(current?.minimumDraw || "");
-  const minDraw =
-    Number.isFinite(adminMin) && adminMin > 0
-      ? Math.min(approved, adminMin)
-      : Math.min(approved, Math.max(step, Math.round((approved * 0.4) / step) * step));
+  const hasCustomMin = Number.isFinite(adminMin) && adminMin > 0;
+  const minDraw = hasCustomMin
+    ? Math.min(approved, Math.round(adminMin / step) * step)
+    : Math.min(approved, Math.max(step, Math.round((approved * 0.4) / step) * step));
   const draw = Math.min(approved, Math.max(minDraw, draws[selectedIndex] ?? approved));
 
   const payback = draw * factor;
@@ -606,7 +606,7 @@ export default function OfferExplorer() {
                   fontWeight: 500,
                 }}
               >
-                <span>{fmtMoney(minDraw)} (min 40%)</span>
+                <span>{fmtMoney(minDraw)} (min{hasCustomMin ? "" : " 40%"})</span>
                 <span>{fmtMoney(approved)}</span>
               </div>
             </div>
