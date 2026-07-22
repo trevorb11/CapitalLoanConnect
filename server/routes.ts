@@ -2033,9 +2033,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ghlService.sendIntakeWebhook(updatedApp).catch(err =>
               console.error("Intake webhook error (non-blocking):", err)
             );
-            // On first intake completion with no agent, flag as web lead and schedule GHL owner sync
-            if (isFirstCompletion && !existingApp.agentEmail && !existingApp.agentName) {
+            // Always flag as web lead when intake completes (covers existing merchants too)
+            if (applicationData.isCompleted) {
               storage.updateLoanApplication(updatedApp.id, { isWebLead: true } as any).catch(() => {});
+            }
+            // Schedule GHL owner sync only on first completion with no agent attribution
+            if (isFirstCompletion && !existingApp.agentEmail && !existingApp.agentName) {
               scheduleGhlOwnerSync(updatedApp.id, updatedApp.phone, updatedApp.email);
             }
           }
@@ -2103,8 +2106,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (applicationData.businessName as string | undefined) || (applicationData as any).legalBusinessName,
       );
 
-      // Flag web leads: intake completed without agent attribution
-      const isWebLead = !!(applicationData.isCompleted && !applicationData.agentEmail && !applicationData.agentName);
+      // Flag web leads: anyone who submits the intake/quiz form
+      const isWebLead = !!applicationData.isCompleted;
 
       // Update with agentViewUrl, fundingReportUrl, and merchantId
       const updatedApp = await storage.updateLoanApplication(application.id, {
@@ -2147,8 +2150,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (webhookError) {
           console.error("Intake webhook error (non-blocking):", webhookError);
         }
-        // Schedule 5-min delayed GHL owner lookup for web leads
-        if (isWebLead) {
+        // Schedule 5-min delayed GHL owner lookup only when no agent was attributed
+        if (isWebLead && !applicationData.agentEmail && !applicationData.agentName) {
           const _app = updatedApp || application;
           scheduleGhlOwnerSync(_app.id, _app.phone, _app.email);
         }
