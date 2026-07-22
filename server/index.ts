@@ -584,6 +584,34 @@ app.use((req, res, next) => {
       console.warn('[STARTUP] Migration warning (non-fatal):', migErr);
     }
 
+    // One-time patch: hide Fuji $150k funding from EK LINE's merchant portal
+    try {
+      const ekResult = await db.execute(sql`
+        SELECT id, additional_fundings FROM business_underwriting_decisions
+        WHERE business_email = 'ekline.jason@gmail.com' LIMIT 1
+      `);
+      const ekRow = ekResult.rows[0] as any;
+      if (ekRow) {
+        const fundings: any[] = Array.isArray(ekRow.additional_fundings) ? ekRow.additional_fundings : [];
+        const updated = fundings.map((f: any) =>
+          (Number(f.advanceAmount) === 150000 && !f.hiddenFromPortal)
+            ? { ...f, hiddenFromPortal: true }
+            : f
+        );
+        const changed = updated.some((f: any, i: number) => f.hiddenFromPortal !== fundings[i]?.hiddenFromPortal);
+        if (changed) {
+          await db.execute(sql`
+            UPDATE business_underwriting_decisions
+            SET additional_fundings = ${JSON.stringify(updated)}::jsonb
+            WHERE id = ${ekRow.id}
+          `);
+          console.log('[STARTUP] Patched EK LINE: Fuji $150k hidden from portal');
+        }
+      }
+    } catch (patchErr) {
+      console.warn('[STARTUP] EK LINE portal patch (non-fatal):', patchErr);
+    }
+
     console.log('[STARTUP] Registering routes...');
     const server = await registerRoutes(app);
     registerMcpRoutes(app);
