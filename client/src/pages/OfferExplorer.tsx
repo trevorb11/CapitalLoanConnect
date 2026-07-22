@@ -193,6 +193,8 @@ export default function OfferExplorer() {
   const { slug } = useParams<{ slug: string }>();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [draws, setDraws] = useState<Record<number, number>>({});
+  // Raw text the user is typing in the amount input — kept separate so they can type freely
+  const [drawRawInputs, setDrawRawInputs] = useState<Record<number, string>>({});
 
   const { data, isLoading, error } = useQuery<OfferData>({
     queryKey: [`/api/offer/${slug}`],
@@ -594,6 +596,78 @@ export default function OfferExplorer() {
               </div>
             </div>
 
+            {/* Manual dollar amount input */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", margin: "14px 0 2px" }}>
+              <span style={{ fontSize: "0.85rem", color: LABEL_GRAY, fontWeight: 500 }}>Or type an amount:</span>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  border: `1.5px solid ${BORDER_GRAY}`,
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                  background: "#F9FAFB",
+                  transition: "border-color 0.15s",
+                }}
+                onFocusCapture={(e) => (e.currentTarget.style.borderColor = TEAL)}
+                onBlurCapture={(e) => (e.currentTarget.style.borderColor = BORDER_GRAY)}
+              >
+                <span
+                  style={{
+                    padding: "6px 8px 6px 10px",
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                    color: TEXT_GRAY,
+                    background: "#F3F4F6",
+                    borderRight: `1px solid ${BORDER_GRAY}`,
+                    userSelect: "none",
+                  }}
+                >
+                  $
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  data-testid="input-draw-amount-text"
+                  value={drawRawInputs[selectedIndex] ?? String(draw)}
+                  onChange={(e) => {
+                    // Allow typing freely — only digits
+                    const raw = e.target.value.replace(/[^0-9]/g, "");
+                    setDrawRawInputs((r) => ({ ...r, [selectedIndex]: raw }));
+                  }}
+                  onBlur={() => {
+                    const parsed = parseInt(drawRawInputs[selectedIndex] ?? "", 10);
+                    if (!isNaN(parsed)) {
+                      const snapped = Math.round(Math.min(approved, Math.max(minDraw, parsed)) / step) * step;
+                      setDraws((d) => ({ ...d, [selectedIndex]: snapped }));
+                      setDrawRawInputs((r) => ({ ...r, [selectedIndex]: String(snapped) }));
+                    } else {
+                      // Reset to current draw if invalid
+                      setDrawRawInputs((r) => ({ ...r, [selectedIndex]: String(draw) }));
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  }}
+                  style={{
+                    border: "none",
+                    outline: "none",
+                    background: "transparent",
+                    padding: "6px 10px",
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                    color: NAVY,
+                    width: "110px",
+                    fontFamily: fontStack,
+                  }}
+                  placeholder={String(draw)}
+                />
+              </div>
+              <span style={{ fontSize: "0.78rem", color: LABEL_GRAY }}>
+                ({fmtMoney(minDraw)} – {fmtMoney(approved)})
+              </span>
+            </div>
+
             <div style={{ margin: "16px 2px 6px" }}>
               <input
                 type="range"
@@ -602,12 +676,11 @@ export default function OfferExplorer() {
                 max={approved}
                 step={step}
                 value={draw}
-                onChange={(e) =>
-                  setDraws((d) => ({
-                    ...d,
-                    [selectedIndex]: Number(e.target.value),
-                  }))
-                }
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setDraws((d) => ({ ...d, [selectedIndex]: val }));
+                  setDrawRawInputs((r) => ({ ...r, [selectedIndex]: String(val) }));
+                }}
                 style={{
                   background: `linear-gradient(to right, ${TEAL} 0%, ${TEAL} ${((draw - minDraw) / Math.max(1, approved - minDraw)) * 100}%, ${BORDER_GRAY} ${((draw - minDraw) / Math.max(1, approved - minDraw)) * 100}%, ${BORDER_GRAY} 100%)`,
                 }}
