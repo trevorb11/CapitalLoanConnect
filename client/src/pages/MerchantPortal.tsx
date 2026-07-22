@@ -2887,8 +2887,6 @@ function DealDetail({ deal: dealProp, onBack, previewToken }: { deal: Deal; onBa
 function PaymentScheduleCard({ deal, previewToken }: { deal: Deal; previewToken?: string | null }) {
   const calc = calcDeal(deal);
   const [expanded, setExpanded] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const paymentDate = (n: number): Date => {
     const funded = new Date(deal.fundedDate);
@@ -2913,53 +2911,14 @@ function PaymentScheduleCard({ deal, previewToken }: { deal: Deal; previewToken?
   const windowStart = Math.max(0, calc.paymentsMade - 3);
   const visibleRows = expanded ? allRows : allRows.slice(windowStart, calc.paymentsMade + 5);
 
-  const downloadLetter = async () => {
-    setDownloading(true);
-    setDownloadError(null);
-    try {
-      const headers: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
-      const res = await fetch(`/api/merchant/payoff-letter?dealId=${encodeURIComponent(String(deal.id))}`, {
-        credentials: "include", headers,
-      });
-      if (!res.ok) throw new Error();
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `payoff-statement-${deal.lender.replace(/\s+/g, "-").toLowerCase()}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      setDownloadError("Download failed — please try again.");
-    } finally {
-      setDownloading(false);
-    }
-  };
-
   return (
     <div className="tracker-card" style={{ marginTop: 20, textAlign: "left" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#1B2E4D" }}>Payment Schedule</div>
-          <div style={{ fontSize: 12, color: "#6B7280" }}>
-            Estimated {deal.paymentFrequency} payments of {fmt$(calc.paymentAmount)} based on your original terms
-          </div>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#1B2E4D" }}>Payment Schedule</div>
+        <div style={{ fontSize: 12, color: "#6B7280" }}>
+          Estimated {deal.paymentFrequency} payments of {fmt$(calc.paymentAmount)} based on your original terms
         </div>
-        <button
-          onClick={downloadLetter}
-          disabled={downloading}
-          style={{
-            background: "#fff", color: "#0d9488", border: "1px solid #0d9488", borderRadius: 8,
-            padding: "8px 16px", fontSize: 13, fontWeight: 600,
-            cursor: downloading ? "wait" : "pointer", opacity: downloading ? 0.7 : 1,
-          }}
-        >
-          {downloading ? "Preparing..." : "Download Payoff Letter (PDF)"}
-        </button>
       </div>
-      {downloadError && <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 10 }}>{downloadError}</div>}
 
       <div style={{ maxHeight: expanded ? 360 : "none", overflowY: expanded ? "auto" : "visible", border: "1px solid #e5e7eb", borderRadius: 8 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
