@@ -2748,6 +2748,28 @@ function DealDetail({ deal: dealProp, onBack, previewToken }: { deal: Deal; onBa
         </span>
       </div>
 
+      {deal.isLineOfCredit && deal.creditLineTotal && (
+        <div style={{
+          background: "rgba(13,148,136,0.08)",
+          border: "1px solid rgba(13,148,136,0.25)",
+          borderRadius: 8,
+          padding: "12px 16px",
+          marginBottom: 20,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}>
+          <div style={{ color: "#2dd4bf", fontSize: 18 }}>&#9670;</div>
+          <div>
+            <div style={{ color: "#2dd4bf", fontWeight: 600, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>Revolving Credit Facility</div>
+            <div style={{ color: "#8aaac8", fontSize: 13, marginTop: 2 }}>
+              This position is part of your <strong style={{ color: "#cdd9e5" }}>${Number(deal.creditLineTotal).toLocaleString()}</strong> credit line.
+              Funds can be redrawn as you pay down this balance.
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-card-label">Advance Amount</div>
@@ -5842,6 +5864,11 @@ export default function MerchantPortal() {
                         <PayoffCountdownWidget deal={activeDeals[0]} />
                       )}
 
+                      {/* Credit Line Banner - above activity feed */}
+                      {!loadingDeals && activeDeals.some(d => d.isLineOfCredit) && (
+                        <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} />
+                      )}
+
                       {/* Activity Feed */}
                       {!loadingDeals && deals.length > 0 && (
                         <ActivityFeed merchantEmail={merchantEmail} previewToken={adminPreviewToken} />
@@ -5861,9 +5888,6 @@ export default function MerchantPortal() {
                           {activeDeals.length > 0 && (
                             <>
                               <div className="section-label">Active</div>
-                              {activeDeals.some(d => d.isLineOfCredit) && (
-                                <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} />
-                              )}
                               <div className="deals-grid">
                                 {activeDeals.map(d => (
                                   <DealCard key={d.id} deal={d} onClick={setSelectedDeal} />

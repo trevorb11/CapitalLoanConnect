@@ -13928,7 +13928,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Build deals from additionalFundings JSONB array
         const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
 
-        for (const funding of fundings) {
+        for (let fi = 0; fi < fundings.length; fi++) {
+          const funding = fundings[fi];
+          // Only tag the most-recent (last) funding as LOC — earlier fundings pre-date the credit line
+          const thisLocFields = fi === fundings.length - 1 ? locFields : { isLineOfCredit: false, creditLineTotal: null };
           deals.push({
             id: funding.id || decision.id,
             businessName: decision.businessName || 'N/A',
@@ -13942,7 +13945,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'active',
             assignedRep: funding.assignedRep || decision.assignedRep || null,
             ...sharedFields,
-            ...locFields,
+            ...thisLocFields,
           });
         }
 
@@ -14594,7 +14597,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
         const fundings = Array.isArray(decision.additionalFundings) ? decision.additionalFundings as any[] : [];
         if (fundings.length > 0) {
-          for (const funding of fundings) {
+          for (let fi = 0; fi < fundings.length; fi++) {
+            const funding = fundings[fi];
+            // Only tag the most-recent (last) funding as LOC — earlier fundings pre-date the credit line
+            const thisLocFields = fi === fundings.length - 1 ? locFields : { isLineOfCredit: false, creditLineTotal: null };
             deals.push({
               id: funding.id || decision.id,
               businessName: decision.businessName || 'N/A',
@@ -14608,7 +14614,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               status: 'active',
               assignedRep: funding.assignedRep || decision.assignedRep || null,
               ...sharedFields,
-              ...locFields,
+              ...thisLocFields,
             });
           }
         } else {
