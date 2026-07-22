@@ -2516,7 +2516,232 @@ function ProgressBar({ pct, big = false }: { pct: number; big?: boolean }) {
 
 // ── CREDIT LINE BANNER ───────────────────────────────────────────────────
 // Shown above a group of draws that belong to a line-of-credit facility.
-function CreditLineBanner({ deals }: { deals: Deal[] }) {
+// ── LOC DRAW REQUEST MODAL ────────────────────────────────────────────────
+function DrawMoreFundsModal({
+  available, deals, onClose, previewToken,
+}: {
+  available: number; deals: Deal[]; onClose: () => void; previewToken?: string | null;
+}) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<"bank" | "statement" | null>(null);
+  const [verified, setVerified] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [repName, setRepName] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const pvHeaders: Record<string, string> = previewToken ? { "x-admin-preview-token": previewToken } : {};
+
+  const parsed = parseFloat(amount.replace(/[^0-9.]/g, ""));
+  const amountValid = !isNaN(parsed) && parsed > 0 && parsed <= available;
+
+  const handleSubmit = async () => {
+    if (!amountValid || !method) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/merchant/draw-request", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...pvHeaders },
+        body: JSON.stringify({ amount: parsed, method }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Request failed");
+      const data = await res.json();
+      setRepName(data.repName || null);
+      setStep(3);
+    } catch (e: any) {
+      setError(e.message || "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(7,15,28,0.75)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+    }} onClick={onClose}>
+      <div style={{
+        background: "#0f1e30", border: "1px solid rgba(100,148,196,0.2)", borderRadius: 16,
+        width: "100%", maxWidth: 520, padding: 28, position: "relative",
+      }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+          <div>
+            <div style={{ color: "#2dd4bf", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>
+              {step === 3 ? "Request Submitted" : `Step ${step} of 2`}
+            </div>
+            <div style={{ color: "#cdd9e5", fontSize: 18, fontWeight: 700 }}>
+              {step === 1 && "Draw More Funds"}
+              {step === 2 && "Verify Your Bank"}
+              {step === 3 && "You're all set!"}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8aaac8", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: 4 }}>✕</button>
+        </div>
+
+        {/* Step 1 — Amount */}
+        {step === 1 && (
+          <div>
+            <div style={{ background: "rgba(13,148,136,0.1)", border: "1px solid rgba(13,148,136,0.2)", borderRadius: 10, padding: "14px 18px", marginBottom: 20 }}>
+              <div style={{ color: "#8aaac8", fontSize: 12, marginBottom: 4 }}>Available to draw</div>
+              <div style={{ color: "#2dd4bf", fontSize: 24, fontWeight: 700 }}>{fmt$(available)}</div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ color: "#8aaac8", fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>
+                How much would you like to draw?
+              </label>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#8aaac8", fontSize: 16, fontWeight: 600 }}>$</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                  style={{
+                    width: "100%", boxSizing: "border-box",
+                    background: "rgba(100,148,196,0.08)", border: "1px solid rgba(100,148,196,0.2)",
+                    borderRadius: 10, padding: "14px 14px 14px 28px",
+                    color: "#cdd9e5", fontSize: 20, fontWeight: 600, outline: "none",
+                  }}
+                  data-testid="input-draw-amount"
+                  autoFocus
+                />
+              </div>
+              {amount && !amountValid && (
+                <div style={{ color: "#f87171", fontSize: 12, marginTop: 6 }}>
+                  {parsed > available ? `Maximum available is ${fmt$(available)}` : "Please enter a valid amount"}
+                </div>
+              )}
+            </div>
+
+            <button
+              disabled={!amountValid}
+              onClick={() => setStep(2)}
+              style={{
+                width: "100%", padding: "14px", borderRadius: 10, border: "none", cursor: amountValid ? "pointer" : "not-allowed",
+                background: amountValid ? "linear-gradient(135deg, #0d9488, #14b8a6)" : "rgba(100,148,196,0.1)",
+                color: amountValid ? "#fff" : "#4a6a8a", fontWeight: 700, fontSize: 15, transition: "all 0.2s",
+              }}
+              data-testid="button-draw-next"
+            >
+              Next: Verify Bank →
+            </button>
+          </div>
+        )}
+
+        {/* Step 2 — Bank Verification */}
+        {step === 2 && (
+          <div>
+            <div style={{ color: "#8aaac8", fontSize: 13, marginBottom: 20 }}>
+              To process your draw of <strong style={{ color: "#2dd4bf" }}>{fmt$(parsed)}</strong>, please verify your bank account. Choose one method below:
+            </div>
+
+            {/* Method selector */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+              {[
+                { key: "bank" as const, icon: "🏦", title: "Connect Bank", sub: "Instant via Chirp" },
+                { key: "statement" as const, icon: "📄", title: "Upload Statement", sub: "PDF bank statement" },
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => { setMethod(opt.key); setVerified(false); }}
+                  style={{
+                    background: method === opt.key ? "rgba(13,148,136,0.15)" : "rgba(100,148,196,0.06)",
+                    border: `1px solid ${method === opt.key ? "#0d9488" : "rgba(100,148,196,0.15)"}`,
+                    borderRadius: 10, padding: "14px 12px", cursor: "pointer", textAlign: "left",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>{opt.icon}</div>
+                  <div style={{ color: "#cdd9e5", fontWeight: 600, fontSize: 13 }}>{opt.title}</div>
+                  <div style={{ color: "#8aaac8", fontSize: 11, marginTop: 2 }}>{opt.sub}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Bank connect */}
+            {method === "bank" && !verified && (
+              <ChirpConnectButton
+                label="Connect Your Bank Account"
+                onSuccess={() => setVerified(true)}
+                previewToken={previewToken}
+              />
+            )}
+
+            {/* Statement upload */}
+            {method === "statement" && !verified && (
+              <StatementUploadZone
+                previewHeaders={pvHeaders}
+                onUploadComplete={() => setVerified(true)}
+              />
+            )}
+
+            {/* Verified state */}
+            {verified && (
+              <div style={{ background: "rgba(13,148,136,0.12)", border: "1px solid rgba(13,148,136,0.3)", borderRadius: 10, padding: "14px 16px", textAlign: "center", marginBottom: 4 }}>
+                <div style={{ color: "#2dd4bf", fontWeight: 700, fontSize: 14 }}>✓ Verified — ready to submit</div>
+                <div style={{ color: "#8aaac8", fontSize: 12, marginTop: 4 }}>
+                  {method === "bank" ? "Bank account connected successfully" : "Statement uploaded successfully"}
+                </div>
+              </div>
+            )}
+
+            {error && <div style={{ color: "#f87171", fontSize: 12, marginTop: 8, textAlign: "center" }}>{error}</div>}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button
+                onClick={() => setStep(1)}
+                style={{ flex: 1, padding: 12, borderRadius: 10, border: "1px solid rgba(100,148,196,0.2)", background: "transparent", color: "#8aaac8", cursor: "pointer", fontWeight: 600 }}
+              >
+                ← Back
+              </button>
+              <button
+                disabled={!verified || submitting}
+                onClick={handleSubmit}
+                style={{
+                  flex: 2, padding: 12, borderRadius: 10, border: "none",
+                  cursor: verified && !submitting ? "pointer" : "not-allowed",
+                  background: verified ? "linear-gradient(135deg, #0d9488, #14b8a6)" : "rgba(100,148,196,0.1)",
+                  color: verified ? "#fff" : "#4a6a8a", fontWeight: 700, fontSize: 15, transition: "all 0.2s",
+                }}
+                data-testid="button-draw-submit"
+              >
+                {submitting ? "Submitting…" : "Submit Draw Request"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 — Success */}
+        {step === 3 && (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>✓</div>
+            <div style={{ color: "#cdd9e5", fontSize: 16, fontWeight: 600, marginBottom: 10 }}>
+              Your draw request for <span style={{ color: "#2dd4bf" }}>{fmt$(parsed)}</span> has been submitted.
+            </div>
+            <div style={{ color: "#8aaac8", fontSize: 13, marginBottom: 24 }}>
+              {repName
+                ? `${repName} has been notified and will follow up with you shortly.`
+                : "Your rep has been notified and will follow up with you shortly."}
+            </div>
+            <button
+              onClick={onClose}
+              style={{ padding: "12px 32px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #0d9488, #14b8a6)", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer" }}
+            >
+              Done
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CreditLineBanner({ deals, onDrawRequest }: { deals: Deal[]; onDrawRequest?: () => void }) {
   const first = deals[0];
   if (!first?.isLineOfCredit || !first?.creditLineTotal) return null;
 
@@ -2533,8 +2758,26 @@ function CreditLineBanner({ deals }: { deals: Deal[] }) {
 
   return (
     <div className="loc-banner">
-      <div className="loc-banner-label">Credit Line Overview</div>
-      <div className="loc-banner-title">{first.lender} — Revolving Credit Facility</div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div className="loc-banner-label">Credit Line Overview</div>
+          <div className="loc-banner-title">{first.lender} — Revolving Credit Facility</div>
+        </div>
+        {onDrawRequest && available > 0 && (
+          <button
+            onClick={onDrawRequest}
+            data-testid="button-draw-more-funds"
+            style={{
+              background: "linear-gradient(135deg, #0d9488, #14b8a6)",
+              border: "none", borderRadius: 8, padding: "10px 18px",
+              color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
+              whiteSpace: "nowrap", flexShrink: 0,
+            }}
+          >
+            + Draw More Funds
+          </button>
+        )}
+      </div>
       <div className="loc-stats-row">
         <div className="loc-stat">
           <div className="loc-stat-label">Total Credit Line</div>
@@ -5544,6 +5787,7 @@ export default function MerchantPortal() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [loadingDeals, setLoadingDeals] = useState(false);
+  const [showDrawModal, setShowDrawModal] = useState(false);
   const [statements, setStatements] = useState<BankStatement[]>([]);
   const [loadingStatements, setLoadingStatements] = useState(false);
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
@@ -5844,7 +6088,7 @@ export default function MerchantPortal() {
 
                       {/* For LOC merchants: show credit line banner prominently at top; for regular: show payoff countdown */}
                       {!loadingDeals && isLocMerchant && activeDeals.some(d => d.isLineOfCredit) && (
-                        <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} />
+                        <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} onDrawRequest={() => setShowDrawModal(true)} />
                       )}
                       {!loadingDeals && !isLocMerchant && activeDeals.length > 0 && (
                         <PayoffCountdownWidget
@@ -5953,7 +6197,7 @@ export default function MerchantPortal() {
 
                       {/* LOC: credit line banner at top; non-LOC: payoff countdown */}
                       {!loadingDeals && isLocMerchant && activeDeals.some(d => d.isLineOfCredit) && (
-                        <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} />
+                        <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} onDrawRequest={() => setShowDrawModal(true)} />
                       )}
                       {!loadingDeals && !isLocMerchant && activeDeals.length > 0 && (
                         <PayoffCountdownWidget deal={activeDeals[0]} />
@@ -6045,6 +6289,16 @@ export default function MerchantPortal() {
           </>
         )}
       </div>
+
+      {/* LOC Draw Request Modal */}
+      {showDrawModal && isLocMerchant && (
+        <DrawMoreFundsModal
+          available={Math.max(0, (activeDeals.find(d => d.isLineOfCredit)?.creditLineTotal || 0) - activeDeals.filter(d => d.isLineOfCredit).reduce((s, d) => s + d.advanceAmount, 0))}
+          deals={activeDeals.filter(d => d.isLineOfCredit)}
+          onClose={() => setShowDrawModal(false)}
+          previewToken={adminPreviewToken}
+        />
+      )}
     </div>
   );
 }

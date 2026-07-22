@@ -15198,6 +15198,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Merchant: LOC Draw Request — notifies assigned rep via email
+  app.post("/api/merchant/draw-request", async (req, res) => {
+    const merchantEmail = await getMerchantEmailFromRequest(req);
+    if (!merchantEmail) return res.status(401).json({ error: "Merchant authentication required" });
+    try {
+      const { amount, method } = req.body as { amount: number; method: "bank" | "statement" };
+      if (!amount || amount <= 0) return res.status(400).json({ error: "Invalid draw amount" });
+
+      const decision = await storage.getBusinessUnderwritingDecisionByEmail(merchantEmail);
+      const businessName = decision?.businessName || req.session.user?.merchantName || merchantEmail;
+      const repName = decision?.assignedRep || null;
+      const repAgent = repName ? AGENTS.find(a => a.name.toLowerCase() === repName.toLowerCase()) : null;
+      const repEmail = repAgent?.email || 'underwriting@todaycapitalgroup.com';
+
+      const methodLabel = method === "bank" ? "bank account connected via Chirp" : "bank statements uploaded";
+
+      // Build and send email to rep
+      try {
+        const { google } = await import('googleapis');
+        const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+        const xReplitToken = process.env.REPL_IDENTITY
+          ? 'repl ' + process.env.REPL_IDENTITY
+          : process.env.WEB_REPL_RENEWAL
+          ? 'depl ' + process.env.WEB_REPL_RENEWAL
+          : null;
+
+        if (xReplitToken && hostname) {
+          const connRes = await fetch(
+            'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-mail',
+            { headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken } }
+          ).then(r => r.json());
+
+          const accessToken = connRes.items?.[0]?.settings?.access_token || connRes.items?.[0]?.settings?.oauth?.credentials?.access_token;
+          if (accessToken) {
+            const oauth2Client = new google.auth.OAuth2();
+            oauth2Client.setCredentials({ access_token: accessToken });
+            const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+            const baseUrl = process.env.PUBLIC_BASE_URL
+              ? process.env.PUBLIC_BASE_URL.replace(/\/$/, '')
+              : process.env.NODE_ENV === 'production'
+              ? 'https://app.todaycapitalgroup.com'
+              : process.env.REPLIT_DEV_DOMAIN
+              ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+              : 'http://localhost:5000';
+
+            const amountFormatted = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+            const htmlBody = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #14B8A6;">Today Capital Group — LOC Draw Request</h2>
+                <p><strong>${businessName}</strong> has requested to draw additional funds from their line of credit.</p>
+                <table style="width:100%; border-collapse:collapse; margin: 20px 0;">
+                  <tr style="background:#f4f4f5;">
+                    <td style="padding:10px 14px; font-weight:600;">Business</td>
+                    <td style="padding:10px 14px;">${businessName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px; font-weight:600;">Email</td>
+                    <td style="padding:10px 14px;">${merchantEmail}</td>
+                  </tr>
+                  <tr style="background:#f4f4f5;">
+                    <td style="padding:10px 14px; font-weight:600;">Requested Amount</td>
+                    <td style="padding:10px 14px; color:#0d9488; font-weight:700; font-size:18px;">${amountFormatted}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 14px; font-weight:600;">Verification Method</td>
+                    <td style="padding:10px 14px;">${methodLabel}</td>
+                  </tr>
+                </table>
+                <p style="margin: 24px 0;">
+                  <a href="${baseUrl}/dashboard" style="display:inline-block; padding:14px 28px; background:#14B8A6; color:#fff; text-decoration:none; border-radius:8px; font-weight:bold;">
+                    View in Dashboard
+                  </a>
+                </p>
+                <hr style="margin:24px 0; border:none; border-top:1px solid #eee;" />
+                <p style="color:#999; font-size:12px;">Today Capital Group · Merchant Portal · LOC Draw Request</p>
+              </div>
+            `;
+
+            const raw = Buffer.from(
+              `To: ${repEmail}\r\nSubject: LOC Draw Request — ${businessName} wants ${amountFormatted}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${htmlBody}`
+            ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+            await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+            console.log(`[MERCHANT] LOC draw request email sent to ${repEmail} for ${businessName} — ${amountFormatted}`);
+          }
+        }
+      } catch (emailErr) {
+        console.error('[MERCHANT] Failed to send draw request email:', emailErr);
+        // Don't fail the request — the draw request is still recorded
+      }
+
+      logPortalEvent('merchant', merchantEmail, 'loc_draw_requested');
+      res.json({ success: true, repName });
+    } catch (error) {
+      console.error("[MERCHANT] Error processing draw request:", error);
+      res.status(500).json({ error: "Failed to submit draw request" });
+    }
+  });
+
   // Staff: Send message to merchant (admin/underwriting only)
   app.post("/api/merchant/messages/staff", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
