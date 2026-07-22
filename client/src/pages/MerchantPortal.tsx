@@ -2584,7 +2584,7 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
           <div className="deal-stat-label">Total Payback</div>
           <div className="deal-stat-val">{fmt$(calc.totalPayback)}</div>
           <div className="deal-stat-sub">
-            {fmt$(deal.advanceAmount)} &times; {deal.factorRate}x factor
+            Total amount owed
           </div>
         </div>
         <div>
@@ -2767,7 +2767,7 @@ function EarlyPayoffTable({ deal }: { deal: Deal }) {
           <div style={{ color: "#cdd9e5", fontWeight: 600, fontSize: 15 }}>Early Payoff Schedule</div>
           <div style={{ color: "#8aaac8", fontSize: 12, marginTop: 2 }}>
             What you'd owe if you paid off this draw at the start of each month
-            &nbsp;&middot;&nbsp;{deal.factorRate}x factor rate &middot;&nbsp;{fmt$(calc.paymentAmount)}/{deal.paymentFrequency}
+            &nbsp;&middot;&nbsp;{fmt$(calc.paymentAmount)}/{deal.paymentFrequency}
           </div>
         </div>
       </div>
@@ -2865,7 +2865,7 @@ function DealDetail({ deal: dealProp, onBack, previewToken }: { deal: Deal; onBa
         <div className="stat-card">
           <div className="stat-card-label">Total Payback</div>
           <div className="stat-card-val">{fmt$(calc.totalPayback)}</div>
-          <div className="stat-card-sub">{deal.factorRate}x factor rate</div>
+          <div className="stat-card-sub">Total amount owed</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-label">Per Payment</div>
@@ -2910,7 +2910,7 @@ function DealDetail({ deal: dealProp, onBack, previewToken }: { deal: Deal; onBa
                 <strong>{fmt$(calc.amountPaid)}</strong> paid
               </div>
               <div className="tracker-total">
-                {fmt$(calc.totalPayback)} total owed ({fmt$(deal.advanceAmount)} &times; {deal.factorRate}x)
+                {fmt$(calc.totalPayback)} total owed
               </div>
             </div>
 
@@ -2939,7 +2939,6 @@ function DealDetail({ deal: dealProp, onBack, previewToken }: { deal: Deal; onBa
               <div className="balance-amount">{fmt$(calc.remaining)}</div>
               <div className="balance-sub">
                 {fmt$(calc.amountPaid)} paid of {fmt$(calc.totalPayback)} total owed
-                {" "}({fmt$(deal.advanceAmount)} funded &times; {deal.factorRate}x factor)
               </div>
             </div>
             <div className="payoff-date-wrap">
@@ -3534,7 +3533,7 @@ function PreQualifiedOfferBanner({ deals }: { deals: Deal[] }) {
                 <div>
                   <div className="offer-additional-lender">{ap.lender}</div>
                   <div className="offer-additional-term">
-                    {ap.term || "Flexible terms"}{ap.factorRate ? ` · ${ap.factorRate}x` : ""}
+                    {ap.term || "Flexible terms"}
                   </div>
                 </div>
                 <div className="offer-additional-amount">
@@ -4804,7 +4803,7 @@ function PayoffCountdownWidget({ deal, onViewDeal, onFinancials }: {
             Estimated payoff: <strong>{fmtDate(payoff)}</strong>
           </div>
           <div className="payoff-countdown-sub">
-            {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} of {fmt$(calc.totalPayback)} owed ({deal.factorRate}x factor)
+            {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} of {fmt$(calc.totalPayback)} owed
           </div>
           <div style={{ marginTop: 18 }}>
             <span className="analyze-btn" style={{ display: "inline-block" }}>View Position Details &rarr;</span>
@@ -4836,7 +4835,7 @@ function PayoffCountdownWidget({ deal, onViewDeal, onFinancials }: {
         Estimated payoff: <strong>{fmtDate(payoff)}</strong>
       </div>
       <div className="payoff-countdown-sub">
-        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} of {fmt$(calc.totalPayback)} owed ({deal.factorRate}x factor)
+        {calc.paymentsRemaining} {deal.paymentFrequency} payments &middot; {fmt$(calc.remaining)} of {fmt$(calc.totalPayback)} owed
       </div>
     </div>
   );
