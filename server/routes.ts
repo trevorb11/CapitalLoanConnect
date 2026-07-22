@@ -7670,9 +7670,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .map((a) => {
           // Inherit early payoff data from the primary entry when this TCG offer doesn't have it
           const earlyPayoffEnabled = a.earlyPayoffEnabled || (primaryEntry && !isTcgLender(primaryEntry.lender) ? primaryEntry.earlyPayoffEnabled : false) || false;
+          const earlyPayoffMode = a.earlyPayoffMode || (primaryEntry && !isTcgLender(primaryEntry.lender) ? primaryEntry.earlyPayoffMode : null) || 'amounts';
           const earlyPayoffAmounts = Array.isArray(a.earlyPayoffAmounts) && a.earlyPayoffAmounts.length > 0
             ? a.earlyPayoffAmounts
             : (primaryEntry && !isTcgLender(primaryEntry.lender) && Array.isArray(primaryEntry.earlyPayoffAmounts) ? primaryEntry.earlyPayoffAmounts : null);
+          const earlyPayoffRates = Array.isArray(a.earlyPayoffRates) && a.earlyPayoffRates.length > 0
+            ? a.earlyPayoffRates
+            : (primaryEntry && !isTcgLender(primaryEntry.lender) && Array.isArray(primaryEntry.earlyPayoffRates) ? primaryEntry.earlyPayoffRates : null);
           return {
             advanceAmount: a.advanceAmount || null,
             term: a.term || null,
@@ -7686,7 +7690,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             numberOfPayments: a.numberOfPayments || null,
             lenderName: a.lenderName || null,
             earlyPayoffEnabled,
+            earlyPayoffMode,
             earlyPayoffAmounts,
+            earlyPayoffRates,
           };
         });
 

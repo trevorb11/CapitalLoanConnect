@@ -16,7 +16,9 @@ interface OfferTerms {
   numberOfPayments?: string | null;
   lenderName?: string | null;
   earlyPayoffEnabled?: boolean;
+  earlyPayoffMode?: 'amounts' | 'rates' | null;
   earlyPayoffAmounts?: number[] | null;
+  earlyPayoffRates?: number[] | null;
 }
 
 interface OfferData {
@@ -159,11 +161,26 @@ function earlyPayoffRows(
   factor: number,
   draw: number,
   approved: number,
-): Array<{ month: number; amount: number; savings: number }> {
+): Array<{ month: number; amount: number; savings: number; rate?: number }> {
+  const fullPayback = draw * factor;
+  const mode = offer.earlyPayoffMode || 'amounts';
+
+  if (mode === 'rates') {
+    const rates = offer.earlyPayoffRates;
+    if (!Array.isArray(rates) || rates.length === 0) return [];
+    return rates
+      .map((r, i) => {
+        const rate = Number(r);
+        const amount = draw * rate;
+        return { month: i + 1, amount, savings: fullPayback - amount, rate };
+      })
+      .filter(row => Number.isFinite(row.amount) && row.amount > 0);
+  }
+
+  // amounts mode (default): scale base amounts proportionally with draw slider
   const amounts = offer.earlyPayoffAmounts;
   if (!Array.isArray(amounts) || amounts.length === 0) return [];
   const scale = approved > 0 ? draw / approved : 1;
-  const fullPayback = draw * factor;
   return amounts
     .map((baseAmt, i) => {
       const amount = Number(baseAmt) * scale;

@@ -81,7 +81,9 @@ interface FullApprovalEntry {
   numberOfPayments?: string; // manual override for payment count (e.g. 52 for 12-month weekly at 52wk/yr)
   lenderName?: string; // optional display name shown on offer sheet (e.g. "PIRS Capital")
   earlyPayoffEnabled?: boolean;
+  earlyPayoffMode?: 'amounts' | 'rates'; // 'amounts' = enter $ values, 'rates' = enter factor rates
   earlyPayoffAmounts?: string[]; // dollar amounts per month as strings for input binding
+  earlyPayoffRates?: string[];   // factor rates per month (e.g. "1.15") as strings for input binding
   totalPayback: string;
   netAfterFees: string;
   notes: string;
@@ -148,7 +150,9 @@ export default function Approvals() {
     numberOfPayments: '',
     lenderName: '',
     earlyPayoffEnabled: false as boolean,
+    earlyPayoffMode: 'amounts' as 'amounts' | 'rates',
     earlyPayoffAmounts: [] as string[],
+    earlyPayoffRates: [] as string[],
     totalPayback: '',
     netAfterFees: '',
     lender: '',
@@ -606,7 +610,9 @@ export default function Approvals() {
           numberOfPayments: existing.numberOfPayments || '',
           lenderName: existing.lenderName || '',
           earlyPayoffEnabled: existing.earlyPayoffEnabled || false,
+          earlyPayoffMode: (existing.earlyPayoffMode as 'amounts' | 'rates') || 'amounts',
           earlyPayoffAmounts: (existing.earlyPayoffAmounts || []).map(String),
+          earlyPayoffRates: (existing.earlyPayoffRates || []).map(String),
           totalPayback: existing.totalPayback,
           netAfterFees: existing.netAfterFees,
           lender: existing.lender,
@@ -630,7 +636,9 @@ export default function Approvals() {
         numberOfPayments: '',
         lenderName: '',
         earlyPayoffEnabled: false,
+        earlyPayoffMode: 'amounts' as 'amounts' | 'rates',
         earlyPayoffAmounts: [],
+        earlyPayoffRates: [],
         totalPayback: '',
         netAfterFees: '',
         lender: '',
@@ -663,8 +671,12 @@ export default function Approvals() {
         numberOfPayments: editForm.numberOfPayments || undefined,
         lenderName: editForm.lenderName || undefined,
         earlyPayoffEnabled: editForm.earlyPayoffEnabled,
-        earlyPayoffAmounts: editForm.earlyPayoffEnabled && editForm.earlyPayoffAmounts.length > 0
+        earlyPayoffMode: editForm.earlyPayoffEnabled ? editForm.earlyPayoffMode : undefined,
+        earlyPayoffAmounts: editForm.earlyPayoffEnabled && editForm.earlyPayoffMode === 'amounts' && editForm.earlyPayoffAmounts.length > 0
           ? editForm.earlyPayoffAmounts.map(v => parseFloat(v)).filter(n => !isNaN(n) && n > 0)
+          : undefined,
+        earlyPayoffRates: editForm.earlyPayoffEnabled && editForm.earlyPayoffMode === 'rates' && editForm.earlyPayoffRates.length > 0
+          ? editForm.earlyPayoffRates.map(v => parseFloat(v)).filter(n => !isNaN(n) && n > 0)
           : undefined,
         totalPayback: editForm.totalPayback,
         netAfterFees: editForm.netAfterFees,
@@ -1726,50 +1738,119 @@ export default function Approvals() {
                 </button>
               </div>
               {editForm.earlyPayoffEnabled && (
-                <div className="space-y-2 pt-1">
-                  <p className="text-xs text-muted-foreground">Enter the pre-payment amount for each month. Add one row per month.</p>
-                  {editForm.earlyPayoffAmounts.map((amt, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground w-16 shrink-0">Month {idx + 1}</span>
-                      <div className="relative flex-1">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="100"
-                          placeholder="e.g. 170800"
-                          value={amt}
-                          onChange={(e) => {
-                            const next = [...editForm.earlyPayoffAmounts];
-                            next[idx] = e.target.value;
-                            setEditForm(prev => ({ ...prev, earlyPayoffAmounts: next }));
-                          }}
-                          className="pl-7"
-                          data-testid={`input-early-payoff-month-${idx + 1}`}
-                        />
-                      </div>
+                <div className="space-y-3 pt-1">
+                  {/* Mode toggle */}
+                  <div className="flex gap-1 p-1 bg-muted rounded-md w-fit">
+                    <button
+                      type="button"
+                      onClick={() => setEditForm(prev => ({ ...prev, earlyPayoffMode: 'amounts' }))}
+                      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${editForm.earlyPayoffMode === 'amounts' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
+                      data-testid="button-payoff-mode-amounts"
+                    >
+                      Dollar Amounts
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditForm(prev => ({ ...prev, earlyPayoffMode: 'rates' }))}
+                      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${editForm.earlyPayoffMode === 'rates' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
+                      data-testid="button-payoff-mode-rates"
+                    >
+                      Factor Rates
+                    </button>
+                  </div>
+
+                  {editForm.earlyPayoffMode === 'amounts' ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Enter the pre-payment amount for each month. Scales proportionally with the draw slider.</p>
+                      {editForm.earlyPayoffAmounts.map((amt, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground w-16 shrink-0">Month {idx + 1}</span>
+                          <div className="relative flex-1">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="100"
+                              placeholder="e.g. 170800"
+                              value={amt}
+                              onChange={(e) => {
+                                const next = [...editForm.earlyPayoffAmounts];
+                                next[idx] = e.target.value;
+                                setEditForm(prev => ({ ...prev, earlyPayoffAmounts: next }));
+                              }}
+                              className="pl-7"
+                              data-testid={`input-early-payoff-month-${idx + 1}`}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = editForm.earlyPayoffAmounts.filter((_, i) => i !== idx);
+                              setEditForm(prev => ({ ...prev, earlyPayoffAmounts: next }));
+                            }}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            data-testid={`button-remove-payoff-month-${idx + 1}`}
+                            aria-label="Remove month"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                          </button>
+                        </div>
+                      ))}
                       <button
                         type="button"
-                        onClick={() => {
-                          const next = editForm.earlyPayoffAmounts.filter((_, i) => i !== idx);
-                          setEditForm(prev => ({ ...prev, earlyPayoffAmounts: next }));
-                        }}
-                        className="text-muted-foreground hover:text-destructive transition-colors"
-                        data-testid={`button-remove-payoff-month-${idx + 1}`}
-                        aria-label="Remove month"
+                        onClick={() => setEditForm(prev => ({ ...prev, earlyPayoffAmounts: [...prev.earlyPayoffAmounts, ''] }))}
+                        className="text-xs text-primary hover:underline mt-1"
+                        data-testid="button-add-payoff-month"
                       >
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                        + Add Month
                       </button>
                     </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setEditForm(prev => ({ ...prev, earlyPayoffAmounts: [...prev.earlyPayoffAmounts, ''] }))}
-                    className="text-xs text-primary hover:underline mt-1"
-                    data-testid="button-add-payoff-month"
-                  >
-                    + Add Month
-                  </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Enter the factor rate for each month. Dollar amount = draw × rate.</p>
+                      {editForm.earlyPayoffRates.map((rate, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground w-16 shrink-0">Month {idx + 1}</span>
+                          <div className="relative flex-1">
+                            <Input
+                              type="number"
+                              min="1"
+                              max="2"
+                              step="0.01"
+                              placeholder="e.g. 1.15"
+                              value={rate}
+                              onChange={(e) => {
+                                const next = [...editForm.earlyPayoffRates];
+                                next[idx] = e.target.value;
+                                setEditForm(prev => ({ ...prev, earlyPayoffRates: next }));
+                              }}
+                              data-testid={`input-early-payoff-rate-${idx + 1}`}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = editForm.earlyPayoffRates.filter((_, i) => i !== idx);
+                              setEditForm(prev => ({ ...prev, earlyPayoffRates: next }));
+                            }}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            data-testid={`button-remove-payoff-rate-${idx + 1}`}
+                            aria-label="Remove month"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setEditForm(prev => ({ ...prev, earlyPayoffRates: [...prev.earlyPayoffRates, ''] }))}
+                        className="text-xs text-primary hover:underline mt-1"
+                        data-testid="button-add-payoff-rate"
+                      >
+                        + Add Month
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
