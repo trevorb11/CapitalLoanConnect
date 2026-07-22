@@ -3199,7 +3199,7 @@ function DealDetail({ deal: dealProp, onBack, previewToken }: { deal: Deal; onBa
       <EarlyPayoffTable deal={deal} />
 
       {/* Payoff Countdown */}
-      {!deal.isLineOfCredit && <PayoffCountdownWidget deal={deal} />}
+      <PayoffCountdownWidget deal={deal} />
 
       {/* Payoff coverage from bank revenue (only shown if merchant has connected via Chirp) */}
       <PayoffCoverageInsight deal={deal} />
@@ -6090,13 +6090,6 @@ export default function MerchantPortal() {
                       {!loadingDeals && isLocMerchant && activeDeals.some(d => d.isLineOfCredit) && (
                         <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} onDrawRequest={() => setShowDrawModal(true)} />
                       )}
-                      {!loadingDeals && !isLocMerchant && activeDeals.length > 0 && (
-                        <PayoffCountdownWidget
-                          deal={activeDeals[0]}
-                          onViewDeal={() => setSelectedDeal(activeDeals[0])}
-                          onFinancials={() => setActiveTab('financials')}
-                        />
-                      )}
 
                       <div style={{ display: "grid", gap: 20, gridTemplateColumns: "2fr 1fr" }}>
                         <div>
@@ -6198,9 +6191,6 @@ export default function MerchantPortal() {
                       {/* LOC: credit line banner at top; non-LOC: payoff countdown */}
                       {!loadingDeals && isLocMerchant && activeDeals.some(d => d.isLineOfCredit) && (
                         <CreditLineBanner deals={activeDeals.filter(d => d.isLineOfCredit)} onDrawRequest={() => setShowDrawModal(true)} />
-                      )}
-                      {!loadingDeals && !isLocMerchant && activeDeals.length > 0 && (
-                        <PayoffCountdownWidget deal={activeDeals[0]} />
                       )}
 
                       {/* Activity Feed */}
