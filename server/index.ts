@@ -627,6 +627,16 @@ app.use((req, res, next) => {
     if (app.get("env") === "development") {
       await setupVite(app, server);
     } else {
+      // Prevent index.html from being cached so browsers always pick up new deploys.
+      // Hashed asset files (JS/CSS/images) are excluded — they can be cached forever.
+      app.use((req: Request, res: Response, next: NextFunction) => {
+        if (!req.path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|map)(\?.*)?$/)) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+          res.setHeader("Pragma", "no-cache");
+          res.setHeader("Expires", "0");
+        }
+        next();
+      });
       serveStatic(app);
     }
 
