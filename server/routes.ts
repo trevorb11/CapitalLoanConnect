@@ -5955,6 +5955,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Short-lived server-side cache for the heavy "all uploads" admin/underwriting query.
+  // Prevents multiple simultaneous logins from each hammering the DB with a full table scan.
+  const bankStatementsAdminCache: { data: any[] | null; expiry: number } = { data: null, expiry: 0 };
+  const BANK_STATEMENTS_CACHE_TTL_MS = 30_000; // 30 seconds
+
   app.get("/api/bank-statements/uploads", async (req, res) => {
     if (!req.session.user?.isAuthenticated) {
       return res.status(401).json({ error: "Authentication required" });
@@ -5966,8 +5971,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Admin and underwriting see all uploads, agents see only uploads from their applications
       // Users (restricted role) see only their own uploads
       if (req.session.user.role === 'admin' || req.session.user.role === 'underwriting') {
-        uploads = await storage.getAllBankStatementUploads();
-        console.log(`[BANK STATEMENTS] ${req.session.user.role} fetching all ${uploads.length} uploads`);
+        const now = Date.now();
+        if (bankStatementsAdminCache.data && now < bankStatementsAdminCache.expiry) {
+          console.log(`[BANK STATEMENTS] ${req.session.user.role} served from cache (${bankStatementsAdminCache.data.length} uploads)`);
+          uploads = bankStatementsAdminCache.data;
+        } else {
+          uploads = await storage.getAllBankStatementUploads();
+          bankStatementsAdminCache.data = uploads;
+          bankStatementsAdminCache.expiry = now + BANK_STATEMENTS_CACHE_TTL_MS;
+          console.log(`[BANK STATEMENTS] ${req.session.user.role} fetching all ${uploads.length} uploads (cache refreshed)`);
+        }
       } else if (req.session.user.role === 'agent' && req.session.user.agentEmail) {
         uploads = await storage.getBankStatementUploadsByAgentEmail(req.session.user.agentEmail);
         console.log(`[BANK STATEMENTS] Agent ${req.session.user.agentName} fetching ${uploads.length} uploads`);

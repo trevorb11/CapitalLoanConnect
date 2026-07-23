@@ -1279,6 +1279,7 @@ function BankStatementsTab({ applications = [] }: { applications: LoanApplicatio
 
   const { data: bankUploads, isLoading: uploadsLoading } = useQuery<BankStatementUpload[]>({
     queryKey: ['/api/bank-statements/uploads'],
+    staleTime: 2 * 60 * 1000, // treat data as fresh for 2 min to avoid hammering the DB
     queryFn: async () => {
       const res = await fetch('/api/bank-statements/uploads', {
         credentials: 'include',
@@ -3636,6 +3637,7 @@ export default function Dashboard() {
   const { data: bankUploads } = useQuery<BankStatementUpload[]>({
     queryKey: ['/api/bank-statements/uploads'],
     enabled: authData?.isAuthenticated === true,
+    staleTime: 2 * 60 * 1000, // treat data as fresh for 2 min to avoid hammering the DB
     queryFn: async () => {
       const res = await fetch('/api/bank-statements/uploads', {
         credentials: 'include',
