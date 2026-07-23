@@ -326,15 +326,15 @@ app.use((req, res, next) => {
           SELECT jsonb_agg(jsonb_build_object(
             'id', 'decl-legacy-' || row_number,
             'lender', CASE
-              WHEN part LIKE '%(%' THEN trim(substring(part FROM '\(([^)]+)\)'))
+              WHEN part LIKE '%(%' THEN trim(substring(part FROM '\\(([^)]+)\\)'))
               ELSE 'Unknown'
             END,
             'reason', CASE
-              WHEN part LIKE '%(%' THEN trim(substring(part FROM '^(.+)\s*\('))
+              WHEN part LIKE '%(%' THEN trim(substring(part FROM '^(.+)\\s*\\('))
               ELSE trim(part)
             END,
             'date', CASE
-              WHEN part ~ '\d{4}-\d{2}-\d{2}' THEN substring(part FROM '(\d{4}-\d{2}-\d{2})')
+              WHEN part ~ '\\d{4}-\\d{2}-\\d{2}' THEN substring(part FROM '(\\d{4}-\\d{2}-\\d{2})')
               ELSE null
             END,
             'createdAt', NOW()
@@ -654,6 +654,21 @@ app.use((req, res, next) => {
     }
 
     const port = parseInt(process.env.PORT || '5000', 10);
+
+    // If the production bootstrap placeholder is holding the port, release it first
+    // (see server/prod-start.mjs — it binds instantly so deploy health checks pass)
+    const closePlaceholder = (globalThis as any).__closeBootstrapPlaceholder;
+    if (typeof closePlaceholder === 'function') {
+      try { await closePlaceholder(); } catch { /* continue regardless */ }
+    }
+
+    // If binding fails (e.g. the placeholder didn't release the port), exit so the
+    // platform restarts the process instead of leaving a zombie with no listener
+    server.on('error', (err) => {
+      console.error('[STARTUP] Server failed to bind port:', err);
+      process.exit(1);
+    });
+
     server.listen({
       port,
       host: "0.0.0.0",

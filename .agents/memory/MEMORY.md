@@ -1,5 +1,6 @@
 - [Upload 403 production fix](upload-proxy-block.md) — multipart/form-data POST blocked by Replit proxy; fixed by base64 JSON endpoint.
 - [Salesforce JWT Bearer Auth](sf-jwt-auth.md) — store SF_PRIVATE_KEY as base64; Replit secrets panel truncates multiline to 64 chars.
 - [Dev vs prod databases are separate](dev-prod-db-separation.md) — executeSql hits Replit-managed dev DB; production uses external Neon DB with real data. Do not assume they're the same.
-- [admin-preview-data is a separate deal pipeline](admin-preview-deal-pipeline.md) — any field added to /api/merchant/deals must also be added to /api/merchant/admin-preview-data or portal won't show it in admin preview mode.
+- [admin-preview-data is a separate deal pipeline](admin-preview-deal-pipeline.md) — fields added to merchant deals API must also be added to admin-preview-data or admin preview won't show them.
+- [Deploy bootstrap for slow boot](deploy-slow-boot-bootstrap.md) — health checks give up ~6.5s in; prod runs `node server/prod-start.mjs` placeholder, not `npm start`. reusePort is a no-op on Node 20.
 - [Prod hangs & compression/SSE rule](prod-hang-pool-compression.md) — all DB pools need connectionTimeoutMillis or peak load hangs forever; compression() must exclude SSE routes via filter.

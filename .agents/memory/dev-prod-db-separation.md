@@ -5,7 +5,7 @@ description: executeSql tool hits Replit-managed dev DB; production app uses ext
 
 The `executeSql` code-execution callback targets the **Replit-managed development PostgreSQL**, not the external Neon database the production app connects to.
 
-**Why:** Confirmed when debugging the LOC banner — `executeSql` found zero funded decisions for `ekline.jason@gmail.com`, but production server logs showed the PATCH succeeded and the decision clearly existed in the production Neon DB with `status=funded`.
+**Why:** Confirmed when debugging the LOC banner — `executeSql` found zero funded decisions for a specific merchant, but production server logs showed the PATCH succeeded and the decision clearly existed in the production Neon DB with `status=funded`.
 
 **How to apply:**
 - Never use `executeSql` to verify production data. Use `fetch_deployment_logs` to inspect production server behavior instead.
