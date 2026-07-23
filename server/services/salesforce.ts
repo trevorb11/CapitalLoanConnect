@@ -331,28 +331,52 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
     }
 
     // --- 2. Search and update existing Opportunity ---
+    // Open opps first, newest first. If only a CLOSED opp matches, this is
+    // renewal activity — do NOT update the funded deal; remember its Account
+    // so the create path can hang a fresh Opp on the same Account.
     let existingOpp: any = null;
+    let renewalAccountId: string | null = null;
+    const considerOpp = (opp: any) => {
+      if (!opp) return;
+      if (opp.IsClosed) {
+        renewalAccountId = renewalAccountId || opp.AccountId || null;
+      } else {
+        existingOpp = opp;
+      }
+    };
 
-    if (email) {
+    // Stored SF Opportunity ID from a previous sync wins outright
+    const storedOppId = app.sfOpportunityId || app.sf_opportunity_id;
+    if (storedOppId) {
+      const verify = await sfQuery(`SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE Id = '${String(storedOppId).replace(/'/g, "\\'")}' LIMIT 1`);
+      if (verify.length) considerOpp(verify[0]);
+      if (!existingOpp && renewalAccountId) {
+        // Stored opp is closed — reroute to the newest open opp on the Account
+        const open = await sfQuery(`SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE AccountId = '${renewalAccountId}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 1`);
+        if (open.length) existingOpp = open[0];
+      }
+    }
+
+    if (!existingOpp && email) {
       const byEmail = await sfQuery(
-        `SELECT Id, Name, AccountId FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}' LIMIT 1`
+        `SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}' ORDER BY IsClosed ASC, CreatedDate DESC LIMIT 1`
       );
-      if (byEmail.length) existingOpp = byEmail[0];
+      if (byEmail.length) considerOpp(byEmail[0]);
     }
 
     if (!existingOpp && digits.length === 10) {
       const byPhone = await sfQuery(
-        `SELECT Id, Name, AccountId FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' LIMIT 1`
+        `SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' ORDER BY IsClosed ASC, CreatedDate DESC LIMIT 1`
       );
-      if (byPhone.length) existingOpp = byPhone[0];
+      if (byPhone.length) considerOpp(byPhone[0]);
     }
 
     // Fallback: Contact email → Account → Opportunity
     if (!existingOpp && email) {
       const byAcctContact = await sfQuery(
-        `SELECT Id, Name, AccountId FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${email.replace(/'/g, "\\'")}') LIMIT 1`
+        `SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${email.replace(/'/g, "\\'")}') ORDER BY IsClosed ASC, CreatedDate DESC LIMIT 1`
       );
-      if (byAcctContact.length) existingOpp = byAcctContact[0];
+      if (byAcctContact.length) considerOpp(byAcctContact[0]);
     }
 
     if (existingOpp) {
@@ -391,6 +415,9 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
     }
 
     if (updated) {
+      if (oppId) {
+        await persistSfIds(email, { oppId, accountId: existingOpp?.AccountId, method: "app-sync", created: false });
+      }
       return {
         synced: true,
         action: "updated",
@@ -440,6 +467,7 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
 
         if (convSuccess && convOppId) {
           console.log(`[SF Sync] Converted Lead ${existingLead.Id} → Opp ${convOppId}`);
+          await persistSfIds(email, { oppId: convOppId, accountId: convAcctId || undefined, contactId: convCtId || undefined, method: "lead-converted", created: false });
           return {
             synced: true,
             action: "lead-converted",
@@ -456,105 +484,30 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       }
     }
 
-    // No Lead to convert — create new Account + Contact + Opportunity
-    const rts = await sfQuery(
-      "SELECT Id FROM RecordType WHERE SObjectType='Account' AND Name='Merchant' AND IsActive=true"
-    );
-    const merchantRtId = rts[0]?.Id;
+    // No Lead to convert — create via the shared path, which reuses an
+    // existing Account/Contact (or the closed opp's Account for renewals)
+    // before ever minting new ones.
+    const createResult = await findOrCreateSfOpportunity({
+      email,
+      phone,
+      businessName,
+      fullName,
+      stage: "Application & Docs",
+      app,
+      ...(renewalAccountId ? { existingAccountId: renewalAccountId } : {}),
+    });
 
-    const accountName = (businessName || fullName || email || "Unknown").slice(0, 255);
-
-    // Ensure we have a real name, not an email address
-    let resolvedName = fullName;
-    if (!resolvedName || resolvedName.includes("@")) {
-      // Try to get name from GHL via the neonPool (dialer_contacts)
-      try {
-        const { neonPool } = await import("../db");
-        if (neonPool) {
-          const nameResult = await neonPool.query(
-            "SELECT first_name, last_name FROM dialer_contacts WHERE LOWER(email) = $1 AND first_name IS NOT NULL AND first_name != '' LIMIT 1",
-            [email.toLowerCase()]
-          );
-          if (nameResult.rows[0]) {
-            const fn = nameResult.rows[0].first_name || "";
-            const ln = nameResult.rows[0].last_name || "";
-            if (fn && !fn.includes("@")) {
-              resolvedName = `${fn} ${ln}`.trim();
-            }
-          }
-        }
-      } catch {}
+    if (!createResult) {
+      return { synced: false, error: "find/create failed" };
     }
 
-    const nameParts = (resolvedName || "").split(/\s+/).filter((p: string) => p && !p.includes("@"));
-    const today = new Date();
-    const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
-
-    const account = clean({
-      Name: accountName,
-      ...(merchantRtId ? { RecordTypeId: merchantRtId } : {}),
-      Company_Name__c: businessName || null,
-      Doing_Business_As__c: app.doingBusinessAs || app.doing_business_as || null,
-      EIN__c: app.ein || null,
-      Industry: mapIndustry(app.industry),
-      Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue),
-      Primary_Business_Bank__c: app.bankName || app.bank_name || null,
-      Phone: phone || null,
-      Website: app.companyWebsite || app.company_website || null,
-      BillingCity: app.city || null,
-      ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
-      BillingPostalCode: app.zipCode || app.zip_code || null,
-      ...((state || app.city) ? { BillingCountryCode: "US" } : {}),
-      Account_Status__c: "Pending",
-    });
-
-    const acctRes = await sfApi("POST", "/sobjects/Account", account);
-    if (!acctRes.success) {
-      console.log(`[SF Sync] Account creation failed: ${acctRes.error}`);
-      return { synced: false, error: `Account: ${acctRes.error}` };
-    }
-
-    const contact = clean({
-      AccountId: acctRes.id,
-      FirstName: nameParts[0] || null,
-      LastName: nameParts.slice(1).join(" ") || (nameParts[0] ? "Unknown" : businessName || "Unknown"),
-      Email: email || null,
-      Phone: phone || null,
-      Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score),
-      Scrubbed__c: false,
-      Opted_In_for_AI_Calls__c: false,
-      Do_Not_Contact__c: false,
-      Consent_to_Text__c: false,
-      MailingCity: app.city || null,
-      ...(US_STATES.has(state) ? { MailingStateCode: state } : {}),
-      ...((state || app.city) ? { MailingCountryCode: "US" } : {}),
-    });
-
-    const ctRes = await sfApi("POST", "/sobjects/Contact", contact);
-
-    const closeDate = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
-    const opportunity = clean({
-      AccountId: acctRes.id,
-      Primary_Contact__c: ctRes.success ? ctRes.id : null,
-      Name: `${accountName} - ${dateStr}`.slice(0, 120),
-      StageName: "Application & Docs",
-      CloseDate: closeDate,
-      ...appFields,
-      ...oppOnlyFields,
-      LeadSource: app.referralSource || app.referral_source || "Website",
-      Revenue_Verified__c: false,
-      Bank_Statement_Tampering_Flag__c: false,
-    });
-
-    const oppRes = await sfApi("POST", "/sobjects/Opportunity", opportunity);
-
-    console.log(`[SF Sync] Created (Dillon): Account=${acctRes.id}, Contact=${ctRes.id || "failed"}, Opp=${oppRes.id || "failed"}`);
+    console.log(`[SF Sync] ${createResult.created ? "Created" : "Matched"} via ${createResult.method}: Account=${createResult.accountId}, Opp=${createResult.oppId}`);
     return {
       synced: true,
-      action: "created",
-      accountId: acctRes.id,
-      contactId: ctRes.id,
-      oppId: oppRes.id,
+      action: createResult.created ? "created" : "updated",
+      accountId: createResult.accountId,
+      contactId: createResult.contactId,
+      oppId: createResult.oppId,
     };
 
   } catch (err: any) {
@@ -682,7 +635,16 @@ export async function syncDecisionToSalesforce(decision: Record<string, any>, ap
     // Clean nulls
     const cleaned = clean(updateFields);
 
-    const res = await sfApi("PATCH", `/sobjects/Opportunity/${oppId}`, cleaned);
+    let res = await sfApi("PATCH", `/sobjects/Opportunity/${oppId}`, cleaned);
+    if (!res.success && (cleaned.StageName === "Closed Won" || cleaned.StageName === "Closed Lost")) {
+      // Org validation may block the stage flip (e.g. Closed Won requires all
+      // Funded Details). Land the data anyway and leave the stage for a rep.
+      console.warn(`[SF Decision Sync] ${cleaned.StageName} blocked (${res.error}) — retrying without stage change`);
+      const { StageName: _omit, ...withoutStage } = cleaned;
+      if (Object.keys(withoutStage).length > 0) {
+        res = await sfApi("PATCH", `/sobjects/Opportunity/${oppId}`, withoutStage);
+      }
+    }
     if (res.success) {
       const action = findResult.created ? "created+updated" : "updated";
       console.log(`[SF Decision Sync] ${action} Opp ${oppId}: stage=${sfStage}, fields=${Object.keys(cleaned).join(",")}, method=${findResult.method}`);
@@ -976,6 +938,38 @@ interface FindOppResult {
  * 8. Business name wildcard match
  * → Auto-create if all fail
  */
+const OPEN_SF_STAGES = new Set(["Application & Docs", "Underwriting", "Present Offer", "Contracts Out", "Contracts In", "Final Review", "Negotiate", "Renewal Prospecting"]);
+
+// One find/create per merchant at a time — concurrent syncs (app save + snapshot +
+// decision firing together) share a single result instead of racing to create dupes.
+const inflightFinds = new Map<string, Promise<FindOppResult | null>>();
+
+/**
+ * Write the resolved SF IDs back to CLC so the next sync short-circuits on
+ * Method 1 instead of re-running the fuzzy search (the root cause of dupes).
+ */
+async function persistSfIds(email: string | undefined, result: FindOppResult): Promise<void> {
+  if (!email || !result.oppId) return;
+  try {
+    const { neonPool } = await import("../db");
+    if (!neonPool) return;
+    await neonPool.query(
+      `UPDATE loan_applications SET sf_opportunity_id = $1,
+         sf_account_id = COALESCE($2, sf_account_id),
+         sf_contact_id = COALESCE($3, sf_contact_id),
+         sf_synced_at = NOW()
+       WHERE LOWER(email) = $4`,
+      [result.oppId, result.accountId || null, result.contactId || null, email.toLowerCase().trim()]
+    );
+    await neonPool.query(
+      `UPDATE business_underwriting_decisions SET sf_opportunity_id = $1 WHERE LOWER(business_email) = $2`,
+      [result.oppId, email.toLowerCase().trim()]
+    );
+  } catch (e: any) {
+    console.error(`[SF Find] persist IDs failed (non-fatal): ${e.message}`);
+  }
+}
+
 async function findOrCreateSfOpportunity(params: {
   sfOppId?: string;
   ghlOppId?: string;
@@ -986,28 +980,77 @@ async function findOrCreateSfOpportunity(params: {
   fullName?: string;
   stage?: string;
   app?: Record<string, any>;
+  existingAccountId?: string;
 }): Promise<FindOppResult | null> {
   if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) return null;
 
-  const { sfOppId, ghlOppId, email, secondaryEmail, phone, businessName, fullName, stage, app } = params;
+  const key = (params.email || params.phone || params.businessName || "").toLowerCase().trim();
+  if (key && inflightFinds.has(key)) return inflightFinds.get(key)!;
+
+  const promise = doFindOrCreateSfOpportunity(params)
+    .then(async (result) => {
+      if (result) await persistSfIds(params.email, result);
+      return result;
+    })
+    .finally(() => { if (key) inflightFinds.delete(key); });
+
+  if (key) inflightFinds.set(key, promise);
+  return promise;
+}
+
+async function doFindOrCreateSfOpportunity(params: {
+  sfOppId?: string;
+  ghlOppId?: string;
+  email?: string;
+  secondaryEmail?: string;
+  phone?: string;
+  businessName?: string;
+  fullName?: string;
+  stage?: string;
+  app?: Record<string, any>;
+  existingAccountId?: string;
+}): Promise<FindOppResult | null> {
+  const { sfOppId, ghlOppId, email, secondaryEmail, phone, businessName } = params;
   const safeEmail = (email || "").replace(/'/g, "\\'").toLowerCase().trim();
   const safeEmail2 = (secondaryEmail || "").replace(/'/g, "\\'").toLowerCase().trim();
   const digits = (phone || "").replace(/\D/g, "").slice(-10);
   const safeBizName = (businessName || "").replace(/'/g, "\\'").slice(0, 80);
 
+  // Syncs targeting an open stage represent NEW deal activity. Renewal rule:
+  // if the matched opp is already closed (funded/lost), route to the newest
+  // OPEN opp on the same Account — or create a fresh one under that Account.
+  const targetOpen = !params.stage || OPEN_SF_STAGES.has(params.stage);
+  const resolveCandidate = async (opp: { Id: string; AccountId?: string; IsClosed?: boolean }, method: string): Promise<FindOppResult | null> => {
+    if (targetOpen && opp.IsClosed && opp.AccountId) {
+      const open = await sfQuery(
+        `SELECT Id, AccountId FROM Opportunity WHERE AccountId = '${opp.AccountId}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 1`
+      );
+      if (open.length) {
+        console.log(`[SF Find] ${method}: matched closed Opp ${opp.Id} → rerouted to newest open Opp ${open[0].Id} (renewal)`);
+        return { oppId: open[0].Id, accountId: open[0].AccountId, method: `${method}+newest-open`, created: false };
+      }
+      console.log(`[SF Find] ${method}: matched closed Opp ${opp.Id}, no open Opp on Account — creating renewal Opp on same Account`);
+      const created = await autoCreateSfOpportunity({ ...params, existingAccountId: opp.AccountId });
+      return created ? { ...created, method: `${method}+renewal-create` } : null;
+    }
+    return { oppId: opp.Id, accountId: opp.AccountId, method, created: false };
+  };
+  // Newest open opps first, so post-funding activity maps to the live deal
+  const OPP_ORDER = "ORDER BY IsClosed ASC, CreatedDate DESC";
+
   // ── Method 1: Pre-stored SF Opportunity ID ──
   if (sfOppId) {
     console.log(`[SF Find] Method 1: stored SF Opp ID ${sfOppId}`);
-    const verify = await sfQuery(`SELECT Id, AccountId FROM Opportunity WHERE Id = '${sfOppId}' LIMIT 1`);
-    if (verify.length) return { oppId: verify[0].Id, accountId: verify[0].AccountId, method: "stored-id", created: false };
+    const verify = await sfQuery(`SELECT Id, AccountId, IsClosed FROM Opportunity WHERE Id = '${sfOppId}' LIMIT 1`);
+    if (verify.length) return resolveCandidate(verify[0], "stored-id");
   }
 
   // ── Method 2: GHL Opportunity ID → SF GHL_Id__c ──
   if (ghlOppId) {
-    const byGhl = await sfQuery(`SELECT Id, AccountId FROM Opportunity WHERE GHL_Id__c = '${ghlOppId.replace(/'/g, "\\'")}' LIMIT 1`);
+    const byGhl = await sfQuery(`SELECT Id, AccountId, IsClosed FROM Opportunity WHERE GHL_Id__c = '${ghlOppId.replace(/'/g, "\\'")}' ${OPP_ORDER} LIMIT 1`);
     if (byGhl.length) {
       console.log(`[SF Find] Method 2: GHL ID ${ghlOppId} → Opp ${byGhl[0].Id}`);
-      return { oppId: byGhl[0].Id, accountId: byGhl[0].AccountId, method: "ghl-id", created: false };
+      return resolveCandidate(byGhl[0], "ghl-id");
     }
   }
 
@@ -1018,7 +1061,11 @@ async function findOrCreateSfOpportunity(params: {
     );
     if (byLeadEmail.length && byLeadEmail[0].ConvertedOpportunityId) {
       console.log(`[SF Find] Method 3: Lead email ${safeEmail} → converted Opp ${byLeadEmail[0].ConvertedOpportunityId}`);
-      return { oppId: byLeadEmail[0].ConvertedOpportunityId, accountId: byLeadEmail[0].ConvertedAccountId, contactId: byLeadEmail[0].ConvertedContactId, method: "lead-email-converted", created: false };
+      const verify = await sfQuery(`SELECT Id, AccountId, IsClosed FROM Opportunity WHERE Id = '${byLeadEmail[0].ConvertedOpportunityId}' LIMIT 1`);
+      if (verify.length) {
+        const resolved = await resolveCandidate(verify[0], "lead-email-converted");
+        if (resolved) return { ...resolved, contactId: resolved.contactId || byLeadEmail[0].ConvertedContactId };
+      }
     }
   }
 
@@ -1029,7 +1076,11 @@ async function findOrCreateSfOpportunity(params: {
     );
     if (byLeadPhone.length && byLeadPhone[0].ConvertedOpportunityId) {
       console.log(`[SF Find] Method 4: Lead phone ${digits} → converted Opp ${byLeadPhone[0].ConvertedOpportunityId}`);
-      return { oppId: byLeadPhone[0].ConvertedOpportunityId, accountId: byLeadPhone[0].ConvertedAccountId, contactId: byLeadPhone[0].ConvertedContactId, method: "lead-phone-converted", created: false };
+      const verify = await sfQuery(`SELECT Id, AccountId, IsClosed FROM Opportunity WHERE Id = '${byLeadPhone[0].ConvertedOpportunityId}' LIMIT 1`);
+      if (verify.length) {
+        const resolved = await resolveCandidate(verify[0], "lead-phone-converted");
+        if (resolved) return { ...resolved, contactId: resolved.contactId || byLeadPhone[0].ConvertedContactId };
+      }
     }
   }
 
@@ -1037,47 +1088,47 @@ async function findOrCreateSfOpportunity(params: {
   for (const e of [safeEmail, safeEmail2].filter(Boolean)) {
     // Try Primary_Contact__r.Email first
     const byPrimaryContact = await sfQuery(
-      `SELECT Id, AccountId FROM Opportunity WHERE Primary_Contact__r.Email = '${e}' ORDER BY LastModifiedDate DESC LIMIT 1`
+      `SELECT Id, AccountId, IsClosed FROM Opportunity WHERE Primary_Contact__r.Email = '${e}' ${OPP_ORDER} LIMIT 1`
     );
     if (byPrimaryContact.length) {
       console.log(`[SF Find] Method 5a: Primary Contact email ${e} → Opp ${byPrimaryContact[0].Id}`);
-      return { oppId: byPrimaryContact[0].Id, accountId: byPrimaryContact[0].AccountId, method: "contact-email-primary", created: false };
+      return resolveCandidate(byPrimaryContact[0], "contact-email-primary");
     }
 
     // Then Contact → Account → Opportunity
     const byAcctContact = await sfQuery(
-      `SELECT Id, AccountId FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${e}') ORDER BY LastModifiedDate DESC LIMIT 1`
+      `SELECT Id, AccountId, IsClosed FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${e}') ${OPP_ORDER} LIMIT 1`
     );
     if (byAcctContact.length) {
       console.log(`[SF Find] Method 5b: Contact email ${e} → Account → Opp ${byAcctContact[0].Id}`);
-      return { oppId: byAcctContact[0].Id, accountId: byAcctContact[0].AccountId, method: "contact-email-account", created: false };
+      return resolveCandidate(byAcctContact[0], "contact-email-account");
     }
   }
 
   // ── Method 6: Contact phone → Account → Opportunity ──
   if (digits.length === 10) {
     const byContactPhone = await sfQuery(
-      `SELECT Id, AccountId FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Phone LIKE '%${digits}' OR MobilePhone LIKE '%${digits}') ORDER BY LastModifiedDate DESC LIMIT 1`
+      `SELECT Id, AccountId, IsClosed FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Phone LIKE '%${digits}' OR MobilePhone LIKE '%${digits}') ${OPP_ORDER} LIMIT 1`
     );
     if (byContactPhone.length) {
       console.log(`[SF Find] Method 6: Contact phone ${digits} → Account → Opp ${byContactPhone[0].Id}`);
-      return { oppId: byContactPhone[0].Id, accountId: byContactPhone[0].AccountId, method: "contact-phone-account", created: false };
+      return resolveCandidate(byContactPhone[0], "contact-phone-account");
     }
   }
 
   // ── Method 7: Opp.Email__c / Phone_Number__c custom fields ──
   if (safeEmail) {
-    const byOppEmail = await sfQuery(`SELECT Id, AccountId FROM Opportunity WHERE Email__c = '${safeEmail}' ORDER BY LastModifiedDate DESC LIMIT 1`);
+    const byOppEmail = await sfQuery(`SELECT Id, AccountId, IsClosed FROM Opportunity WHERE Email__c = '${safeEmail}' ${OPP_ORDER} LIMIT 1`);
     if (byOppEmail.length) {
       console.log(`[SF Find] Method 7a: Opp Email__c ${safeEmail} → ${byOppEmail[0].Id}`);
-      return { oppId: byOppEmail[0].Id, accountId: byOppEmail[0].AccountId, method: "opp-email-field", created: false };
+      return resolveCandidate(byOppEmail[0], "opp-email-field");
     }
   }
   if (digits.length === 10) {
-    const byOppPhone = await sfQuery(`SELECT Id, AccountId FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' ORDER BY LastModifiedDate DESC LIMIT 1`);
+    const byOppPhone = await sfQuery(`SELECT Id, AccountId, IsClosed FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' ${OPP_ORDER} LIMIT 1`);
     if (byOppPhone.length) {
       console.log(`[SF Find] Method 7b: Opp Phone_Number__c ${digits} → ${byOppPhone[0].Id}`);
-      return { oppId: byOppPhone[0].Id, accountId: byOppPhone[0].AccountId, method: "opp-phone-field", created: false };
+      return resolveCandidate(byOppPhone[0], "opp-phone-field");
     }
   }
 
@@ -1085,19 +1136,19 @@ async function findOrCreateSfOpportunity(params: {
   if (safeBizName && safeBizName.length > 3) {
     // Try Opportunity Name
     const byOppName = await sfQuery(
-      `SELECT Id, AccountId FROM Opportunity WHERE Name LIKE '%${safeBizName}%' ORDER BY LastModifiedDate DESC LIMIT 1`
+      `SELECT Id, AccountId, IsClosed FROM Opportunity WHERE Name LIKE '%${safeBizName}%' ${OPP_ORDER} LIMIT 1`
     );
     if (byOppName.length) {
       console.log(`[SF Find] Method 8a: Opp Name matches '${safeBizName}' → ${byOppName[0].Id}`);
-      return { oppId: byOppName[0].Id, accountId: byOppName[0].AccountId, method: "biz-name-opp", created: false };
+      return resolveCandidate(byOppName[0], "biz-name-opp");
     }
     // Try Account Name
     const byAcctName = await sfQuery(
-      `SELECT Id, AccountId FROM Opportunity WHERE AccountId IN (SELECT Id FROM Account WHERE Name LIKE '%${safeBizName}%') ORDER BY LastModifiedDate DESC LIMIT 1`
+      `SELECT Id, AccountId, IsClosed FROM Opportunity WHERE AccountId IN (SELECT Id FROM Account WHERE Name LIKE '%${safeBizName}%') ${OPP_ORDER} LIMIT 1`
     );
     if (byAcctName.length) {
       console.log(`[SF Find] Method 8b: Account Name matches '${safeBizName}' → ${byAcctName[0].Id}`);
-      return { oppId: byAcctName[0].Id, accountId: byAcctName[0].AccountId, method: "biz-name-account", created: false };
+      return resolveCandidate(byAcctName[0], "biz-name-account");
     }
   }
 
@@ -1116,15 +1167,44 @@ async function autoCreateSfOpportunity(params: {
   fullName?: string;
   stage?: string;
   app?: Record<string, any>;
+  existingAccountId?: string; // reuse this Account (renewal path) instead of searching/creating
 }): Promise<FindOppResult | null> {
   const { email, phone, businessName, fullName, stage, app } = params;
   const state = ((app?.state || app?.ownerState || "").toUpperCase().trim()).slice(0, 2);
+  const safeEmail = (email || "").replace(/'/g, "\\'").toLowerCase().trim();
+  const digits = (phone || "").replace(/\D/g, "").slice(-10);
+
+  const accountName = (businessName || fullName || email || "Unknown").slice(0, 255);
+
+  // ── Reuse an existing Account before ever creating one. Accounts without
+  // Opportunities are invisible to the opp-based search cascade, so without
+  // this check every failed sync minted another duplicate Account. ──
+  let reuseAccountId: string | null = params.existingAccountId || null;
+  let reuseContactId: string | null = null;
+
+  if (!reuseAccountId && safeEmail) {
+    const ct = await sfQuery(`SELECT Id, AccountId FROM Contact WHERE Email = '${safeEmail}' AND AccountId != null ORDER BY CreatedDate DESC LIMIT 1`);
+    if (ct.length) { reuseAccountId = ct[0].AccountId; reuseContactId = ct[0].Id; }
+  }
+  if (!reuseAccountId && digits.length === 10) {
+    const ct = await sfQuery(`SELECT Id, AccountId FROM Contact WHERE (Phone LIKE '%${digits}' OR MobilePhone LIKE '%${digits}') AND AccountId != null ORDER BY CreatedDate DESC LIMIT 1`);
+    if (ct.length) { reuseAccountId = ct[0].AccountId; reuseContactId = ct[0].Id; }
+  }
+  if (!reuseAccountId && businessName && businessName.trim().length > 3) {
+    const acct = await sfQuery(`SELECT Id FROM Account WHERE Name = '${businessName.trim().replace(/'/g, "\\'")}' ORDER BY CreatedDate DESC LIMIT 1`);
+    if (acct.length) reuseAccountId = acct[0].Id;
+  }
+  if (reuseAccountId && !reuseContactId && safeEmail) {
+    const ct = await sfQuery(`SELECT Id FROM Contact WHERE AccountId = '${reuseAccountId}' ORDER BY CreatedDate DESC LIMIT 1`);
+    if (ct.length) reuseContactId = ct[0].Id;
+  }
+  if (reuseAccountId) {
+    console.log(`[SF Create] Reusing existing Account ${reuseAccountId}${reuseContactId ? ` + Contact ${reuseContactId}` : ""} for ${accountName}`);
+  }
 
   // Get Merchant record type
   const rts = await sfQuery("SELECT Id FROM RecordType WHERE SObjectType='Account' AND Name='Merchant' AND IsActive=true");
   const merchantRtId = rts[0]?.Id;
-
-  const accountName = (businessName || fullName || email || "Unknown").slice(0, 255);
 
   // Resolve name — try to avoid using email as name
   let resolvedName = fullName || "";
@@ -1150,49 +1230,61 @@ async function autoCreateSfOpportunity(params: {
   const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(2)}`;
   const closeDate = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
 
-  // Create Account
-  const account = clean({
-    Name: accountName,
-    ...(merchantRtId ? { RecordTypeId: merchantRtId } : {}),
-    Company_Name__c: businessName || null,
-    Doing_Business_As__c: app?.doingBusinessAs || app?.doing_business_as || null,
-    EIN__c: app?.ein || null,
-    Industry: mapIndustry(app?.industry),
-    Monthly_Revenue__c: parseNum(app?.monthlyRevenue || app?.monthly_revenue),
-    Primary_Business_Bank__c: app?.bankName || app?.bank_name || null,
-    Phone: phone || null,
-    Website: app?.companyWebsite || app?.company_website || null,
-    BillingCity: app?.city || null,
-    ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
-    BillingPostalCode: app?.zipCode || app?.zip_code || null,
-    ...((state || app?.city) ? { BillingCountryCode: "US" } : {}),
-    Account_Status__c: "Pending",
-  });
+  // Create Account (only when no existing one could be reused)
+  let accountId = reuseAccountId;
+  let accountWasCreated = false;
+  if (!accountId) {
+    const account = clean({
+      Name: accountName,
+      ...(merchantRtId ? { RecordTypeId: merchantRtId } : {}),
+      Company_Name__c: businessName || null,
+      Doing_Business_As__c: app?.doingBusinessAs || app?.doing_business_as || null,
+      EIN__c: app?.ein || null,
+      Industry: mapIndustry(app?.industry),
+      Monthly_Revenue__c: parseNum(app?.monthlyRevenue || app?.monthly_revenue),
+      Primary_Business_Bank__c: app?.bankName || app?.bank_name || null,
+      Phone: phone || null,
+      Website: app?.companyWebsite || app?.company_website || null,
+      BillingCity: app?.city || null,
+      ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
+      BillingPostalCode: app?.zipCode || app?.zip_code || null,
+      ...((state || app?.city) ? { BillingCountryCode: "US" } : {}),
+      Account_Status__c: "Pending",
+    });
 
-  const acctRes = await sfApi("POST", "/sobjects/Account", account);
-  if (!acctRes.success) {
-    console.error(`[SF Create] Account creation failed: ${acctRes.error}`);
-    return null;
+    const acctRes = await sfApi("POST", "/sobjects/Account", account);
+    if (!acctRes.success) {
+      console.error(`[SF Create] Account creation failed: ${acctRes.error}`);
+      return null;
+    }
+    accountId = acctRes.id!;
+    accountWasCreated = true;
   }
 
-  // Create Contact
-  const contact = clean({
-    AccountId: acctRes.id,
-    FirstName: nameParts[0] || null,
-    LastName: nameParts.slice(1).join(" ") || (nameParts[0] ? "Unknown" : businessName || "Unknown"),
-    Email: email || null,
-    Phone: phone || null,
-    Personal_Credit_Score_Range__c: mapCreditScore(app?.creditScore || app?.credit_score),
-  });
+  // Create Contact (only when the account doesn't already have one)
+  let contactId: string | undefined = reuseContactId || undefined;
+  if (!contactId) {
+    const contact = clean({
+      AccountId: accountId,
+      FirstName: nameParts[0] || null,
+      LastName: nameParts.slice(1).join(" ") || (nameParts[0] ? "Unknown" : businessName || "Unknown"),
+      Email: email || null,
+      Phone: phone || null,
+      Personal_Credit_Score_Range__c: mapCreditScore(app?.creditScore || app?.credit_score),
+    });
+    const ctRes = await sfApi("POST", "/sobjects/Contact", contact);
+    if (ctRes.success) contactId = ctRes.id;
+  }
 
-  const ctRes = await sfApi("POST", "/sobjects/Contact", contact);
-
-  // Create Opportunity
-  const sfStage = stage || "Application & Docs";
-  const hasApproval = sfStage === "Present Offer" || sfStage === "Closed Won";
+  // Create Opportunity — ALWAYS in an open stage. Creating directly in Closed
+  // Won trips the org's "Funded Details required" validation rule, which is
+  // how orphan duplicate Accounts were minted. The caller's follow-up PATCH
+  // moves the stage once the funded fields are on the record.
+  const requestedStage = stage || "Application & Docs";
+  const sfStage = OPEN_SF_STAGES.has(requestedStage) ? requestedStage : "Underwriting";
   const opportunity = clean({
-    AccountId: acctRes.id,
-    Primary_Contact__c: ctRes.success ? ctRes.id : null,
+    AccountId: accountId,
+    Primary_Contact__c: contactId || null,
     Name: `${accountName} - ${dateStr}`.slice(0, 120),
     StageName: sfStage,
     CloseDate: closeDate,
@@ -1214,23 +1306,78 @@ async function autoCreateSfOpportunity(params: {
   const oppRes = await sfApi("POST", "/sobjects/Opportunity", opportunity);
   if (!oppRes.success) {
     console.error(`[SF Create] Opportunity creation failed: ${oppRes.error}`);
+    // Roll back a freshly-minted Account so we never leave orphan duplicates
+    // that the opp-based search cascade can't see.
+    if (accountWasCreated && accountId) {
+      await sfApi("DELETE", `/sobjects/Account/${accountId}`).catch(() => {});
+      console.log(`[SF Create] Rolled back orphan Account ${accountId}`);
+    }
     return null;
   }
 
-  console.log(`[SF Create] Auto-created: Account=${acctRes.id}, Contact=${ctRes.id || "failed"}, Opp=${oppRes.id}`);
+  console.log(`[SF Create] ${accountWasCreated ? "Auto-created" : "Created Opp on existing Account"}: Account=${accountId}, Contact=${contactId || "none"}, Opp=${oppRes.id} (stage=${sfStage})`);
   return {
     oppId: oppRes.id!,
-    accountId: acctRes.id,
-    contactId: ctRes.id,
-    method: "auto-created",
+    accountId,
+    contactId,
+    method: accountWasCreated ? "auto-created" : "created-on-existing-account",
     created: true,
   };
 }
 
-// Backwards-compatible wrapper used by UW submission and AI snapshot sync
+/**
+ * Look up CLC-stored SF/GHL IDs + phone + business name for an email, so
+ * every sync path can pass them into the cascade — an email mismatch alone
+ * must never be enough to trigger a duplicate create.
+ */
+export async function getStoredSfContext(email: string): Promise<{ sfOppId?: string; ghlOppId?: string; phone?: string; businessName?: string }> {
+  const out: { sfOppId?: string; ghlOppId?: string; phone?: string; businessName?: string } = {};
+  if (!email) return out;
+  try {
+    const { neonPool } = await import("../db");
+    if (!neonPool) return out;
+    const dec = await neonPool.query(
+      `SELECT sf_opportunity_id, ghl_opportunity_id, business_phone, business_name
+       FROM business_underwriting_decisions WHERE LOWER(business_email) = $1 LIMIT 1`,
+      [email.toLowerCase().trim()]
+    );
+    if (dec.rows[0]) {
+      out.sfOppId = dec.rows[0].sf_opportunity_id || undefined;
+      out.ghlOppId = dec.rows[0].ghl_opportunity_id || undefined;
+      out.phone = dec.rows[0].business_phone || undefined;
+      out.businessName = dec.rows[0].business_name || undefined;
+    }
+    if (!out.sfOppId) {
+      const app = await neonPool.query(
+        `SELECT sf_opportunity_id, phone, COALESCE(legal_business_name, business_name) AS business_name
+         FROM loan_applications WHERE LOWER(email) = $1
+         ORDER BY (sf_opportunity_id IS NOT NULL) DESC, created_at DESC LIMIT 1`,
+        [email.toLowerCase().trim()]
+      );
+      if (app.rows[0]) {
+        out.sfOppId = out.sfOppId || app.rows[0].sf_opportunity_id || undefined;
+        out.phone = out.phone || app.rows[0].phone || undefined;
+        out.businessName = out.businessName || app.rows[0].business_name || undefined;
+      }
+    }
+  } catch (e: any) {
+    console.error(`[SF Find] stored-ID enrichment failed (non-fatal): ${e.message}`);
+  }
+  return out;
+}
+
+// Backwards-compatible wrapper used by UW submission and AI snapshot sync.
 async function findSfOpportunityByEmail(email: string): Promise<{ Id: string; AccountId?: string } | null> {
   if (!email) return null;
-  const result = await findOrCreateSfOpportunity({ email, stage: "Application & Docs" });
+  const stored = await getStoredSfContext(email);
+  const result = await findOrCreateSfOpportunity({
+    sfOppId: stored.sfOppId,
+    ghlOppId: stored.ghlOppId,
+    email,
+    phone: stored.phone,
+    businessName: stored.businessName,
+    stage: "Application & Docs",
+  });
   if (!result) return null;
   return { Id: result.oppId, AccountId: result.accountId };
 }
@@ -1320,11 +1467,14 @@ export async function syncUwSubmissionToSalesforce(
 
   try {
     // Use the full 8-method finder + auto-create so a missing Opp is created
-    // rather than silently skipped.
+    // rather than silently skipped. Stored IDs first so repeats can't duplicate.
+    const stored = await getStoredSfContext(safeEmail);
     const found = await findOrCreateSfOpportunity({
+      sfOppId:      app.sfOpportunityId || app.sf_opportunity_id || stored.sfOppId,
+      ghlOppId:     stored.ghlOppId,
       email:        safeEmail,
-      phone:        app.phone || app.businessPhone || app.business_phone,
-      businessName: businessName || undefined,
+      phone:        app.phone || app.businessPhone || app.business_phone || stored.phone,
+      businessName: businessName || stored.businessName || undefined,
       fullName:     ownerName || undefined,
       stage:        "Application & Docs",
       app,
