@@ -76,10 +76,25 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  // Hashed build assets are safe to cache forever; html must stay revalidated.
+  app.use(express.static(distPath, {
+    maxAge: "1y",
+    immutable: true,
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      }
+    },
+  }));
 
-  // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
+  // Fall through to index.html for SPA routes — but never for missing build
+  // assets: a stale chunk request must 404 (not receive HTML with a 200) so
+  // the client's vite:preloadError handler can detect the new deploy and reload.
+  app.use("*", (req, res) => {
+    if (/\.(js|mjs|css|map|json|png|jpg|jpeg|gif|ico|svg|webp|woff2?|ttf|eot)(\?.*)?$/i.test(req.originalUrl)) {
+      return res.status(404).end();
+    }
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

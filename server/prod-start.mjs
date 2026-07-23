@@ -9,10 +9,17 @@ process.env.NODE_ENV = process.env.NODE_ENV || "production";
 const port = parseInt(process.env.PORT || "5000", 10);
 
 const placeholder = http.createServer((req, res) => {
-  const isRootGet =
+  // Serve the auto-refreshing "starting up" page for ANY page navigation
+  // (/dashboard, /track, ...), not just "/" — a bare 503 during the boot
+  // window reads as "site can't be reached" to users. API and asset
+  // requests still get 503 + Retry-After so clients retry instead of
+  // parsing HTML.
+  const url = typeof req.url === "string" ? req.url : "/";
+  const isPageGet =
     (req.method === "GET" || req.method === "HEAD") &&
-    (req.url === "/" || (typeof req.url === "string" && req.url.startsWith("/?")));
-  if (isRootGet) {
+    !url.startsWith("/api/") &&
+    !/\.(js|mjs|css|map|json|png|jpg|jpeg|gif|ico|svg|webp|woff2?|ttf|eot)(\?.*)?$/i.test(url);
+  if (isPageGet) {
     res.writeHead(200, {
       "Content-Type": "text/html",
       "Cache-Control": "no-store",
