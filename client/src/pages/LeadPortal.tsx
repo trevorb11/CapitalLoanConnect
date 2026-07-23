@@ -807,6 +807,17 @@ interface BankingInsights {
     averageDailyBalance: number;
     net: number;
   }>;
+  statementInsights?: {
+    analyzedAt?: string | null;
+    overallScore: number;
+    scoreExplanation?: string;
+    monthlyRevenue: number;
+    monthlyExpenses: number;
+    netCashFlow: number;
+    avgDailyBalance: number;
+    revenueConsistency?: string | null;
+    monthlyBreakdown?: Array<{ month: string; revenue: number; expenses: number }>;
+  } | null;
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────
@@ -2126,6 +2137,58 @@ function LeadFinancialsTab() {
           </div>
         )}
       </div>
+
+      {/* ── Statement-Based Analysis (shown until a live bank connection exists) ── */}
+      {!banking?.connected && banking?.statementInsights && (() => {
+        const si = banking.statementInsights!;
+        const siColor = si.overallScore >= 70 ? "#0d9488" : si.overallScore >= 40 ? "#facc15" : "#f87171";
+        return (
+          <>
+            <div className="card" style={{ textAlign: "center", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(13,148,136,0.07) 0%, transparent 70%)", pointerEvents: "none" }} />
+              <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Avg Monthly Revenue</p>
+              <p style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 36, fontWeight: 800, color: "#0d9488", lineHeight: 1.1 }}>{fmt$(si.monthlyRevenue)}</p>
+              <p style={{ color: "#64748b", fontSize: 11, marginTop: 6 }}>
+                From your most recent bank statements{si.analyzedAt ? ` · analyzed ${fmtDate(si.analyzedAt)}` : ""}
+              </p>
+            </div>
+
+            <div className="stat-grid stat-grid-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <div className="stat-card">
+                <div className="stat-label">Monthly Expenses</div>
+                <div className="stat-val" style={{ color: "#f87171" }}>{si.monthlyExpenses > 0 ? fmt$(si.monthlyExpenses) : "—"}</div>
+                <div className="stat-sub">avg per month</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Net Cash Flow</div>
+                <div className="stat-val" style={{ color: si.netCashFlow >= 0 ? "#0d9488" : "#f87171" }}>
+                  {si.netCashFlow >= 0 ? "+" : "−"}{fmt$(si.netCashFlow)}
+                </div>
+                <div className="stat-sub">avg per month</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Avg Daily Balance</div>
+                <div className="stat-val">{si.avgDailyBalance > 0 ? fmt$(si.avgDailyBalance) : "—"}</div>
+                <div className="stat-sub">over analyzed period</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Financial Health</div>
+                <div className="stat-val" style={{ color: siColor }}>{si.overallScore}/100</div>
+                <div className="stat-sub">{si.revenueConsistency || "statement-based"}</div>
+              </div>
+            </div>
+
+            {si.scoreExplanation && (
+              <div className="card" style={{ padding: "14px 18px" }}>
+                <p style={{ color: "#94a3b8", fontSize: 13, lineHeight: 1.6 }}>{si.scoreExplanation}</p>
+                <p style={{ color: "#64748b", fontSize: 11, marginTop: 8 }}>
+                  Based on your uploaded statements — connect your bank above for live, always-current insights.
+                </p>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* ── Cash Flow Metrics ── */}
       {hasMetrics && m && (
