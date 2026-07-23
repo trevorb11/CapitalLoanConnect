@@ -332,9 +332,34 @@ function Router() {
   );
 }
 
+// Pre-download every route chunk once the browser is idle. With immutable
+// caching on /assets, the chunks then live in the HTTP cache, so a tab opened
+// before a redeploy can still navigate anywhere — its chunks no longer vanish
+// out from under it when a new build replaces the old files on the server.
+// Skipped on data-saver / 2G connections.
+function warmRouteChunks() {
+  const conn = (navigator as any).connection;
+  if (conn?.saveData || /2g/.test(conn?.effectiveType || "")) return;
+  const modules = import.meta.glob("./pages/*.tsx");
+  const loaders = Object.values(modules);
+  let i = 0;
+  const loadNext = () => {
+    if (i >= loaders.length) return;
+    (loaders[i++]() as Promise<unknown>).catch(() => {}).finally(() => {
+      if ("requestIdleCallback" in window) {
+        (window as any).requestIdleCallback(loadNext, { timeout: 3000 });
+      } else {
+        setTimeout(loadNext, 250);
+      }
+    });
+  };
+  loadNext();
+}
+
 function App() {
   // Initialize UTM tracking immediately on app load to capture referrer and URL params
   useEffect(() => {
+    const warmTimer = window.setTimeout(warmRouteChunks, 8000);
     initUTMTracking();
     
     // Track visits from URL parameters (email, phone, interest)
@@ -360,6 +385,7 @@ function App() {
         })
       }).catch(err => console.error('Failed to track visit:', err));
     }
+    return () => clearTimeout(warmTimer);
   }, []);
 
   const appContent = (
