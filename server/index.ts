@@ -2,6 +2,7 @@ import dns from "dns";
 dns.setDefaultResultOrder("ipv4first");
 
 import express, { type Request, Response, NextFunction } from "express";
+import compression from "compression";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { Pool } from "@neondatabase/serverless";
@@ -17,6 +18,13 @@ const app = express();
 
 // Trust proxy for production (Replit runs behind a proxy)
 app.set('trust proxy', 1);
+
+// Gzip-compress responses — the dashboard ships large JSON payloads
+// (applications, decisions, bank uploads) that shrink ~10x when compressed.
+// Exclude the MCP SSE endpoint: compression buffers the event stream and breaks the handshake.
+app.use(compression({
+  filter: (req, res) => req.path.startsWith("/api/mcp") ? false : compression.filter(req, res),
+}));
 
 declare module 'express-session' {
   interface SessionData {
@@ -90,7 +98,12 @@ if (isProduction) {
     try {
       console.log('[STARTUP] Creating PostgreSQL session store...');
       const PgSession = connectPgSimple(session);
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        max: 10,                         // session lookups are small/fast — keep pool modest
+        connectionTimeoutMillis: 10_000, // fail fast instead of hanging forever under load
+        idleTimeoutMillis: 30_000,
+      });
       pool.on('error', (err) => {
         console.error('[SESSION POOL] Connection error (non-fatal):', err.message);
       });

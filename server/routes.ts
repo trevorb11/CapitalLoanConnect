@@ -6032,6 +6032,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`[BANK STATEMENTS] ${reviewerEmail} set approval status to ${approvalStatus} for upload ${id}`);
+      bankStatementsAdminCache.data = null; // bust cache so the change shows immediately
       res.json(updatedUpload);
     } catch (error) {
       console.error("Error updating bank statement approval:", error);
@@ -6048,6 +6049,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const updated = await storage.updateBankStatementUpload(id, { businessName, email });
       if (!updated) return res.status(404).json({ error: "Upload not found" });
+      bankStatementsAdminCache.data = null; // bust cache so the change shows immediately
       res.json(updated);
     } catch (error) {
       console.error("Error updating bank statement upload:", error);
@@ -6062,6 +6064,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { id } = req.params;
     try {
       await storage.deleteBankStatementUpload(id);
+      bankStatementsAdminCache.data = null; // bust cache so the change shows immediately
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting bank statement upload:", error);
