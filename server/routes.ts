@@ -417,6 +417,13 @@ function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: 
     console.log(`[SANITIZE] Parsed ownerCsz "${sanitized.ownerCsz}" → city=${sanitized.ownerCity}, state=${sanitized.ownerState}, zip=${sanitized.ownerZip}`);
   }
   
+  // Keep ownership columns in sync on creation / full-app submission
+  if (sanitized.ownerPercentage !== undefined && sanitized.ownership === undefined) {
+    sanitized.ownership = sanitized.ownerPercentage;
+  } else if (sanitized.ownership !== undefined && sanitized.ownerPercentage === undefined) {
+    sanitized.ownerPercentage = sanitized.ownership;
+  }
+
   // Parse businessCsz into separate fields if not already present
   if (sanitized.businessCsz && (!sanitized.city || !sanitized.state || !sanitized.zipCode)) {
     const parsed = parseCityStateZip(sanitized.businessCsz);
@@ -2489,6 +2496,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.businessName = updates.legalBusinessName;
       } else if (updates.businessName && !updates.legalBusinessName) {
         updates.legalBusinessName = updates.businessName;
+      }
+
+      // Keep ownership and ownerPercentage in sync — the dashboard edit form writes
+      // ownership, but the list view reads ownerPercentage (which is returned by the
+      // lightweight summary query). Without this mirror rule, editing ownership via the
+      // dashboard leaves ownerPercentage stale, so the list still shows the old value.
+      if (updates.ownership !== undefined && !updates.ownerPercentage) {
+        updates.ownerPercentage = updates.ownership;
+      } else if (updates.ownerPercentage !== undefined && !updates.ownership) {
+        updates.ownership = updates.ownerPercentage;
       }
 
       // Check if application was already completed BEFORE applying updates

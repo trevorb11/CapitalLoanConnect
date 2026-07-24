@@ -207,6 +207,7 @@ export default function IntakeForm() {
         ownerCsz: data.ownerCsz,
         dateOfBirth: data.ownerDob,
         ownerPercentage: data.ownerPercentage,
+        ownership: data.ownerPercentage,
         applicantSignature: signature,
         isCompleted: true,
         currentStep: 2,

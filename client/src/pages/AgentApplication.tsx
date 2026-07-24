@@ -158,7 +158,7 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
         owner_state: existingData.ownerState || "",
         owner_zip: existingData.ownerZip || "",
         date_of_birth: existingData.dateOfBirth || "",
-        ownership_percentage: existingData.ownerPercentage || existingData.ownership || "",
+        ownership_percentage: existingData.ownership || existingData.ownerPercentage || "",
       });
       if (existingData.applicantSignature) {
         setExistingSignature(existingData.applicantSignature);

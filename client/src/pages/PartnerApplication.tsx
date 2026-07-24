@@ -129,7 +129,7 @@ function PartnerForm({ partnerInfo, slug }: { partnerInfo: PartnerInfo; slug: st
         owner_state: existingData.ownerState || "",
         owner_zip: existingData.ownerZip || "",
         date_of_birth: existingData.dateOfBirth || "",
-        ownership_percentage: existingData.ownerPercentage || existingData.ownership || "",
+        ownership_percentage: existingData.ownership || existingData.ownerPercentage || "",
       });
     }
   }, [existingData]);

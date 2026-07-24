@@ -300,7 +300,7 @@ export default function FullApplication(props?: FullApplicationProps) {
         owner_zip: oAddr.zip,
 
         date_of_birth: existingData.dateOfBirth || "",
-        ownership_percentage: existingData.ownerPercentage || existingData.ownership || "",
+        ownership_percentage: existingData.ownership || existingData.ownerPercentage || "",
       });
 
       if (existingData.isFullApplicationCompleted) {

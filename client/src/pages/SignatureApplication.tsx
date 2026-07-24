@@ -293,7 +293,7 @@ export default function SignatureApplication(props?: SignatureApplicationProps) 
         owner_state: oAddr.state,
         owner_zip: oAddr.zip,
         date_of_birth: existingData.dateOfBirth || "",
-        ownership_percentage: existingData.ownerPercentage || existingData.ownership || "",
+        ownership_percentage: existingData.ownership || existingData.ownerPercentage || "",
       });
       if (existingData.isFullApplicationCompleted) setConsentChecked(true);
     }
