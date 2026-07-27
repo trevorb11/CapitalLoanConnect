@@ -204,6 +204,24 @@ function mapEntityType(v: any): string | null {
   return null;
 }
 
+// Purpose_Of_Funds__c is a restricted picklist. CLC values sometimes arrive
+// HTML-encoded ("Marketing &amp; Advertising") or as variants not in the list.
+function mapPurpose(v: any): string | null {
+  if (!v) return null;
+  const s = String(v).replace(/&amp;/g, "&").replace(/&#39;/g, "'").trim();
+  const allowed = new Set(["Working Capital", "Expansion", "Equipment Purchase", "Inventory", "Payroll", "Marketing", "Debt Consolidation", "Renovation", "Emergency", "Other"]);
+  if (allowed.has(s)) return s;
+  const variants: Record<string, string> = {
+    "marketing & advertising": "Marketing",
+    "marketing and advertising": "Marketing",
+    "equipment": "Equipment Purchase",
+    "debt refinance": "Debt Consolidation",
+    "hiring": "Payroll",
+    "hiring/payroll": "Payroll",
+  };
+  return variants[s.toLowerCase()] || "Other";
+}
+
 // CLC stores time-in-business as a range; Years_in_Business__c is a number.
 // Use a representative midpoint so SF reports/filters stay meaningful.
 function mapYearsInBusiness(v: any): number | null {
@@ -259,7 +277,7 @@ function buildOppFieldsFromApp(app: Record<string, any>, email: string, phone: s
     Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score || app.personalCreditScoreRange || app.personal_credit_score_range || app.ficoScoreExact || app.fico_score_exact),
     Industry__c: mapIndustry(app.industry),
     Primary_Business_Bank__c: app.bankName || app.bank_name || null,
-    Purpose_Of_Funds__c: app.useOfFunds || app.use_of_funds || null,
+    Purpose_Of_Funds__c: mapPurpose(app.useOfFunds || app.use_of_funds),
     EIN__c: (app.ein || "").toString().slice(0, 10) || null,
     Business_Start_Date__c: sfDate(app.businessStartDate || app.business_start_date),
     Ownership_Percentage__c: parseNum(app.ownership || app.ownerPercentage || app.owner_percentage),
@@ -369,7 +387,7 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue),
       Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score || app.personalCreditScoreRange || app.personal_credit_score_range),
       Primary_Business_Bank__c: app.bankName || app.bank_name || null,
-      Purpose_Of_Funds__c: app.useOfFunds || app.use_of_funds || null,
+      Purpose_Of_Funds__c: mapPurpose(app.useOfFunds || app.use_of_funds),
     });
 
     // Additional fields only applicable to Leads
@@ -377,7 +395,6 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
     // including them in an Opportunity PATCH fails the entire update.)
     const leadOnlyFields = clean({
       Company: businessName || null,
-      Company_Name__c: businessName || null,
       Doing_Business_As__c: app.doingBusinessAs || app.doing_business_as || null,
       EIN__c: app.ein || null,
       Industry: mapIndustry(app.industry),
