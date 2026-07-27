@@ -1438,11 +1438,11 @@ export async function promoteOpportunityToUnderwriting(email: string, phone?: st
     const ctx = await getStoredSfContext(email);
     let opp: any = null;
     if (ctx.sfOppId) {
-      const rows = await sfQuery(`SELECT Id, StageName, IsClosed FROM Opportunity WHERE Id = '${String(ctx.sfOppId).replace(/'/g, "\'")}' LIMIT 1`);
+      const rows = await sfQuery(`SELECT Id, StageName, IsClosed FROM Opportunity WHERE Id = '${String(ctx.sfOppId).replace(/'/g, "\\'")}' LIMIT 1`);
       if (rows.length && !rows[0].IsClosed) opp = rows[0];
     }
     if (!opp && email) {
-      const rows = await sfQuery(`SELECT Id, StageName, IsClosed FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\'")}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 1`);
+      const rows = await sfQuery(`SELECT Id, StageName, IsClosed FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 1`);
       if (rows.length) opp = rows[0];
     }
     const digits = (phone || ctx.phone || "").replace(/\D/g, "").slice(-10);
