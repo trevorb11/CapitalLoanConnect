@@ -395,7 +395,7 @@ function scheduleGhlOwnerSync(appId: string | number, phone?: string | null, ema
         console.log(`[GHL Owner Sync] No assigned owner found for app ${appId} (phone=${phone}, email=${email})`);
         return;
       }
-      await storage.updateLoanApplication(appId as any, { agentName: result.repName } as any);
+      await storage.updateLoanApplication(appId as any, { agentName: result.repName, agentGhlId: result.userId } as any);
       console.log(`[GHL Owner Sync] Assigned rep "${result.repName}" to web lead app ${appId}`);
     } catch (err: any) {
       console.error(`[GHL Owner Sync] Error syncing owner for app ${appId}:`, err.message);
@@ -403,6 +403,47 @@ function scheduleGhlOwnerSync(appId: string | number, phone?: string | null, ema
   }, 5 * 60 * 1000);
   console.log(`[GHL Owner Sync] Scheduled owner lookup in 5 min for app ${appId}`);
 }
+
+// Recurring reconciler: the one-shot 5-minute lookup above dies with every
+// server restart (each republish) and misses owners GHL assigns later than
+// 5 minutes (round-robin workflows, manual claiming). Every 15 minutes,
+// sweep the last 14 days of completed intakes still missing a rep and pull
+// the current GHL owner onto the file.
+let ghlOwnerReconcilerRunning = false;
+async function reconcileGhlOwners() {
+  if (ghlOwnerReconcilerRunning) return;
+  ghlOwnerReconcilerRunning = true;
+  try {
+    const { neonPool } = await import("./db");
+    if (!neonPool) return;
+    const rows = await neonPool.query(
+      `SELECT id, email, phone FROM loan_applications
+       WHERE is_completed = true AND agent_name IS NULL AND agent_email IS NULL
+         AND created_at >= NOW() - INTERVAL '14 days'
+       ORDER BY created_at DESC LIMIT 60`
+    );
+    let assigned = 0;
+    for (const app of rows.rows) {
+      try {
+        const result = await ghlService.resolveOwnerRepName(app.phone, app.email);
+        if (result?.repName) {
+          await storage.updateLoanApplication(app.id, { agentName: result.repName, agentGhlId: result.userId } as any);
+          assigned++;
+        }
+      } catch {}
+      await new Promise(r => setTimeout(r, 300));
+    }
+    if (rows.rows.length > 0) {
+      console.log(`[GHL Owner Reconciler] Checked ${rows.rows.length} rep-less intakes, assigned ${assigned}`);
+    }
+  } catch (err: any) {
+    console.error(`[GHL Owner Reconciler] Error: ${err.message}`);
+  } finally {
+    ghlOwnerReconcilerRunning = false;
+  }
+}
+setInterval(reconcileGhlOwners, 15 * 60 * 1000);
+setTimeout(reconcileGhlOwners, 90 * 1000); // first pass shortly after each boot
 
 function sanitizeApplicationData(data: any): { sanitized: any; recaptchaToken?: string; faxNumber?: string } {
   const { recaptchaToken, faxNumber, ...rest } = data;
