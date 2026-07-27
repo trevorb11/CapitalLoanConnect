@@ -4444,10 +4444,20 @@ export default function Dashboard() {
                         </Badge>
                       )}
                       {authData.role === "admin" && app.agentName && (
-                        <Badge variant="outline" className="text-xs" data-testid={`badge-agent-${app.id}`}>
-                          <User className="w-3 h-3 mr-1" />
-                          {app.agentName}
-                        </Badge>
+                        // agentEmail is only ever set by the rep application flow;
+                        // GHL owner lookup sets agentName without an email — style
+                        // those to show the assignment came from GHL.
+                        app.agentEmail ? (
+                          <Badge variant="outline" className="text-xs" data-testid={`badge-agent-${app.id}`}>
+                            <User className="w-3 h-3 mr-1" />
+                            {app.agentName}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs border-violet-400 text-violet-600 dark:text-violet-400 dark:border-violet-700" title="Rep assigned from GHL contact owner" data-testid={`badge-agent-${app.id}`}>
+                            <User className="w-3 h-3 mr-1" />
+                            {app.agentName} · GHL
+                          </Badge>
+                        )
                       )}
                       {authData.role === "admin" && (app as any).referralPartnerName && (
                         <Badge variant="outline" className="text-xs border-blue-400 text-blue-600 dark:text-blue-400" data-testid={`badge-partner-${app.id}`}>
