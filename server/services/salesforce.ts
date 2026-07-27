@@ -189,6 +189,104 @@ function mapIndustry(v: any): string | null {
   return map[v] ?? null;
 }
 
+// Opportunity.Business_Entity_Type__c picklist: Corporation (C-Corp) / (S-Corp),
+// LLC, LLP, Non-Profit, Partnership, Sole Proprietorship, Other
+function mapEntityType(v: any): string | null {
+  if (!v) return null;
+  const s = String(v).toLowerCase();
+  if (s.includes("llc") || s.includes("limited liability")) return "LLC";
+  if (s.includes("llp")) return "LLP";
+  if (s.includes("s-corp") || s.includes("s corp")) return "Corporation (S-Corp)";
+  if (s.includes("c-corp") || s.includes("c corp") || s === "corporation" || s.includes("inc")) return "Corporation (C-Corp)";
+  if (s.includes("non-profit") || s.includes("nonprofit")) return "Non-Profit";
+  if (s.includes("partner")) return "Partnership";
+  if (s.includes("sole")) return "Sole Proprietorship";
+  return null;
+}
+
+// CLC stores time-in-business as a range; Years_in_Business__c is a number.
+// Use a representative midpoint so SF reports/filters stay meaningful.
+function mapYearsInBusiness(v: any): number | null {
+  if (!v) return null;
+  const map: Record<string, number> = {
+    "less than 3 months": 0.1,
+    "3-5 months": 0.3,
+    "6-12 months": 0.75,
+    "less than 1 year": 0.5,
+    "1-2 years": 1.5,
+    "2-5 years": 3.5,
+    "more than 5 years": 7,
+    "5+ years": 7,
+  };
+  return map[String(v).toLowerCase().trim()] ?? null;
+}
+
+// Normalize CLC date values (Date objects or ISO strings) to YYYY-MM-DD
+function sfDate(v: any): string | null {
+  if (!v) return null;
+  const s = v instanceof Date ? v.toISOString() : String(v);
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+// Summarize prior-advance / outstanding-loan answers into the Opp's
+// Prior_Advance_Details__c textarea (no dedicated opp fields exist for these).
+function buildPriorAdvanceDetails(app: Record<string, any>): string | null {
+  const parts: string[] = [];
+  const hasLoans = app.hasOutstandingLoans ?? app.has_outstanding_loans;
+  const loansAmt = app.outstandingLoansAmount ?? app.outstanding_loans_amount;
+  const mcaAmt = app.mcaBalanceAmount ?? app.mca_balance_amount;
+  const mcaBank = app.mcaBalanceBankName ?? app.mca_balance_bank_name;
+  if (hasLoans !== undefined && hasLoans !== null && hasLoans !== "") parts.push(`Outstanding loans: ${hasLoans}`);
+  if (loansAmt) parts.push(`Outstanding balance: $${loansAmt}`);
+  if (mcaAmt) parts.push(`MCA balance: $${mcaAmt}`);
+  if (mcaBank) parts.push(`MCA funder/bank: ${mcaBank}`);
+  return parts.length ? parts.join(" | ").slice(0, 5000) : null;
+}
+
+// Every application field that has a writable counterpart on the Opportunity.
+// Used by BOTH the update path and the create path so a new opp is born with
+// the full application picture, not a minimal stub.
+function buildOppFieldsFromApp(app: Record<string, any>, email: string, phone: string, businessName: string): Record<string, any> {
+  const state = ((app.state || app.businessState || app.business_state || "") as string).toUpperCase().trim().slice(0, 2);
+  const altEmail = (app.businessEmail || app.business_email || app.companyEmail || app.company_email || "") as string;
+  return clean({
+    Email__c: email || null,
+    Phone_Number__c: phone || null,
+    Doing_Business_As_DBA__c: app.doingBusinessAs || app.doing_business_as || businessName || null,
+    Amount_Requested__c: parseNum(app.requestedAmount || app.requested_amount),
+    Monthly_Revenue__c: parseNum(app.monthlyRevenue || app.monthly_revenue || app.averageMonthlyRevenue || app.average_monthly_revenue),
+    Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score || app.personalCreditScoreRange || app.personal_credit_score_range || app.ficoScoreExact || app.fico_score_exact),
+    Industry__c: mapIndustry(app.industry),
+    Primary_Business_Bank__c: app.bankName || app.bank_name || null,
+    Purpose_Of_Funds__c: app.useOfFunds || app.use_of_funds || null,
+    EIN__c: (app.ein || "").toString().slice(0, 10) || null,
+    Business_Start_Date__c: sfDate(app.businessStartDate || app.business_start_date),
+    Ownership_Percentage__c: parseNum(app.ownership || app.ownerPercentage || app.owner_percentage),
+    ...(US_STATES.has(state) ? { Business_State__c: state } : {}),
+    Owner_Date_of_Birth__c: sfDate(app.dateOfBirth || app.date_of_birth),
+    Do_You_Process_Credit_Cards__c: ["Yes", "No"].includes(app.doYouProcessCreditCards || app.do_you_process_credit_cards) ? (app.doYouProcessCreditCards || app.do_you_process_credit_cards) : null,
+    Business_Entity_Type__c: mapEntityType(app.businessType || app.business_type),
+    Years_in_Business__c: mapYearsInBusiness(app.timeInBusiness || app.time_in_business),
+    Prior_Advance_Details__c: buildPriorAdvanceDetails(app),
+    Signed_Authorization_Date__c: sfDate(app.signatureDate || app.signature_date),
+    UTM_Source__c: app.utmSource || app.utm_source || null,
+    Lead_Sub_Source__c: app.trackingSource || app.tracking_source || app.sourcePage || app.source_page || null,
+    Application_URL__c: app.agentViewUrl || app.agent_view_url || null,
+    ...(altEmail && altEmail.toLowerCase() !== (email || "").toLowerCase() && altEmail.includes("@") ? { Alt_Email__c: altEmail } : {}),
+  });
+}
+
+// Forward-only stage promotion: which stages each sync event may move an opp FROM.
+const STAGE_PROMOTIONS: Record<string, Set<string>> = {
+  "Application In": new Set(["Application & Docs"]),
+  "Underwriting": new Set(["Application & Docs", "Application In"]),
+};
+
+function stagePromotionAllowed(current: string | undefined, desired: string): boolean {
+  return !!current && STAGE_PROMOTIONS[desired]?.has(current) === true;
+}
+
 function clean(obj: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -261,6 +359,10 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
 
     console.log(`[SF Sync] Processing (update-only): ${businessName || fullName || email}`);
 
+    // Full application → "Application In"; intake/quiz only → "Application & Docs"
+    const isFullApp = !!(app.isFullApplicationCompleted || app.is_full_application_completed);
+    const desiredStage = isFullApp ? "Application In" : "Application & Docs";
+
     // Application fields to push to both Leads and Opportunities
     const appFields = clean({
       Amount_Requested__c: parseNum(app.requestedAmount || app.requested_amount),
@@ -268,31 +370,27 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       Personal_Credit_Score_Range__c: mapCreditScore(app.creditScore || app.credit_score || app.personalCreditScoreRange || app.personal_credit_score_range),
       Primary_Business_Bank__c: app.bankName || app.bank_name || null,
       Purpose_Of_Funds__c: app.useOfFunds || app.use_of_funds || null,
-      Funding_Time_Frame__c: app.fundingUrgency || app.funding_urgency || null,
-      MCA_Balance_Amount__c: parseNum(app.mcaBalanceAmount || app.mca_balance_amount),
     });
 
     // Additional fields only applicable to Leads
+    // (MCA_Balance_Amount__c and Funding_Time_Frame__c exist ONLY on Lead —
+    // including them in an Opportunity PATCH fails the entire update.)
     const leadOnlyFields = clean({
       Company: businessName || null,
       Company_Name__c: businessName || null,
       Doing_Business_As__c: app.doingBusinessAs || app.doing_business_as || null,
       EIN__c: app.ein || null,
       Industry: mapIndustry(app.industry),
-      Business_Start_Date__c: app.businessStartDate || app.business_start_date || null,
+      Business_Start_Date__c: sfDate(app.businessStartDate || app.business_start_date),
       Ownership_Percentage__c: parseNum(app.ownership || app.ownerPercentage || app.owner_percentage),
       Do_You_Process_Credit_Cards__c: app.doYouProcessCreditCards || app.do_you_process_credit_cards || null,
       UTM_Source__c: app.utmSource || app.utm_source || null,
       Application_URL__c: app.agentViewUrl || app.agent_view_url || null,
+      MCA_Balance_Amount__c: parseNum(app.mcaBalanceAmount || app.mca_balance_amount),
     });
 
-    // Additional fields only applicable to Opportunities
-    const oppOnlyFields = clean({
-      Industry__c: mapIndustry(app.industry),
-      Doing_Business_As_DBA__c: businessName || null,
-      Phone_Number__c: phone || null,
-      Email__c: email || null,
-    });
+    // Everything from the application with a writable Opportunity counterpart
+    const oppOnlyFields = buildOppFieldsFromApp(app, email, phone, businessName);
 
     const digits = phone ? phone.replace(/\D/g, "").slice(-10) : "";
     let updated = false;
@@ -348,25 +446,25 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
     // Stored SF Opportunity ID from a previous sync wins outright
     const storedOppId = app.sfOpportunityId || app.sf_opportunity_id;
     if (storedOppId) {
-      const verify = await sfQuery(`SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE Id = '${String(storedOppId).replace(/'/g, "\\'")}' LIMIT 1`);
+      const verify = await sfQuery(`SELECT Id, Name, AccountId, IsClosed, StageName FROM Opportunity WHERE Id = '${String(storedOppId).replace(/'/g, "\\'")}' LIMIT 1`);
       if (verify.length) considerOpp(verify[0]);
       if (!existingOpp && renewalAccountId) {
         // Stored opp is closed — reroute to the newest open opp on the Account
-        const open = await sfQuery(`SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE AccountId = '${renewalAccountId}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 1`);
+        const open = await sfQuery(`SELECT Id, Name, AccountId, IsClosed, StageName FROM Opportunity WHERE AccountId = '${renewalAccountId}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 1`);
         if (open.length) existingOpp = open[0];
       }
     }
 
     if (!existingOpp && email) {
       const byEmail = await sfQuery(
-        `SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}' ORDER BY IsClosed ASC, CreatedDate DESC LIMIT 1`
+        `SELECT Id, Name, AccountId, IsClosed, StageName FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\\'")}' ORDER BY IsClosed ASC, CreatedDate DESC LIMIT 1`
       );
       if (byEmail.length) considerOpp(byEmail[0]);
     }
 
     if (!existingOpp && digits.length === 10) {
       const byPhone = await sfQuery(
-        `SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' ORDER BY IsClosed ASC, CreatedDate DESC LIMIT 1`
+        `SELECT Id, Name, AccountId, IsClosed, StageName FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' ORDER BY IsClosed ASC, CreatedDate DESC LIMIT 1`
       );
       if (byPhone.length) considerOpp(byPhone[0]);
     }
@@ -374,13 +472,19 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
     // Fallback: Contact email → Account → Opportunity
     if (!existingOpp && email) {
       const byAcctContact = await sfQuery(
-        `SELECT Id, Name, AccountId, IsClosed FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${email.replace(/'/g, "\\'")}') ORDER BY IsClosed ASC, CreatedDate DESC LIMIT 1`
+        `SELECT Id, Name, AccountId, IsClosed, StageName FROM Opportunity WHERE AccountId IN (SELECT AccountId FROM Contact WHERE Email = '${email.replace(/'/g, "\\'")}') ORDER BY IsClosed ASC, CreatedDate DESC LIMIT 1`
       );
       if (byAcctContact.length) considerOpp(byAcctContact[0]);
     }
 
     if (existingOpp) {
       const oppUpdate = clean({ ...appFields, ...oppOnlyFields });
+      // Promote the stage forward when a full application lands (never demote,
+      // never touch opps already past intake stages)
+      if (stagePromotionAllowed(existingOpp.StageName, desiredStage)) {
+        oppUpdate.StageName = desiredStage;
+        console.log(`[SF Sync] Promoting Opp stage: ${existingOpp.StageName} -> ${desiredStage}`);
+      }
       if (Object.keys(oppUpdate).length > 0) {
         const res = await sfApi("PATCH", `/sobjects/Opportunity/${existingOpp.Id}`, oppUpdate);
         if (res.success) {
@@ -403,6 +507,7 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
           Primary_Business_Bank__c: app.bankName || app.bank_name || null,
           Phone: phone || null,
           Website: app.companyWebsite || app.company_website || null,
+          BillingStreet: app.businessStreetAddress || app.business_street_address || app.businessAddress || app.business_address || null,
           BillingCity: app.city || null,
           ...(US_STATES.has(state) ? { BillingStateCode: state } : {}),
           BillingPostalCode: app.zipCode || app.zip_code || null,
@@ -492,7 +597,7 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       phone,
       businessName,
       fullName,
-      stage: "Application & Docs",
+      stage: desiredStage,
       app,
       ...(renewalAccountId ? { existingAccountId: renewalAccountId } : {}),
     });
@@ -938,7 +1043,7 @@ interface FindOppResult {
  * 8. Business name wildcard match
  * → Auto-create if all fail
  */
-const OPEN_SF_STAGES = new Set(["Application & Docs", "Underwriting", "Present Offer", "Contracts Out", "Contracts In", "Final Review", "Negotiate", "Renewal Prospecting"]);
+const OPEN_SF_STAGES = new Set(["Application & Docs", "Application In", "Underwriting", "Approved", "Present Offer", "Contracts Out", "Contracts In", "Final Review", "Negotiate", "Renewal Prospecting"]);
 
 // One find/create per merchant at a time — concurrent syncs (app save + snapshot +
 // decision firing together) share a single result instead of racing to create dupes.
@@ -1270,6 +1375,11 @@ async function autoCreateSfOpportunity(params: {
       LastName: nameParts.slice(1).join(" ") || (nameParts[0] ? "Unknown" : businessName || "Unknown"),
       Email: email || null,
       Phone: phone || null,
+      Birthdate: sfDate(app?.dateOfBirth || app?.date_of_birth),
+      MailingStreet: [app?.ownerAddress1 || app?.owner_address_1, app?.ownerAddress2 || app?.owner_address_2].filter(Boolean).join(", ") || null,
+      MailingCity: app?.ownerCity || app?.owner_city || null,
+      ...(US_STATES.has(((app?.ownerState || app?.owner_state || "") as string).toUpperCase().trim()) ? { MailingStateCode: ((app?.ownerState || app?.owner_state) as string).toUpperCase().trim(), MailingCountryCode: "US" } : {}),
+      MailingPostalCode: app?.ownerZip || app?.owner_zip || null,
       Personal_Credit_Score_Range__c: mapCreditScore(app?.creditScore || app?.credit_score),
     });
     const ctRes = await sfApi("POST", "/sobjects/Contact", contact);
@@ -1288,16 +1398,8 @@ async function autoCreateSfOpportunity(params: {
     Name: `${accountName} - ${dateStr}`.slice(0, 120),
     StageName: sfStage,
     CloseDate: closeDate,
-    Email__c: email || null,
-    Phone_Number__c: phone || null,
-    Doing_Business_As_DBA__c: businessName || null,
-    Amount_Requested__c: parseNum(app?.requestedAmount || app?.requested_amount),
-    Monthly_Revenue__c: parseNum(app?.monthlyRevenue || app?.monthly_revenue),
-    Personal_Credit_Score_Range__c: mapCreditScore(app?.creditScore || app?.credit_score || app?.personalCreditScoreRange),
-    Industry__c: mapIndustry(app?.industry),
-    Primary_Business_Bank__c: app?.bankName || app?.bank_name || null,
-    Purpose_Of_Funds__c: app?.useOfFunds || app?.use_of_funds || null,
-    Funding_Time_Frame__c: app?.fundingUrgency || app?.funding_urgency || null,
+    // Full application field mapping — a new opp carries everything the app collected
+    ...buildOppFieldsFromApp(app || {}, email || "", phone || "", businessName || ""),
     LeadSource: app?.referralSource || app?.referral_source || "Website",
     Revenue_Verified__c: false,
     Bank_Statement_Tampering_Flag__c: false,
@@ -1323,6 +1425,44 @@ async function autoCreateSfOpportunity(params: {
     method: accountWasCreated ? "auto-created" : "created-on-existing-account",
     created: true,
   };
+}
+
+/**
+ * Move a merchant's open SF Opportunity to the Underwriting stage when their
+ * file is submitted to underwriting in CLC. Forward-only: opps already at or
+ * past Underwriting are left alone.
+ */
+export async function promoteOpportunityToUnderwriting(email: string, phone?: string): Promise<{ promoted: boolean; oppId?: string; reason?: string }> {
+  if (!SF_INSTANCE_URL || (!cachedAccessToken && !SF_CAN_REFRESH)) return { promoted: false, reason: "no credentials" };
+  try {
+    const ctx = await getStoredSfContext(email);
+    let opp: any = null;
+    if (ctx.sfOppId) {
+      const rows = await sfQuery(`SELECT Id, StageName, IsClosed FROM Opportunity WHERE Id = '${String(ctx.sfOppId).replace(/'/g, "\'")}' LIMIT 1`);
+      if (rows.length && !rows[0].IsClosed) opp = rows[0];
+    }
+    if (!opp && email) {
+      const rows = await sfQuery(`SELECT Id, StageName, IsClosed FROM Opportunity WHERE Email__c = '${email.replace(/'/g, "\'")}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 1`);
+      if (rows.length) opp = rows[0];
+    }
+    const digits = (phone || ctx.phone || "").replace(/\D/g, "").slice(-10);
+    if (!opp && digits.length === 10) {
+      const rows = await sfQuery(`SELECT Id, StageName, IsClosed FROM Opportunity WHERE Phone_Number__c LIKE '%${digits}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 1`);
+      if (rows.length) opp = rows[0];
+    }
+    if (!opp) return { promoted: false, reason: "no open opportunity found" };
+    if (!stagePromotionAllowed(opp.StageName, "Underwriting")) {
+      return { promoted: false, oppId: opp.Id, reason: `stage is ${opp.StageName}` };
+    }
+    const res = await sfApi("PATCH", `/sobjects/Opportunity/${opp.Id}`, { StageName: "Underwriting" });
+    if (res.success) {
+      console.log(`[SF Sync] Promoted Opp ${opp.Id} to Underwriting (was ${opp.StageName})`);
+      return { promoted: true, oppId: opp.Id };
+    }
+    return { promoted: false, oppId: opp.Id, reason: res.error };
+  } catch (err: any) {
+    return { promoted: false, reason: err.message };
+  }
 }
 
 /**

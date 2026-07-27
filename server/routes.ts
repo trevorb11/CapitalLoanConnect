@@ -31,7 +31,7 @@ import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services
 import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail, sendPipelineReportEmail } from "./services/email";
 import { evaluateLeadQualification } from "./services/leadQualification";
 import { startLeadNurtureScheduler } from "./services/leadNurture";
-import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce } from "./services/salesforce";
+import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce, promoteOpportunityToUnderwriting } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
 
@@ -5085,6 +5085,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (stampErr) {
       console.warn('[SUBMIT-UW] Failed to stamp uw_submitted_at (non-fatal):', stampErr);
     }
+
+    // Move the SF Opportunity to the Underwriting stage (forward-only, non-fatal)
+    promoteOpportunityToUnderwriting(normalizedEmail).catch(err =>
+      console.warn('[SUBMIT-UW] SF stage promotion error (non-fatal):', err.message));
 
     // Push Deal Qualification fields to Salesforce (non-fatal)
     try {
@@ -17419,6 +17423,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (stampErr) {
           console.warn('[SHOP] Failed to stamp uw_submitted_at (non-fatal):', stampErr);
         }
+
+        // Move the SF Opportunity to the Underwriting stage (forward-only, non-fatal)
+        promoteOpportunityToUnderwriting(normalizedEmail).catch(err =>
+          console.warn('[SHOP] SF stage promotion error (non-fatal):', err.message));
 
         // Push Deal Qualification fields to Salesforce using shop deal overview (non-fatal)
         syncUwSubmissionToSalesforce(normalizedEmail, application ?? null, { dealOverview: ov }).catch(err =>
