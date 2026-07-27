@@ -2840,6 +2840,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (agent !== "all" && role !== "agent" && role !== "user") {
         if (agent === "unassigned") {
           cteWhere += ` AND la.agent_name IS NULL`;
+        } else if (agent === "web-leads") {
+          cteWhere += ` AND la.is_web_lead = true`;
         } else {
           cteWhere += ` AND la.agent_name = $${cteIdx++}`;
           cteParams.push(agent);
