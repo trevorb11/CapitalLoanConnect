@@ -7677,6 +7677,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Accept Offer click tracking — fires GHL webhook then redirects to /congratulations
+  async function notifyOfferAccepted(decision: any, details: Record<string, string | null | undefined> = {}) {
+    if (!decision) return;
+
+    const recipients = new Set([
+      "marketing@todaycapitalgroup.com",
+      "admin@todaycapitalgroup.com",
+    ]);
+
+    // assignedRep is normally stored as the rep's name on the underwriting
+    // decision.  Also support an email stored directly in that field.
+    const repNames = [decision.assignedRep, decision.assignedRep2]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+    for (const rep of repNames) {
+      const directEmail = rep.includes("@") ? rep.trim() : null;
+      const mappedEmail = REP_DIRECTORY[rep] || null;
+      if (directEmail || mappedEmail) recipients.add((directEmail || mappedEmail!).toLowerCase());
+    }
+
+    // Some older decisions do not have assignedRep populated.  Fall back to
+    // the sales/agent email attached to the original application.
+    if (decision.businessEmail) {
+      try {
+        const application = await storage.getAnyLoanApplicationByEmail(decision.businessEmail);
+        if (application?.agentEmail) recipients.add(application.agentEmail.toLowerCase().trim());
+      } catch (error) {
+        console.error("[ACCEPT OFFER] Could not look up application sales rep:", error);
+      }
+    }
+
+    const detailRows = Object.entries({
+      "Business": decision.businessName || "—",
+      "Merchant Email": decision.businessEmail || "—",
+      "Phone": decision.businessPhone || "—",
+      "Lender": decision.lender || "—",
+      "Approved Amount": decision.advanceAmount ? `$${decision.advanceAmount}` : "—",
+      "Assigned Rep": repNames.join(", ") || "—",
+      ...details,
+    })
+      .map(([label, value]) => `<tr><td style="padding:7px 12px;font-weight:600;color:#555">${label}</td><td style="padding:7px 12px">${value || "—"}</td></tr>`)
+      .join("");
+
+    const subject = `Offer Accepted — ${decision.businessName || decision.businessEmail || "Merchant"}`;
+    const html = `
+      <div style="font-family:Arial,sans-serif;color:#222">
+        <h2 style="color:#0f766e">Offer Accepted</h2>
+        <p>A merchant clicked “Accept Offer” on their approved offer letter.</p>
+        <table style="border-collapse:collapse;border:1px solid #ddd">${detailRows}</table>
+      </div>
+    `;
+
+    const to = Array.from(recipients).join(", ");
+    const sent = await gmailService.sendEmail(to, subject, html);
+    if (!sent) {
+      console.error(`[ACCEPT OFFER] Notification email failed for ${to}`);
+    } else {
+      console.log(`[ACCEPT OFFER] Notification email sent to ${to}`);
+    }
+  }
+
   app.get("/api/approval-letter/:slug/accept", async (req, res) => {
     const { slug } = req.params;
 
@@ -7720,6 +7779,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             else console.log(`[ACCEPT OFFER] GHL webhook sent for ${decision.businessEmail}`);
           })
           .catch((e) => console.error("[ACCEPT OFFER] GHL webhook error:", e));
+
+        // Await this before redirecting so the short-lived public request does
+        // not terminate before Gmail receives the notification.
+        await notifyOfferAccepted(decision, { "Offer URL": `/approval-letter/${slug}` });
       }
 
       res.redirect(302, `/congratulations${params.toString() ? `?${params.toString()}` : ""}`);
@@ -7828,6 +7891,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           approvalDate: decision.approvalDate ? String(decision.approvalDate) : null,
           notes: decision.notes || null,
           minimumDraw: null,
+          numberOfPayments: null,
+          lenderName: decision.lender || null,
+          earlyPayoffEnabled: false,
+          earlyPayoffMode: 'amounts',
+          earlyPayoffAmounts: null,
+          earlyPayoffRates: null,
         }];
       }
 
@@ -7898,6 +7967,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             "Next Step": "Reach out to finalize docs",
           },
         }).catch(() => {});
+
+        await notifyOfferAccepted(decision, {
+          "Approved Amount": req.query.approved ? `$${req.query.approved}` : null,
+          "Selected Draw": req.query.amount ? `$${req.query.amount}` : null,
+          "Estimated Payment": req.query.payment ? `$${req.query.payment}` : null,
+          "Total Payback": req.query.payback ? `$${req.query.payback}` : null,
+          "Term": req.query.term ? String(req.query.term) : null,
+          "Factor Rate": req.query.factor ? String(req.query.factor) : null,
+          "Offer URL": `/offer/${slug}`,
+        });
       }
 
       res.redirect(302, `/congratulations${params.toString() ? `?${params.toString()}` : ""}`);
