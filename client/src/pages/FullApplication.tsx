@@ -384,6 +384,7 @@ export default function FullApplication(props?: FullApplicationProps) {
     }
 
     const payload: any = {
+      formType: "full_application",
       legalBusinessName: formData.legal_business_name,
       doingBusinessAs: formData.doing_business_as,
       companyWebsite: formData.company_website,

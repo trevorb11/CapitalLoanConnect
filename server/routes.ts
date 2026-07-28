@@ -2308,7 +2308,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const existingApp = await storage.getLoanApplication(id);
         const mergedData = { ...existingApp, ...updates };
         const currentStep = updates.currentStep;
-        const isAgentFlow = !!(updates.agentName || updates.agentEmail || existingApp?.agentEmail);
+        // Sales-rep attribution is not enough to identify the two-step agent
+        // flow: a full application can also be opened from a rep link. Prefer
+        // the explicit client marker and retain the old attribution fallback
+        // for applications created before the marker was introduced.
+        const isAgentFlow = updates.formType === 'agent_application'
+          || (updates.formType !== 'full_application' && existingApp?.formType !== 'full_application'
+            && !!(updates.agentName || updates.agentEmail || existingApp?.agentEmail));
         
         // AgentApplication has 2 steps with different field groupings than FullApplication
         const agentStepValidationRules: Record<number, { fields: { key: string; label: string; format?: 'ein' | 'ssn' | 'phone' | 'email' }[] }> = {

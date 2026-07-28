@@ -317,6 +317,7 @@ export default function AgentApplication({ agent }: AgentApplicationProps) {
     setIsSubmitting(true);
     try {
       const step1Payload = {
+        formType: "agent_application",
         legalBusinessName: formData.legal_business_name,
         doingBusinessAs: formData.doing_business_as,
         companyEmail: formData.company_email,
