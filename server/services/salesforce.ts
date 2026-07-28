@@ -222,6 +222,26 @@ function mapPurpose(v: any): string | null {
   return variants[s.toLowerCase()] || "Other";
 }
 
+// Marketing attribution: same field API names exist on Lead AND Opportunity.
+function buildAttributionFields(app: Record<string, any>): Record<string, any> {
+  const url = (v: any) => {
+    const s = (v || "").toString().slice(0, 255);
+    return /^https?:\/\//i.test(s) ? s : null;
+  };
+  return clean({
+    UTM_Source__c: app.utmSource || app.utm_source || null,
+    UTM_Medium__c: (app.utmMedium || app.utm_medium || "").toString().slice(0, 255) || null,
+    UTM_Campaign__c: (app.utmCampaign || app.utm_campaign || "").toString().slice(0, 255) || null,
+    UTM_Term__c: (app.utmTerm || app.utm_term || "").toString().slice(0, 255) || null,
+    UTM_Content__c: (app.utmContent || app.utm_content || "").toString().slice(0, 255) || null,
+    Referrer_URL__c: url(app.referrerUrl || app.referrer_url),
+    Landing_Page__c: (app.sourcePage || app.source_page || "").toString().slice(0, 255) || null,
+    Google_Click_ID__c: (app.gclid || "").toString().slice(0, 255) || null,
+    Facebook_Click_ID__c: (app.fbclid || "").toString().slice(0, 255) || null,
+    Microsoft_Click_ID__c: (app.msclkid || "").toString().slice(0, 255) || null,
+  });
+}
+
 // CLC stores time-in-business as a range; Years_in_Business__c is a number.
 // Use a representative midpoint so SF reports/filters stay meaningful.
 function mapYearsInBusiness(v: any): number | null {
@@ -288,7 +308,7 @@ function buildOppFieldsFromApp(app: Record<string, any>, email: string, phone: s
     Years_in_Business__c: mapYearsInBusiness(app.timeInBusiness || app.time_in_business),
     Prior_Advance_Details__c: buildPriorAdvanceDetails(app),
     Signed_Authorization_Date__c: sfDate(app.signatureDate || app.signature_date),
-    UTM_Source__c: app.utmSource || app.utm_source || null,
+    ...buildAttributionFields(app),
     Lead_Sub_Source__c: app.trackingSource || app.tracking_source || app.sourcePage || app.source_page || null,
     Application_URL__c: app.agentViewUrl || app.agent_view_url || null,
     ...(altEmail && altEmail.toLowerCase() !== (email || "").toLowerCase() && altEmail.includes("@") ? { Alt_Email__c: altEmail } : {}),
@@ -401,7 +421,7 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
       Business_Start_Date__c: sfDate(app.businessStartDate || app.business_start_date),
       Ownership_Percentage__c: parseNum(app.ownership || app.ownerPercentage || app.owner_percentage),
       Do_You_Process_Credit_Cards__c: app.doYouProcessCreditCards || app.do_you_process_credit_cards || null,
-      UTM_Source__c: app.utmSource || app.utm_source || null,
+      ...buildAttributionFields(app),
       Application_URL__c: app.agentViewUrl || app.agent_view_url || null,
       MCA_Balance_Amount__c: parseNum(app.mcaBalanceAmount || app.mca_balance_amount),
     });
