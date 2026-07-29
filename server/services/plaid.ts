@@ -75,43 +75,26 @@ export interface PlaidStatementsListResult {
 
 export class PlaidService {
   async createLinkToken(userId: string) {
-    // Calculate date range for statements (last 6 months)
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - 6);
-    
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: userId },
       client_name: 'Today Capital Group',
-      products: [Products.Statements, Products.Assets],
+      products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
-      statements: {
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
-      },
     });
     return response.data;
   }
 
   async createMerchantLinkToken(merchantEmail: string) {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - 6);
-
     // Hash the email so we don't pass PII as client_user_id (Plaid policy)
     const safeUserId = createHash('sha256').update(`merchant-${merchantEmail}`).digest('hex').substring(0, 32);
 
     const response = await plaidClient.linkTokenCreate({
       user: { client_user_id: safeUserId },
       client_name: 'Today Capital Group',
-      products: [Products.Statements, Products.Assets],
+      products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
-      statements: {
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
-      },
     });
     return response.data;
   }
@@ -125,12 +108,11 @@ export class PlaidService {
       user: { client_user_id: userId },
       client_name: 'Today Capital Group',
       access_token: accessToken,
+      update: {
+        account_selection_enabled: true,
+      },
       country_codes: [CountryCode.Us],
       language: 'en',
-      statements: {
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
-      },
     } as any);
     return response.data;
   }

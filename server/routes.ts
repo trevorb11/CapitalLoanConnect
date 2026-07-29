@@ -3065,7 +3065,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const { publicToken, metadata, businessName, email, useAIAnalysis } = validationResult.data;
+      const { publicToken, metadata, businessName, email } = validationResult.data;
+      // Plaid connections currently request Transactions only. Keep this
+      // exchange flow transaction-based until Statements/Assets are enabled
+      // again, so unsupported products cannot turn a valid connection into a
+      // failed analysis.
+      const useAIAnalysis = false;
 
       // A. Exchange Token
       const tokenResponse = await plaidService.exchangePublicToken(publicToken);
@@ -3096,31 +3101,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           businessName: businessName || matchingApp?.businessName || undefined,
           details: { institution: institutionName, plaidItemId: tokenResponse.item_id },
         }).catch(() => {});
-      }
-
-      // C2. Fetch and store statements from Plaid
-      try {
-        console.log(`[PLAID EXCHANGE] Fetching statements for ${email}...`);
-        const statementsData = await plaidService.listStatements(tokenResponse.access_token);
-        
-        for (const stmt of statementsData.statements) {
-          await storage.createPlaidStatement({
-            plaidItemId: tokenResponse.item_id,
-            statementId: stmt.statementId,
-            accountId: stmt.accountId,
-            accountName: stmt.accountName,
-            accountType: stmt.accountType,
-            accountMask: stmt.accountMask,
-            month: stmt.month,
-            year: stmt.year,
-            institutionId: statementsData.institutionId,
-            institutionName: statementsData.institutionName,
-          });
-        }
-        console.log(`[PLAID EXCHANGE] Stored ${statementsData.statements.length} statements for ${email}`);
-      } catch (stmtError: any) {
-        console.log(`[PLAID EXCHANGE] Could not fetch statements (may not be available): ${stmtError.message}`);
-        // Non-fatal - continue with the rest of the exchange process
       }
 
       // D. Run AI-powered Asset Report Analysis if enabled
