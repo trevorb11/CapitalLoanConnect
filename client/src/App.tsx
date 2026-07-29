@@ -49,6 +49,7 @@ import FullApplication from "@/pages/FullApplication";
 import NotFound from "@/pages/not-found";
 // Lazy: everything else is code-split so visitors only download the page they hit
 const QuizIntake = lazy(() => import("@/pages/QuizIntake"));
+const ConsolidationLanding = lazy(() => import("@/pages/ConsolidationLanding"));
 const IntakeLanding = lazy(() => import("@/pages/IntakeLanding"));
 const IntakeGoogleAds = lazy(() => import("@/pages/IntakeGoogleAds"));
 const IntakeEmail = lazy(() => import("@/pages/IntakeEmail"));
@@ -164,6 +165,7 @@ function Router() {
       <Route path="/">
         {() => <FullApplication />}
       </Route>
+      <Route path="/consolidate" component={ConsolidationLanding} />
       <Route path="/intake" component={IntakeLanding} />
       <Route path="/intake/quiz">{() => <QuizIntake />}</Route>
       <Route path="/funding-quiz" component={FundingQuiz} />
