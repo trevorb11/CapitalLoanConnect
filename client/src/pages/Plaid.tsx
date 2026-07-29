@@ -48,7 +48,7 @@ export default function Plaid() {
       queryClient.invalidateQueries({ queryKey: ["/api/plaid/all"] });
       toast({
         title: "Bank connected",
-        description: "Your transaction data was securely connected and saved.",
+        description: "Your Asset Report was securely created and saved.",
       });
     },
     onError: (error: Error) => {
@@ -106,7 +106,7 @@ export default function Plaid() {
           <img src={tcgLogo} alt="Today Capital Group" className="mx-auto mb-6 h-16" />
           <h1 className="text-3xl font-bold text-white">Connect Your Business Bank</h1>
           <p className="mt-3 text-white/70">
-            Securely connect your bank through Plaid so our team can review your transaction history.
+            Securely connect your bank through Plaid so our team can generate an Asset Report for review.
           </p>
         </div>
 
@@ -118,10 +118,10 @@ export default function Plaid() {
               </div>
               <h2 className="text-2xl font-bold">Bank connected successfully</h2>
               {institutionName && (
-                <p className="mt-2 text-muted-foreground">{institutionName} is connected for transaction review.</p>
+                <p className="mt-2 text-muted-foreground">{institutionName} is connected for Asset Report review.</p>
               )}
               <p className="mt-3 text-sm text-muted-foreground">
-                Your information has been saved to our dashboard for review.
+                Your Asset Report has been saved to our dashboard for review.
               </p>
             </div>
           ) : (
@@ -130,7 +130,7 @@ export default function Plaid() {
                 <div className="flex items-start gap-3">
                   <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                   <p className="text-sm text-muted-foreground">
-                    Plaid securely connects to your bank. We only request transaction information for this review;
+                    Plaid securely connects to your bank. We request the Assets product to generate an Asset Report;
                     we do not see or store your bank login credentials.
                   </p>
                 </div>

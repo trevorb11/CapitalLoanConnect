@@ -3066,11 +3066,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const { publicToken, metadata, businessName, email } = validationResult.data;
-      // Plaid connections currently request Transactions only. Keep this
-      // exchange flow transaction-based until Statements/Assets are enabled
-      // again, so unsupported products cannot turn a valid connection into a
-      // failed analysis.
-      const useAIAnalysis = false;
+      // Plaid connections currently request Assets only. The Asset Report
+      // created below is the source for the underwriting analysis; do not
+      // fall back to the Transactions product.
+      const useAIAnalysis = true;
 
       // A. Exchange Token
       const tokenResponse = await plaidService.exchangePublicToken(publicToken);
@@ -3103,8 +3102,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).catch(() => {});
       }
 
-      // D. Run AI-powered Asset Report Analysis if enabled
-      if (useAIAnalysis && isOpenAIConfigured()) {
+      // D. Create and analyze the Asset Report. This is the only Plaid
+      // financial-data path for this flow; do not fall back to Transactions.
+      if (useAIAnalysis) {
         console.log(`[PLAID EXCHANGE] Running AI-powered Asset Report analysis for ${email}...`);
         
         try {
@@ -3250,49 +3250,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               improvementSuggestions: aiAnalysis.improvementSuggestions,
               summary: aiAnalysis.summary
             },
+            assetReportToken: assetReport.assetReportToken,
+            assetReport: assetReport.report,
             institutionName
           });
           
         } catch (aiError) {
           console.error("[PLAID EXCHANGE] AI analysis failed, falling back to basic analysis:", aiError);
-          // Fall back to basic analysis if AI fails
-          const basicAnalysis = await plaidService.analyzeFinancials(tokenResponse.access_token);
-          
-          await storage.createFundingAnalysis({
-            businessName,
-            email,
-            calculatedMonthlyRevenue: basicAnalysis.metrics.monthlyRevenue.toString(),
-            calculatedAvgBalance: basicAnalysis.metrics.avgBalance.toString(),
-            negativeDaysCount: basicAnalysis.metrics.negativeDays,
-            analysisResult: basicAnalysis.recommendations,
-            plaidItemId: tokenResponse.item_id
-          });
-          
-          res.json({
-            type: 'basic_analysis',
-            ...basicAnalysis
+          // Do not call analyzeFinancials here: that path requires the
+          // Transactions product, which is intentionally not requested.
+          console.error("[PLAID EXCHANGE] Asset Report analysis failed:", aiError);
+          return res.status(502).json({
+            error: "Asset Report analysis failed",
+            detail: "The bank connection succeeded, but Plaid could not finish the Asset Report analysis.",
           });
         }
-      } else {
-        // E. Run basic analysis (original flow)
-        const analysis = await plaidService.analyzeFinancials(tokenResponse.access_token);
-
-        // F. Save Results using storage layer
-        await storage.createFundingAnalysis({
-          businessName,
-          email,
-          calculatedMonthlyRevenue: analysis.metrics.monthlyRevenue.toString(),
-          calculatedAvgBalance: analysis.metrics.avgBalance.toString(),
-          negativeDaysCount: analysis.metrics.negativeDays,
-          analysisResult: analysis.recommendations,
-          plaidItemId: tokenResponse.item_id
-        });
-
-        // G. Return results to frontend
-        res.json({
-          type: 'basic_analysis',
-          ...analysis
-        });
       }
 
     } catch (error) {
