@@ -71,6 +71,7 @@ const SeeReport = lazy(() => import("@/pages/SeeReport"));
 const ConnectBank = lazy(() => import("@/pages/ConnectBank"));
 const BankStatementsUpload = lazy(() => import("@/pages/BankStatementsUpload"));
 const Statements = lazy(() => import("@/pages/Statements"));
+const Plaid = lazy(() => import("@/pages/Plaid"));
 const FundingCheck = lazy(() => import("@/pages/FundingCheck"));
 const RetargetingLanding = lazy(() => import("@/pages/RetargetingLanding"));
 const ProgressTracker = lazy(() => import("@/pages/ProgressTracker"));
@@ -203,6 +204,7 @@ function Router() {
       <Route path="/connect-bank" component={ConnectBank} />
       <Route path="/upload-statements" component={BankStatementsUpload} />
       <Route path="/statements" component={Statements} />
+      <Route path="/plaid" component={Plaid} />
       <Route path="/internal-upload" component={InternalStatementsUpload} />
       <Route path="/funding-check" component={FundingCheck} />
       <Route path="/calculator" component={FundingCalculator} />
