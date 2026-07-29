@@ -10266,6 +10266,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true });
   });
 
+  // ── ADMIN /track PREVIEW ──
+  // GET /api/admin/lead-portal/preview?email=... — one-click staff link that signs
+  // the browser into the lead's /track portal as that merchant. Requires an active
+  // staff session (log into the dashboard first, same browser). The staff session
+  // is stashed and can be restored via /api/admin/lead-portal/exit-preview.
+  app.get("/api/admin/lead-portal/preview", async (req: Request, res: Response) => {
+    const user = req.session.user;
+    if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'underwriting' && user.role !== 'agent')) {
+      return res.status(403).send("Log in to the admin dashboard in this browser first, then click the link again.");
+    }
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).send("email query param required");
+    try {
+      const result = await db.execute(sql`SELECT email, first_name, last_name FROM lead_portal_accounts WHERE LOWER(email) = ${email} LIMIT 1`);
+      if (result.rows.length === 0) return res.status(404).send(`No /track account found for ${email}`);
+      const row = result.rows[0] as any;
+      req.session.staffBackup = { ...user };
+      req.session.user = {
+        isAuthenticated: true,
+        role: 'lead',
+        merchantEmail: (row.email as string).toLowerCase(),
+        merchantName: [row.first_name, row.last_name].filter(Boolean).join(' ') || undefined,
+      };
+      console.log(`[LEAD] Admin preview of /track for ${email} by ${user.agentEmail || 'admin'}`);
+      res.redirect("/track");
+    } catch (err) {
+      console.error("[LEAD] admin preview error:", err);
+      res.status(500).send("Failed to open preview");
+    }
+  });
+
+  // GET /api/admin/lead-portal/exit-preview — restore the stashed staff session
+  app.get("/api/admin/lead-portal/exit-preview", (req: Request, res: Response) => {
+    if (req.session.staffBackup) {
+      req.session.user = req.session.staffBackup;
+      delete req.session.staffBackup;
+      return res.redirect("/dashboard");
+    }
+    res.redirect("/");
+  });
+
   // ── SMS OTP Auth ──
   // Codes are stored in lead_otp_codes (DB-backed so they survive restarts
   // and work across instances). One active code per phone, 10-min expiry,

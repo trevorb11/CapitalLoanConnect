@@ -40,6 +40,8 @@ declare module 'express-session' {
       merchantEmail?: string;
       merchantName?: string;
     };
+    // Stashed staff session while an admin is previewing a lead's /track portal
+    staffBackup?: SessionData['user'];
   }
 }
 
