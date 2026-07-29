@@ -67,6 +67,43 @@ function getPaymentTypeLabel(frequency: string | null): string {
   }
 }
 
+/**
+ * Estimated per-payment amount: total payback (or advance x factor, matching the
+ * letter's long-standing 1.25 fallback) divided by the number of payments implied
+ * by the term and payment frequency. Returns null when the term can't be parsed.
+ */
+function estimatePayment(o: { advanceAmount: string | null; factorRate: string | null; totalPayback: string | null; term: string | null; paymentFrequency: string | null }): string | null {
+  const num = (s: string | null) => {
+    const n = parseFloat((s || "").replace(/[^0-9.]/g, ""));
+    return isNaN(n) || n <= 0 ? null : n;
+  };
+  const advance = num(o.advanceAmount);
+  let payback = num(o.totalPayback);
+  if (!payback) {
+    if (!advance) return null;
+    payback = advance * (num(o.factorRate) || 1.25);
+  }
+  const m = (o.term || "").match(/([\d.]+)/);
+  if (!m) return null;
+  const val = parseFloat(m[1]);
+  const t = (o.term || "").toLowerCase();
+  const freq = (o.paymentFrequency || "weekly").toLowerCase();
+  const unit = t.includes("month") ? "months" : t.includes("day") ? "days" : "weeks";
+  let count: number;
+  if (freq.startsWith("dai")) {
+    count = unit === "days" ? val : unit === "weeks" ? val * 5 : val * 21;
+  } else if (freq.startsWith("bi")) {
+    count = unit === "days" ? val / 14 : unit === "weeks" ? val / 2 : val * 2.17;
+  } else if (freq.startsWith("month")) {
+    count = unit === "days" ? val / 30 : unit === "weeks" ? val / 4.33 : val;
+  } else {
+    count = unit === "days" ? val / 7 : unit === "weeks" ? val : val * 4.33;
+  }
+  count = Math.round(count);
+  if (!count || count <= 0) return null;
+  return "$" + Math.round(payback / count).toLocaleString();
+}
+
 const SCHEDULING_LINK = "https://bit.ly/3Zxj0Kq";
 const PHONE_NUMBER = "(818) 351-0225";
 const EMAIL_ADDRESS = "admin@todaycapitalgroup.com";
@@ -161,7 +198,7 @@ export default function ApprovalLetter() {
   // Server-side redirect: fires GHL webhook then redirects to /congratulations with full contact context
   const congratulationsUrl = `/api/approval-letter/${slug}/accept`;
 
-  const factorRate = current.factorRate || "1.25";
+  const estimatedPayment = estimatePayment(current);
   const lender = current.lender || "Standard Program";
   const approvalDateStr = current.approvalDate ? format(new Date(current.approvalDate), "MMMM d, yyyy") : format(new Date(), "MMMM d, yyyy");
 
@@ -287,10 +324,12 @@ export default function ApprovalLetter() {
               </div>
               <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Payment Frequency</div>
             </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-factor-rate">{factorRate}</div>
-              <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Factor Rate</div>
-            </div>
+            {estimatedPayment && (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#fff", marginBottom: "4px" }} data-testid="text-payment-amount">{estimatedPayment}</div>
+                <div style={{ fontSize: "0.75rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>Est. Payment</div>
+              </div>
+            )}
           </div>
         </section>
 
