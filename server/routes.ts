@@ -10226,6 +10226,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/admin/lead-portal/preview", async (req: Request, res: Response) => {
     const user = req.session.user;
     if (!user?.isAuthenticated || (user.role !== 'admin' && user.role !== 'underwriting' && user.role !== 'agent')) {
+      // Session cookies are SameSite=Strict in production, so a link clicked from
+      // Excel/Sheets/email arrives without the cookie. Self-redirect once — that
+      // navigation is same-site, so the cookie comes through on the retry.
+      if (!req.query.r) {
+        const qs = new URLSearchParams({ email: String(req.query.email || ''), r: '1' }).toString();
+        return res.status(200).send(`<!doctype html><meta http-equiv="refresh" content="0;url=/api/admin/lead-portal/preview?${qs}"><script>location.replace("/api/admin/lead-portal/preview?${qs}")</script>Opening portal…`);
+      }
       return res.status(403).send("Log in to the admin dashboard in this browser first, then click the link again.");
     }
     const email = String(req.query.email || '').trim().toLowerCase();
