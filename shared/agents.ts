@@ -87,7 +87,7 @@ export const AGENTS: Agent[] = [
   {
     initials: "jn",
     name: "Justin Neumann",
-    email: "justice@todaycapitalgroup.com",
+    email: "justin@todaycapitalgroup.com",
     ghlId: "",
   },
 ];
