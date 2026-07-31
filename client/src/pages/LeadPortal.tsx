@@ -1591,12 +1591,12 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
     <div>
       {/* ═══ SECTION 1: TRACK YOUR POSITIONS ═══ */}
       <div style={{ ...sectionWrap, background: "linear-gradient(180deg, rgba(13,148,136,0.06) 0%, rgba(15,23,42,0.4) 100%)" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 6 }}>
-          <div>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 6, flexWrap: "wrap" as const }}>
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
             <p style={sectionHeaderStyle}>Track Your Positions</p>
             <p style={sectionSubStyle}>Upload your bank statements and we'll auto-detect your funding positions, payment schedules, and estimated payoff dates.</p>
           </div>
-          <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, padding: "8px 18px", whiteSpace: "nowrap" as const, flexShrink: 0 }}>Upload Statements</button>
+          <button className="btn-primary" onClick={() => onSwitchTab("positions")} style={{ fontSize: 12, padding: "8px 18px", whiteSpace: "nowrap" as const, flexShrink: 0, width: "auto" }}>Upload Statements</button>
         </div>
 
         {activePositions.length > 0 ? (
@@ -1638,7 +1638,7 @@ function OverviewTab({ positions, banking, onViewPosition, onSwitchTab }: {
                     <p style={{ fontWeight: 700, fontSize: 14, color: "#facc15", marginBottom: 2 }}>Renewal Opportunities</p>
                     <p style={{ color: "#94a3b8", fontSize: 12 }}>{renewalReady.length} position{renewalReady.length !== 1 ? "s" : ""} past 50% paid</p>
                   </div>
-                  <a href="/intake/quiz" className="btn-primary" style={{ fontSize: 12, padding: "8px 18px", textDecoration: "none" }}>Check Options</a>
+                  <a href="/intake/quiz" className="btn-primary" style={{ fontSize: 12, padding: "8px 18px", textDecoration: "none", width: "auto", flexShrink: 0 }}>Check Options</a>
                 </div>
               </div>
             )}
