@@ -317,8 +317,9 @@ function buildOppFieldsFromApp(app: Record<string, any>, email: string, phone: s
 
 // Forward-only stage promotion: which stages each sync event may move an opp FROM.
 const STAGE_PROMOTIONS: Record<string, Set<string>> = {
-  "Application In": new Set(["Application & Docs"]),
-  "Underwriting": new Set(["Application & Docs", "Application In"]),
+  "Intake Completed": new Set(["Application & Docs"]),
+  "Application In": new Set(["Application & Docs", "Intake Completed"]),
+  "Underwriting": new Set(["Application & Docs", "Intake Completed", "Application In"]),
 };
 
 function stagePromotionAllowed(current: string | undefined, desired: string): boolean {
@@ -361,6 +362,7 @@ export function computePipelineBucket(stage: string, hasApproval?: boolean): str
     case "Underwriting":
       return "Underwriting";
     case "Application & Docs":
+    case "Intake Completed":
       return "Working";
     case "Renewal Prospecting":
       return "Renewal";
@@ -397,9 +399,11 @@ export async function syncApplicationToSalesforce(app: Record<string, any>): Pro
 
     console.log(`[SF Sync] Processing (update-only): ${businessName || fullName || email}`);
 
-    // Full application → "Application In"; intake/quiz only → "Application & Docs"
+    // Full application → "Application In"; completed intake/quiz → "Intake Completed";
+    // anything earlier (partial) → "Application & Docs"
     const isFullApp = !!(app.isFullApplicationCompleted || app.is_full_application_completed);
-    const desiredStage = isFullApp ? "Application In" : "Application & Docs";
+    const isIntakeDone = !!(app.isCompleted || app.is_completed);
+    const desiredStage = isFullApp ? "Application In" : isIntakeDone ? "Intake Completed" : "Application & Docs";
 
     // Application fields to push to both Leads and Opportunities
     const appFields = clean({
@@ -1080,7 +1084,7 @@ interface FindOppResult {
  * 8. Business name wildcard match
  * → Auto-create if all fail
  */
-const OPEN_SF_STAGES = new Set(["Application & Docs", "Application In", "Underwriting", "Approved", "Present Offer", "Contracts Out", "Contracts In", "Final Review", "Negotiate", "Renewal Prospecting"]);
+const OPEN_SF_STAGES = new Set(["Application & Docs", "Intake Completed", "Application In", "Underwriting", "Approved", "Present Offer", "Contracts Out", "Contracts In", "Final Review", "Negotiate", "Renewal Prospecting"]);
 
 // One find/create per merchant at a time — concurrent syncs (app save + snapshot +
 // decision firing together) share a single result instead of racing to create dupes.
