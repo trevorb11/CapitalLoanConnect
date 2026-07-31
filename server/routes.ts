@@ -31,7 +31,7 @@ import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services
 import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail, sendPipelineReportEmail } from "./services/email";
 import { evaluateLeadQualification } from "./services/leadQualification";
 import { startLeadNurtureScheduler } from "./services/leadNurture";
-import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce, promoteOpportunityToUnderwriting } from "./services/salesforce";
+import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce, promoteOpportunityToUnderwriting, recordEmailClickInSalesforce } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
 
@@ -10274,6 +10274,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.redirect("/dashboard");
     }
     res.redirect("/");
+  });
+
+  // ── EMAIL CLICK → SALESFORCE WEBHOOKS (GHL workflow + Mailgun events) ──
+  const EMAIL_CLICK_WEBHOOK_KEY = process.env.EMAIL_CLICK_WEBHOOK_KEY || "tcg-clk-7f3kq9vw2m";
+  const SF_REP_VALUES = ["Dillon LeBlanc", "Julius Speck", "Kenny Nwobi", "Gregory Dergevorkian", "Bryce Jennings", "Lucas Bishop", "Justin Neumann", "Sean Pimentel"];
+
+  // Map a free-form rep hint (GHL user name, list value, email) onto the SF picklist roster
+  function normalizeRepName(raw?: string | null): string | undefined {
+    if (!raw) return undefined;
+    const r = String(raw).trim().toLowerCase();
+    if (!r) return undefined;
+    for (const v of SF_REP_VALUES) {
+      const [first, last] = v.toLowerCase().split(" ");
+      if (r === v.toLowerCase() || r.includes(last) || (first.length > 3 && r.includes(first))) return v;
+    }
+    return undefined;
+  }
+
+  // Rep cascade for clickers not yet in SF: live GHL owner → uploaded rep list → prior application attribution
+  async function resolveRepForEmail(email: string, phone?: string): Promise<string | undefined> {
+    const lower = email.toLowerCase();
+    try {
+      const owner = await ghlService.resolveOwnerRepName(phone || null, email);
+      const n = normalizeRepName(owner?.repName);
+      if (n) return n;
+    } catch {}
+    try {
+      const r = await db.execute(sql`SELECT rep FROM email_click_rep_list WHERE LOWER(email) = ${lower} LIMIT 1`);
+      const n = normalizeRepName((r.rows[0] as any)?.rep);
+      if (n) return n;
+    } catch {}
+    try {
+      const r = await db.execute(sql`SELECT agent_name FROM loan_applications WHERE LOWER(email) = ${lower} AND agent_name IS NOT NULL ORDER BY created_at DESC LIMIT 1`);
+      const n = normalizeRepName((r.rows[0] as any)?.agent_name);
+      if (n) return n;
+    } catch {}
+    return undefined;
+  }
+
+  // GHL workflow "Custom Webhook" step → POST here (?key= shared secret)
+  app.post("/api/webhooks/ghl/email-click", async (req: Request, res: Response) => {
+    if ((req.query.key as string) !== EMAIL_CLICK_WEBHOOK_KEY) return res.status(403).json({ error: "bad key" });
+    try {
+      const b: any = req.body || {};
+      const c: any = b.contact || b;
+      const email = String(b.email || c.email || "").trim();
+      if (!email || !email.includes("@")) return res.status(400).json({ error: "no email in payload" });
+      const rep = normalizeRepName(b.rep || b.assigned_user_name || b.user?.name || c.assigned_user_name)
+        || await resolveRepForEmail(email, b.phone || c.phone);
+      const out = await recordEmailClickInSalesforce({
+        email,
+        source: "ghl",
+        campaign: b.campaign || b.email_name || b.workflow?.name || "GHL email",
+        url: b.link || b.url,
+        firstName: b.first_name || c.first_name || c.firstName,
+        lastName: b.last_name || c.last_name || c.lastName,
+        phone: b.phone || c.phone,
+        businessName: b.company_name || c.company_name || c.companyName,
+        rep,
+      });
+      console.log(`[EMAIL-CLICK] ghl ${email} -> ${out.result}${out.error ? ` (${out.error})` : ""}`);
+      res.json(out);
+    } catch (e: any) {
+      console.error("[EMAIL-CLICK] ghl handler error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Mailgun "Clicked" event webhook → POST here. Verifies Mailgun's HMAC signature
+  // when MAILGUN_WEBHOOK_SIGNING_KEY is set; otherwise falls back to ?key= secret.
+  app.post("/api/webhooks/mailgun/click", async (req: Request, res: Response) => {
+    try {
+      const b: any = req.body || {};
+      const signKey = process.env.MAILGUN_WEBHOOK_SIGNING_KEY;
+      let authorized = false;
+      const s = b.signature;
+      if (signKey && s?.timestamp && s?.token && s?.signature) {
+        const digest = createHmac("sha256", signKey).update(s.timestamp + s.token).digest("hex");
+        authorized = digest === s.signature;
+      }
+      if (!authorized) authorized = (req.query.key as string) === EMAIL_CLICK_WEBHOOK_KEY;
+      if (!authorized) return res.status(403).json({ error: "bad signature" });
+
+      const ev: any = b["event-data"] || b;
+      const email = String(ev.recipient || "").trim();
+      if (!email || !email.includes("@")) return res.status(400).json({ error: "no recipient" });
+      const uv: any = ev["user-variables"] || {};
+      const campaign = (Array.isArray(ev.tags) && ev.tags[0]) || uv.campaign || ev.message?.headers?.subject || "Mailgun email";
+      const rep = normalizeRepName(uv.rep) || await resolveRepForEmail(email);
+      const out = await recordEmailClickInSalesforce({
+        email,
+        source: "mailgun",
+        campaign,
+        url: ev.url,
+        firstName: uv.first_name,
+        businessName: uv.business_name,
+        rep,
+      });
+
+      // Mirror the click into GHL: tag existing contacts; create clickers that aren't there yet
+      try {
+        const existing = await ghlService.getContactByEmail(email);
+        if (existing?.id) {
+          await ghlService.addTagsToContact(existing.id, ["mailgun-clicker"]);
+        } else {
+          const cid = await ghlService.createOrUpdateContact({
+            email,
+            fullName: uv.first_name || email.split("@")[0],
+            businessName: uv.business_name || "",
+            phone: "",
+          } as any);
+          if (cid) await ghlService.addTagsToContact(cid, ["mailgun-clicker"]);
+        }
+      } catch (ghlErr) {
+        console.warn("[EMAIL-CLICK] GHL mirror failed (SF write succeeded):", ghlErr);
+      }
+
+      console.log(`[EMAIL-CLICK] mailgun ${email} -> ${out.result}${out.error ? ` (${out.error})` : ""}`);
+      res.json(out);
+    } catch (e: any) {
+      console.error("[EMAIL-CLICK] mailgun handler error:", e);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // ── SMS OTP Auth ──

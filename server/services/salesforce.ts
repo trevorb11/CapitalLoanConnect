@@ -1902,3 +1902,60 @@ export async function syncAiSnapshotToSalesforce(
     console.error("[SF Snapshot Sync] Error:", err.message);
   }
 }
+
+// ── Email-click attribution (fed by the GHL + Mailgun click webhooks) ──
+// Stamps click fields + logs a Task on the matching Lead/Opportunity, or
+// creates a new Lead when the clicker isn't in Salesforce yet.
+export async function recordEmailClickInSalesforce(click: {
+  email: string; campaign?: string; url?: string; source: string;
+  firstName?: string; lastName?: string; phone?: string; businessName?: string;
+  rep?: string;
+}): Promise<{ result: string; id?: string; rep?: string; error?: string }> {
+  const emailEsc = click.email.trim().toLowerCase().replace(/'/g, "\'");
+  const now = new Date().toISOString();
+  const campaign = (click.campaign || "unknown").slice(0, 255);
+  const clickFields = {
+    Email_Clicker__c: true,
+    Last_Email_Click__c: now,
+    Last_Email_Click_Campaign__c: campaign,
+  };
+  const logTask = (ref: { WhoId?: string; WhatId?: string }) => sfApi("POST", "/sobjects/Task", {
+    Subject: `Email clicked: ${campaign} (${click.source})`,
+    Description: `Link: ${click.url || "n/a"}\nSource: ${click.source}\nRecipient: ${click.email}`,
+    Status: "Completed",
+    ActivityDate: now.slice(0, 10),
+    ...ref,
+  });
+
+  const leads = await sfQuery(`SELECT Id, Sales_Rep__c FROM Lead WHERE Email = '${emailEsc}' AND IsConverted = false ORDER BY LastModifiedDate DESC LIMIT 1`);
+  if (leads.length) {
+    await sfApi("PATCH", `/sobjects/Lead/${leads[0].Id}`, clickFields);
+    await logTask({ WhoId: leads[0].Id });
+    return { result: "lead-updated", id: leads[0].Id, rep: leads[0].Sales_Rep__c || undefined };
+  }
+
+  const opps = await sfQuery(`SELECT Id, Sales_Rep__c FROM Opportunity WHERE Email__c = '${emailEsc}' ORDER BY LastModifiedDate DESC LIMIT 1`);
+  if (opps.length) {
+    await sfApi("PATCH", `/sobjects/Opportunity/${opps[0].Id}`, clickFields);
+    await logTask({ WhatId: opps[0].Id });
+    return { result: "opportunity-updated", id: opps[0].Id, rep: opps[0].Sales_Rep__c || undefined };
+  }
+
+  const lastName = (click.lastName || click.firstName || click.email.split("@")[0]).slice(0, 80) || "Unknown";
+  const created = await sfApi("POST", "/sobjects/Lead", {
+    FirstName: (click.firstName || "").slice(0, 40) || undefined,
+    LastName: lastName,
+    Company: (click.businessName || lastName).slice(0, 255),
+    Email: click.email.trim(),
+    Phone: click.phone || undefined,
+    LeadSource: click.source === "mailgun" ? "Email - Mailgun" : "Email - GHL",
+    Lead_Sub_Source__c: `email click: ${campaign}`.slice(0, 255),
+    Sales_Rep__c: click.rep || undefined,
+    ...clickFields,
+  });
+  if (created.success && created.id) {
+    await logTask({ WhoId: created.id });
+    return { result: "lead-created", id: created.id, rep: click.rep };
+  }
+  return { result: "error", error: created.error };
+}
