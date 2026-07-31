@@ -532,6 +532,12 @@ app.use((req, res, next) => {
         expires_at TIMESTAMP NOT NULL,
         created_at TIMESTAMP DEFAULT NOW()
       )`);
+      // Mailgun master-list rep assignments — fallback lookup for the email-click webhooks
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS email_click_rep_list (
+        email TEXT PRIMARY KEY,
+        rep TEXT NOT NULL,
+        uploaded_at TIMESTAMP DEFAULT NOW()
+      )`);
       // Merchant-reported balance corrections — anchors portal payoff estimates to reality
       await db.execute(sql`CREATE TABLE IF NOT EXISTS merchant_balance_reports (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
