@@ -382,6 +382,68 @@ function isGFGSubmission(data: any): boolean {
 }
 
 /**
+ * Returns true when an application/update came from inertiafunding.com.
+ * The current external intake identifies itself as "Inertia Funding" in
+ * agentName, but also check the source/referrer fields so future payload
+ * mapping changes do not silently bypass CRM syncing.
+ */
+function isInertiaSubmission(data: any): boolean {
+  if (!data) return false;
+  const INERTIA_DOMAIN = "inertiafunding.com";
+  const INERTIA_NAME = "inertia funding";
+  const check = (v: any) => typeof v === "string" && (
+    v.toLowerCase().includes(INERTIA_DOMAIN) || v.toLowerCase().includes(INERTIA_NAME)
+  );
+  return (
+    check(data.agentName) ||
+    check(data.referrerUrl) ||
+    check(data.referralSource) ||
+    check(data.trackingSource) ||
+    check(data.sourcePage) ||
+    check(data.utmSource)
+  );
+}
+
+/**
+ * Sync an application to Salesforce and persist the result on the dashboard
+ * record. This is intentionally fire-and-forget at call sites so an external
+ * CRM outage never blocks an intake form or statement upload.
+ */
+async function syncApplicationToSalesforceAndPersist(app: LoanApplication): Promise<void> {
+  if (!SF_APP_SYNC_ENABLED || !app?.id) return;
+
+  try {
+    const result = await syncApplicationToSalesforce(app);
+    const syncUpdates: Record<string, any> = {
+      sfSyncedAt: new Date(),
+      sfSyncMessage: result.synced
+        ? (result.action || "ok")
+        : (result.error || result.reason || "sync-failed"),
+    };
+    if (result.accountId) syncUpdates.sfAccountId = result.accountId;
+    if (result.contactId) syncUpdates.sfContactId = result.contactId;
+    if (result.oppId) syncUpdates.sfOpportunityId = result.oppId;
+    await storage.updateLoanApplication(app.id, syncUpdates as any);
+
+    if (result.synced) {
+      await syncApplicationToDialer(app, {
+        accountId: result.accountId,
+        contactId: result.contactId,
+        oppId: result.oppId,
+      }).catch(err => console.error("[Dialer Sync] Error:", err.message));
+    } else {
+      console.warn(`[SF Sync] Application sync failed for ${app.email}: ${result.error || result.reason}`);
+    }
+  } catch (err: any) {
+    console.error(`[SF Sync] Background error for ${app.email}:`, err?.message || err);
+    await storage.updateLoanApplication(app.id, {
+      sfSyncedAt: new Date(),
+      sfSyncMessage: err?.message || "sync-error",
+    } as any).catch(() => {});
+  }
+}
+
+/**
  * 5-minute delayed GHL owner lookup.
  * After intake webhook fires, wait 5 min, then find the GHL contact by phone/email,
  * read the assignedTo user, and write them as agentName on the application so
@@ -2077,6 +2139,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
         }
 
+        const updatedOrExistingApp = updatedApp || existingApp;
+        const isInertia = isInertiaSubmission(updatedOrExistingApp) || isInertiaSubmission(applicationData);
+
+        // Inertia sends step-by-step records that may not be marked complete.
+        // Keep Salesforce current for every pushed entry, not only final
+        // submissions.
+        if (isInertia && updatedOrExistingApp) {
+          syncApplicationToSalesforceAndPersist(updatedOrExistingApp).catch(() => {});
+        }
+
         // Send webhook only (GHL API sync disabled for now)
         // Fire on first completion OR if it's been more than 7 days since the last intake submission
         // (allows a returning lead to re-enter the GHL workflow after a cooldown period)
@@ -2100,6 +2172,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               scheduleGhlOwnerSync(updatedApp.id, updatedApp.phone, updatedApp.email);
             }
           }
+        }
+
+        // Incomplete Inertia submissions are still useful leads. Forward each
+        // pushed form entry through the existing GHL partial-application
+        // webhook instead of waiting for a completion flag.
+        if (isInertia && !applicationData.isCompleted && updatedOrExistingApp) {
+          ghlService.sendPartialApplicationWebhook(updatedOrExistingApp).catch(err =>
+            console.error("[INERTIA] Partial application webhook error:", err)
+          );
         }
 
         // Guide Funding Group: fire webhooks on update if GFG submission
@@ -2180,21 +2261,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await recordApplicationSubmission(application.id, applicationData.email, 'intake', applicationData.requestedAmount);
       }
 
-      // Sync to Salesforce (fire-and-forget — never blocks the merchant experience)
-      if (SF_APP_SYNC_ENABLED) {
-        syncApplicationToSalesforce(updatedApp || application).then(sfResult => {
-          // Also sync to dialer_contacts with SF IDs
-          if (sfResult.synced) {
-            syncApplicationToDialer(updatedApp || application, {
-              accountId: sfResult.accountId,
-              contactId: sfResult.contactId,
-              oppId: sfResult.oppId,
-            }).catch(err => console.error("[Dialer Sync] Error:", err.message));
-          }
-        }).catch(err =>
-          console.error('[SF Sync] Background error:', err.message)
-        );
-      }
+      // Sync every new dashboard application to Salesforce and persist the
+      // returned IDs/status. This includes external Inertia submissions.
+      syncApplicationToSalesforceAndPersist(updatedApp || application).catch(() => {});
 
       // Also sync to dialer even without SF (for business field updates)
       syncApplicationToDialer(updatedApp || application).catch(err =>
@@ -2242,10 +2311,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      const finalApp = updatedApp || application;
+      const isInertia = isInertiaSubmission(finalApp) || isInertiaSubmission(applicationData);
+      if (isInertia && !applicationData.isCompleted) {
+        ghlService.sendPartialApplicationWebhook(finalApp).catch(err =>
+          console.error("[INERTIA] Partial application webhook error:", err)
+        );
+      }
+
       // Guide Funding Group: always fire intake webhook when a GFG submission arrives,
       // even if isCompleted isn't set (GFG sends data without completion flags).
       // Detected via agentName, referrerUrl (guidefundinggroup.com), referralSource, trackingSource, or sourcePage.
-      const finalApp = updatedApp || application;
       const isGFG = isGFGSubmission(finalApp) || isGFGSubmission(applicationData);
       if (isGFG && !applicationData.isCompleted) {
         console.log(`[GFG] Guide Funding Group submission detected — firing intake webhook for ${finalApp.email}`);
@@ -2577,6 +2653,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Application not found" });
       }
 
+      const isInertia = isInertiaSubmission(updatedApp);
+
+      // External Inertia updates can arrive before the final completion flag.
+      // Keep both CRMs current for those pushed entries as well.
+      if (isInertia && !updates.isFullApplicationCompleted) {
+        syncApplicationToSalesforceAndPersist(updatedApp).catch(() => {});
+        ghlService.sendPartialApplicationWebhook(updatedApp).catch(err =>
+          console.error("[INERTIA] Partial application webhook error:", err)
+        );
+      }
+
       // Send webhook only when full application is NEWLY completed in this request
       // (not on every subsequent auto-save after it was already completed)
       // Record full-application submissions: first completion, plus re-signed
@@ -2591,19 +2678,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
 
         // Sync to Salesforce on full application completion (fire-and-forget)
-        if (SF_APP_SYNC_ENABLED) {
-          syncApplicationToSalesforce(updatedApp).then(sfResult => {
-            if (sfResult.synced) {
-              syncApplicationToDialer(updatedApp, {
-                accountId: sfResult.accountId,
-                contactId: sfResult.contactId,
-                oppId: sfResult.oppId,
-              }).catch(err => console.error("[Dialer Sync] Error:", err.message));
-            } else {
-              console.warn(`[SF Sync] Full app completion sync failed for ${updatedApp.email}: ${sfResult.error || sfResult.reason}`);
-            }
-          }).catch(err => console.error('[SF Sync] Full app background error:', err.message));
-        }
+        syncApplicationToSalesforceAndPersist(updatedApp).catch(() => {});
 
         // SMS: app_submitted (full 11-step application)
         if (updatedApp.phone) {
@@ -5262,7 +5337,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if there's a matching application by email
       let linkedApplicationId = applicationId;
-      let matchingApp: LoanApplication | undefined;
+      let matchingApp: LoanApplication | undefined = applicationId
+        ? await storage.getLoanApplication(applicationId)
+        : existingApp;
       if (!linkedApplicationId) {
         const applications = await storage.getAllLoanApplications();
         matchingApp = applications.find((app: LoanApplication) => app.email === email);
@@ -5314,6 +5391,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`[BANK UPLOAD] Webhook skipped for ${email}: ${result.reason}`);
           }
         }).catch(err => console.error('[GHL] Bank statement webhook error:', err));
+      }
+
+      // An Inertia application may submit bank statements separately from its
+      // form data. GHL receives the statement links above; re-sync the linked
+      // application to Salesforce so the external entry is not stranded in
+      // only one system.
+      if (matchingApp && isInertiaSubmission(matchingApp)) {
+        syncApplicationToSalesforceAndPersist(matchingApp).catch(() => {});
       }
 
       // Create underwriting decision when unqualified

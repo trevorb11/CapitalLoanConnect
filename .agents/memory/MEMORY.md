@@ -4,3 +4,4 @@
 - [admin-preview-data is a separate deal pipeline](admin-preview-deal-pipeline.md) — fields added to merchant deals API must also be added to admin-preview-data or admin preview won't show them.
 - [Deploy bootstrap for slow boot](deploy-slow-boot-bootstrap.md) — health checks give up ~6.5s in; prod runs `node server/prod-start.mjs` placeholder, not `npm start`. reusePort is a no-op on Node 20.
 - [Prod hangs & compression/SSE rule](prod-hang-pool-compression.md) — all DB pools need connectionTimeoutMillis or peak load hangs forever; compression() must exclude SSE routes via filter.
+- [Inertia Funding CRM sync](inertia-crm-sync.md) — external intake may identify itself by source label instead of referrer; route incomplete, complete, and statement events together.
