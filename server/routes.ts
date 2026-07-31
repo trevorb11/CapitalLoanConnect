@@ -2045,6 +2045,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Update existing application with new data instead of just returning old data
         // Filter out empty values to preserve previously entered data
         const filteredApplicationData = filterEmptyValues(applicationData);
+        // A real drawn signature on file always beats a checkbox/typed consent from a
+        // resubmission — keep the image (and its date) so the app stays wet-signed.
+        if (
+          String(existingApp.applicantSignature || '').startsWith('data:image') &&
+          filteredApplicationData.applicantSignature &&
+          !String(filteredApplicationData.applicantSignature).startsWith('data:image')
+        ) {
+          delete (filteredApplicationData as any).applicantSignature;
+          delete (filteredApplicationData as any).signatureDate;
+        }
         // Ensure merchant linkage if not yet set
         if (!existingApp.merchantId) {
           const mId = await findOrCreateMerchant(
