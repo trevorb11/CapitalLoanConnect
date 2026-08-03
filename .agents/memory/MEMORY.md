@@ -6,3 +6,4 @@
 - [Prod hangs & compression/SSE rule](prod-hang-pool-compression.md) — all DB pools need connectionTimeoutMillis or peak load hangs forever; compression() must exclude SSE routes via filter.
 - [Inertia Funding CRM sync](inertia-crm-sync.md) — external intake may identify itself by source label instead of referrer; route incomplete, complete, and statement events together.
 - [Stale agent email data](stale-agent-email-data.md) — agent email corrections must cover historical application records as well as the shared agent registry.
+- [Application signature PDF dates](application-signature-pdf-dates.md) — keep header dates separate; never render dates or times beneath applicant signatures.

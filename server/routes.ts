@@ -18173,7 +18173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .moveTo(120 * MM, (sigY + 2) * MM).lineTo(175 * MM, (sigY + 2) * MM).stroke();
 
           if (String(application.applicantSignature).startsWith('data:image')) {
-            // Drawn signature image with date stamp below
+            // Drawn signature image without a date stamp below
             try {
               const base64 = String(application.applicantSignature).split(',')[1];
               const sigBuf = Buffer.from(base64, 'base64');
@@ -18181,19 +18181,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             } catch (sigErr) {
               console.warn('[SUBMIT-UW] Failed to embed signature image:', sigErr);
             }
-            const signedDate = application.updatedAt
-              ? new Date(application.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-              : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            textAt(`Date: ${signedDate}`, 120, sigY + 33, 9, { color: labelGray });
           } else {
-            // Checkbox/e-sig — digital stamp
+            // Checkbox/e-sig — digital consent record without a date stamp
             const stampY = sigY + 10;
-            const rawDate = application.signatureDate || application.updatedAt || application.createdAt;
-            const timestamp = rawDate
-              ? new Date(rawDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-              : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
             textAt(`Digitally Signed by: ${application.fullName || 'Unknown'}`, 120, stampY, 11, { font: 'Helvetica-Bold' });
-            textAt(`Date: ${timestamp}`, 120, stampY + 6, 9, { color: labelGray });
             textAt('Electronic Consent Accepted', 120, stampY + 11, 9, { font: 'Helvetica-Oblique', color: labelGray });
           }
         }
