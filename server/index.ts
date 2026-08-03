@@ -169,8 +169,12 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    // Run lightweight startup migrations (idempotent — safe to run on every boot)
-    try {
+    // Run startup migrations in the background. They are idempotent and should
+    // never prevent the web server from taking over the port. In production,
+    // a database/websocket problem here used to leave the bootstrap page
+    // serving "Starting up..." indefinitely for every visitor.
+    const startupMigrations = (async () => {
+      try {
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_submitted_at TIMESTAMP`);
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_bank_connected_at TIMESTAMP`);
       await db.execute(sql`ALTER TABLE loan_applications ADD COLUMN IF NOT EXISTS gigfi_approved_at TIMESTAMP`);
@@ -601,12 +605,18 @@ app.use((req, res, next) => {
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mp_tier ON merchant_positions (tier)`);
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_mp_status ON merchant_positions (status)`);
       console.log('[STARTUP] Migration: merchant_positions table ensured');
-    } catch (migErr) {
-      console.warn('[STARTUP] Migration warning (non-fatal):', migErr);
-    }
+      } catch (migErr) {
+        console.warn('[STARTUP] Migration warning (non-fatal):', migErr);
+      }
+    })();
+    void startupMigrations.catch((err) => {
+      console.warn('[STARTUP] Background migration promise rejected (non-fatal):', err);
+    });
 
-    // One-time patch: hide Fuji $150k funding from EK LINE's merchant portal
-    try {
+    // One-time patch: hide Fuji $150k funding from EK LINE's merchant portal.
+    // This is also non-critical startup work and must not block the listener.
+    void (async () => {
+      try {
       const ekResult = await db.execute(sql`
         SELECT id, additional_fundings FROM business_underwriting_decisions
         WHERE business_email = 'ekline.jason@gmail.com' LIMIT 1
@@ -629,9 +639,12 @@ app.use((req, res, next) => {
           console.log('[STARTUP] Patched EK LINE: Fuji $150k hidden from portal');
         }
       }
-    } catch (patchErr) {
-      console.warn('[STARTUP] EK LINE portal patch (non-fatal):', patchErr);
-    }
+      } catch (patchErr) {
+        console.warn('[STARTUP] EK LINE portal patch (non-fatal):', patchErr);
+      }
+    })().catch((err) => {
+      console.warn('[STARTUP] EK LINE portal patch promise rejected (non-fatal):', err);
+    });
 
     console.log('[STARTUP] Registering routes...');
     const server = await registerRoutes(app);

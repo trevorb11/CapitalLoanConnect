@@ -11,5 +11,6 @@ Autoscale deployments probe `GET /` within seconds of container start and fail t
 - Deployment run command is `node server/prod-start.mjs`, NOT `npm run start`. The bootstrap sets NODE_ENV=production itself.
 - Node 20 silently ignores `reusePort`, so the placeholder MUST close before the real `server.listen` — the main server awaits `globalThis.__closeBootstrapPlaceholder()` right before listening, and exits on listen 'error' to avoid a zombie process.
 - If boot timing changes (new heavy imports, more startup migrations), the placeholder absorbs it — but a hung startup would serve "Starting up" forever; pools have connection timeouts to prevent this.
+- Non-critical startup migrations and one-time data patches must run after route registration/listener handoff, not before it; otherwise a database failure can keep the placeholder page alive indefinitely even though the process itself remains running.
 
 Related gotcha fixed at the same time: regex patterns inside JS/SQL template literals need double backslashes (`\\s`, `\\(`, `\\d`) — single backslashes are eaten by the template literal, producing invalid Postgres regexes. One such bug ("parentheses not balanced") silently aborted ALL subsequent startup migrations in that try block on every prod boot.
