@@ -3,8 +3,8 @@ name: Application signature PDF dates
 description: Application exports should keep header dates separate from signature-area rendering.
 ---
 
-Application PDFs and the application view must not render a date or time beneath the applicant’s drawn or electronic signature. The submission/header date may remain at the top of the document.
+Application PDFs and the application view must render the applicant’s signature date beneath the drawn or electronic signature in the bottom-right signature area, but must omit the time. The separate submission/header date remains at the top of the document.
 
-**Why:** Signature-area timestamps were being added independently in browser and server PDF renderers, so removing one renderer alone left other signed, e-sign, redacted, or underwriting variants inconsistent.
+**Why:** Signature-area date/time stamps were added independently in browser and server PDF renderers. Removing the whole stamp lost required date information, while leaving the original timestamp formatting exposed the time.
 
-**How to apply:** Any future signature-template change must update both the browser ApplicationView renderer and the server underwriting PDF renderer, while preserving only explicitly requested non-signature dates.
+**How to apply:** Any future signature-template change must update both the browser ApplicationView renderer and the server underwriting PDF renderer. Format signature timestamps with date-only locale options; do not include hour or minute fields.
