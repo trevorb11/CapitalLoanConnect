@@ -10410,11 +10410,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const phone = String(b.phone || c.phone || "").trim();
       if (!email && !phone) return res.status(400).json({ error: "no email or phone in payload" });
 
-      const owner = await ghlService.resolveOwnerRepName(phone || null, email || null);
-      if (!owner?.repName) {
-        console.log(`[GHL-ASSIGN] ${email || phone}: no owner in GHL — nothing to sync`);
-        return res.json({ synced: false, reason: "no GHL owner" });
+      // Rep comes from the webhook payload. Accept a name from the usual fields,
+      // or a GHL user id (mapped through the agents registry). Live GHL lookup
+      // only as a last resort when the payload carries nothing.
+      let repName = String(b.rep || b.assigned_user_name || b.user?.name || c.assigned_user_name || b.customData?.rep || "").trim();
+      let repEmail = String(b.assigned_user_email || b.user?.email || "").trim();
+      let repGhlId = String(b.assignedTo || c.assignedTo || b.assigned_to || "").trim();
+      if (!repName && repGhlId) {
+        const a = AGENTS.find(x => x.ghlId && x.ghlId === repGhlId);
+        if (a) { repName = a.name; repEmail = repEmail || a.email; }
       }
+      if (!repName) {
+        const owner = await ghlService.resolveOwnerRepName(phone || null, email || null);
+        if (owner?.repName) { repName = owner.repName; repEmail = repEmail || owner.repEmail || ""; repGhlId = repGhlId || owner.userId || ""; }
+      }
+      if (!repName) {
+        console.log(`[GHL-ASSIGN] ${email || phone}: no rep in payload or GHL — nothing to sync`);
+        return res.json({ synced: false, reason: "no rep info" });
+      }
+      const owner = { repName, repEmail, userId: repGhlId };
       const sfRep = normalizeRepName(owner.repName);
 
       // CLC: stamp agent fields on the matching application(s)
