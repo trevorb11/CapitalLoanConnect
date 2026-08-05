@@ -1963,3 +1963,26 @@ export async function recordEmailClickInSalesforce(click: {
   }
   return { result: "error", error: created.error };
 }
+
+// ── Rep assignment sync (fed by the GHL assignment webhook) ──
+// Sets Sales_Rep__c on the matching Lead and most recent Opportunity so SF
+// mirrors the current GHL owner. Overwrites — GHL is the assignment source of truth.
+export async function syncRepAssignmentToSalesforce(email: string, repName: string): Promise<{ leadId?: string; oppId?: string; error?: string }> {
+  const emailEsc = email.trim().toLowerCase().replace(/'/g, "\'");
+  const out: { leadId?: string; oppId?: string; error?: string } = {};
+  try {
+    const leads = await sfQuery(`SELECT Id, Sales_Rep__c FROM Lead WHERE Email = '${emailEsc}' AND IsConverted = false ORDER BY LastModifiedDate DESC LIMIT 1`);
+    if (leads.length && leads[0].Sales_Rep__c !== repName) {
+      await sfApi("PATCH", `/sobjects/Lead/${leads[0].Id}`, { Sales_Rep__c: repName });
+      out.leadId = leads[0].Id;
+    }
+    const opps = await sfQuery(`SELECT Id, Sales_Rep__c FROM Opportunity WHERE Email__c = '${emailEsc}' ORDER BY LastModifiedDate DESC LIMIT 1`);
+    if (opps.length && opps[0].Sales_Rep__c !== repName) {
+      await sfApi("PATCH", `/sobjects/Opportunity/${opps[0].Id}`, { Sales_Rep__c: repName });
+      out.oppId = opps[0].Id;
+    }
+  } catch (err: any) {
+    out.error = err.message;
+  }
+  return out;
+}

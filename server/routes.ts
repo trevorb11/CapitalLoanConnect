@@ -31,7 +31,7 @@ import { submitToGigFi, isGigFiConfigured, type GigFiLeadData } from "./services
 import { sendMarketingNotification, buildAdsInquiryEmail, buildServicesInterestEmail, buildLeadPortalSignupEmail, buildAdminAlertEmail, sendPipelineReportEmail } from "./services/email";
 import { evaluateLeadQualification } from "./services/leadQualification";
 import { startLeadNurtureScheduler } from "./services/leadNurture";
-import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce, promoteOpportunityToUnderwriting, recordEmailClickInSalesforce } from "./services/salesforce";
+import { syncApplicationToSalesforce, syncDecisionToSalesforce, syncUwSubmissionToSalesforce, syncAiSnapshotToSalesforce, promoteOpportunityToUnderwriting, recordEmailClickInSalesforce, syncRepAssignmentToSalesforce } from "./services/salesforce";
 import { syncApplicationToDialer, syncDecisionToDialer } from "./services/dialerSync";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
 
@@ -10363,7 +10363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── EMAIL CLICK → SALESFORCE WEBHOOKS (GHL workflow + Mailgun events) ──
   const EMAIL_CLICK_WEBHOOK_KEY = process.env.EMAIL_CLICK_WEBHOOK_KEY || "tcg-clk-7f3kq9vw2m";
-  const SF_REP_VALUES = ["Dillon LeBlanc", "Julius Speck", "Kenny Nwobi", "Gregory Dergevorkian", "Bryce Jennings", "Lucas Bishop", "Justin Neumann", "Sean Pimentel"];
+  const SF_REP_VALUES = ["Dillon LeBlanc", "Julius Speck", "Kenny Nwobi", "Gregory Dergevorkian", "Bryce Jennings", "Lucas Bishop", "Justin Neumann", "Sean Pimentel", "Matthew Abajian"];
 
   // Map a free-form rep hint (GHL user name, list value, email) onto the SF picklist roster
   function normalizeRepName(raw?: string | null): string | undefined {
@@ -10397,6 +10397,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch {}
     return undefined;
   }
+
+  // GHL workflow webhook fired when a lead gets (re)assigned. Doesn't trust the
+  // payload's rep — looks up the contact's CURRENT owner live from GHL, then
+  // mirrors it to the CLC application record and Salesforce (Lead + Opportunity).
+  app.post("/api/webhooks/ghl/assignment", async (req: Request, res: Response) => {
+    if ((req.query.key as string) !== EMAIL_CLICK_WEBHOOK_KEY) return res.status(403).json({ error: "bad key" });
+    try {
+      const b: any = req.body || {};
+      const c: any = b.contact || b;
+      const email = String(b.email || c.email || "").trim().toLowerCase();
+      const phone = String(b.phone || c.phone || "").trim();
+      if (!email && !phone) return res.status(400).json({ error: "no email or phone in payload" });
+
+      const owner = await ghlService.resolveOwnerRepName(phone || null, email || null);
+      if (!owner?.repName) {
+        console.log(`[GHL-ASSIGN] ${email || phone}: no owner in GHL — nothing to sync`);
+        return res.json({ synced: false, reason: "no GHL owner" });
+      }
+      const sfRep = normalizeRepName(owner.repName);
+
+      // CLC: stamp agent fields on the matching application(s)
+      let clcUpdated = 0;
+      if (email) {
+        const r = await db.execute(sql`UPDATE loan_applications
+          SET agent_name = ${owner.repName}, agent_email = ${owner.repEmail || null}, agent_ghl_id = ${owner.userId || null}
+          WHERE LOWER(email) = ${email}`);
+        clcUpdated = (r as any).rowCount ?? 0;
+        await db.execute(sql`UPDATE business_underwriting_decisions
+          SET assigned_rep = ${sfRep || owner.repName}, updated_at = NOW()
+          WHERE LOWER(business_email) = ${email} AND (assigned_rep IS NULL OR assigned_rep != ${sfRep || owner.repName})`).catch(() => {});
+      }
+
+      // Salesforce: mirror onto Lead + Opportunity
+      let sfResult: any = { skipped: "rep not on SF picklist" };
+      if (sfRep && email) {
+        sfResult = await syncRepAssignmentToSalesforce(email, sfRep);
+      }
+      console.log(`[GHL-ASSIGN] ${email || phone} -> ${owner.repName}${sfRep ? ` (SF: ${sfRep})` : " (no SF picklist match)"} | clc apps: ${clcUpdated} | sf:`, sfResult);
+      res.json({ synced: true, rep: owner.repName, sfRep: sfRep || null, clcUpdated, sf: sfResult });
+    } catch (e: any) {
+      console.error("[GHL-ASSIGN] handler error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // GHL workflow "Custom Webhook" step → POST here (?key= shared secret)
   app.post("/api/webhooks/ghl/email-click", async (req: Request, res: Response) => {
