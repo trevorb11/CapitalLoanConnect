@@ -5,7 +5,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
-import { Pool } from "@neondatabase/serverless";
+import pg from "pg";
 import { registerRoutes } from "./routes";
 import { pollSalesforceChanges } from "./services/salesforcePoll";
 import { registerMcpRoutes } from "./mcp";
@@ -13,6 +13,8 @@ import { setupVite, serveStatic, log } from "./vite";
 import { startScheduledTriggers } from "./messaging-triggers";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+
+const { Pool } = pg;
 
 const app = express();
 
@@ -53,14 +55,33 @@ declare module 'http' {
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Prevent database/network errors from crashing the server process
+// Log process-level failures without assuming every error is a normal Error.
+// Neon WebSocket failures can surface as DOM-style ErrorEvent objects whose
+// message property is read-only; logging only err.message can throw a second
+// exception and hide the original startup failure.
+function describeProcessError(value: unknown): unknown {
+  if (value instanceof Error) {
+    return { name: value.name, message: value.message, stack: value.stack, cause: value.cause };
+  }
+  if (value && typeof value === "object") {
+    try {
+      return Object.fromEntries(Object.getOwnPropertyNames(value).map((key) => {
+        try { return [key, (value as Record<string, unknown>)[key]]; }
+        catch { return [key, "<unreadable>"]; }
+      }));
+    } catch {
+      return String(value);
+    }
+  }
+  return value;
+}
+
 process.on('uncaughtException', (err) => {
-  console.error('[PROCESS] Uncaught exception (server kept alive):', err.message);
+  console.error('[PROCESS] Uncaught exception (server kept alive):', describeProcessError(err));
 });
 
 process.on('unhandledRejection', (reason) => {
-  const msg = reason instanceof Error ? reason.message : String(reason);
-  console.error('[PROCESS] Unhandled promise rejection (server kept alive):', msg);
+  console.error('[PROCESS] Unhandled promise rejection (server kept alive):', describeProcessError(reason));
 });
 
 // Log startup
