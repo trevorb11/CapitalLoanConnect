@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -296,6 +296,8 @@ export default function FundingQuiz() {
   const [formError, setFormError] = useState("");
   const [showConsentError, setShowConsentError] = useState(false);
   const [submittedApplicationId, setSubmittedApplicationId] = useState<number | null>(null);
+  const [draftApplicationId, setDraftApplicationId] = useState<number | null>(null);
+  const draftSavedRef = useRef(false);
 
   const [answers, setAnswers] = useState<QuizAnswers>({
     revenue15k: "",
@@ -441,67 +443,104 @@ export default function FundingQuiz() {
   const totalQuestions = questions.length;
   const progress = ((currentStep + 1) / (totalQuestions + 2)) * 100; // +2 for industry and funding purpose
 
-  // Track page view on mount
+  // Track page view on mount and pre-fill email from URL param (?email=...)
   useEffect(() => {
     trackPageView("/funding-quiz", "Fundability Quiz");
     initUTMTracking();
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get("email");
+    if (emailParam) {
+      setAnswers((prev) => ({ ...prev, email: emailParam }));
+    }
   }, []);
+
+  // Helper: map quiz answers to application payload fields (shared by draft and final submit)
+  const buildQuizPayload = useCallback((data: QuizAnswers) => {
+    let monthlyRevenue = 0;
+    if (data.revenue15k === "Yes" && data.revenueAmount) {
+      const revenueMap: Record<string, number> = {
+        "$15,000 - $25,000": 20000,
+        "$25,000 - $50,000": 37500,
+        "$50,000 - $100,000": 75000,
+        "$100,000 - $250,000": 175000,
+        "$250,000+": 300000,
+      };
+      monthlyRevenue = revenueMap[data.revenueAmount] || 15000;
+    } else {
+      monthlyRevenue = 10000;
+    }
+    const timeInBusiness = data.businessAge || (data.sixMonthsOld === "Yes" ? "6-12 months" : "Less than 3 months");
+    const creditScore = data.creditRange || (data.creditAbove550 === "Yes" ? "550 - 650" : "550 and below");
+    return {
+      monthlyRevenue: monthlyRevenue.toString(),
+      averageMonthlyRevenue: monthlyRevenue.toString(),
+      timeInBusiness,
+      creditScore,
+      personalCreditScoreRange: creditScore,
+      industry: data.industry,
+      useOfFunds: data.fundingPurpose,
+      requestedAmount: "50000",
+      quizSource: "fundability-quiz",
+      quizAnswers: JSON.stringify({
+        onlineBank: data.onlineBank,
+        whichOnlineBank: data.whichOnlineBank,
+        existingPositions: data.existingPositions,
+        positionCount: data.positionCount,
+        consistentDeposits: data.consistentDeposits,
+        nsfOverdrafts: data.nsfOverdrafts,
+      }),
+    };
+  }, []);
+
+  // Background draft save — fires once when the contact form appears (all quiz questions answered)
+  useEffect(() => {
+    if (!showContactForm || draftSavedRef.current) return;
+    draftSavedRef.current = true;
+
+    const referralPartnerId = localStorage.getItem("referralPartnerId");
+    const utmParams = getStoredUTMParams();
+
+    apiRequest("POST", "/api/applications", {
+      ...(answers.email ? { email: answers.email } : {}),
+      ...buildQuizPayload(answers),
+      isCompleted: false,
+      quizDraft: true,
+      ...(referralPartnerId && { referralPartnerId }),
+      ...utmParams,
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.id && typeof data.id === "number") {
+          setDraftApplicationId(data.id);
+        }
+      })
+      .catch(() => {
+        // Silent failure — the final submit will create a fresh record instead
+      });
+  }, [showContactForm, answers, buildQuizPayload]);
 
   const submitMutation = useMutation({
     mutationFn: async (data: QuizAnswers & { recaptchaToken?: string }) => {
       const referralPartnerId = localStorage.getItem("referralPartnerId");
       const utmParams = getStoredUTMParams();
 
-      // Map revenue range to numeric value
-      let monthlyRevenue = 0;
-      if (data.revenue15k === "Yes" && data.revenueAmount) {
-        const revenueMap: Record<string, number> = {
-          "$15,000 - $25,000": 20000,
-          "$25,000 - $50,000": 37500,
-          "$50,000 - $100,000": 75000,
-          "$100,000 - $250,000": 175000,
-          "$250,000+": 300000,
-        };
-        monthlyRevenue = revenueMap[data.revenueAmount] || 15000;
-      } else {
-        monthlyRevenue = 10000; // Below threshold
-      }
-
-      // Map business age
-      let timeInBusiness = data.businessAge || (data.sixMonthsOld === "Yes" ? "6-12 months" : "Less than 3 months");
-
-      // Map credit score
-      let creditScore = data.creditRange || (data.creditAbove550 === "Yes" ? "550 - 650" : "550 and below");
-
-      const response = await apiRequest("POST", "/api/applications", {
+      const payload = {
         email: data.email,
         fullName: data.fullName,
         phone: data.phone,
         businessName: data.businessName,
-        requestedAmount: "50000", // Default, will be adjusted based on report
-        timeInBusiness,
-        industry: data.industry,
-        monthlyRevenue: monthlyRevenue.toString(),
-        averageMonthlyRevenue: monthlyRevenue.toString(),
-        creditScore,
-        personalCreditScoreRange: creditScore,
-        useOfFunds: data.fundingPurpose,
+        ...buildQuizPayload(data),
         isCompleted: true,
         recaptchaToken: data.recaptchaToken,
         faxNumber: data.faxNumber,
         ...(referralPartnerId && { referralPartnerId }),
         ...utmParams,
-        // Store quiz-specific data as metadata
-        quizSource: "fundability-quiz",
-        quizAnswers: JSON.stringify({
-          onlineBank: data.onlineBank,
-          whichOnlineBank: data.whichOnlineBank,
-          existingPositions: data.existingPositions,
-          positionCount: data.positionCount,
-          consistentDeposits: data.consistentDeposits,
-          nsfOverdrafts: data.nsfOverdrafts,
-        }),
-      });
+      };
+
+      // If we already have a draft record, update it; otherwise create a new one
+      const response = draftApplicationId
+        ? await apiRequest("PATCH", `/api/applications/${draftApplicationId}`, payload)
+        : await apiRequest("POST", "/api/applications", payload);
       return response.json();
     },
     onSuccess: (data) => {

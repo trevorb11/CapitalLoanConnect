@@ -1991,7 +1991,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate required email field - only for final submissions or when no currentStep provided
       // When saving step-by-step, email may not be available yet (collected in later steps)
-      if (!applicationData.email && !applicationData.currentStep) {
+      // quizDraft:true means a background autosave from the fundability quiz before the contact form is filled
+      if (!applicationData.email && !applicationData.currentStep && !applicationData.quizDraft) {
         return res.status(400).json({ error: "Email is required" });
       }
 
