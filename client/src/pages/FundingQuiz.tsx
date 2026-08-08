@@ -297,7 +297,10 @@ export default function FundingQuiz() {
   const [showConsentError, setShowConsentError] = useState(false);
   const [submittedApplicationId, setSubmittedApplicationId] = useState<number | null>(null);
   const [draftApplicationId, setDraftApplicationId] = useState<number | null>(null);
-  const draftSavedRef = useRef(false);
+  // draftCreatingRef prevents a duplicate POST if the user advances quickly
+  const draftCreatingRef = useRef(false);
+  // draftApplicationIdRef is a sync copy of draftApplicationId for use inside effects
+  const draftApplicationIdRef = useRef<number | null>(null);
 
   const [answers, setAnswers] = useState<QuizAnswers>({
     revenue15k: "",
@@ -492,32 +495,81 @@ export default function FundingQuiz() {
     };
   }, []);
 
-  // Background draft save — fires once when the contact form appears (all quiz questions answered)
+  // Stage 1 — create a draft record the moment the user answers their first question.
+  // Subsequent step advances patch the same record with the latest step number so we can
+  // see exactly where someone dropped off even if they never reach the contact form.
   useEffect(() => {
-    if (!showContactForm || draftSavedRef.current) return;
-    draftSavedRef.current = true;
+    if (currentStep === 0) return; // Nothing answered yet
 
     const referralPartnerId = localStorage.getItem("referralPartnerId");
     const utmParams = getStoredUTMParams();
 
-    apiRequest("POST", "/api/applications", {
+    if (!draftCreatingRef.current && draftApplicationIdRef.current === null) {
+      // First step — create the draft record
+      draftCreatingRef.current = true;
+      apiRequest("POST", "/api/applications", {
+        ...(answers.email ? { email: answers.email } : {}),
+        quizDraft: true,
+        isCompleted: false,
+        quizSource: "fundability-quiz",
+        quizAnswers: JSON.stringify({ stepReached: currentStep, totalSteps: totalQuestions + 2 }),
+        ...(referralPartnerId && { referralPartnerId }),
+        ...utmParams,
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.id && typeof data.id === "number") {
+            draftApplicationIdRef.current = data.id;
+            setDraftApplicationId(data.id);
+          }
+        })
+        .catch(() => {
+          draftCreatingRef.current = false; // allow retry on next step
+        });
+    } else if (draftApplicationIdRef.current !== null) {
+      // Subsequent steps — patch the existing record with the latest step reached
+      apiRequest("PATCH", `/api/applications/${draftApplicationIdRef.current}`, {
+        quizAnswers: JSON.stringify({ stepReached: currentStep, totalSteps: totalQuestions + 2 }),
+      }).catch(() => {});
+    }
+    // If creation is still in flight (draftCreatingRef.current === true but no ID yet), skip —
+    // the creation POST will use the step number it had at launch; the contact-form PATCH catches up.
+  }, [currentStep]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stage 2 — when all questions are done and the contact form appears, patch the draft with
+  // the full quiz answers. Falls back to creating a fresh record if Stage 1 never completed.
+  useEffect(() => {
+    if (!showContactForm) return;
+
+    const referralPartnerId = localStorage.getItem("referralPartnerId");
+    const utmParams = getStoredUTMParams();
+
+    const fullPayload = {
       ...(answers.email ? { email: answers.email } : {}),
       ...buildQuizPayload(answers),
       isCompleted: false,
-      quizDraft: true,
       ...(referralPartnerId && { referralPartnerId }),
       ...utmParams,
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.id && typeof data.id === "number") {
-          setDraftApplicationId(data.id);
-        }
+    };
+
+    if (draftApplicationIdRef.current !== null) {
+      apiRequest("PATCH", `/api/applications/${draftApplicationIdRef.current}`, fullPayload).catch(() => {});
+    } else {
+      // Stage 1 never completed (very fast user or network issue) — create fresh now
+      apiRequest("POST", "/api/applications", {
+        ...fullPayload,
+        quizDraft: true,
       })
-      .catch(() => {
-        // Silent failure — the final submit will create a fresh record instead
-      });
-  }, [showContactForm, answers, buildQuizPayload]);
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.id && typeof data.id === "number") {
+            draftApplicationIdRef.current = data.id;
+            setDraftApplicationId(data.id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [showContactForm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submitMutation = useMutation({
     mutationFn: async (data: QuizAnswers & { recaptchaToken?: string }) => {
