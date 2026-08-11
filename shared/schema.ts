@@ -158,6 +158,10 @@ export const loanApplications = pgTable("loan_applications", {
   utmTerm: text("utm_term"),          // Paid search keywords
   utmContent: text("utm_content"),    // A/B test or ad variation identifier
   referrerUrl: text("referrer_url"),  // The full referring URL
+  sourcePage: text("source_page"),    // Sub-brand/partner origin slug (e.g., guide-funding-group, inertia-funding)
+  gclid: text("gclid"),               // Google Ads click ID
+  fbclid: text("fbclid"),             // Facebook click ID
+  msclkid: text("msclkid"),           // Microsoft Ads click ID
 
   // --- Submission Tracking ---
   // Most recent completed intake/full-app submission (re-submissions update this

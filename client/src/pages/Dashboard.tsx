@@ -4459,6 +4459,12 @@ export default function Dashboard() {
                           </Badge>
                         )
                       )}
+                      {(app as any).sourcePage && (
+                        <Badge variant="outline" className="text-xs border-amber-400 text-amber-600 dark:text-amber-400 dark:border-amber-700" title="Site this application came from" data-testid={`badge-source-${app.id}`}>
+                          <Globe className="w-3 h-3 mr-1" />
+                          via {String((app as any).sourcePage).split("-").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+                        </Badge>
+                      )}
                       {authData.role === "admin" && (app as any).referralPartnerName && (
                         <Badge variant="outline" className="text-xs border-blue-400 text-blue-600 dark:text-blue-400" data-testid={`badge-partner-${app.id}`}>
                           <User className="w-3 h-3 mr-1" />
