@@ -405,6 +405,19 @@ function isInertiaSubmission(data: any): boolean {
 }
 
 /**
+ * Generic partner-site detection: every sub-brand intake site (Guide Funding
+ * Group, Inertia, Equip Capital, Consolidate Capital Group, Expansion Capital
+ * Partners, Apex Working Capital, and any future clone of the template) stamps
+ * sourcePage with its slug. Any submission carrying sourcePage came from a
+ * partner site and must fire the intake pipeline even without completion
+ * flags — brand-by-brand string matching is what left the newer brands silent.
+ */
+function isPartnerSiteSubmission(data: any): boolean {
+  if (!data) return false;
+  return !!(data.sourcePage || data.source_page) || isGFGSubmission(data) || isInertiaSubmission(data);
+}
+
+/**
  * Sync an application to Salesforce and persist the result on the dashboard
  * record. This is intentionally fire-and-forget at call sites so an external
  * CRM outage never blocks an intake form or statement upload.
@@ -2188,7 +2201,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Detected via agentName, referrerUrl (guidefundinggroup.com), referralSource, trackingSource, or sourcePage
         const updatedOrExisting = updatedApp || existingApp;
         const isGFGUpdate = isGFGSubmission(updatedOrExisting) || isGFGSubmission(applicationData);
-        if (isGFGUpdate && !applicationData.isCompleted && updatedApp) {
+        const isPartnerUpdate = isPartnerSiteSubmission(updatedOrExisting) || isPartnerSiteSubmission(applicationData);
+        if (isPartnerUpdate && !isInertia && !applicationData.isCompleted && updatedApp) {
           console.log(`[GFG] Guide Funding Group update detected — firing intake webhook for ${updatedApp.email}`);
           ghlService.sendIntakeWebhook(updatedApp, "https://guidefundinggroup.com/").catch(err =>
             console.error("[GFG] Intake webhook error (non-blocking):", err)
@@ -2324,7 +2338,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // even if isCompleted isn't set (GFG sends data without completion flags).
       // Detected via agentName, referrerUrl (guidefundinggroup.com), referralSource, trackingSource, or sourcePage.
       const isGFG = isGFGSubmission(finalApp) || isGFGSubmission(applicationData);
-      if (isGFG && !applicationData.isCompleted) {
+      const isPartnerSite = isPartnerSiteSubmission(finalApp) || isPartnerSiteSubmission(applicationData);
+      if (isPartnerSite && !isInertia && !applicationData.isCompleted) {
         console.log(`[GFG] Guide Funding Group submission detected — firing intake webhook for ${finalApp.email}`);
         ghlService.sendIntakeWebhook(finalApp, "https://guidefundinggroup.com/").catch(err =>
           console.error("[GFG] Intake webhook error (non-blocking):", err)
