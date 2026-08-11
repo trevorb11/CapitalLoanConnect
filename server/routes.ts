@@ -789,9 +789,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const sfResult = await syncApplicationToSalesforce(application);
 
-      if (sfResult.synced && sfResult.contactId) {
+      if (sfResult.synced && (sfResult.contactId || sfResult.oppId || sfResult.accountId)) {
+        // Persist ALL returned IDs — this endpoint used to store only the
+        // contact ID, leaving sf_opportunity_id null and re-exposing callers
+        // to the re-match duplicate class (found 2026-08-12, needs-quiz E2E).
         await storage.updateLoanApplication(application.id, {
-          sfContactId: sfResult.contactId,
+          ...(sfResult.contactId ? { sfContactId: sfResult.contactId } : {}),
+          ...(sfResult.accountId ? { sfAccountId: sfResult.accountId } : {}),
+          ...(sfResult.oppId ? { sfOpportunityId: sfResult.oppId } : {}),
           sfSyncedAt: new Date(),
           sfSyncMessage: sfResult.action || "manual-sync",
         } as any);
