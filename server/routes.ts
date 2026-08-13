@@ -2163,8 +2163,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Inertia sends step-by-step records that may not be marked complete.
         // Keep Salesforce current for every pushed entry, not only final
-        // submissions.
-        if (isInertia && updatedOrExistingApp) {
+        // submissions. ALSO sync any completed (re)submission on an existing
+        // row — a returning lead who re-fills the intake months later was
+        // previously invisible to Salesforce (found 2026-08-12 via a missed
+        // $151k re-submission). syncApplicationToSalesforce self-dedupes: it
+        // finds the existing Opp (stored id -> email -> phone) and updates it
+        // in place with stage-promotion gating, so re-fires cannot duplicate.
+        if ((isInertia || applicationData.isCompleted || applicationData.isFullApplicationCompleted) && updatedOrExistingApp) {
           syncApplicationToSalesforceAndPersist(updatedOrExistingApp).catch(() => {});
         }
 
@@ -2693,10 +2698,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await recordApplicationSubmission(id, updatedApp.email, 'full_application', updatedApp.requestedAmount);
       }
 
-      if (updates.isFullApplicationCompleted && updatedApp.isFullApplicationCompleted && !wasAlreadyCompleted) {
-        ghlService.sendWebhook(updatedApp).catch(err =>
-          console.error("Webhook error (non-blocking):", err)
-        );
+      // Re-signed re-submissions (signatureDate present) re-sync too — the
+      // sync updates the existing Opp in place, never duplicates.
+      if (updates.isFullApplicationCompleted && updatedApp.isFullApplicationCompleted && (!wasAlreadyCompleted || updates.signatureDate)) {
+        if (!wasAlreadyCompleted) {
+          ghlService.sendWebhook(updatedApp).catch(err =>
+            console.error("Webhook error (non-blocking):", err)
+          );
+        }
 
         // Sync to Salesforce on full application completion (fire-and-forget)
         syncApplicationToSalesforceAndPersist(updatedApp).catch(() => {});
