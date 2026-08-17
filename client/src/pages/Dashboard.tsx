@@ -4437,12 +4437,6 @@ export default function Dashboard() {
                         );
                         return null;
                       })()}
-                      {(app as any).isWebLead && (
-                        <Badge variant="outline" className="text-xs border-sky-400 text-sky-600 dark:text-sky-400 dark:border-sky-700" data-testid={`badge-web-lead-${app.id}`}>
-                          <Globe className="w-3 h-3 mr-1" />
-                          Web Lead
-                        </Badge>
-                      )}
                       {authData.role === "admin" && app.agentName && (
                         // agentEmail is only ever set by the rep application flow;
                         // GHL owner lookup sets agentName without an email — style
